@@ -3,7 +3,7 @@
 [![Test Linux](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/pytest-linux.yml/badge.svg?branch=master)](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/pytest-linux.yml) [![Test Windows](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/pytest-windows.yml/badge.svg?branch=master)](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/pytest-windows.yml) [![Test MacOS](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/pytest-macos.yml/badge.svg?branch=master)](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/pytest-macos.yml) [![Docs](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/docs.yml/badge.svg?branch=master)](https://github.com/PlantSimulationLab/PyHelios/actions/workflows/docs.yml)
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/PlantSimulationLab/PyHelios/master/docs/images/PyHelios_logo_whiteborder.png"  alt="" width="300" />
+  <img src="docs/images/PyHelios_logo_whiteborder.png"  alt="" width="300" />
 </div>
 
 # PyHelios
@@ -44,40 +44,39 @@ cd PyHelios/
 # Build native Helios C++ library
 ./build_scripts/build_helios
 
-# Install dependencies
+# Install Python dependencies
 pip install -e .
 ```
 
 #### macOS
 ```bash
-# Prerequisites: Xcode command line tools
-xcode-select --install
-
 # Clone the Helios git repository
 git clone --recursive git@github.com:PlantSimulationLab/PyHelios.git
 cd PyHelios/
 
+# Install Helios C++ dependencies
+source helios-core/utilities/dependencies.sh
+
 # Build native Helios C++ library
 ./build_scripts/build_helios
 
-# Install dependencies
+# Install Python dependencies
 pip install -e .
 ```
 
 #### Linux (Ubuntu/Debian)
 ```bash
-# Prerequisites: Build tools and CMake
-sudo apt-get update
-sudo apt-get install build-essential cmake
-
 # Clone the Helios git repository
 git clone --recursive git@github.com:PlantSimulationLab/PyHelios.git
 cd PyHelios/
 
+# Install Helios C++ dependencies
+source helios-core/utilities/dependencies.sh
+
 # Build native Helios C++ library  
 ./build_scripts/build_helios
 
-# Install dependencies
+# Install Python dependencies
 pip install -e .
 ```
 
@@ -85,51 +84,47 @@ pip install -e .
 
 - Creating a basic Context and adding a Patch
 
-``` python
+```python
 from pyhelios import Context
-from pyhelios import DataTypes
+from pyhelios.types import *
 
 context = Context()
 
-center = DataTypes.vec3(2, 3, 4)
-size = DataTypes.vec2(1, 1)
-color = DataTypes.RGBcolor(0.25, 0.25, 0.25)
+center = vec3(2, 3, 4)
+size = vec2(1, 1)
+color = RGBcolor(0.25, 0.25, 0.25)
 
-patch_uuid = context.addPatch(
-    center=center,
-    size=size,
-    color=color
-)
+patch_uuid = context.addPatch(center=center, size=size, color=color)
 ```
 
 - Creating a Lemon tree and an Olive tree using WeberPennTree plugin
 
 ```python
-from pyhelios import Context, WeberPennTree, WPTType
+from pyhelios import Context, WeberPennTree
 
 context = Context()
 wpt = WeberPennTree(context)
 
-tree_id_lemon = wpt.buildTree(WPTType.LEMON)
-tree_id_olive = wpt.buildTree(WPTType.OLIVE)
+tree_id_lemon = wpt.buildTree(wpt_type=WeberPennTree.WPTType.LEMON)
+tree_id_olive = wpt.buildTree(wpt_type=WeberPennTree.WPTType.OLIVE)
 ```
 
 - GPU-accelerated radiation simulation with graceful plugin handling
 
 ```python
 from pyhelios import Context, RadiationModel
-from pyhelios.RadiationModel import RadiationModelError
 
 context = Context()
-# Add geometry (PLY files, patches, trees, etc.)
+
+# Add geometry to the context here (PLY files, patches, trees, etc.)
 
 with RadiationModel(context) as radiation:
-    radiation.addRadiationBand("SW")
-    radiation.setDirectRayCount("SW", 100)
-    radiation.setDiffuseRayCount("SW", 300)
+    radiation.addRadiationBand(band_label="SW")
+    radiation.setDirectRayCount(band_label="SW", ray_count=100)
+    radiation.setDiffuseRayCount(band_label="SW", ray_count=1000)
         
     # Run GPU simulation
-    radiation.runBand("SW")
+    radiation.runBand(band_label="SW")
     results = radiation.getTotalAbsorbedFlux()
         
     # Apply native pseudocolor mapping for visualization

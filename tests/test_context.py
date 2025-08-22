@@ -1287,10 +1287,9 @@ class TestContextErrorHandling:
             # Destroy the context
             context.__exit__(None, None, None)
             
-            # The pointer remains but the underlying context is destroyed
-            # Subsequent operations may cause undefined behavior or segfaults
-            # For safety, we just verify the test concept without unsafe operations
-            assert context.context is not None  # Pointer still exists
+            # The pointer is set to None to prevent double deletion and segfaults
+            # This is the safe approach to context cleanup
+            assert context.context is None  # Pointer is safely cleared
             
             # The safer approach is to use context managers properly:
             # with Context() as ctx: ...
@@ -1330,3 +1329,358 @@ class TestContextErrorHandling:
             uuid = uuids[i]
             assert basic_context.getPrimitiveData(uuid, "index", int) == i
             assert basic_context.getPrimitiveData(uuid, "value", float) == pytest.approx(i * 0.1)
+
+
+@pytest.mark.native_only
+class TestCompoundGeometry:
+    """Test compound geometry methods that should always be available in native builds."""
+    
+    def test_compound_geometry_availability(self, basic_context):
+        """Test that all compound geometry methods are available - critical failure if not."""
+        # These methods should ALWAYS be available in native builds
+        required_methods = ['addTile', 'addSphere', 'addTube', 'addBox']
+        
+        for method_name in required_methods:
+            assert hasattr(basic_context, method_name), \
+                f"Critical failure: {method_name} not available in native build"
+            method = getattr(basic_context, method_name)
+            assert callable(method), f"Critical failure: {method_name} is not callable"
+    
+    def test_addTile_basic(self, basic_context):
+        """Test basic tile creation."""
+        center = vec3(0, 0, 0)
+        size = vec2(2, 2)
+        subdivisions = int2(2, 2)
+        
+        uuids = basic_context.addTile(center=center, size=size, subdiv=subdivisions)
+        
+        # Should return list of UUIDs for 2x2 = 4 patches
+        assert isinstance(uuids, list)
+        assert len(uuids) == 4
+        assert all(isinstance(uuid, int) for uuid in uuids)
+        assert all(uuid >= 0 for uuid in uuids)
+        
+        # Verify primitives were added to context
+        assert basic_context.getPrimitiveCount() == 4
+    
+    def test_addTile_with_rotation(self, basic_context):
+        """Test tile creation with rotation."""
+        center = vec3(1, 1, 1)
+        size = vec2(1, 1) 
+        subdivisions = int2(3, 3)
+        rotation = SphericalCoord(1, 0.5, 1.0)  # radius, elevation, azimuth
+        
+        uuids = basic_context.addTile(center=center, size=size, rotation=rotation, subdiv=subdivisions)
+        
+        # Should return 3x3 = 9 patches
+        assert len(uuids) == 9
+        assert basic_context.getPrimitiveCount() == 9
+    
+    def test_addTile_with_color(self, basic_context):
+        """Test tile creation with color."""
+        center = vec3(0, 0, 0)
+        size = vec2(1, 1)
+        subdivisions = int2(2, 2)
+        color = RGBcolor(0.5, 0.7, 0.9)
+        
+        uuids = basic_context.addTile(center=center, size=size, subdiv=subdivisions, color=color)
+        
+        assert len(uuids) == 4
+        # Note: Color verification would require additional Context methods
+    
+    def test_addTile_parameter_validation(self, basic_context):
+        """Test tile parameter validation."""
+        center = vec3(0, 0, 0)
+        size = vec2(1, 1)
+        
+        # Invalid subdivisions
+        with pytest.raises(ValueError, match="All subdivision counts must be positive"):
+            basic_context.addTile(center=center, size=size, subdiv=int2(0, 1))
+        
+        with pytest.raises(ValueError, match="All subdivision counts must be positive"):
+            basic_context.addTile(center=center, size=size, subdiv=int2(1, -1))
+    
+    def test_addSphere_basic(self, basic_context):
+        """Test basic sphere creation."""
+        center = vec3(0, 0, 0)
+        radius = 1.0
+        subdivisions = 8
+        
+        uuids = basic_context.addSphere(center, radius, subdivisions)
+        
+        # Should return list of triangle UUIDs
+        assert isinstance(uuids, list)
+        assert len(uuids) > 0
+        assert all(isinstance(uuid, int) for uuid in uuids)
+        assert all(uuid >= 0 for uuid in uuids)
+        
+        # Verify primitives were added
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addSphere_high_subdivision(self, basic_context):
+        """Test sphere with higher subdivision count."""
+        center = vec3(2, 2, 2)
+        radius = 0.5
+        subdivisions = 16
+        
+        uuids = basic_context.addSphere(center, radius, subdivisions)
+        
+        # Higher subdivisions should create more triangles
+        assert len(uuids) > 32  # Expect significant number of triangles
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addSphere_with_color(self, basic_context):
+        """Test sphere creation with color."""
+        center = vec3(0, 0, 0)
+        radius = 1.0
+        subdivisions = 6
+        color = RGBcolor(1.0, 0.5, 0.0)
+        
+        uuids = basic_context.addSphere(center, radius, subdivisions, color=color)
+        
+        assert len(uuids) > 0
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addSphere_parameter_validation(self, basic_context):
+        """Test sphere parameter validation."""
+        center = vec3(0, 0, 0)
+        
+        # Invalid radius
+        with pytest.raises(ValueError, match="radius must be positive"):
+            basic_context.addSphere(center, 0.0, 8)
+        
+        with pytest.raises(ValueError, match="radius must be positive"):
+            basic_context.addSphere(center, -1.0, 8)
+        
+        # Invalid subdivisions
+        with pytest.raises(ValueError, match="Number of divisions must be at least 3"):
+            basic_context.addSphere(center, 1.0, 2)
+    
+    def test_addTube_basic(self, basic_context):
+        """Test basic tube creation."""
+        nodes = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(2, 1, 0)]
+        radius = 0.1
+        ndivs = 6
+        
+        uuids = basic_context.addTube(nodes, radius, ndivs)
+        
+        # Should return list of triangle UUIDs
+        assert isinstance(uuids, list)
+        assert len(uuids) > 0
+        assert all(isinstance(uuid, int) for uuid in uuids)
+        assert all(uuid >= 0 for uuid in uuids)
+        
+        # Verify primitives were added
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addTube_variable_radii(self, basic_context):
+        """Test tube with different radii per node."""
+        nodes = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(2, 0, 0)]
+        radii = [0.05, 0.1, 0.15]  # Expanding tube
+        ndivs = 8
+        
+        uuids = basic_context.addTube(nodes, radii, ndivs)
+        
+        assert len(uuids) > 0
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addTube_with_colors(self, basic_context):
+        """Test tube creation with colors."""
+        nodes = [vec3(0, 0, 0), vec3(0, 1, 0)]
+        radius = 0.1
+        ndivs = 6
+        colors = [RGBcolor(1.0, 0.0, 0.0), RGBcolor(0.0, 1.0, 0.0)]
+        
+        uuids = basic_context.addTube(nodes, radius, ndivs, colors=colors)
+        
+        assert len(uuids) > 0
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addTube_single_color(self, basic_context):
+        """Test tube creation with single color for all segments."""
+        nodes = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(1, 1, 0)]
+        radius = 0.1
+        ndivs = 6
+        color = RGBcolor(0.5, 0.5, 1.0)
+        
+        uuids = basic_context.addTube(nodes, radius, ndivs, colors=color)
+        
+        assert len(uuids) > 0
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addTube_parameter_validation(self, basic_context):
+        """Test tube parameter validation."""
+        nodes = [vec3(0, 0, 0), vec3(1, 0, 0)]
+        
+        # Invalid radius
+        with pytest.raises(ValueError, match="All radii must be positive"):
+            basic_context.addTube(nodes, 0.0, 6)
+        
+        with pytest.raises(ValueError, match="All radii must be positive"):
+            basic_context.addTube(nodes, -0.1, 6)
+        
+        # Invalid ndivs
+        with pytest.raises(ValueError, match="Number of radial divisions must be at least 3"):
+            basic_context.addTube(nodes, 0.1, 2)
+        
+        # Insufficient nodes
+        with pytest.raises(ValueError, match="Tube requires at least 2 nodes"):
+            basic_context.addTube([vec3(0, 0, 0)], 0.1, 6)
+        
+        # Mismatched radii count
+        with pytest.raises(ValueError, match="Number of radii.*must match.*number of nodes"):
+            basic_context.addTube(nodes, [0.1], 6)  # 2 nodes but 1 radius
+        
+        # Mismatched colors count
+        with pytest.raises(ValueError, match="Number of colors.*must match.*number of nodes"):
+            basic_context.addTube(nodes, 0.1, 6, colors=[RGBcolor(1, 0, 0)])  # 2 nodes but 1 color
+    
+    def test_addBox_basic(self, basic_context):
+        """Test basic box creation."""
+        center = vec3(0, 0, 0)
+        size = vec3(1, 2, 0.5)
+        
+        uuids = basic_context.addBox(center, size)
+        
+        # Should return list of triangle UUIDs for box faces
+        assert isinstance(uuids, list)
+        assert len(uuids) > 0
+        assert all(isinstance(uuid, int) for uuid in uuids)
+        assert all(uuid >= 0 for uuid in uuids)
+        
+        # Verify primitives were added
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addBox_with_subdivisions(self, basic_context):
+        """Test box creation with subdivisions."""
+        center = vec3(1, 1, 1)
+        size = vec3(2, 2, 2)
+        subdivisions = int3(2, 2, 2)
+        
+        uuids = basic_context.addBox(center, size, subdivisions)
+        
+        # More subdivisions should create more triangles
+        assert len(uuids) > 12  # Basic box has 12 triangles (2 per face * 6 faces)
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addBox_large_subdivisions(self, basic_context):
+        """Test box creation with large subdivision counts."""
+        center = vec3(0, 0, 0)
+        size = vec3(1, 1, 1)
+        subdivisions = int3(4, 4, 4)
+        
+        uuids = basic_context.addBox(center, size, subdivisions)
+        
+        # Large subdivisions should create many more triangles
+        assert len(uuids) > 48  # Much more than basic 12 triangles
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addBox_with_color(self, basic_context):
+        """Test box creation with color."""
+        center = vec3(0, 0, 0)
+        size = vec3(1, 1, 1)
+        color = RGBcolor(0.8, 0.2, 0.9)
+        
+        uuids = basic_context.addBox(center, size, color=color)
+        
+        assert len(uuids) > 0
+        assert basic_context.getPrimitiveCount() == len(uuids)
+    
+    def test_addBox_parameter_validation(self, basic_context):
+        """Test box parameter validation."""
+        center = vec3(0, 0, 0)
+        
+        # Invalid size (negative dimensions)
+        with pytest.raises(ValueError, match="All box dimensions must be positive"):
+            basic_context.addBox(center, vec3(-1, 1, 1))
+        
+        with pytest.raises(ValueError, match="All box dimensions must be positive"):
+            basic_context.addBox(center, vec3(1, 0, 1))
+        
+        # Invalid subdivisions
+        with pytest.raises(ValueError, match="All subdivision counts must be at least 1"):
+            basic_context.addBox(center, vec3(1, 1, 1), int3(0, 1, 1))
+    
+    def test_compound_geometry_return_types(self, basic_context):
+        """Test that all compound geometry methods return proper list types."""
+        # Test each method returns List[int]
+        tile_uuids = basic_context.addTile(center=vec3(0, 0, 0), size=vec2(1, 1), subdiv=int2(2, 2))
+        sphere_uuids = basic_context.addSphere(vec3(1, 0, 0), 0.5, 8)
+        tube_uuids = basic_context.addTube([vec3(2, 0, 0), vec3(3, 0, 0)], 0.1, 6)
+        box_uuids = basic_context.addBox(vec3(4, 0, 0), vec3(1, 1, 1))
+        
+        # All should return lists of integers
+        for uuids, method_name in [
+            (tile_uuids, "addTile"), 
+            (sphere_uuids, "addSphere"),
+            (tube_uuids, "addTube"), 
+            (box_uuids, "addBox")
+        ]:
+            assert isinstance(uuids, list), f"{method_name} should return list"
+            assert len(uuids) > 0, f"{method_name} should return non-empty list"
+            assert all(isinstance(uuid, int) for uuid in uuids), \
+                f"{method_name} should return list of integers"
+            assert all(uuid >= 0 for uuid in uuids), \
+                f"{method_name} should return valid UUIDs (non-negative)"
+    
+    def test_compound_geometry_integration(self, basic_context):
+        """Test that compound geometry integrates properly with Context operations."""
+        # Create various compound geometry
+        tile_uuids = basic_context.addTile(center=vec3(0, 0, 0), size=vec2(1, 1), subdiv=int2(2, 2))
+        sphere_uuids = basic_context.addSphere(vec3(2, 0, 0), 0.5, 6)
+        box_uuids = basic_context.addBox(vec3(4, 0, 0), vec3(0.5, 0.5, 0.5))
+        
+        total_expected = len(tile_uuids) + len(sphere_uuids) + len(box_uuids)
+        
+        # Verify total count
+        assert basic_context.getPrimitiveCount() == total_expected
+        
+        # Verify all UUIDs are accessible
+        all_context_uuids = basic_context.getAllUUIDs()
+        assert len(all_context_uuids) == total_expected
+        
+        # Verify compound geometry UUIDs are in context
+        all_compound_uuids = tile_uuids + sphere_uuids + box_uuids
+        for uuid in all_compound_uuids:
+            assert uuid in all_context_uuids
+        
+        # Test that we can add primitive data to compound geometry elements
+        if tile_uuids:
+            basic_context.setPrimitiveDataString(tile_uuids[0], "type", "tile_patch")
+            assert basic_context.getPrimitiveData(tile_uuids[0], "type", str) == "tile_patch"
+        
+        if sphere_uuids:
+            basic_context.setPrimitiveDataFloat(sphere_uuids[0], "radius", 0.5)
+            assert basic_context.getPrimitiveData(sphere_uuids[0], "radius", float) == pytest.approx(0.5)
+
+
+@pytest.mark.cross_platform  
+class TestCompoundGeometryMockMode:
+    """Test compound geometry methods in mock mode for cross-platform compatibility."""
+    
+    def test_compound_geometry_mock_mode_behavior(self):
+        """Test that compound geometry methods behave appropriately in mock mode."""
+        from pyhelios.wrappers import UContextWrapper
+        
+        # Force compound geometry functions to be unavailable by patching the availability flag
+        with patch.object(UContextWrapper, '_COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE', False):
+            context = Context()
+            
+            # In mock mode, methods should exist but raise informative errors
+            assert hasattr(context, 'addTile')
+            assert hasattr(context, 'addSphere') 
+            assert hasattr(context, 'addTube')
+            assert hasattr(context, 'addBox')
+            
+            # Methods should raise NotImplementedError when functions are not available
+            with pytest.raises(NotImplementedError, match="not available"):
+                context.addTile(center=vec3(0, 0, 0), size=vec2(1, 1), subdiv=int2(2, 2))
+            
+            with pytest.raises(NotImplementedError, match="not available"):
+                context.addSphere(vec3(0, 0, 0), 1.0, 8)
+            
+            with pytest.raises(NotImplementedError, match="not available"):
+                context.addTube([vec3(0, 0, 0), vec3(1, 0, 0)], 0.1, 6)
+            
+            with pytest.raises(NotImplementedError, match="not available"):
+                context.addBox(vec3(0, 0, 0), vec3(1, 1, 1))

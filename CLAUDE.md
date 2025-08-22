@@ -575,3 +575,38 @@ Maintain PyHelios's high standards:
 - **Comprehensive documentation** - include examples, error scenarios, and troubleshooting
 - **Robust testing** - cover both mock mode and native library scenarios
 - **Performance considerations** - document any performance characteristics or limitations
+
+#### Critical Lessons from Compound Geometry Integration
+
+**Memory Management**: Always implement safe context cleanup to prevent segmentation faults:
+```python
+def __exit__(self, exc_type, exc_value, traceback):
+    if self.context is not None:
+        context_wrapper.destroyContext(self.context)
+        self.context = None  # Prevent double deletion - CRITICAL
+```
+
+**ctypes Type Equality**: Never rely on `==` for ctypes structures - use field comparison:
+```python
+# WRONG: color != RGBcolor(1, 1, 1) may fail even when values are equal
+# RIGHT: field-based comparison  
+if color and not (color.r == 1.0 and color.g == 1.0 and color.b == 1.0):
+```
+
+**Parameter Array Mapping**: Check actual array sizes returned by ctypes structures:
+```python
+# SphericalCoord.to_list() returns 4 elements [radius, elevation, zenith, azimuth]
+# But C++ interface expects 3 elements [radius, elevation, azimuth] 
+rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
+```
+
+**Vector Pre-allocation**: Always pre-allocate vectors in C++ for efficiency:
+```cpp
+std::vector<helios::vec3> nodes_vec;
+nodes_vec.reserve(node_count);  // Pre-allocate - CRITICAL for performance
+```
+
+**Thread-Local Static Vectors**: Use thread_local for static return vectors:
+```cpp
+static thread_local std::vector<unsigned int> static_result;  // Not just static
+```

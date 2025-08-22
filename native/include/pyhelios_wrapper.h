@@ -197,6 +197,106 @@ PYHELIOS_API unsigned int addTriangleWithColorRGBA(helios::Context* context, flo
  */
 PYHELIOS_API unsigned int addTriangleWithTexture(helios::Context* context, float* vertex0, float* vertex1, float* vertex2, const char* texture_file, float* uv0, float* uv1, float* uv2);
 
+//=============================================================================
+// Compound Geometry Functions
+//=============================================================================
+
+/**
+ * @brief Add a tile (subdivided patch) to the context
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [width, height] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for tile rotation
+ * @param subdiv Array of 2 ints [x_subdivisions, y_subdivisions] for tile subdivisions
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created patches
+ */
+PYHELIOS_API unsigned int* addTile(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, unsigned int* count);
+
+/**
+ * @brief Add a tile (subdivided patch) with color to the context
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [width, height] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for tile rotation
+ * @param subdiv Array of 2 ints [x_subdivisions, y_subdivisions] for tile subdivisions
+ * @param color Array of 3 floats [r, g, b] for tile color
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created patches
+ */
+PYHELIOS_API unsigned int* addTileWithColor(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, float* color, unsigned int* count);
+
+/**
+ * @brief Add a sphere to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of divisions for sphere tessellation
+ * @param center Array of 3 floats [x, y, z] for sphere center
+ * @param radius Sphere radius
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addSphere(helios::Context* context, unsigned int ndivs, float* center, float radius, unsigned int* count);
+
+/**
+ * @brief Add a sphere with color to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of divisions for sphere tessellation
+ * @param center Array of 3 floats [x, y, z] for sphere center
+ * @param radius Sphere radius
+ * @param color Array of 3 floats [r, g, b] for sphere color
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addSphereWithColor(helios::Context* context, unsigned int ndivs, float* center, float radius, float* color, unsigned int* count);
+
+/**
+ * @brief Add a tube to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for tube
+ * @param nodes Array of floats representing node positions [x1,y1,z1, x2,y2,z2, ...]
+ * @param node_count Number of nodes
+ * @param radii Array of floats representing radius at each node
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addTube(helios::Context* context, unsigned int ndivs, float* nodes, unsigned int node_count, float* radii, unsigned int* count);
+
+/**
+ * @brief Add a tube with colors to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for tube
+ * @param nodes Array of floats representing node positions [x1,y1,z1, x2,y2,z2, ...]
+ * @param node_count Number of nodes
+ * @param radii Array of floats representing radius at each node
+ * @param colors Array of floats representing RGB color at each node [r1,g1,b1, r2,g2,b2, ...]
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addTubeWithColor(helios::Context* context, unsigned int ndivs, float* nodes, unsigned int node_count, float* radii, float* colors, unsigned int* count);
+
+/**
+ * @brief Add a box to the context
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for box center
+ * @param size Array of 3 floats [width, height, depth] for box size
+ * @param subdiv Array of 3 ints [x_subdivisions, y_subdivisions, z_subdivisions] for box subdivisions
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created patches
+ */
+PYHELIOS_API unsigned int* addBox(helios::Context* context, float* center, float* size, int* subdiv, unsigned int* count);
+
+/**
+ * @brief Add a box with color to the context
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for box center
+ * @param size Array of 3 floats [width, height, depth] for box size
+ * @param subdiv Array of 3 ints [x_subdivisions, y_subdivisions, z_subdivisions] for box subdivisions
+ * @param color Array of 3 floats [r, g, b] for box color
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created patches
+ */
+PYHELIOS_API unsigned int* addBoxWithColor(helios::Context* context, float* center, float* size, int* subdiv, float* color, unsigned int* count);
+
 /**
  * @brief Get the type of a primitive
  * @param context Pointer to the Context

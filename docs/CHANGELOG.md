@@ -1,13 +1,21 @@
 # Changelog
 
-# [v0.0.0] 2025-08-20
+# [v0.0.2] 2025-08-22
 
-🎉 Initial version! 🎉
+## Context
+- Added compound geometry support with `addTile()`, `addSphere()`, `addTube()`, `addBox()`, and `addCone()` methods (with color variants)
+- Enhanced native C++ wrapper with thread-safe static vector management
+- Fixed memory management issues with proper context cleanup to prevent segmentation faults
+- Added comprehensive test coverage for compound geometry functionality
 
-## Currently implemented plug-ins
-- `visualizer`
-- `radiation`
-- `weber-penn tree`
+## Examples
+- Added `primitive_data_array_example.py` demonstrating numpy array integration
+- Enhanced `stanford_bunny_radiation.py` with improved visualization workflow
+- Removed deprecated `simple_radiation_test.py`
+
+## Documentation
+- Updated plugin integration guide with memory management best practices
+- Enhanced README.md with simplified installation instructions
 
 # [v0.0.1] 2025-08-21
 
@@ -25,3 +33,12 @@ Fix helios-core submodule to point to correct remote commit
 - Add robust error handling and cross-platform ctypes wrappers
 - Include comprehensive test coverage for all primitive data operations
 - Added Context::getPrimitiveDataArray() to return a numpy array of primitive data
+
+# [v0.0.0] 2025-08-20
+
+🎉 Initial version! 🎉
+
+## Currently implemented plug-ins
+- `visualizer`
+- `radiation`
+- `weber-penn tree`

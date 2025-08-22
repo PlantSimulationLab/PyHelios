@@ -80,6 +80,8 @@ class WPTType(Enum):
     WALNUT = 'Walnut'
 
 class WeberPennTree:
+    WPTType = WPTType  # Make WPTType accessible as class attribute
+    
     def __init__(self, context:Context):
         self.context = context
         self._plugin_registry = get_plugin_registry()

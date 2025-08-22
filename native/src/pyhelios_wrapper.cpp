@@ -112,8 +112,8 @@ extern "C" {
             clearError(); // Clear any previous error
             helios::vec3 center_vec(center[0], center[1], center[2]);
             helios::vec2 size_vec(size[0], size[1]);
-            // rotation array: [radius, elevation, zenith, azimuth] - use make_SphericalCoord(radius, elevation, azimuth)
-            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[3]);
+            // rotation array: [radius, elevation, azimuth] - use make_SphericalCoord(radius, elevation, azimuth)
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
             return context->addPatch(center_vec, size_vec, rotation_coord);
         } catch (const std::runtime_error& e) {
             // Use error code 7 for runtime errors and preserve exact Helios error message
@@ -135,8 +135,8 @@ extern "C" {
             clearError(); // Clear any previous error
             helios::vec3 center_vec(center[0], center[1], center[2]);
             helios::vec2 size_vec(size[0], size[1]);
-            // rotation array: [radius, elevation, zenith, azimuth] - use make_SphericalCoord(radius, elevation, azimuth)
-            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[3]);
+            // rotation array: [radius, elevation, azimuth] - use make_SphericalCoord(radius, elevation, azimuth)
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
             helios::RGBcolor color_rgb(color[0], color[1], color[2]);
             return context->addPatch(center_vec, size_vec, rotation_coord, color_rgb);
         } catch (const std::runtime_error& e) {
@@ -159,8 +159,8 @@ extern "C" {
             clearError(); // Clear any previous error
             helios::vec3 center_vec(center[0], center[1], center[2]);
             helios::vec2 size_vec(size[0], size[1]);
-            // rotation array: [radius, elevation, zenith, azimuth] - use make_SphericalCoord(radius, elevation, azimuth)
-            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[3]);
+            // rotation array: [radius, elevation, azimuth] - use make_SphericalCoord(radius, elevation, azimuth)
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
             helios::RGBAcolor color_rgba(color[0], color[1], color[2], color[3]);
             return context->addPatch(center_vec, size_vec, rotation_coord, color_rgba);
         } catch (const std::runtime_error& e) {
@@ -269,6 +269,324 @@ extern "C" {
             // Use error code 99 for unknown errors
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTriangle): Unknown error creating triangle with texture.");
             return 0;
+        }
+    }
+    
+    // Compound geometry creation functions - return arrays of UUIDs
+    
+    // addTile functions
+    unsigned int* addTile(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
+            helios::int2 subdiv_int2(subdiv[0], subdiv[1]);
+            
+            std::vector<unsigned int> uuids = context->addTile(center_vec, size_vec, rotation_coord, subdiv_int2);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTile): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTile): Unknown error creating tile.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    unsigned int* addTileWithColor(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, float* color, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
+            helios::int2 subdiv_int2(subdiv[0], subdiv[1]);
+            helios::RGBcolor color_rgb(color[0], color[1], color[2]);
+            
+            std::vector<unsigned int> uuids = context->addTile(center_vec, size_vec, rotation_coord, subdiv_int2, color_rgb);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTile): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTile): Unknown error creating tile with color.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    // addSphere functions
+    unsigned int* addSphere(helios::Context* context, unsigned int ndivs, float* center, float radius, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            
+            std::vector<unsigned int> uuids = context->addSphere(ndivs, center_vec, radius);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addSphere): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addSphere): Unknown error creating sphere.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    unsigned int* addSphereWithColor(helios::Context* context, unsigned int ndivs, float* center, float radius, float* color, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::RGBcolor color_rgb(color[0], color[1], color[2]);
+            
+            std::vector<unsigned int> uuids = context->addSphere(ndivs, center_vec, radius, color_rgb);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addSphere): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addSphere): Unknown error creating sphere with color.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    // addTube functions
+    unsigned int* addTube(helios::Context* context, unsigned int ndivs, float* nodes, unsigned int node_count, float* radii, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            // Pre-allocate nodes vector with known size
+            std::vector<helios::vec3> nodes_vec;
+            nodes_vec.reserve(node_count);
+            for (unsigned int i = 0; i < node_count; i++) {
+                nodes_vec.emplace_back(nodes[i*3], nodes[i*3+1], nodes[i*3+2]);
+            }
+            
+            // Convert radii array to vector with pre-allocation
+            std::vector<float> radii_vec;
+            radii_vec.reserve(node_count);
+            radii_vec.assign(radii, radii + node_count);
+            
+            std::vector<unsigned int> uuids = context->addTube(ndivs, nodes_vec, radii_vec);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTube): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTube): Unknown error creating tube.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    unsigned int* addTubeWithColor(helios::Context* context, unsigned int ndivs, float* nodes, unsigned int node_count, float* radii, float* colors, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            // Pre-allocate nodes vector with known size
+            std::vector<helios::vec3> nodes_vec;
+            nodes_vec.reserve(node_count);
+            for (unsigned int i = 0; i < node_count; i++) {
+                nodes_vec.emplace_back(nodes[i*3], nodes[i*3+1], nodes[i*3+2]);
+            }
+            
+            // Convert radii array to vector with pre-allocation
+            std::vector<float> radii_vec;
+            radii_vec.reserve(node_count);
+            radii_vec.assign(radii, radii + node_count);
+            
+            // Pre-allocate colors vector with known size
+            std::vector<helios::RGBcolor> colors_vec;
+            colors_vec.reserve(node_count);
+            for (unsigned int i = 0; i < node_count; i++) {
+                colors_vec.emplace_back(colors[i*3], colors[i*3+1], colors[i*3+2]);
+            }
+            
+            std::vector<unsigned int> uuids = context->addTube(ndivs, nodes_vec, radii_vec, colors_vec);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTube): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTube): Unknown error creating tube with color.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    // addBox functions
+    unsigned int* addBox(helios::Context* context, float* center, float* size, int* subdiv, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec3 size_vec(size[0], size[1], size[2]);
+            helios::int3 subdiv_int3(subdiv[0], subdiv[1], subdiv[2]);
+            
+            std::vector<unsigned int> uuids = context->addBox(center_vec, size_vec, subdiv_int3);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addBox): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addBox): Unknown error creating box.");
+            *count = 0;
+            return nullptr;
+        }
+    }
+    
+    unsigned int* addBoxWithColor(helios::Context* context, float* center, float* size, int* subdiv, float* color, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                *count = 0;
+                return nullptr;
+            }
+            
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec3 size_vec(size[0], size[1], size[2]);
+            helios::int3 subdiv_int3(subdiv[0], subdiv[1], subdiv[2]);
+            helios::RGBcolor color_rgb(color[0], color[1], color[2]);
+            
+            std::vector<unsigned int> uuids = context->addBox(center_vec, size_vec, subdiv_int3, color_rgb);
+            
+            // Convert vector to thread-local static array for return
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = std::move(uuids);
+            *count = static_result.size();
+            return static_result.data();
+            
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addBox): ") + e.what());
+            *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addBox): Unknown error creating box with color.");
+            *count = 0;
+            return nullptr;
         }
     }
     

@@ -42,6 +42,7 @@ class Context:
     
     The Context class provides methods for:
     - Creating geometric primitives (patches, triangles)
+    - Creating compound geometry (tiles, spheres, tubes, boxes)
     - Loading 3D models from files (PLY, OBJ, XML)
     - Managing primitive data (flexible key-value storage)
     - Querying primitive properties and collections
@@ -196,6 +197,7 @@ class Context:
     def __exit__(self, exc_type, exc_value, traceback):
         if self.context is not None:
             context_wrapper.destroyContext(self.context)
+            self.context = None  # Prevent double deletion
 
     def getNativePtr(self):
         self._check_context_available()
@@ -336,6 +338,225 @@ class Context:
         """
         object_uuids = context_wrapper.getObjectPrimitiveUUIDs(self.context, object_id)
         return [self.getPrimitiveInfo(uuid) for uuid in object_uuids]
+
+    # Compound geometry methods
+    def addTile(self, center: vec3 = vec3(0, 0, 0), size: vec2 = vec2(1, 1), 
+                rotation: Optional[SphericalCoord] = None, subdiv: int2 = int2(1, 1), 
+                color: Optional[RGBcolor] = None) -> List[int]:
+        """
+        Add a subdivided patch (tile) to the context.
+        
+        A tile is a patch subdivided into a regular grid of smaller patches,
+        useful for creating detailed surfaces or terrain.
+        
+        Args:
+            center: 3D coordinates of tile center (default: origin)
+            size: Width and height of the tile (default: 1x1)
+            rotation: Orientation of the tile (default: no rotation)
+            subdiv: Number of subdivisions in x and y directions (default: 1x1)
+            color: Color of the tile (default: white)
+            
+        Returns:
+            List of UUIDs for all patches created in the tile
+            
+        Example:
+            >>> context = Context()
+            >>> # Create a 2x2 meter tile subdivided into 4x4 patches
+            >>> tile_uuids = context.addTile(
+            ...     center=vec3(0, 0, 1),
+            ...     size=vec2(2, 2), 
+            ...     subdiv=int2(4, 4),
+            ...     color=RGBcolor(0.5, 0.8, 0.2)
+            ... )
+            >>> print(f"Created {len(tile_uuids)} patches")
+        """
+        self._check_context_available()
+        
+        # Parameter validation
+        if any(s <= 0 for s in size.to_list()):
+            raise ValueError("All size dimensions must be positive")
+        if any(s <= 0 for s in subdiv.to_list()):
+            raise ValueError("All subdivision counts must be positive")
+            
+        rotation = rotation or SphericalCoord(1, 0, 0)
+        color = color or RGBcolor(1, 1, 1)
+        
+        # Extract only radius, elevation, azimuth for C++ interface
+        rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
+        
+        if color and not (color.r == 1.0 and color.g == 1.0 and color.b == 1.0):
+            return context_wrapper.addTileWithColor(
+                self.context, center.to_list(), size.to_list(), 
+                rotation_list, subdiv.to_list(), color.to_list()
+            )
+        else:
+            return context_wrapper.addTile(
+                self.context, center.to_list(), size.to_list(), 
+                rotation_list, subdiv.to_list()
+            )
+
+    def addSphere(self, center: vec3 = vec3(0, 0, 0), radius: float = 1.0, 
+                  ndivs: int = 10, color: Optional[RGBcolor] = None) -> List[int]:
+        """
+        Add a sphere to the context.
+        
+        The sphere is tessellated into triangular faces based on the specified
+        number of divisions.
+        
+        Args:
+            center: 3D coordinates of sphere center (default: origin)
+            radius: Radius of the sphere (default: 1.0)
+            ndivs: Number of divisions for tessellation (default: 10)
+                  Higher values create smoother spheres but more triangles
+            color: Color of the sphere (default: white)
+            
+        Returns:
+            List of UUIDs for all triangles created in the sphere
+            
+        Example:
+            >>> context = Context()
+            >>> # Create a red sphere at (1, 2, 3) with radius 0.5
+            >>> sphere_uuids = context.addSphere(
+            ...     center=vec3(1, 2, 3),
+            ...     radius=0.5,
+            ...     ndivs=20,
+            ...     color=RGBcolor(1, 0, 0)
+            ... )
+            >>> print(f"Created sphere with {len(sphere_uuids)} triangles")
+        """
+        self._check_context_available()
+        
+        if radius <= 0:
+            raise ValueError("Sphere radius must be positive")
+        if ndivs < 3:
+            raise ValueError("Number of divisions must be at least 3")
+        
+        if color:
+            return context_wrapper.addSphereWithColor(
+                self.context, ndivs, center.to_list(), radius, color.to_list()
+            )
+        else:
+            return context_wrapper.addSphere(
+                self.context, ndivs, center.to_list(), radius
+            )
+
+    def addTube(self, nodes: List[vec3], radii: Union[float, List[float]], 
+                ndivs: int = 6, colors: Optional[Union[RGBcolor, List[RGBcolor]]] = None) -> List[int]:
+        """
+        Add a tube (pipe/cylinder) to the context.
+        
+        The tube is defined by a series of nodes (path) with radius at each node.
+        It's tessellated into triangular faces based on the number of radial divisions.
+        
+        Args:
+            nodes: List of 3D points defining the tube path (at least 2 nodes)
+            radii: Radius at each node. Can be:
+                  - Single float: constant radius for all nodes
+                  - List of floats: radius for each node (must match nodes length)
+            ndivs: Number of radial divisions (default: 6)
+                  Higher values create smoother tubes but more triangles
+            colors: Colors at each node. Can be:
+                   - None: white tube
+                   - Single RGBcolor: constant color for all nodes
+                   - List of RGBcolor: color for each node (must match nodes length)
+                   
+        Returns:
+            List of UUIDs for all triangles created in the tube
+            
+        Example:
+            >>> context = Context()
+            >>> # Create a curved tube with varying radius
+            >>> nodes = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(2, 1, 0)]
+            >>> radii = [0.1, 0.2, 0.1]
+            >>> colors = [RGBcolor(1, 0, 0), RGBcolor(0, 1, 0), RGBcolor(0, 0, 1)]
+            >>> tube_uuids = context.addTube(nodes, radii, ndivs=8, colors=colors)
+            >>> print(f"Created tube with {len(tube_uuids)} triangles")
+        """
+        self._check_context_available()
+        
+        if len(nodes) < 2:
+            raise ValueError("Tube requires at least 2 nodes")
+        if ndivs < 3:
+            raise ValueError("Number of radial divisions must be at least 3")
+        
+        # Handle radius parameter
+        if isinstance(radii, (int, float)):
+            radii_list = [float(radii)] * len(nodes)
+        else:
+            radii_list = [float(r) for r in radii]
+            if len(radii_list) != len(nodes):
+                raise ValueError(f"Number of radii ({len(radii_list)}) must match number of nodes ({len(nodes)})")
+        
+        # Validate radii
+        if any(r <= 0 for r in radii_list):
+            raise ValueError("All radii must be positive")
+        
+        # Convert nodes to flat list
+        nodes_flat = []
+        for node in nodes:
+            nodes_flat.extend(node.to_list())
+        
+        # Handle colors parameter
+        if colors is None:
+            return context_wrapper.addTube(self.context, ndivs, nodes_flat, radii_list)
+        elif isinstance(colors, RGBcolor):
+            # Single color for all nodes
+            colors_flat = colors.to_list() * len(nodes)
+        else:
+            # List of colors
+            if len(colors) != len(nodes):
+                raise ValueError(f"Number of colors ({len(colors)}) must match number of nodes ({len(nodes)})")
+            colors_flat = []
+            for color in colors:
+                colors_flat.extend(color.to_list())
+        
+        return context_wrapper.addTubeWithColor(self.context, ndivs, nodes_flat, radii_list, colors_flat)
+
+    def addBox(self, center: vec3 = vec3(0, 0, 0), size: vec3 = vec3(1, 1, 1), 
+               subdiv: int3 = int3(1, 1, 1), color: Optional[RGBcolor] = None) -> List[int]:
+        """
+        Add a rectangular box to the context.
+        
+        The box is subdivided into patches on each face based on the specified
+        subdivisions.
+        
+        Args:
+            center: 3D coordinates of box center (default: origin)
+            size: Width, height, and depth of the box (default: 1x1x1)
+            subdiv: Number of subdivisions in x, y, and z directions (default: 1x1x1)
+                   Higher values create more detailed surfaces
+            color: Color of the box (default: white)
+            
+        Returns:
+            List of UUIDs for all patches created on the box faces
+            
+        Example:
+            >>> context = Context()
+            >>> # Create a blue box subdivided for detail
+            >>> box_uuids = context.addBox(
+            ...     center=vec3(0, 0, 2),
+            ...     size=vec3(2, 1, 0.5),
+            ...     subdiv=int3(4, 2, 1),
+            ...     color=RGBcolor(0, 0, 1)
+            ... )
+            >>> print(f"Created box with {len(box_uuids)} patches")
+        """
+        self._check_context_available()
+        
+        if any(s <= 0 for s in size.to_list()):
+            raise ValueError("All box dimensions must be positive")
+        if any(s < 1 for s in subdiv.to_list()):
+            raise ValueError("All subdivision counts must be at least 1")
+        
+        if color:
+            return context_wrapper.addBoxWithColor(
+                self.context, center.to_list(), size.to_list(), 
+                subdiv.to_list(), color.to_list()
+            )
+        else:
+            return context_wrapper.addBox(
+                self.context, center.to_list(), size.to_list(), subdiv.to_list()
+            )
 
     def loadPLY(self, filename: str, origin: Optional[vec3] = None, height: Optional[float] = None, 
                 rotation: Optional[SphericalCoord] = None, color: Optional[RGBcolor] = None, 

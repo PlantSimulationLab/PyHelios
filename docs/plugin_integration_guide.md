@@ -1309,6 +1309,70 @@ open docs/generated/html/index.html
 - Implement mock mode for development
 - Test unavailable plugin scenarios
 
+### 8.6 Memory Management and Context Cleanup
+
+**Lesson from Compound Geometry Integration**: Memory management issues can cause segmentation faults during context cleanup, especially when static vectors hold references to deleted memory.
+
+**Critical Requirements**:
+- **Context Destructor Safety**: Always set pointer to `None` after deletion to prevent double-deletion:
+  ```python
+  def __exit__(self, exc_type, exc_value, traceback):
+      if self.context is not None:
+          context_wrapper.destroyContext(self.context)
+          self.context = None  # Prevent double deletion
+  ```
+
+- **Static Vector Thread Safety**: Use `thread_local` for static vectors in C++ to prevent race conditions:
+  ```cpp
+  // Convert vector to thread-local static array for return
+  static thread_local std::vector<unsigned int> static_result;
+  static_result = std::move(uuids);
+  *count = static_result.size();
+  return static_result.data();
+  ```
+
+- **Vector Pre-allocation**: Always pre-allocate vectors for efficiency:
+  ```cpp
+  // Pre-allocate nodes vector with known size
+  std::vector<helios::vec3> nodes_vec;
+  nodes_vec.reserve(node_count);
+  for (unsigned int i = 0; i < node_count; i++) {
+      nodes_vec.emplace_back(nodes[i*3], nodes[i*3+1], nodes[i*3+2]);
+  }
+  ```
+
+### 8.7 Parameter Validation and Type Handling
+
+**Lesson from Compound Geometry Integration**: Parameter validation must happen at multiple layers, and type equality can be unreliable.
+
+**Critical Requirements**:
+- **Python Type Equality Issues**: Never rely on `==` for ctypes structures - use field comparison:
+  ```python
+  # WRONG: color != RGBcolor(1, 1, 1) may fail even when equal
+  # RIGHT: field-based comparison
+  if color and not (color.r == 1.0 and color.g == 1.0 and color.b == 1.0):
+      # Use colored version
+  ```
+
+- **SphericalCoord Array Mapping**: `SphericalCoord.to_list()` returns 4 elements but C++ interface expects 3:
+  ```python
+  # Extract only radius, elevation, azimuth for C++ interface
+  rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
+  ```
+
+- **Multi-layer Validation**: Implement validation at Python, ctypes, and C++ levels for robustness
+
+### 8.8 Compound Geometry Pattern
+
+**Lesson from Compound Geometry Integration**: Methods returning arrays of UUIDs require special handling patterns different from single-primitive methods.
+
+**Requirements**:
+- **Return Type Consistency**: Compound geometry methods return `List[int]` of UUIDs, not single integers
+- **Efficient Array Conversion**: Use static thread_local vectors for C++ to Python array conversion
+- **Parameter Validation**: Validate subdivisions, sizes, and counts at Python level before C++ calls
+- **Error Code Consistency**: Use consistent error codes (`PYHELIOS_ERROR_INVALID_PARAMETER`) across all functions
+- **Method Naming**: Use clear patterns like `addTile()` vs `addTileWithColor()` for different signatures
+
 ## Troubleshooting
 
 ### Build Issues
@@ -1371,17 +1435,53 @@ print([name for name in dir(helios_lib) if 'yourplugin' in name.lower()])
 
 #### Segmentation Faults
 
-```python
-# Check parameter types and counts
-# Common causes:
-# - Wrong ctypes parameter types
-# - Null pointer dereference  
-# - Array bounds errors
-# - Wrong parameter count
+**Lesson from Compound Geometry Integration**: Segfaults often occur during cleanup, not during function execution.
 
-# Add debugging to C++ interface
-# Use GDB or Visual Studio debugger
-```
+**Common Causes and Solutions**:
+
+1. **Context Double Deletion** (Most Common):
+   ```python
+   # SYMPTOM: Segfault in destroyContext during test teardown
+   # CAUSE: Context being destroyed multiple times
+   # FIX: Set pointer to None after deletion
+   def __exit__(self, exc_type, exc_value, traceback):
+       if self.context is not None:
+           context_wrapper.destroyContext(self.context)
+           self.context = None  # Critical fix
+   ```
+
+2. **Static Vector Memory Issues**:
+   ```cpp
+   // SYMPTOM: Random segfaults with compound geometry
+   // CAUSE: Static vectors shared between threads
+   // FIX: Use thread_local storage
+   static thread_local std::vector<unsigned int> static_result;  // Not just static
+   ```
+
+3. **Parameter Array Bounds**:
+   ```python
+   # SYMPTOM: Segfault when calling functions with arrays
+   # CAUSE: Wrong array size expectations
+   # CHECK: SphericalCoord.to_list() returns 4 elements, C++ expects 3
+   rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]  # Only 3
+   ```
+
+4. **ctypes Type Mismatches**:
+   ```python
+   # Check parameter types and counts
+   # Common causes:
+   # - Wrong ctypes parameter types
+   # - Null pointer dereference  
+   # - Array bounds errors
+   # - Wrong parameter count
+   ```
+
+**Debugging Steps**:
+1. **Check if segfault happens during cleanup**: Run single test vs. test suite
+2. **Verify Context pointer management**: Add logging to `__exit__` methods  
+3. **Test with different thread counts**: `pytest -n 1` vs `pytest -n auto`
+4. **Use memory debugging tools**: `valgrind` on Linux, AddressSanitizer
+5. **Add debugging to C++ interface**: Use GDB or Visual Studio debugger
 
 #### Asset Loading Failures
 

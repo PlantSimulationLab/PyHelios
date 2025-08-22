@@ -278,6 +278,51 @@ except AttributeError:
     # Triangle functions not available in current native library
     _TRIANGLE_FUNCTIONS_AVAILABLE = False
 
+# Compound geometry function prototypes - return arrays of UUIDs
+try:
+    # addTile functions
+    helios_lib.addTile.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addTile.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addTile.errcheck = _check_error
+
+    helios_lib.addTileWithColor.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addTileWithColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addTileWithColor.errcheck = _check_error
+
+    # addSphere functions
+    helios_lib.addSphere.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addSphere.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addSphere.errcheck = _check_error
+
+    helios_lib.addSphereWithColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addSphereWithColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addSphereWithColor.errcheck = _check_error
+
+    # addTube functions
+    helios_lib.addTube.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addTube.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addTube.errcheck = _check_error
+
+    helios_lib.addTubeWithColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addTubeWithColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addTubeWithColor.errcheck = _check_error
+
+    # addBox functions
+    helios_lib.addBox.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addBox.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addBox.errcheck = _check_error
+
+    helios_lib.addBoxWithColor.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addBoxWithColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addBoxWithColor.errcheck = _check_error
+
+    # Mark that compound geometry functions are available
+    _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE = True
+    
+except AttributeError:
+    # Functions not available in current library build
+    _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE = False
+
 # Legacy compatibility: set _NEW_FUNCTIONS_AVAILABLE based on primitive data availability
 _NEW_FUNCTIONS_AVAILABLE = _PRIMITIVE_DATA_FUNCTIONS_AVAILABLE
 
@@ -520,6 +565,273 @@ def addTriangleWithTexture(context, vertex0:List[float], vertex1:List[float], ve
     uv1_ptr = (ctypes.c_float * len(uv1))(*uv1)
     uv2_ptr = (ctypes.c_float * len(uv2))(*uv2)
     return helios_lib.addTriangleWithTexture(context, vertex0_ptr, vertex1_ptr, vertex2_ptr, texture_file_encoded, uv0_ptr, uv1_ptr, uv2_ptr)
+
+# Python wrappers for compound geometry functions
+def addTile(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int]) -> List[int]:
+    """Add a tile (subdivided patch) to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [width, height]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if len(subdiv) != 2:
+        raise ValueError("subdiv must have exactly 2 elements [x_subdivisions, y_subdivisions]")
+    
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    subdiv_ptr = (ctypes.c_int * 2)(*subdiv)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addTile(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addTileWithColor(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int], color: List[float]) -> List[int]:
+    """Add a tile (subdivided patch) with color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [width, height]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if len(subdiv) != 2:
+        raise ValueError("subdiv must have exactly 2 elements [x_subdivisions, y_subdivisions]")
+    if len(color) != 3:
+        raise ValueError("color must have exactly 3 elements [r, g, b]")
+    
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    subdiv_ptr = (ctypes.c_int * 2)(*subdiv)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addTileWithColor(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr, color_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addSphere(context, ndivs: int, center: List[float], radius: float) -> List[int]:
+    """Add a sphere to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+    if radius <= 0:
+        raise ValueError("radius must be positive")
+    
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addSphere(context, ndivs, center_ptr, radius, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addSphereWithColor(context, ndivs: int, center: List[float], radius: float, color: List[float]) -> List[int]:
+    """Add a sphere with color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(color) != 3:
+        raise ValueError("color must have exactly 3 elements [r, g, b]")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+    if radius <= 0:
+        raise ValueError("radius must be positive")
+    
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addSphereWithColor(context, ndivs, center_ptr, radius, color_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addTube(context, ndivs: int, nodes: List[float], radii: List[float]) -> List[int]:
+    """Add a tube to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(nodes) % 3 != 0:
+        raise ValueError("nodes array length must be a multiple of 3 (x,y,z coordinates)")
+    node_count = len(nodes) // 3
+    if len(radii) != node_count:
+        raise ValueError(f"radii array length ({len(radii)}) must match number of nodes ({node_count})")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+    if node_count < 2:
+        raise ValueError("Must have at least 2 nodes to create a tube")
+    
+    # Convert to ctypes arrays
+    nodes_ptr = (ctypes.c_float * len(nodes))(*nodes)
+    radii_ptr = (ctypes.c_float * len(radii))(*radii)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addTube(context, ndivs, nodes_ptr, node_count, radii_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addTubeWithColor(context, ndivs: int, nodes: List[float], radii: List[float], colors: List[float]) -> List[int]:
+    """Add a tube with colors to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(nodes) % 3 != 0:
+        raise ValueError("nodes array length must be a multiple of 3 (x,y,z coordinates)")
+    node_count = len(nodes) // 3
+    if len(radii) != node_count:
+        raise ValueError(f"radii array length ({len(radii)}) must match number of nodes ({node_count})")
+    if len(colors) != node_count * 3:
+        raise ValueError(f"colors array length ({len(colors)}) must be 3 times the number of nodes ({node_count * 3})")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+    if node_count < 2:
+        raise ValueError("Must have at least 2 nodes to create a tube")
+    
+    # Convert to ctypes arrays
+    nodes_ptr = (ctypes.c_float * len(nodes))(*nodes)
+    radii_ptr = (ctypes.c_float * len(radii))(*radii)
+    colors_ptr = (ctypes.c_float * len(colors))(*colors)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addTubeWithColor(context, ndivs, nodes_ptr, node_count, radii_ptr, colors_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addBox(context, center: List[float], size: List[float], subdiv: List[int]) -> List[int]:
+    """Add a box to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 3:
+        raise ValueError("size must have exactly 3 elements [width, height, depth]")
+    if len(subdiv) != 3:
+        raise ValueError("subdiv must have exactly 3 elements [x_subdivisions, y_subdivisions, z_subdivisions]")
+    
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 3)(*size)
+    subdiv_ptr = (ctypes.c_int * 3)(*subdiv)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addBox(context, center_ptr, size_ptr, subdiv_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addBoxWithColor(context, center: List[float], size: List[float], subdiv: List[int], color: List[float]) -> List[int]:
+    """Add a box with color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+    
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 3:
+        raise ValueError("size must have exactly 3 elements [width, height, depth]")
+    if len(subdiv) != 3:
+        raise ValueError("subdiv must have exactly 3 elements [x_subdivisions, y_subdivisions, z_subdivisions]")
+    if len(color) != 3:
+        raise ValueError("color must have exactly 3 elements [r, g, b]")
+    
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 3)(*size)
+    subdiv_ptr = (ctypes.c_int * 3)(*subdiv)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    count = ctypes.c_uint()
+    
+    # Call C function
+    uuids_ptr = helios_lib.addBoxWithColor(context, center_ptr, size_ptr, subdiv_ptr, color_ptr, ctypes.byref(count))
+    
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
 
 # Python wrappers for primitive data functions - scalar setters
 def setPrimitiveDataInt(context, uuid:int, label:str, value:int):

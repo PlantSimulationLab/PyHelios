@@ -5,7 +5,7 @@
 # Project related configuration options
 #---------------------------------------------------------------------------
 
-PROJECT_NAME           = "PyHelios"
+PROJECT_NAME           =
 PROJECT_NUMBER         = 0.0.1
 PROJECT_BRIEF          = 
 PROJECT_LOGO           = docs/images/PyHelios_logo_whiteborder.png

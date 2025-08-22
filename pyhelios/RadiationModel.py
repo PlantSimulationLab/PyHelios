@@ -170,21 +170,21 @@ class RadiationModel:
         radiation_wrapper.enableMessages(self.radiation_model)
     
     @require_plugin('radiation', 'add radiation band')
-    def addRadiationBand(self, label: str, wavelength_min: float = None, wavelength_max: float = None):
+    def addRadiationBand(self, band_label: str, wavelength_min: float = None, wavelength_max: float = None):
         """
         Add radiation band with optional wavelength bounds.
         
         Args:
-            label: Name/label for the radiation band
+            band_label: Name/label for the radiation band
             wavelength_min: Optional minimum wavelength (μm)
             wavelength_max: Optional maximum wavelength (μm)
         """
         if wavelength_min is not None and wavelength_max is not None:
-            radiation_wrapper.addRadiationBandWithWavelengths(self.radiation_model, label, wavelength_min, wavelength_max)
-            logger.debug(f"Added radiation band {label}: {wavelength_min}-{wavelength_max} μm")
+            radiation_wrapper.addRadiationBandWithWavelengths(self.radiation_model, band_label, wavelength_min, wavelength_max)
+            logger.debug(f"Added radiation band {band_label}: {wavelength_min}-{wavelength_max} μm")
         else:
-            radiation_wrapper.addRadiationBand(self.radiation_model, label)
-            logger.debug(f"Added radiation band: {label}")
+            radiation_wrapper.addRadiationBand(self.radiation_model, band_label)
+            logger.debug(f"Added radiation band: {band_label}")
     
     @require_plugin('radiation', 'copy radiation band')
     def copyRadiationBand(self, old_label: str, new_label: str):
@@ -287,14 +287,14 @@ class RadiationModel:
         return source_id
     
     @require_plugin('radiation', 'set ray count')
-    def setDirectRayCount(self, label: str, count: int):
+    def setDirectRayCount(self, band_label: str, ray_count: int):
         """Set direct ray count for radiation band."""
-        radiation_wrapper.setDirectRayCount(self.radiation_model, label, count)
+        radiation_wrapper.setDirectRayCount(self.radiation_model, band_label, ray_count)
     
     @require_plugin('radiation', 'set ray count')
-    def setDiffuseRayCount(self, label: str, count: int):
+    def setDiffuseRayCount(self, band_label: str, ray_count: int):
         """Set diffuse ray count for radiation band."""
-        radiation_wrapper.setDiffuseRayCount(self.radiation_model, label, count)
+        radiation_wrapper.setDiffuseRayCount(self.radiation_model, band_label, ray_count)
     
     @require_plugin('radiation', 'set radiation flux')
     def setDiffuseRadiationFlux(self, label: str, flux: float):
@@ -342,21 +342,21 @@ class RadiationModel:
             logger.debug(f"Updated {len(uuids)} geometry UUIDs in radiation model")
     
     @require_plugin('radiation', 'run radiation simulation')
-    def runBand(self, label):
+    def runBand(self, band_label):
         """Run radiation simulation for single band or multiple bands."""
-        if isinstance(label, (list, tuple)):
+        if isinstance(band_label, (list, tuple)):
             # Multiple bands - validate each label
-            for lbl in label:
+            for lbl in band_label:
                 if not isinstance(lbl, str):
                     raise TypeError(f"Band labels must be strings, got {type(lbl).__name__}")
-            radiation_wrapper.runBandMultiple(self.radiation_model, label)
-            logger.info(f"Completed radiation simulation for bands: {label}")
+            radiation_wrapper.runBandMultiple(self.radiation_model, band_label)
+            logger.info(f"Completed radiation simulation for bands: {band_label}")
         else:
             # Single band - validate label type
-            if not isinstance(label, str):
-                raise TypeError(f"Band label must be a string, got {type(label).__name__}")
-            radiation_wrapper.runBand(self.radiation_model, label)
-            logger.info(f"Completed radiation simulation for band: {label}")
+            if not isinstance(band_label, str):
+                raise TypeError(f"Band label must be a string, got {type(band_label).__name__}")
+            radiation_wrapper.runBand(self.radiation_model, band_label)
+            logger.info(f"Completed radiation simulation for band: {band_label}")
     
     @require_plugin('radiation', 'run radiation simulation')
     def runBandMultiple(self, labels: List[str]):
