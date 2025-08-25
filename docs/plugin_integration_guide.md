@@ -98,40 +98,12 @@ PLUGIN_METADATA = {
         platforms=["windows", "linux", "macos"],       # Supported platforms
         gpu_required=False,                            # True if requires GPU
         optional=True,                                 # False for core plugins
-        profile_tags=["category", "subcategory"],      # e.g., ["physics", "modeling"]
         test_symbols=["function1", "function2"]        # Functions to test availability
     ),
 }
 ```
 
-### 1.2 Add to Plugin Profiles
-
-**File**: `pyhelios/config/plugin_profiles.py`
-
-Add your plugin to relevant profiles:
-
-```python
-PLUGIN_PROFILES = {
-    # ... existing profiles ...
-    
-    "your_category": PluginProfile(
-        name="your_category",
-        description="Profile description",
-        plugins=["yourplugin", "related_plugin"],
-        platforms=["windows", "linux", "macos"]
-    ),
-    
-    # Add to existing profiles where appropriate
-    "research": PluginProfile(
-        plugins=[
-            # ... existing plugins ...
-            "yourplugin"  # Add to research profile
-        ]
-    )
-}
-```
-
-### 1.3 Validation
+### 1.2 Validation
 
 Test metadata registration:
 
@@ -152,11 +124,12 @@ print(f'Dependencies: {metadata.system_dependencies}')
 
 ### 2.1 CMake Integration
 
-The PyHelios build system automatically handles plugin integration through the flexible plugin selection system. No manual CMake modifications are typically required.
+The PyHelios build system automatically handles plugin integration through the flexible plugin selection system. However, you must manually add the plugin's include directory to enable header file compilation.
+
+**ESSENTIAL**: Add your plugin's include directory to `pyhelios_build/CMakeLists.txt` in both the `pyhelios_interface` and `pyhelios_shared` target sections following the existing pattern for other plugins (visualizer, weberpenntree, radiation).
 
 **Automatic Integration**: Your plugin will be built when:
 - User explicitly selects it: `--plugins yourplugin`
-- Included in a profile that contains it
 - Required as a dependency by another plugin
 
 ### 2.2 Special Build Requirements
@@ -183,7 +156,11 @@ if("yourplugin" IN_LIST PLUGINS)
 endif()
 ```
 
-### 2.3 Test Build Integration
+### 2.3 Add to Default Build
+
+**Important**: For mature plugins that should be included in default builds, add your plugin to the `integrated_plugins` list in `get_default_plugins()` function in `build_scripts/build_helios.py`.
+
+### 2.4 Test Build Integration
 
 Test that your plugin builds correctly:
 
@@ -191,7 +168,7 @@ Test that your plugin builds correctly:
 # Clean build with your plugin
 build_scripts/build_helios --clean --plugins yourplugin
 
-# Test with profile
+# Test with interactive mode
 build_scripts/build_helios --interactive
 
 # Interactive selection (verify plugin appears)
@@ -648,7 +625,25 @@ from . import UYourPluginWrapper
 
 ## Phase 5: High-Level Python API
 
-### 5.1 Create High-Level Class
+### 5.1 Naming Convention Requirements
+
+**CRITICAL**: Python API method names must exactly match the corresponding C++ method names to maintain consistency across PyHelios. Follow these naming conventions:
+
+**Method Names**: Use **upperCamelCase** to match C++ exactly:
+- ✅ Correct: `addRadiationBand()` (matches C++ `addRadiationBand()`)
+- ❌ Wrong: `add_radiation_band()` (Python snake_case)
+
+**Parameter Names**: Use **C++ parameter naming** where possible:
+- ✅ Correct: `UUIDs` (matches C++ `std::vector<uint> &UUIDs`)
+- ❌ Wrong: `uuids` (Python snake_case)
+- ✅ Correct: `dt` (matches C++ `float dt`)
+
+**Examples from Existing PyHelios Classes**:
+- `Context.addPatch()` matches C++ `Context::addPatch()`
+- `RadiationModel.addRadiationBand()` matches C++ `RadiationModel::addRadiationBand()`
+- `WeberPennTree.buildTree()` matches C++ `WeberPennTree::buildTree()`
+
+### 5.2 Create High-Level Class
 
 **File**: `pyhelios/YourPlugin.py`
 
@@ -727,7 +722,7 @@ class YourPlugin:
             plugin_wrapper.destroyYourPlugin(self._plugin_ptr)
             self._plugin_ptr = None
     
-    def compute_something(self, parameters: List[float]) -> int:
+    def computeSomething(self, parameters: List[float]) -> int:
         """
         Perform plugin computation with given parameters.
         
@@ -743,7 +738,7 @@ class YourPlugin:
             YourPluginError: If computation fails
             
         Example:
-            >>> plugin.compute_something([1.0, 2.0, 3.0])
+            >>> plugin.computeSomething([1.0, 2.0, 3.0])
             42
         """
         # Validate inputs
@@ -766,12 +761,12 @@ class YourPlugin:
         except Exception as e:
             raise YourPluginError(f"Plugin computation failed: {e}")
     
-    def get_data_array(self, uuid: int) -> List[float]:
+    def getDataArray(self, UUID: int) -> List[float]:
         """
         Get array data for specified primitive.
         
         Args:
-            uuid: Primitive UUID
+            UUID: Primitive UUID
             
         Returns:
             Array of data values
@@ -780,11 +775,11 @@ class YourPlugin:
             ValueError: If UUID is invalid
             YourPluginError: If data retrieval fails
         """
-        if uuid < 0:
+        if UUID < 0:
             raise ValueError("UUID must be non-negative")
         
         try:
-            return plugin_wrapper.yourPluginGetArray(self._plugin_ptr, uuid)
+            return plugin_wrapper.yourPluginGetArray(self._plugin_ptr, UUID)
         except Exception as e:
             raise YourPluginError(f"Failed to get array data: {e}")
     
@@ -942,7 +937,14 @@ def copy_to_output(self, library_path: Path) -> None:
 
 ### 7.1 Create Test File
 
-**File**: `tests/test_yourplugin.py`
+**CRITICAL NAMING REQUIREMENT**: The test file name must exactly match the plugin name for proper pytest hook integration. The PyHelios test system uses filename pattern matching to automatically detect required plugins and skip tests when plugins are unavailable.
+
+**File**: `tests/test_yourplugin.py` (where "yourplugin" exactly matches the plugin name in `plugin_metadata.py`)
+
+**❌ Wrong**: `test_your_plugin.py` (underscore doesn't match plugin name "yourplugin")  
+**✅ Correct**: `test_yourplugin.py` (exactly matches plugin name "yourplugin")
+
+This naming convention enables automatic test skipping on machines without the required plugin, preventing test failures due to missing dependencies.
 
 ```python
 """
@@ -971,13 +973,12 @@ class TestYourPluginMetadata:
         assert len(metadata.platforms) > 0
 
     @pytest.mark.cross_platform
-    def test_plugin_in_profiles(self):
-        """Test that plugin appears in appropriate profiles"""
-        from pyhelios.config.plugin_profiles import get_profile_plugins
+    def test_plugin_available(self):
+        """Test that plugin is available when expected"""
+        from pyhelios.config.plugin_metadata import PLUGIN_METADATA
         
-        # Should be in research profile
-        research_plugins = get_profile_plugins('research')
-        assert 'yourplugin' in research_plugins
+        # Should be in plugin metadata
+        assert 'yourplugin' in PLUGIN_METADATA
 
 class TestYourPluginAvailability:
     """Test plugin availability detection"""
@@ -1017,8 +1018,8 @@ class TestYourPluginInterface:
         assert hasattr(YourPlugin, '__init__')
         assert hasattr(YourPlugin, '__enter__')
         assert hasattr(YourPlugin, '__exit__')
-        assert hasattr(YourPlugin, 'compute_something')
-        assert hasattr(YourPlugin, 'get_data_array')
+        assert hasattr(YourPlugin, 'computeSomething')
+        assert hasattr(YourPlugin, 'getDataArray')
         assert hasattr(YourPlugin, 'is_available')
     
     @pytest.mark.cross_platform
@@ -1042,7 +1043,7 @@ class TestYourPluginFunctionality:
         with Context() as context:
             with YourPlugin(context) as plugin:
                 # Test with valid parameters
-                result = plugin.compute_something([1.0, 2.0, 3.0])
+                result = plugin.computeSomething([1.0, 2.0, 3.0])
                 assert isinstance(result, int)
                 assert result >= 0  # Adjust based on expected output
     
@@ -1052,15 +1053,15 @@ class TestYourPluginFunctionality:
             with YourPlugin(context) as plugin:
                 # Test empty parameters
                 with pytest.raises(ValueError, match="cannot be empty"):
-                    plugin.compute_something([])
+                    plugin.computeSomething([])
                 
                 # Test invalid parameter count
                 with pytest.raises(ValueError, match="at least"):
-                    plugin.compute_something([1.0])
+                    plugin.computeSomething([1.0])
                 
                 # Test invalid parameter type (if applicable)
                 with pytest.raises(ValueError, match="numeric"):
-                    plugin.compute_something([1.0, "invalid", 3.0])
+                    plugin.computeSomething([1.0, "invalid", 3.0])
     
     def test_data_array_retrieval(self):
         """Test array data retrieval"""
@@ -1070,13 +1071,13 @@ class TestYourPluginFunctionality:
             
             with YourPlugin(context) as plugin:
                 # Test valid UUID
-                data = plugin.get_data_array(patch_uuid)
+                data = plugin.getDataArray(patch_uuid)
                 assert isinstance(data, list)
                 # Adjust assertions based on expected data
                 
                 # Test invalid UUID
                 with pytest.raises((ValueError, YourPluginError)):
-                    plugin.get_data_array(-1)
+                    plugin.getDataArray(-1)
 
 @pytest.mark.native_only
 class TestYourPluginIntegration:
@@ -1091,7 +1092,7 @@ class TestYourPluginIntegration:
             
             with YourPlugin(context) as plugin:
                 # Test plugin can work with context geometry
-                result = plugin.compute_something([1.0, 2.0, 3.0])
+                result = plugin.computeSomething([1.0, 2.0, 3.0])
                 assert result is not None
     
     def test_error_handling_integration(self):
@@ -1101,7 +1102,7 @@ class TestYourPluginIntegration:
                 # Test operations that should cause specific errors
                 # Adjust based on plugin behavior
                 try:
-                    plugin.get_data_array(99999)  # Non-existent UUID
+                    plugin.getDataArray(99999)  # Non-existent UUID
                     assert False, "Should have raised an exception"
                 except HeliosError as e:
                     # Verify error message is helpful
@@ -1122,7 +1123,7 @@ class TestYourPluginPerformance:
             with YourPlugin(context) as plugin:
                 # Time computation
                 start_time = time.time()
-                result = plugin.compute_something([1.0, 2.0, 3.0])
+                result = plugin.computeSomething([1.0, 2.0, 3.0])
                 elapsed = time.time() - start_time
                 
                 # Adjust threshold based on expected performance
@@ -1163,7 +1164,7 @@ pytest tests/test_yourplugin.py --cov=pyhelios.YourPlugin
 **File**: `docs/plugin_yourplugin.md`
 
 ```markdown
-# YourPlugin Documentation
+# YourPlugin Documentation {#YourPluginDoc}
 
 ## Overview
 
@@ -1178,14 +1179,10 @@ YourPlugin provides [detailed description of plugin capabilities and use cases].
 
 ## Installation
 
-YourPlugin is included in the following build profiles:
-- `research`: Full research capabilities
-- `your_category`: [Description of custom profile]
-
 ### Build with YourPlugin
 
 ```bash
-# Using profile
+# Using explicit selection
 build_scripts/build_helios --interactive
 
 # Explicit selection
@@ -1290,11 +1287,11 @@ with Context() as context:
     
     with YourPlugin(context) as plugin:
         # Compute something
-        result = plugin.compute_something([1.0, 2.0, 3.0])
+        result = plugin.computeSomething([1.0, 2.0, 3.0])
         print(f"Computation result: {result}")
         
         # Get data for the patch
-        data = plugin.get_data_array(patch_uuid)
+        data = plugin.getDataArray(patch_uuid)
         print(f"Patch data: {data}")
 ```
 
@@ -1306,7 +1303,7 @@ from pyhelios import Context, YourPlugin, YourPluginError
 with Context() as context:
     try:
         with YourPlugin(context) as plugin:
-            result = plugin.compute_something([1.0, 2.0, 3.0])
+            result = plugin.computeSomething([1.0, 2.0, 3.0])
             
     except YourPluginError as e:
         print(f"Plugin error: {e}")
@@ -1333,7 +1330,7 @@ with Context() as context:
         
         # Process each patch
         for uuid in patch_uuids:
-            data = plugin.get_data_array(uuid)
+            data = plugin.getDataArray(uuid)
             print(f"Patch {uuid}: {data}")
 ```
 
@@ -1382,7 +1379,61 @@ Common build issues:
 - [Integration constraints]
 ```
 
-### 8.2 Update Main Documentation
+### 8.2 Update Documentation Configuration
+
+**IMPORTANT**: Update the Doxygen configuration to include your plugin documentation and exclude implementation details:
+
+**File**: `docs/Doxyfile.python`
+
+**First, add your documentation file to the `INPUT` list:**
+
+```
+INPUT = docs/plugin_integration_guide.md \
+        docs/plugin_energybalance.md \
+        docs/plugin_radiation.md \
+        docs/plugin_visualizer.md \
+        docs/plugin_weberpenntree.md \
+        docs/plugin_yourplugin.md \    # Add this line
+        # ... rest of INPUT files
+```
+
+**Then, add your wrapper to the `EXCLUDE` list:**
+
+```
+EXCLUDE = pyhelios/plugins/__pycache__ \
+          pyhelios/__pycache__ \
+          pyhelios/wrappers/UContextWrapper.py \
+          pyhelios/wrappers/UGlobalWrapper.py \
+          pyhelios/wrappers/ULoggerWrapper.py \
+          pyhelios/wrappers/URadiationModelWrapper.py \
+          pyhelios/wrappers/UVisualizerWrapper.py \
+          pyhelios/wrappers/UWeberPennTreeWrapper.py \
+          pyhelios/wrappers/UYourPluginWrapper.py \    # Add this line
+          pyhelios/config \
+          pyhelios/assets \
+          # ... rest of exclusions
+```
+
+This ensures your plugin documentation appears in the generated docs while hiding low-level implementation details from end-users.
+
+**Finally, add your plugin to the navigation layout:**
+
+**File**: `docs/DoxygenLayout.xml`
+
+Add your plugin to the navigation structure in alphabetical order:
+
+```xml
+<!-- Plugin Documentation Section -->
+<tab type="usergroup" visible="yes" url="@ref Plugins" title="Plugins" intro="">
+  <!-- Currently Implemented Plugins (Alphabetized) -->
+  <tab type="user" visible="yes" url="@ref EnergyBalanceDoc" title="Energy Balance"/>
+  <tab type="user" visible="yes" url="@ref YourPluginDoc" title="Your Plugin"/>    <!-- Add this line -->
+  <tab type="user" visible="yes" url="@ref RadiationDoc" title="Radiation Model"/>
+  <!-- ... other plugins ... -->
+</tab>
+```
+
+### 8.3 Update Main Documentation
 
 Add your plugin to the main documentation:
 
@@ -1400,6 +1451,50 @@ doxygen Doxyfile.python
 # View generated documentation
 open docs/generated/html/index.html
 ```
+
+### 8.4 Add Files to Version Control
+
+**IMPORTANT**: Don't forget to add all the new plugin files to git:
+
+```bash
+# Add all new plugin files to git
+git add native/include/pyhelios_wrapper_yourplugin.h
+git add pyhelios/wrappers/UYourPluginWrapper.py
+git add pyhelios/YourPlugin.py
+git add tests/test_yourplugin.py
+git add docs/plugin_yourplugin.md
+
+# Also add any modified files
+git add pyhelios/config/plugin_metadata.py
+git add pyhelios/__init__.py
+git add pyhelios/wrappers/__init__.py
+git add native/src/pyhelios_wrapper.cpp
+git add docs/Doxyfile.python
+
+# Check what files are staged
+git status
+
+# Commit the plugin integration
+git commit -m "Add YourPlugin integration
+
+- Add C++ wrapper interface and implementation
+- Add ctypes wrapper with error handling
+- Add high-level Python API with context manager
+- Add comprehensive test suite (cross-platform + native)
+- Add complete documentation
+- Update plugin metadata
+
+🤖 Generated with Claude Code"
+```
+
+**Common files to check:**
+- All new `.h` header files in `native/include/`
+- All new `.py` wrapper files in `pyhelios/wrappers/`
+- Main plugin API file `pyhelios/YourPlugin.py`
+- Test file `tests/test_yourplugin.py`
+- Documentation file `docs/plugin_yourplugin.md`
+- Modified configuration files in `pyhelios/config/`
+- Updated `__init__.py` files
 
 ## Critical Requirements
 
@@ -1669,6 +1764,39 @@ print("Available plugins:", available)
 # Check metadata
 from pyhelios.config.plugin_metadata import PLUGIN_METADATA
 print("Registered metadata:", list(PLUGIN_METADATA.keys()))
+```
+
+#### Tests Not Being Skipped Properly
+
+**Symptom**: Tests for unavailable plugins fail instead of being skipped with `@pytest.mark.native_only`.
+
+**Root Cause**: Test file naming doesn't match plugin name, preventing pytest hook from detecting required plugin.
+
+**Solution**: 
+```bash
+# Check if test file name matches plugin name exactly
+ls tests/test_*yourplugin*
+
+# Should show: tests/test_yourplugin.py (exact match)
+# NOT: tests/test_your_plugin.py (underscore variant)
+
+# Rename if incorrect
+mv tests/test_your_plugin.py tests/test_yourplugin.py
+```
+
+**Debug Plugin Detection**:
+```python
+# Test the plugin detection logic
+from tests.conftest import _get_required_plugins_for_test
+
+class MockItem:
+    def __init__(self, path): 
+        self.fspath = type('MockPath', (), {'__str__': lambda self: path})()
+        self.name = "test_something"
+
+item = MockItem('tests/test_yourplugin.py')
+required_plugins = _get_required_plugins_for_test(item)
+print("Detected required plugins:", required_plugins)  # Should include 'yourplugin'
 ```
 
 #### Import Errors

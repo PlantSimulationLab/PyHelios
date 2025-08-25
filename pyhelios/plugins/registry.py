@@ -151,7 +151,7 @@ class PluginRegistry:
             
             error_msg += f"\n\nTo enable this plugin:"
             error_msg += f"\n1. Build PyHelios with the plugin: build_scripts/build_helios --plugins {plugin_name}"
-            error_msg += f"\n2. Or use a profile that includes it: build_scripts/build_helios --profile research"
+            error_msg += f"\n2. Or build with multiple plugins: build_scripts/build_helios --plugins {plugin_name},visualizer,weberpenntree"
             
             # Mark as failed for future reference
             self._failed_plugins.add(plugin_name)
@@ -227,7 +227,7 @@ class PluginRegistry:
             'available_list': sorted(list(available)),
             'missing_list': sorted([p for p in all_plugins if p not in available]),
             'failed_list': sorted(list(self._failed_plugins)),
-            'gpu_plugins_available': len([p for p in available if PLUGIN_METADATA.get(p, {}).get('gpu_required', False)]),
+            'gpu_plugins_available': len([p for p in available if PLUGIN_METADATA.get(p) and getattr(PLUGIN_METADATA[p], 'gpu_required', False)]),
             'capabilities': self._plugin_capabilities or {}
         }
     
@@ -247,7 +247,10 @@ class PluginRegistry:
             print(f"\nAvailable Plugins ({summary['available_plugins']}):")
             for plugin in summary['available_list']:
                 capabilities = summary['capabilities'].get(plugin, {})
-                gpu_indicator = " (GPU)" if capabilities.get('gpu_required', False) else ""
+                # Check both capabilities (from detection) and metadata (from plugin definitions)
+                gpu_required = (capabilities.get('gpu_required', False) or 
+                               (PLUGIN_METADATA.get(plugin) and getattr(PLUGIN_METADATA[plugin], 'gpu_required', False)))
+                gpu_indicator = " (GPU)" if gpu_required else ""
                 print(f"  ✓ {plugin}{gpu_indicator}")
         
         if summary['missing_list']:

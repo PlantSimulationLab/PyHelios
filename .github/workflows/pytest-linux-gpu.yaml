@@ -21,8 +21,8 @@ jobs:
           role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
           aws-region: us-west-2
       - run: |
-          aws ec2 start-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
-          aws ec2 wait instance-running --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
+          aws ec2 start-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
+          aws ec2 wait instance-running --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
 
   run_pyhelios_gpu_tests:
     runs-on: [self-hosted]
@@ -90,5 +90,5 @@ jobs:
           role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
           aws-region: us-west-2
       - run: |
-          aws ec2 stop-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
-          aws ec2 wait instance-stopped --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
+          aws ec2 stop-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
+          aws ec2 wait instance-stopped --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}

@@ -62,12 +62,16 @@ def main():
             with Visualizer(800, 600) as visualizer:
                 # Load geometry and configure scene
                 visualizer.buildContextGeometry(context)
-                visualizer.setBackgroundColor([0.1, 0.1, 0.15])
-                visualizer.setLightDirection([1, 1, -1])
+                bg_color = RGBcolor(0.1, 0.1, 0.15)
+                visualizer.setBackgroundColor(bg_color)
+                light_dir = vec3(1, 1, -1)
+                visualizer.setLightDirection(light_dir)
                 visualizer.setLightingModel("phong")
                 
                 # Set camera to get a good view
-                visualizer.setCameraPosition([4, 4, 3], [1, 1, 0.5])
+                camera_pos = vec3(4, 4, 3)
+                look_at = vec3(1, 1, 0.5)
+                visualizer.setCameraPosition(camera_pos, look_at)
                 
                 print("Interactive visualization opened.")
                 print("Use mouse and keyboard to navigate:")

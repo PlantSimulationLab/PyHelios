@@ -9,10 +9,11 @@ import logging
 import os
 from pathlib import Path
 from contextlib import contextmanager
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import UVisualizerWrapper as visualizer_wrapper
+from .wrappers.DataTypes import vec3, RGBcolor, SphericalCoord
 from .Context import Context
 
 logger = logging.getLogger(__name__)
@@ -323,14 +324,13 @@ class Visualizer:
         except Exception as e:
             raise VisualizerError(f"Failed to close window: {e}")
     
-    def setCameraPosition(self, position: Union[List[float], Tuple[float, float, float]], 
-                         lookAt: Union[List[float], Tuple[float, float, float]]) -> None:
+    def setCameraPosition(self, position: vec3, lookAt: vec3) -> None:
         """
         Set camera position using Cartesian coordinates.
         
         Args:
-            position: Camera position [x, y, z] in world coordinates
-            lookAt: Camera look-at point [x, y, z] in world coordinates
+            position: Camera position as vec3 in world coordinates
+            lookAt: Camera look-at point as vec3 in world coordinates
             
         Raises:
             VisualizerError: If camera positioning fails
@@ -339,29 +339,25 @@ class Visualizer:
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
         
-        # Validate and convert parameters
-        if len(position) != 3:
-            raise ValueError("Position must have 3 elements [x, y, z]")
-        if len(lookAt) != 3:
-            raise ValueError("LookAt must have 3 elements [x, y, z]")
-        
-        position_list = list(position)
-        lookAt_list = list(lookAt)
+        # Validate DataType parameters
+        if not isinstance(position, vec3):
+            raise ValueError(f"Position must be a vec3, got {type(position).__name__}")
+        if not isinstance(lookAt, vec3):
+            raise ValueError(f"LookAt must be a vec3, got {type(lookAt).__name__}")
         
         try:
-            visualizer_wrapper.set_camera_position(self.visualizer, position_list, lookAt_list)
-            logger.debug(f"Camera position set to {position}, looking at {lookAt}")
+            visualizer_wrapper.set_camera_position(self.visualizer, position, lookAt)
+            logger.debug(f"Camera position set to ({position.x}, {position.y}, {position.z}), looking at ({lookAt.x}, {lookAt.y}, {lookAt.z})")
         except Exception as e:
             raise VisualizerError(f"Failed to set camera position: {e}")
     
-    def setCameraPositionSpherical(self, angle: Union[List[float], Tuple[float, float, float]], 
-                                  lookAt: Union[List[float], Tuple[float, float, float]]) -> None:
+    def setCameraPositionSpherical(self, angle: SphericalCoord, lookAt: vec3) -> None:
         """
         Set camera position using spherical coordinates.
         
         Args:
-            angle: Camera position [radius, zenith, azimuth] in spherical coordinates
-            lookAt: Camera look-at point [x, y, z] in world coordinates
+            angle: Camera position as SphericalCoord (radius, elevation, azimuth)
+            lookAt: Camera look-at point as vec3 in world coordinates
             
         Raises:
             VisualizerError: If camera positioning fails
@@ -370,27 +366,24 @@ class Visualizer:
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
         
-        # Validate and convert parameters
-        if len(angle) != 3:
-            raise ValueError("Angle must have 3 elements [radius, zenith, azimuth]")
-        if len(lookAt) != 3:
-            raise ValueError("LookAt must have 3 elements [x, y, z]")
-        
-        angle_list = list(angle)
-        lookAt_list = list(lookAt)
+        # Validate DataType parameters
+        if not isinstance(angle, SphericalCoord):
+            raise ValueError(f"Angle must be a SphericalCoord, got {type(angle).__name__}")
+        if not isinstance(lookAt, vec3):
+            raise ValueError(f"LookAt must be a vec3, got {type(lookAt).__name__}")
         
         try:
-            visualizer_wrapper.set_camera_position_spherical(self.visualizer, angle_list, lookAt_list)
-            logger.debug(f"Camera position set to spherical {angle}, looking at {lookAt}")
+            visualizer_wrapper.set_camera_position_spherical(self.visualizer, angle, lookAt)
+            logger.debug(f"Camera position set to spherical (r={angle.radius}, el={angle.elevation}, az={angle.azimuth}), looking at ({lookAt.x}, {lookAt.y}, {lookAt.z})")
         except Exception as e:
             raise VisualizerError(f"Failed to set camera position (spherical): {e}")
     
-    def setBackgroundColor(self, color: Union[List[float], Tuple[float, float, float]]) -> None:
+    def setBackgroundColor(self, color: RGBcolor) -> None:
         """
         Set background color.
         
         Args:
-            color: Background color [r, g, b] with values in range [0, 1]
+            color: Background color as RGBcolor with values in range [0, 1]
             
         Raises:
             VisualizerError: If color setting fails
@@ -399,29 +392,26 @@ class Visualizer:
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
         
-        # Validate parameters
-        if len(color) != 3:
-            raise ValueError("Color must have 3 elements [r, g, b]")
-        
-        color_list = list(color)
+        # Validate DataType parameter
+        if not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor, got {type(color).__name__}")
         
         # Validate color range
-        for i, c in enumerate(color_list):
-            if not 0 <= c <= 1:
-                raise ValueError(f"Color component {i} ({c}) must be in range [0, 1]")
+        if not (0 <= color.r <= 1 and 0 <= color.g <= 1 and 0 <= color.b <= 1):
+            raise ValueError(f"Color components ({color.r}, {color.g}, {color.b}) must be in range [0, 1]")
         
         try:
-            visualizer_wrapper.set_background_color(self.visualizer, color_list)
-            logger.debug(f"Background color set to {color}")
+            visualizer_wrapper.set_background_color(self.visualizer, color)
+            logger.debug(f"Background color set to ({color.r}, {color.g}, {color.b})")
         except Exception as e:
             raise VisualizerError(f"Failed to set background color: {e}")
     
-    def setLightDirection(self, direction: Union[List[float], Tuple[float, float, float]]) -> None:
+    def setLightDirection(self, direction: vec3) -> None:
         """
         Set light direction.
         
         Args:
-            direction: Light direction vector [x, y, z] (will be normalized)
+            direction: Light direction vector as vec3 (will be normalized)
             
         Raises:
             VisualizerError: If light direction setting fails
@@ -430,19 +420,17 @@ class Visualizer:
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
         
-        # Validate parameters
-        if len(direction) != 3:
-            raise ValueError("Direction must have 3 elements [x, y, z]")
-        
-        direction_list = list(direction)
+        # Validate DataType parameter
+        if not isinstance(direction, vec3):
+            raise ValueError(f"Direction must be a vec3, got {type(direction).__name__}")
         
         # Check for zero vector
-        if all(d == 0 for d in direction_list):
+        if direction.x == 0 and direction.y == 0 and direction.z == 0:
             raise ValueError("Light direction cannot be zero vector")
         
         try:
-            visualizer_wrapper.set_light_direction(self.visualizer, direction_list)
-            logger.debug(f"Light direction set to {direction}")
+            visualizer_wrapper.set_light_direction(self.visualizer, direction)
+            logger.debug(f"Light direction set to ({direction.x}, {direction.y}, {direction.z})")
         except Exception as e:
             raise VisualizerError(f"Failed to set light direction: {e}")
     
@@ -485,6 +473,66 @@ class Visualizer:
             logger.debug(f"Lighting model set to {model_names.get(lighting_model, lighting_model)}")
         except Exception as e:
             raise VisualizerError(f"Failed to set lighting model: {e}")
+    
+    def colorContextPrimitivesByData(self, data_name: str, uuids: Optional[List[int]] = None) -> None:
+        """
+        Color context primitives based on primitive data values.
+        
+        This method maps primitive data values to colors using the current colormap.
+        The visualization will be updated to show data variations across primitives.
+        
+        The data must have been previously set on the primitives in the Context using
+        context.setPrimitiveDataFloat(UUID, data_name, value) before calling this method.
+        
+        Args:
+            data_name: Name of the primitive data to use for coloring.
+                      This should match the data label used with setPrimitiveDataFloat().
+            uuids: Optional list of specific primitive UUIDs to color.
+                   If None, all primitives in context will be colored.
+                   
+        Raises:
+            VisualizerError: If visualizer is not initialized or operation fails
+            ValueError: If data_name is invalid or UUIDs are malformed
+            
+        Example:
+            >>> # Set data on primitives in context
+            >>> context.setPrimitiveDataFloat(patch_uuid, "radiation_flux_SW", 450.2)
+            >>> context.setPrimitiveDataFloat(triangle_uuid, "radiation_flux_SW", 320.1)
+            >>> 
+            >>> # Build geometry and color by data
+            >>> visualizer.buildContextGeometry(context)
+            >>> visualizer.colorContextPrimitivesByData("radiation_flux_SW")
+            >>> visualizer.plotInteractive()
+            
+            >>> # Color only specific primitives
+            >>> visualizer.colorContextPrimitivesByData("temperature", [uuid1, uuid2, uuid3])
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        
+        if not data_name or not isinstance(data_name, str):
+            raise ValueError("Data name must be a non-empty string")
+        
+        try:
+            if uuids is None:
+                # Color all primitives
+                visualizer_wrapper.color_context_primitives_by_data(self.visualizer, data_name)
+                logger.debug(f"Colored all primitives by data: {data_name}")
+            else:
+                # Color specific primitives
+                if not isinstance(uuids, (list, tuple)) or not uuids:
+                    raise ValueError("UUIDs must be a non-empty list or tuple")
+                if not all(isinstance(uuid, int) and uuid >= 0 for uuid in uuids):
+                    raise ValueError("All UUIDs must be non-negative integers")
+                
+                visualizer_wrapper.color_context_primitives_by_data_uuids(self.visualizer, data_name, list(uuids))
+                logger.debug(f"Colored {len(uuids)} primitives by data: {data_name}")
+        
+        except ValueError:
+            # Re-raise ValueError as is
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to color primitives by data '{data_name}': {e}")
     
     def __del__(self):
         """Destructor to ensure proper cleanup."""

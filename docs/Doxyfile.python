@@ -6,7 +6,7 @@
 #---------------------------------------------------------------------------
 
 PROJECT_NAME           = "PyHelios"
-PROJECT_NUMBER         = 0.0.3
+PROJECT_NUMBER         = 0.0.4
 PROJECT_BRIEF          =
 PROJECT_LOGO           = docs/images/PyHelios_logo_whiteborder.png
 OUTPUT_DIRECTORY       = docs/generated
@@ -130,6 +130,7 @@ INPUT                  = pyhelios \
                          docs/user_guide.md \
                          docs/plugin_integration_guide.md \
                          docs/cpp_plugin_integration_guide.md \
+                         docs/plugin_energybalance.md \
                          docs/plugin_radiation.md \
                          docs/plugin_visualizer.md \
                          docs/plugin_weberpenntree.md \
@@ -143,6 +144,20 @@ FILE_PATTERNS          = *.py \
 RECURSIVE              = YES
 EXCLUDE                = pyhelios/plugins/__pycache__ \
                          pyhelios/__pycache__ \
+                         pyhelios/wrappers/UContextWrapper.py \
+                         pyhelios/wrappers/UGlobalWrapper.py \
+                         pyhelios/wrappers/ULoggerWrapper.py \
+                         pyhelios/wrappers/URadiationModelWrapper.py \
+                         pyhelios/wrappers/UEnergyBalanceWrapper.py \
+                         pyhelios/wrappers/UVisualizerWrapper.py \
+                         pyhelios/wrappers/UWeberPennTreeWrapper.py \
+                         pyhelios/config \
+                         pyhelios/assets \
+                         pyhelios/plugins/loader.py \
+                         pyhelios/plugins/registry.py \
+                         pyhelios/dev_utils.py \
+                         pyhelios/_types.py \
+                         pyhelios/_version.py \
                          tests \
                          build_scripts \
                          helios-core

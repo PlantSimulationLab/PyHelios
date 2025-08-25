@@ -96,8 +96,6 @@ python -m pyhelios.plugins info radiation
 # Validate plugin configuration
 python -m pyhelios.plugins validate --plugins radiation,visualizer
 
-# List all available profiles
-python -m pyhelios.plugins profiles
 ```
 
 #### Configuration File Support
@@ -106,7 +104,9 @@ Create `pyhelios_config.yaml` to specify default plugin selection:
 
 ```yaml
 plugins:
-  profile: "standard"
+  explicit_plugins:
+    - weberpenntree
+    - visualizer
   excluded_plugins:
     - radiation  # Exclude if no GPU available
 
@@ -182,7 +182,7 @@ PyHelios uses a sophisticated plugin-based architecture supporting **21 availabl
 
 #### Plugin Selection Profiles
 
-The system includes predefined profiles for common use cases:
+The system supports flexible plugin selection:
 
 - **minimal**: Core functionality only (weberpenntree, canopygenerator, solarposition)
 - **standard**: Standard features with visualization (adds visualizer, energybalance, photosynthesis)
@@ -512,7 +512,7 @@ PyHelios has successfully integrated 3 major Helios C++ plugins (radiation, visu
 
 **ALWAYS follow the 8-phase integration process:**
 
-1. **Plugin Metadata Registration** - Add to `pyhelios/config/plugin_metadata.py` and relevant profiles
+1. **Plugin Metadata Registration** - Add to `pyhelios/config/plugin_metadata.py`
 2. **Build System Integration** - CMake and flexible plugin selection system
 3. **C++ Interface Implementation** - Add wrapper functions to `pyhelios_build/pyhelios_interface.cpp`
 4. **ctypes Wrapper Creation** - Python-to-C++ interface in `pyhelios/wrappers/`
@@ -554,7 +554,7 @@ For plugin integration tasks, ALWAYS:
 All plugin integrations MUST include:
 - **Cross-platform tests** (`@pytest.mark.cross_platform`) that work with mock mode
 - **Native-only tests** (`@pytest.mark.native_only`) that require actual plugin functionality
-- **Plugin metadata tests** to verify registration and profiles
+- **Plugin metadata tests** to verify registration
 - **Error handling tests** to verify proper exception translation
 - **Asset management tests** to verify runtime dependencies are available
 

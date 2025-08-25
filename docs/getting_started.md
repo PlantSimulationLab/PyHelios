@@ -40,7 +40,7 @@ PyHelios provides cross-platform Python bindings for the Helios 3D plant simulat
 git clone --recursive https://github.com/PlantSimulationLab/PyHelios.git
 cd PyHelios/
 
-# Build native libraries (optional - pre-built binaries included)
+# Build native libraries (required)
 ./build_scripts/build_helios
 
 # Install PyHelios
@@ -152,7 +152,7 @@ print(f"All UUIDs: {context.getAllUUIDs()}")
 ### Basic Concepts
 
 #### Context
-The `Context` is your simulation environment. It manages all 3D geometry:
+The \ref pyhelios.Context.Context "Context" is your simulation environment. It manages all 3D geometry:
 
 ```python
 from pyhelios import Context
@@ -272,9 +272,9 @@ python -m pyhelios.plugins info radiation
 Once you have PyHelios installed and working:
 
 1. **Explore Examples**: Check `docs/examples/` for more complex simulations
-2. **Learn the API**: See the [User Guide](user_guide.html) for comprehensive API documentation
-3. **Plugin System**: Learn about available plugins in the [Plugin System](plugin_system.html) guide
-4. **Cross-Platform**: See [Cross-Platform Usage](cross_platform.html) for platform-specific tips
+2. **Learn the API**: See the \ref UserGuide "User Guide" for comprehensive API documentation
+3. **Plugin System**: Learn about available plugins in the \ref PluginSystem "Plugin System" guide
+4. **Cross-Platform**: See \ref CrossPlatform "Cross-Platform Usage" for platform-specific tips
 
 ## Getting Help
 

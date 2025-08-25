@@ -25,6 +25,13 @@ except (AttributeError, ImportError):
     RadiationModel = None
 
 try:
+    from .EnergyBalance import EnergyBalanceModel, EnergyBalanceModelError
+except (AttributeError, ImportError):
+    # EnergyBalanceModel functions not available in current library
+    EnergyBalanceModel = None
+    EnergyBalanceModelError = None
+
+try:
     from .Visualizer import Visualizer, VisualizerError
 except (AttributeError, ImportError):
     # Visualizer functions not available in current library

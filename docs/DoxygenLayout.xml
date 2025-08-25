@@ -23,6 +23,7 @@
     <!-- Plugin Documentation Section -->
     <tab type="usergroup" visible="yes" url="@ref Plugins" title="Plugins" intro="">
       <!-- Currently Implemented Plugins (Alphabetized) -->
+      <tab type="user" visible="yes" url="@ref EnergyBalanceDoc" title="Energy Balance Model"/>
       <tab type="user" visible="yes" url="@ref RadiationDoc" title="Radiation Model"/>
       <tab type="user" visible="yes" url="@ref VisualizerDoc" title="Visualizer"/>
       <tab type="user" visible="yes" url="@ref WeberPennTreeDoc" title="Weber-Penn Tree"/>

@@ -64,6 +64,12 @@ if("radiation" IN_LIST PLUGINS)
     )
 endif()
 
+if("energybalance" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_interface PRIVATE
+        ${BASE_DIRECTORY}/plugins/energybalance/include
+    )
+endif()
+
 # Add platform-specific OptiX include directories for radiation plugin
 if("radiation" IN_LIST PLUGINS)
     if(WIN32)
@@ -128,6 +134,12 @@ if("radiation" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/radiation/include
         ${BASE_DIRECTORY}/plugins/radiation/lib/json
+    )
+endif()
+
+if("energybalance" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_shared PRIVATE
+        ${BASE_DIRECTORY}/plugins/energybalance/include
     )
 endif()
 

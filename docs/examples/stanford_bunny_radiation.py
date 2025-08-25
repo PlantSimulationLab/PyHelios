@@ -116,13 +116,14 @@ def main():
             visualizer.buildContextGeometry(context)
 
             # Position camera for Stanford Bunny view (bunny is ~4 units tall)
-            camera_position = [2.0, -10, 4.0]  # Elevated view
-            lookat_point = [0.0, 0.0, 1.5]  # Look at bunny center
+            camera_position = vec3(2.0, -10, 4.0)  # Elevated view
+            lookat_point = vec3(0.0, 0.0, 1.5)  # Look at bunny center
 
             visualizer.setCameraPosition(camera_position, lookat_point)
 
             # Set background color for better contrast
-            visualizer.setBackgroundColor([0.2, 0.2, 0.3])
+            bg_color = RGBcolor(0.2, 0.2, 0.3)
+            visualizer.setBackgroundColor(bg_color)
 
             # Start the visualization loop - this will open a window and run until user exits
             visualizer.plotInteractive()  # Blocking call - runs until user closes window

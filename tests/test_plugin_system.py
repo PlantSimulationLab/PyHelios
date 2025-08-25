@@ -1,7 +1,7 @@
 """
 Comprehensive tests for the PyHelios plugin system.
 
-This module tests plugin metadata, profiles, dependency resolution,
+This module tests plugin metadata, dependency resolution,
 configuration management, and runtime plugin detection.
 """
 
@@ -15,11 +15,7 @@ from unittest.mock import Mock, patch, MagicMock
 # Import the plugin system components to test
 from pyhelios.config.plugin_metadata import (
     PLUGIN_METADATA, get_plugin_metadata, get_all_plugin_names,
-    get_plugins_by_tags, get_platform_compatible_plugins, get_gpu_dependent_plugins
-)
-from pyhelios.config.plugin_profiles import (
-    PLUGIN_PROFILES, get_profile, get_all_profile_names, get_profile_plugins,
-    filter_profile_by_platform, get_recommended_profile
+    get_platform_compatible_plugins, get_gpu_dependent_plugins
 )
 from pyhelios.config.dependency_resolver import (
     PluginDependencyResolver, ResolutionStatus
@@ -43,7 +39,6 @@ class TestPluginMetadata:
             assert hasattr(metadata, 'platforms')
             assert hasattr(metadata, 'gpu_required')
             assert hasattr(metadata, 'optional')
-            assert hasattr(metadata, 'profile_tags')
             assert hasattr(metadata, 'test_symbols')
             
             # Check field types
@@ -53,7 +48,6 @@ class TestPluginMetadata:
             assert isinstance(metadata.platforms, list)
             assert isinstance(metadata.gpu_required, bool)
             assert isinstance(metadata.optional, bool)
-            assert isinstance(metadata.profile_tags, list)
             assert isinstance(metadata.test_symbols, list)
             
             # Check that platforms are valid
@@ -80,15 +74,6 @@ class TestPluginMetadata:
         assert 'radiation' in plugin_names
         assert 'weberpenntree' in plugin_names
     
-    def test_get_plugins_by_tags(self):
-        """Test filtering plugins by tags."""
-        gpu_plugins = get_plugins_by_tags(['gpu'])
-        assert isinstance(gpu_plugins, list)
-        assert 'radiation' in gpu_plugins
-        
-        core_plugins = get_plugins_by_tags(['core'])
-        assert isinstance(core_plugins, list)
-        assert len(core_plugins) > 0
     
     def test_get_platform_compatible_plugins(self):
         """Test getting platform-compatible plugins."""
@@ -117,88 +102,6 @@ class TestPluginMetadata:
             assert metadata.gpu_required == True
 
 
-class TestPluginProfiles:
-    """Test plugin profile functionality."""
-    
-    def test_plugin_profiles_structure(self):
-        """Test that all profiles have required structure."""
-        assert len(PLUGIN_PROFILES) > 0, "No plugin profiles found"
-        
-        for profile_name, profile in PLUGIN_PROFILES.items():
-            # Check required fields
-            assert hasattr(profile, 'name')
-            assert hasattr(profile, 'description')
-            assert hasattr(profile, 'plugins')
-            assert hasattr(profile, 'recommended_for')
-            assert hasattr(profile, 'requires_gpu')
-            
-            # Check field types
-            assert isinstance(profile.description, str)
-            assert isinstance(profile.plugins, list)
-            assert isinstance(profile.recommended_for, str)
-            assert isinstance(profile.requires_gpu, bool)
-            
-            # Check that all plugins in profile exist in metadata
-            for plugin in profile.plugins:
-                assert plugin in PLUGIN_METADATA, f"Profile {profile_name} references unknown plugin: {plugin}"
-    
-    def test_get_profile(self):
-        """Test getting specific profiles."""
-        # Test existing profile
-        standard_profile = get_profile('standard')
-        assert standard_profile.name == 'standard'
-        assert isinstance(standard_profile.plugins, list)
-        
-        # Test non-existent profile
-        with pytest.raises(ValueError, match="Unknown profile"):
-            get_profile('nonexistent')
-    
-    def test_get_all_profile_names(self):
-        """Test getting all profile names."""
-        profile_names = get_all_profile_names()
-        assert isinstance(profile_names, list)
-        assert len(profile_names) > 0
-        assert 'minimal' in profile_names
-        assert 'standard' in profile_names
-        assert 'gpu-accelerated' in profile_names
-    
-    def test_get_profile_plugins(self):
-        """Test getting plugin list for profiles."""
-        minimal_plugins = get_profile_plugins('minimal')
-        assert isinstance(minimal_plugins, list)
-        assert len(minimal_plugins) > 0
-        
-        gpu_plugins = get_profile_plugins('gpu-accelerated')
-        assert isinstance(gpu_plugins, list)
-        assert 'radiation' in gpu_plugins
-    
-    def test_filter_profile_by_platform(self):
-        """Test platform filtering of profiles."""
-        # Test with current platform
-        filtered = filter_profile_by_platform('standard')
-        assert isinstance(filtered, list)
-        
-        # All plugins should be platform-compatible
-        compatible = get_platform_compatible_plugins()
-        for plugin in filtered:
-            assert plugin in compatible
-    
-    def test_get_recommended_profile(self):
-        """Test profile recommendations."""
-        # Test with GPU
-        gpu_rec = get_recommended_profile(has_gpu=True, use_case="general")
-        assert gpu_rec in get_all_profile_names()
-        
-        # Test without GPU
-        no_gpu_rec = get_recommended_profile(has_gpu=False, use_case="general")
-        assert no_gpu_rec in get_all_profile_names()
-        
-        # Test specific use cases
-        research_rec = get_recommended_profile(has_gpu=True, use_case="research")
-        assert research_rec == "research"
-        
-        dev_rec = get_recommended_profile(has_gpu=False, use_case="development")
-        assert dev_rec == "development"
 
 
 class TestDependencyResolver:
@@ -274,8 +177,7 @@ class TestConfigManager:
         config = ConfigManager()
         
         # Check default values
-        assert config.plugin_config.selection_mode == "profile"
-        assert config.plugin_config.profile == "standard"
+        assert config.plugin_config.selection_mode == "explicit"
         assert config.build_config.build_type == "Release"
         assert config.logging_config.level == "INFO"
     
@@ -324,9 +226,9 @@ logging:
         """Test plugin resolution from configuration."""
         config = ConfigManager()
         
-        # Test profile-based resolution
-        config.plugin_config.selection_mode = "profile"
-        config.plugin_config.profile = "minimal"
+        # Test explicit plugin resolution
+        config.plugin_config.selection_mode = "explicit"
+        config.plugin_config.explicit_plugins = ["weberpenntree", "canopygenerator"]
         
         plugins = config.resolve_plugin_selection()
         assert isinstance(plugins, list)
@@ -360,7 +262,7 @@ logging:
     def test_config_save_load(self):
         """Test saving and loading configuration."""
         original_config = ConfigManager()
-        original_config.plugin_config.profile = "research"
+        original_config.plugin_config.explicit_plugins = ["radiation", "visualizer"]
         original_config.build_config.build_type = "Debug"
         original_config.logging_config.level = "WARNING"
         
@@ -375,7 +277,7 @@ logging:
             loaded_config = ConfigManager(temp_filename)
             
             # Verify values match
-            assert loaded_config.plugin_config.profile == "research"
+            assert loaded_config.plugin_config.explicit_plugins == ["radiation", "visualizer"]
             assert loaded_config.build_config.build_type == "Debug"
             assert loaded_config.logging_config.level == "WARNING"
             
@@ -461,8 +363,8 @@ class TestIntegration:
         """Test complete plugin selection and validation workflow."""
         # Create configuration
         config = ConfigManager()
-        config.plugin_config.selection_mode = "profile"
-        config.plugin_config.profile = "minimal"
+        config.plugin_config.selection_mode = "explicit"
+        config.plugin_config.explicit_plugins = ["weberpenntree"]
         
         # Resolve plugins
         plugins = config.resolve_plugin_selection()
@@ -478,19 +380,19 @@ class TestIntegration:
     
     def test_cross_platform_compatibility(self):
         """Test that the system works across different platforms."""
-        # Test all profiles on current platform
-        for profile_name in get_all_profile_names():
-            try:
-                plugins = filter_profile_by_platform(profile_name)
-                assert isinstance(plugins, list)
-                
-                # All plugins should be platform-compatible
-                compatible = get_platform_compatible_plugins()
-                for plugin in plugins:
-                    assert plugin in compatible, f"Plugin {plugin} not compatible with current platform"
-                    
-            except Exception as e:
-                pytest.fail(f"Profile {profile_name} failed on current platform: {e}")
+        # Test basic plugin compatibility on current platform
+        try:
+            compatible_plugins = get_platform_compatible_plugins()
+            assert isinstance(compatible_plugins, list)
+            assert len(compatible_plugins) > 0
+            
+            # Test that common plugins are available
+            common_plugins = ["weberpenntree", "canopygenerator", "solarposition"]
+            for plugin in common_plugins:
+                if plugin in compatible_plugins:
+                    assert plugin in PLUGIN_METADATA
+        except Exception as e:
+            pytest.fail(f"Platform compatibility check failed: {e}")
     
     def test_mock_mode_compatibility(self):
         """Test that mock mode works correctly."""

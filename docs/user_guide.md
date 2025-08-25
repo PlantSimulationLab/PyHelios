@@ -25,7 +25,7 @@ PyHelios provides seamless Python access to Helios functionality while maintaini
 
 ### Context - The Simulation Environment
 
-The `Context` is the central hub of any Helios simulation:
+The \ref pyhelios.Context.Context "Context" is the central hub of any Helios simulation:
 
 - **Geometry Management**: Stores and organizes all 3D primitives
 - **Coordinate Systems**: Manages spatial reference frames
@@ -109,15 +109,15 @@ color = DataTypes.RGBcolor(0.3, 0.7, 0.2)
 ### Available Types
 
 The star import `from pyhelios.types import *` provides:
-- **Vector types**: `vec2`, `vec3`, `vec4`
-- **Integer vectors**: `int2`, `int3`, `int4`
-- **Colors**: `RGBcolor`, `RGBAcolor`
-- **Coordinates**: `SphericalCoord`
+- **Vector types**: \ref pyhelios.wrappers.DataTypes.vec2 "vec2", \ref pyhelios.wrappers.DataTypes.vec3 "vec3", \ref pyhelios.wrappers.DataTypes.vec4 "vec4"
+- **Integer vectors**: \ref pyhelios.wrappers.DataTypes.int2 "int2", \ref pyhelios.wrappers.DataTypes.int3 "int3", \ref pyhelios.wrappers.DataTypes.int4 "int4"
+- **Colors**: \ref pyhelios.wrappers.DataTypes.RGBcolor "RGBcolor", \ref pyhelios.wrappers.DataTypes.RGBAcolor "RGBAcolor"
+- **Coordinates**: \ref pyhelios.wrappers.DataTypes.SphericalCoord "SphericalCoord"
 - **Factory functions**: `make_vec3`, `make_RGBcolor`, etc.
 
 ## Context Class Reference
 
-The `Context` class is the central simulation environment. All methods documented here are verified from the actual implementation.
+The \ref pyhelios.Context.Context "Context class" is the central simulation environment. All methods documented here are verified from the actual implementation.
 
 ### Basic Usage
 

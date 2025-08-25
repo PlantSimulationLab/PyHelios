@@ -80,13 +80,15 @@ def demonstrate_basic_visualization():
                 visualizer.buildContextGeometry(context)
                 
                 # Configure scene
-                visualizer.setBackgroundColor([0.1, 0.1, 0.15])  # Dark blue background
-                visualizer.setLightDirection([1, 1, 1])         # Directional lighting
+                bg_color = RGBcolor(0.1, 0.1, 0.15)  # Dark blue background
+                visualizer.setBackgroundColor(bg_color)
+                light_dir = vec3(1, 1, 1)  # Directional lighting
+                visualizer.setLightDirection(light_dir)
                 visualizer.setLightingModel("phong_shadowed")    # Nice lighting with shadows
                 
                 # Set a good camera position to view the scene
-                camera_pos = [8, 8, 6]    # Camera position
-                look_at = [1.5, 1.5, 0.5] # Look at center of geometry
+                camera_pos = vec3(8, 8, 6)    # Camera position
+                look_at = vec3(1.5, 1.5, 0.5) # Look at center of geometry
                 visualizer.setCameraPosition(camera_pos, look_at)
                 
                 print("Opening interactive visualization window...")
@@ -123,17 +125,19 @@ def demonstrate_lighting_comparison():
             
             # Add a second patch at an angle for better lighting visualization
             center2 = vec3(1, 0, 1)
-            rotation = SphericalCoord(0.5, 0.3)  # Some rotation
+            rotation = SphericalCoord(1.0, 0.5, 0.3)  # Some rotation (radius, elevation, azimuth)
             context.addPatch(center=center2, size=size, rotation=rotation, color=color)
             
             with Visualizer(600, 400, headless=True) as visualizer:
                 visualizer.buildContextGeometry(context)
-                visualizer.setBackgroundColor([0.1, 0.1, 0.1])
-                visualizer.setLightDirection([1, 1, -0.5])
+                bg_color = RGBcolor(0.1, 0.1, 0.1)
+                visualizer.setBackgroundColor(bg_color)
+                light_dir = vec3(1, 1, -0.5)
+                visualizer.setLightDirection(light_dir)
                 
                 # Camera position for good lighting view
-                camera_pos = [3, 3, 2]
-                look_at = [0.5, 0, 0.5]
+                camera_pos = vec3(3, 3, 2)
+                look_at = vec3(0.5, 0, 0.5)
                 visualizer.setCameraPosition(camera_pos, look_at)
                 
                 # Test different lighting models

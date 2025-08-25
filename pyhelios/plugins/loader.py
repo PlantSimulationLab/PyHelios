@@ -434,8 +434,6 @@ def detect_available_plugins() -> List[str]:
     Returns:
         List of available plugin names
     """
-    # For now, return a basic list. In a full implementation, this would
-    # query the loaded library to determine which plugins are actually compiled in
     available_plugins = []
     
     # Basic plugins that should always be available if native library is loaded
@@ -459,6 +457,32 @@ def detect_available_plugins() -> List[str]:
         # Check for Radiation plugin
         if hasattr(library, 'createRadiationModel') or hasattr(library, 'runRadiationBand'):
             available_plugins.append('radiation')
+        
+        # Check for EnergyBalance plugin
+        if hasattr(library, 'createEnergyBalanceModel') or hasattr(library, 'runEnergyBalance'):
+            available_plugins.append('energybalance')
+            
+        # Check for additional plugins that might be compiled in
+        plugin_checks = {
+            'photosynthesis': ['createPhotosynthesisModel', 'runPhotosynthesis'],
+            'leafoptics': ['createLeafOpticsModel', 'runLeafOptics'],
+            'stomatalconductance': ['createStomatalConductanceModel'],
+            'boundarylayerconductance': ['createBoundaryLayerConductanceModel'],
+            'planthydraulics': ['createPlantHydraulicsModel'],
+            'lidar': ['createLiDARmodel', 'addLiDARSource'],
+            'aeriallidar': ['createAerialLiDARmodel'],
+            'plantarchitecture': ['createPlantArchitectureModel'],
+            'voxelintersection': ['voxelIntersection'],
+            'syntheticannotation': ['createSyntheticAnnotation'],
+            'parameteroptimization': ['createParameterOptimization'],
+            'projectbuilder': ['createProjectBuilder'],
+            'collisiondetection': ['createCollisionDetection'],
+            'solarposition': ['calculateSolarPosition', 'getSolarElevation']
+        }
+        
+        for plugin_name, function_names in plugin_checks.items():
+            if any(hasattr(library, func_name) for func_name in function_names):
+                available_plugins.append(plugin_name)
     
     return available_plugins
 

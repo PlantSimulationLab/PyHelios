@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from pyhelios.plugins import print_plugin_status, get_plugin_info
 from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.config.plugin_metadata import PLUGIN_METADATA, get_all_plugin_names, get_platform_compatible_plugins
-from pyhelios.config.plugin_profiles import PLUGIN_PROFILES, get_all_profile_names, filter_profile_by_platform
 from pyhelios.config.dependency_resolver import PluginDependencyResolver
 
 
@@ -66,21 +65,19 @@ def cmd_discover(args):
     print("-" * 15)
     
     if gpu_available:
-        recommended_profile = "gpu-accelerated"
         print("✓ GPU detected - GPU-accelerated workflows are possible")
         print("  Recommended for: Ray tracing, radiation modeling, high-performance simulations")
+        recommended_plugins = ["weberpenntree", "canopygenerator", "solarposition", "radiation", "visualizer", "energybalance"]
     else:
-        recommended_profile = "standard"
         print("• No GPU detected - Using CPU-based workflows")
         print("  Recommended for: General plant modeling, visualization, basic simulations")
+        recommended_plugins = ["weberpenntree", "canopygenerator", "solarposition", "visualizer", "energybalance"]
     
-    print(f"\nRecommended profile: {recommended_profile}")
-    
-    # Show recommended plugins
-    recommended_plugins = filter_profile_by_platform(recommended_profile)
+    # Filter by platform compatibility
+    recommended_plugins = [p for p in recommended_plugins if p in compatible_plugins]
     validation = resolver.validate_configuration(recommended_plugins)
     
-    print(f"Recommended plugins ({len(recommended_plugins)}):")
+    print(f"\nRecommended plugins ({len(recommended_plugins)}):")
     for plugin in recommended_plugins:
         if plugin in validation['platform_compatible']:
             print(f"  ✓ {plugin}")
@@ -89,14 +86,8 @@ def cmd_discover(args):
     
     # Show build command
     print(f"\nSuggested build command:")
-    print(f"  build_scripts/build_helios --profile {recommended_profile}")
-    
-    # Alternative suggestions
-    if not gpu_available:
-        print(f"\nAlternative profiles without GPU:")
-        non_gpu_profiles = [p for p in get_all_profile_names() if not PLUGIN_PROFILES[p].requires_gpu]
-        for profile in non_gpu_profiles[:3]:
-            print(f"  • {profile}: {PLUGIN_PROFILES[profile].description}")
+    plugin_list = ",".join(recommended_plugins)
+    print(f"  build_scripts/build_helios --plugins {plugin_list}")
     
     # Show potential issues
     if validation['platform_incompatible']:
@@ -137,7 +128,6 @@ def cmd_info(args):
     if metadata.plugin_dependencies:
         print(f"Plugin Dependencies: {', '.join(metadata.plugin_dependencies)}")
     
-    print(f"Profile Tags: {', '.join(metadata.profile_tags)}")
     
     # Runtime availability
     print(f"\nRuntime Status:")
@@ -155,14 +145,6 @@ def cmd_info(args):
             if validation['missing_dependencies']:
                 print(f"  Missing dependencies: {', '.join(validation['missing_dependencies'])}")
     
-    # Show which profiles include this plugin
-    including_profiles = []
-    for profile_name, profile in PLUGIN_PROFILES.items():
-        if plugin_name in profile.plugins:
-            including_profiles.append(profile_name)
-    
-    if including_profiles:
-        print(f"\nIncluded in profiles: {', '.join(including_profiles)}")
     
     return 0
 
@@ -215,25 +197,13 @@ def cmd_validate(args):
         print(f"\n💡 Suggestions:")
         print(f"  - Use only valid, platform-compatible plugins")
         print(f"  - Check available plugins: python -m pyhelios.plugins status")
-        print(f"  - Use a predefined profile: build_scripts/build_helios --profile standard")
+        print(f"  - Use specific plugin selection: build_scripts/build_helios --plugins plugin1,plugin2")
         return 1
     else:
         print(f"\n✅ Configuration is valid")
         return 0
 
 
-def cmd_list_profiles(args):
-    """List all available plugin profiles."""
-    print("Available Plugin Profiles:")
-    print("=" * 26)
-    
-    for profile_name in get_all_profile_names():
-        profile = PLUGIN_PROFILES[profile_name]
-        gpu_indicator = " (GPU)" if profile.requires_gpu else ""
-        print(f"\n{profile_name}{gpu_indicator}")
-        print(f"  Description: {profile.description}")
-        print(f"  Plugins ({len(profile.plugins)}): {', '.join(profile.plugins[:5])}{'...' if len(profile.plugins) > 5 else ''}")
-        print(f"  Recommended for: {profile.recommended_for}")
 
 
 def main():
@@ -247,14 +217,12 @@ Commands:
   discover     Analyze system and recommend optimal configuration  
   info         Show detailed information about a specific plugin
   validate     Validate a list of plugins for compatibility
-  profiles     List all available plugin profiles
 
 Examples:
   python -m pyhelios.plugins status
   python -m pyhelios.plugins discover
   python -m pyhelios.plugins info radiation
   python -m pyhelios.plugins validate --plugins radiation,visualizer
-  python -m pyhelios.plugins profiles
         """
     )
     
@@ -278,9 +246,6 @@ Examples:
     validate_parser.add_argument('--plugins', nargs='*', help='Plugin names to validate')
     validate_parser.set_defaults(func=cmd_validate)
     
-    # Profiles command
-    profiles_parser = subparsers.add_parser('profiles', help='List available profiles')
-    profiles_parser.set_defaults(func=cmd_list_profiles)
     
     args = parser.parse_args()
     

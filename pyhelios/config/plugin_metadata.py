@@ -20,7 +20,6 @@ class PluginMetadata:
     platforms: List[str]
     gpu_required: bool
     optional: bool
-    profile_tags: List[str]
     test_symbols: List[str]  # Functions to test for plugin availability
 
 
@@ -34,7 +33,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=False,
-        profile_tags=["core", "modeling", "trees"],
         test_symbols=["buildTree", "setTreeParameters"]
     ),
     
@@ -46,7 +44,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=False,
-        profile_tags=["core", "modeling", "canopy"],
         test_symbols=["generateCanopy", "setCanopyParameters"]
     ),
     
@@ -58,7 +55,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux"],  # Limited macOS support
         gpu_required=True,
         optional=True,
-        profile_tags=["gpu", "ray-tracing", "physics", "advanced"],
         test_symbols=["createRadiationModel", "runRadiationModel"]
     ),
     
@@ -70,7 +66,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["visualization", "gui", "rendering"],
         test_symbols=["validateTextureFile", "_ZN10Visualizer10initializeEjjibb"]
     ),
     
@@ -82,7 +77,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=True,
         optional=True,
-        profile_tags=["simulation", "lidar", "sensing"],
         test_symbols=["runLiDARscan", "setLiDARparameters"]
     ),
     
@@ -94,7 +88,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux"],
         gpu_required=True,
         optional=True,
-        profile_tags=["gpu", "simulation", "lidar", "aerial"],
         test_symbols=["runAerialLiDARscan", "setAerialLiDARparameters"]
     ),
     
@@ -106,8 +99,7 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=True,
         optional=True,
-        profile_tags=["physics", "thermal", "modeling"],
-        test_symbols=["runEnergyBalance", "setEnergyBalanceModel"]
+        test_symbols=["createEnergyBalanceModel", "runEnergyBalance"]
     ),
     
     "photosynthesis": PluginMetadata(
@@ -118,7 +110,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["biology", "modeling", "carbon"],
         test_symbols=["runPhotosynthesisModel", "setPhotosynthesisParameters"]
     ),
     
@@ -130,7 +121,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["optics", "biology", "modeling"],
         test_symbols=["runLeafOpticsModel", "setLeafOpticsParameters"]
     ),
     
@@ -142,7 +132,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["biology", "modeling", "gas-exchange"],
         test_symbols=["runStomatalConductanceModel", "setStomatalConductanceParameters"]
     ),
     
@@ -154,7 +143,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["physics", "modeling", "heat-transfer"],
         test_symbols=["runBoundaryLayerModel", "setBoundaryLayerParameters"]
     ),
     
@@ -166,7 +154,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["modeling", "architecture", "structure"],
         test_symbols=["buildPlantArchitecture", "setArchitectureParameters"]
     ),
     
@@ -178,7 +165,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["hydrology", "modeling", "water"],
         test_symbols=["runPlantHydraulicsModel", "setHydraulicsParameters"]
     ),
     
@@ -190,7 +176,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=False,
-        profile_tags=["solar", "physics", "modeling"],
         test_symbols=["calculateSolarPosition", "setSolarParameters"]
     ),
     
@@ -202,7 +187,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["machine-learning", "annotation", "synthetic"],
         test_symbols=["generateAnnotations", "setAnnotationParameters"]
     ),
     
@@ -214,7 +198,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        profile_tags=["optimization", "calibration", "algorithms"],
         test_symbols=["runOptimization", "setOptimizationParameters"]
     ),
     
@@ -226,7 +209,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=True,
         optional=True,
-        profile_tags=["spatial", "analysis", "voxel"],
         test_symbols=["calculateVoxelIntersection", "setVoxelParameters"]
     ),
     
@@ -238,7 +220,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux"],
         gpu_required=True,
         optional=True,
-        profile_tags=["gpu", "collision", "physics"],
         test_symbols=["runCollisionDetection", "setCollisionParameters"]
     ),
     
@@ -250,7 +231,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         platforms=["windows", "linux", "macos"],
         gpu_required=True,
         optional=True,
-        profile_tags=["gui", "builder", "interface"],
         test_symbols=["initializeProjectBuilder", "runProjectBuilder"]
     )
 }
@@ -266,13 +246,6 @@ def get_all_plugin_names() -> List[str]:
     return list(PLUGIN_METADATA.keys())
 
 
-def get_plugins_by_tags(tags: List[str]) -> List[str]:
-    """Get plugins that match any of the specified tags."""
-    matching_plugins = []
-    for name, metadata in PLUGIN_METADATA.items():
-        if any(tag in metadata.profile_tags for tag in tags):
-            matching_plugins.append(name)
-    return matching_plugins
 
 
 def get_platform_compatible_plugins() -> List[str]:

@@ -4,7 +4,7 @@ The Radiation Model plugin provides GPU-accelerated ray tracing for radiation si
 
 ## Overview
 
-The RadiationModel class provides advanced radiation modeling and ray tracing capabilities for realistic light interaction simulations in plant canopies and scenes.
+The \ref pyhelios.RadiationModel.RadiationModel "RadiationModel class" provides advanced radiation modeling and ray tracing capabilities for realistic light interaction simulations in plant canopies and scenes.
 
 ## Requirements
 

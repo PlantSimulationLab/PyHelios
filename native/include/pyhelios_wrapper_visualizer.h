@@ -135,6 +135,22 @@ PYHELIOS_API void setLightingModel(Visualizer* visualizer, unsigned int lighting
  */
 PYHELIOS_API bool validateTextureFile(const char* texture_file);
 
+/**
+ * @brief Color context primitives by primitive data
+ * @param visualizer Pointer to the Visualizer
+ * @param data_name Name of primitive data to use for coloring
+ */
+PYHELIOS_API void colorContextPrimitivesByData(Visualizer* visualizer, const char* data_name);
+
+/**
+ * @brief Color specific context primitives by primitive data
+ * @param visualizer Pointer to the Visualizer
+ * @param data_name Name of primitive data to use for coloring
+ * @param uuids Array of primitive UUIDs to color
+ * @param count Number of UUIDs in the array
+ */
+PYHELIOS_API void colorContextPrimitivesByDataUUIDs(Visualizer* visualizer, const char* data_name, unsigned int* uuids, unsigned int count);
+
 #ifdef __cplusplus
 }
 #endif

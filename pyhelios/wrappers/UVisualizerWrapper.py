@@ -67,6 +67,13 @@ try:
     helios_lib.setLightingModel.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_uint32]
     helios_lib.setLightingModel.restype = None
 
+    # Primitive coloring functions
+    helios_lib.colorContextPrimitivesByData.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_char_p]
+    helios_lib.colorContextPrimitivesByData.restype = None
+    
+    helios_lib.colorContextPrimitivesByDataUUIDs.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint32), ctypes.c_uint32]
+    helios_lib.colorContextPrimitivesByDataUUIDs.restype = None
+
     # Error management functions availability check
     try:
         helios_lib.getLastError.restype = ctypes.c_int
@@ -347,14 +354,16 @@ def set_camera_position(visualizer: ctypes.POINTER(UVisualizer), position: List[
     
     if not visualizer:
         raise ValueError("Visualizer pointer is null")
-    if len(position) != 3:
-        raise ValueError("Position must be a list of 3 floats [x, y, z]")
-    if len(look_at) != 3:
-        raise ValueError("Look-at must be a list of 3 floats [x, y, z]")
     
-    # Convert Python lists to ctypes arrays
-    pos_array = (ctypes.c_float * 3)(*position)
-    look_array = (ctypes.c_float * 3)(*look_at)
+    # Check if objects have the required methods instead of isinstance
+    if not (hasattr(position, 'to_list') and hasattr(position, 'x') and hasattr(position, 'y') and hasattr(position, 'z')):
+        raise ValueError(f"Position must be a vec3 object, got {type(position).__name__}")
+    if not (hasattr(look_at, 'to_list') and hasattr(look_at, 'x') and hasattr(look_at, 'y') and hasattr(look_at, 'z')):
+        raise ValueError(f"Look-at must be a vec3 object, got {type(look_at).__name__}")
+    
+    # Convert vec3 objects to ctypes arrays
+    pos_array = (ctypes.c_float * 3)(*position.to_list())
+    look_array = (ctypes.c_float * 3)(*look_at.to_list())
     
     helios_lib.setCameraPosition(visualizer, pos_array, look_array)
     _check_for_helios_error()
@@ -381,14 +390,18 @@ def set_camera_position_spherical(visualizer: ctypes.POINTER(UVisualizer), angle
     
     if not visualizer:
         raise ValueError("Visualizer pointer is null")
-    if len(angle) != 3:
-        raise ValueError("Angle must be a list of 3 floats [radius, zenith, azimuth]")
-    if len(look_at) != 3:
-        raise ValueError("Look-at must be a list of 3 floats [x, y, z]")
     
-    # Convert Python lists to ctypes arrays
-    angle_array = (ctypes.c_float * 3)(*angle)
-    look_array = (ctypes.c_float * 3)(*look_at)
+    # Check if objects have the required methods instead of isinstance
+    if not (hasattr(angle, 'to_list') and hasattr(angle, 'radius') and hasattr(angle, 'elevation') and hasattr(angle, 'azimuth')):
+        raise ValueError(f"Angle must be a SphericalCoord object, got {type(angle).__name__}")
+    if not (hasattr(look_at, 'to_list') and hasattr(look_at, 'x') and hasattr(look_at, 'y') and hasattr(look_at, 'z')):
+        raise ValueError(f"Look-at must be a vec3 object, got {type(look_at).__name__}")
+    
+    # Convert SphericalCoord and vec3 objects to ctypes arrays
+    # SphericalCoord.to_list() returns [radius, elevation, zenith, azimuth] but we need [radius, elevation, azimuth]
+    angle_list = [angle.radius, angle.elevation, angle.azimuth]
+    angle_array = (ctypes.c_float * 3)(*angle_list)
+    look_array = (ctypes.c_float * 3)(*look_at.to_list())
     
     helios_lib.setCameraPositionSpherical(visualizer, angle_array, look_array)
     _check_for_helios_error()
@@ -414,22 +427,24 @@ def set_background_color(visualizer: ctypes.POINTER(UVisualizer), color: List[fl
     
     if not visualizer:
         raise ValueError("Visualizer pointer is null")
-    if len(color) != 3:
-        raise ValueError("Color must be a list of 3 floats [r, g, b]")
     
-    # Convert Python list to ctypes array
-    color_array = (ctypes.c_float * 3)(*color)
+    # Check if object has the required methods instead of isinstance
+    if not (hasattr(color, 'to_list') and hasattr(color, 'r') and hasattr(color, 'g') and hasattr(color, 'b')):
+        raise ValueError(f"Color must be an RGBcolor object, got {type(color).__name__}")
+    
+    # Convert RGBcolor object to ctypes array
+    color_array = (ctypes.c_float * 3)(*color.to_list())
     
     helios_lib.setBackgroundColor(visualizer, color_array)
     _check_for_helios_error()
 
-def set_light_direction(visualizer: ctypes.POINTER(UVisualizer), direction: List[float]) -> None:
+def set_light_direction(visualizer: ctypes.POINTER(UVisualizer), direction) -> None:
     """
     Set light direction.
     
     Args:
         visualizer: Pointer to UVisualizer
-        direction: Light direction vector [x, y, z]
+        direction: Light direction vector as vec3
         
     Raises:
         NotImplementedError: If visualizer functions not available
@@ -444,11 +459,13 @@ def set_light_direction(visualizer: ctypes.POINTER(UVisualizer), direction: List
     
     if not visualizer:
         raise ValueError("Visualizer pointer is null")
-    if len(direction) != 3:
-        raise ValueError("Direction must be a list of 3 floats [x, y, z]")
     
-    # Convert Python list to ctypes array
-    dir_array = (ctypes.c_float * 3)(*direction)
+    # Check if object has the required methods instead of isinstance
+    if not (hasattr(direction, 'to_list') and hasattr(direction, 'x') and hasattr(direction, 'y') and hasattr(direction, 'z')):
+        raise ValueError(f"Direction must be a vec3 object, got {type(direction).__name__}")
+    
+    # Convert vec3 object to ctypes array
+    dir_array = (ctypes.c_float * 3)(*direction.to_list())
     
     helios_lib.setLightDirection(visualizer, dir_array)
     _check_for_helios_error()
@@ -480,6 +497,66 @@ def set_lighting_model(visualizer: ctypes.POINTER(UVisualizer), lighting_model: 
     helios_lib.setLightingModel(visualizer, ctypes.c_uint32(lighting_model))
     _check_for_helios_error()
 
+def color_context_primitives_by_data(visualizer: ctypes.POINTER(UVisualizer), data_name: str) -> None:
+    """
+    Color context primitives based on primitive data values.
+    
+    Args:
+        visualizer: Pointer to UVisualizer
+        data_name: Name of primitive data to use for coloring
+        
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If parameters are invalid
+        RuntimeError: If coloring fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    if not data_name:
+        raise ValueError("Data name cannot be empty")
+    
+    data_name_bytes = data_name.encode('utf-8')
+    helios_lib.colorContextPrimitivesByData(visualizer, data_name_bytes)
+    _check_for_helios_error()
+
+def color_context_primitives_by_data_uuids(visualizer: ctypes.POINTER(UVisualizer), data_name: str, uuids: List[int]) -> None:
+    """
+    Color specific context primitives based on primitive data values.
+    
+    Args:
+        visualizer: Pointer to UVisualizer
+        data_name: Name of primitive data to use for coloring
+        uuids: List of primitive UUIDs to color
+        
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If parameters are invalid
+        RuntimeError: If coloring fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    if not data_name:
+        raise ValueError("Data name cannot be empty")
+    if not uuids:
+        raise ValueError("UUID list cannot be empty")
+    
+    data_name_bytes = data_name.encode('utf-8')
+    uuid_array = (ctypes.c_uint32 * len(uuids))(*uuids)
+    helios_lib.colorContextPrimitivesByDataUUIDs(visualizer, data_name_bytes, uuid_array, len(uuids))
+    _check_for_helios_error()
+
 # Mock implementations when visualizer is not available
 if not _VISUALIZER_FUNCTIONS_AVAILABLE:
     def _mock_function(*args, **kwargs):
@@ -506,3 +583,5 @@ if not _VISUALIZER_FUNCTIONS_AVAILABLE:
     set_background_color = _mock_function
     set_light_direction = _mock_function
     set_lighting_model = _mock_function
+    color_context_primitives_by_data = _mock_function
+    color_context_primitives_by_data_uuids = _mock_function

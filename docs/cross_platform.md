@@ -10,27 +10,29 @@ PyHelios is designed to work seamlessly across Windows, macOS, and Linux. This g
 | WeberPennTree | ✅ | ✅ | ✅ | Procedural trees |
 | Visualizer | ✅ | ✅ | ✅ | OpenGL rendering |
 | Radiation (GPU) | ✅ | ⚠️ | ✅ | Requires CUDA |
-| Pre-built Libraries | ✅ | ❌ | ❌ | Windows only |
+| Pre-built Libraries | ❌ | ❌ | ❌ | Build from source required |
 | Development Mode | ✅ | ✅ | ✅ | Mock mode |
 
 ## Windows
 
 **Advantages:**
-- Pre-built native libraries included
-- Full plugin support out of the box
 - Excellent Visual Studio integration
+- Comprehensive plugin support when built
+- Strong GPU computing support
 
 **Setup:**
 ```bash
 git clone --recursive https://github.com/PlantSimulationLab/PyHelios.git
 cd PyHelios/
-pip install -e .  # Uses pre-built libraries
+# Build native libraries (required)
+build_scripts/build_helios
+pip install -e .
 ```
 
-**Building from Source:**
+**Build Requirements:**
 ```bash
 # Requires Visual Studio 2019+ or Build Tools
-build_scripts/build_helios
+# Install Visual Studio Build Tools or full IDE
 ```
 
 **GPU Support:**

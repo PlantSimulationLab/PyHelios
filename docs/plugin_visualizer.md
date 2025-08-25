@@ -258,6 +258,127 @@ visualizer.setLightDirection([0.577, 0.577, -0.577])  # Isometric
 visualizer.setLightingModel("phong")                # Even lighting
 ```
 
+### Data Visualization
+
+The visualizer can color primitives based on data values, enabling visualization of simulation results, measurements, or other quantitative data.
+
+```python
+from pyhelios import Context, Visualizer
+from pyhelios.types import *
+
+# Create context with geometry and data
+context = Context()
+patch1 = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+patch2 = context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+patch3 = context.addPatch(center=vec3(4, 0, 0), size=vec2(1, 1))
+
+# Set data values on primitives
+context.setPrimitiveDataFloat(patch1, "temperature", 20.5)  # Cool
+context.setPrimitiveDataFloat(patch2, "temperature", 25.0)  # Moderate
+context.setPrimitiveDataFloat(patch3, "temperature", 30.2)  # Warm
+
+# Set additional data for different visualizations
+context.setPrimitiveDataFloat(patch1, "radiation_flux_SW", 150.0)
+context.setPrimitiveDataFloat(patch2, "radiation_flux_SW", 200.0)
+context.setPrimitiveDataFloat(patch3, "radiation_flux_SW", 175.5)
+
+with Visualizer(800, 600) as visualizer:
+    visualizer.buildContextGeometry(context)
+    
+    # Color all primitives by temperature data
+    visualizer.colorContextPrimitivesByData("temperature")
+    visualizer.plotUpdate()
+    
+    # Color all primitives by radiation data
+    visualizer.colorContextPrimitivesByData("radiation_flux_SW")
+    visualizer.plotUpdate()
+    
+    # Color only specific primitives
+    visualizer.colorContextPrimitivesByData("temperature", [patch1, patch3])
+    visualizer.plotUpdate()
+```
+
+#### Advanced Data Visualization
+
+```python
+# Complete radiation visualization workflow
+from pyhelios import Context, RadiationModel, Visualizer
+from pyhelios.types import *
+
+context = Context()
+
+# Create a simple plant structure
+for i in range(10):
+    for j in range(10):
+        leaf_uuid = context.addPatch(
+            center=vec3(i * 0.5, j * 0.5, 2.0),
+            size=vec2(0.4, 0.4),
+            color=RGBcolor(0.3, 0.6, 0.2)
+        )
+
+# Run radiation simulation (if radiation plugin available)
+try:
+    with RadiationModel(context) as radiation:
+        radiation.addRadiationBand("PAR")
+        radiation.addCollimatedRadiationSource(vec3(0, 0, 10), 1000)
+        radiation.run()
+        
+        # Radiation data is now set on primitives
+        
+    # Visualize radiation results
+    with Visualizer(1024, 768) as visualizer:
+        visualizer.buildContextGeometry(context)
+        visualizer.setBackgroundColor([0.1, 0.1, 0.2])  # Dark background
+        
+        # Color by absorbed radiation
+        visualizer.colorContextPrimitivesByData("radiation_flux_PAR")
+        
+        # Set camera for good viewing angle
+        visualizer.setCameraPosition(
+            position=[8, 8, 8],
+            lookAt=[2.5, 2.5, 2]
+        )
+        
+        # Use lighting that doesn't interfere with data visualization
+        visualizer.setLightingModel("none")  # Show pure data colors
+        
+        visualizer.plotInteractive()
+        
+except Exception as e:
+    print(f"Radiation simulation not available: {e}")
+    # Fallback to manual data for demonstration
+    all_uuids = context.getAllUUIDs("patch")
+    for i, uuid in enumerate(all_uuids):
+        # Set dummy radiation data
+        flux_value = 50 + (i % 20) * 25  # Vary from 50 to 525
+        context.setPrimitiveDataFloat(uuid, "simulated_flux", flux_value)
+    
+    with Visualizer(1024, 768) as visualizer:
+        visualizer.buildContextGeometry(context)
+        visualizer.colorContextPrimitivesByData("simulated_flux")
+        visualizer.plotInteractive()
+```
+
+#### Data Visualization Best Practices
+
+1. **Set data before visualization**: Always use `context.setPrimitiveDataFloat()` before calling `colorContextPrimitivesByData()`
+
+2. **Use meaningful data names**: Choose descriptive names like `"temperature_celsius"` or `"radiation_flux_PAR"`
+
+3. **Consider data ranges**: Large value ranges may require colormap configuration (future enhancement)
+
+4. **Lighting considerations**: 
+   - Use `setLightingModel("none")` to show pure data colors
+   - Use `setLightingModel("phong")` to maintain surface appearance with data coloring
+
+5. **Selective visualization**: Color specific primitives to highlight regions of interest:
+   ```python
+   # Color only high-value primitives
+   high_flux_uuids = [uuid for uuid in all_uuids 
+                     if context.getPrimitiveData(uuid, "flux")[0] > threshold]
+   visualizer.colorContextPrimitivesByData("flux", high_flux_uuids)
+   ```
+
 ## Image Export
 
 ### Basic Image Saving

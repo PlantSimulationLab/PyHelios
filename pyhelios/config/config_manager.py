@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 
-from .plugin_profiles import PLUGIN_PROFILES, get_profile, filter_profile_by_platform
 from .dependency_resolver import PluginDependencyResolver
 
 
@@ -51,8 +50,7 @@ class LoggingConfig:
 @dataclass
 class PluginConfig:
     """Plugin configuration settings."""
-    selection_mode: str = "profile"
-    profile: str = "standard"
+    selection_mode: str = "explicit"
     explicit_plugins: List[str] = None
     excluded_plugins: List[str] = None
     include_optional: bool = True
@@ -147,8 +145,7 @@ class ConfigManager:
         if 'plugins' in config_data:
             plugin_data = config_data['plugins']
             self.plugin_config = PluginConfig(
-                selection_mode=plugin_data.get('selection_mode', 'profile'),
-                profile=plugin_data.get('profile', 'standard'),
+                selection_mode=plugin_data.get('selection_mode', 'explicit'),
                 explicit_plugins=plugin_data.get('explicit_plugins', []),
                 excluded_plugins=plugin_data.get('excluded_plugins', []),
                 include_optional=plugin_data.get('include_optional', True),
@@ -194,14 +191,7 @@ class ConfigManager:
         """
         plugins = []
         
-        if self.plugin_config.selection_mode == "profile":
-            # Use profile-based selection
-            try:
-                plugins = filter_profile_by_platform(self.plugin_config.profile)
-            except ValueError as e:
-                raise ConfigurationError(f"Invalid profile '{self.plugin_config.profile}': {e}")
-                
-        elif self.plugin_config.selection_mode == "explicit":
+        if self.plugin_config.selection_mode == "explicit":
             # Use explicit plugin list
             plugins = list(self.plugin_config.explicit_plugins)
             
@@ -211,13 +201,13 @@ class ConfigManager:
             gpu_available = resolver._check_cuda()
             
             if gpu_available:
-                plugins = filter_profile_by_platform("gpu-accelerated")
+                plugins = ["weberpenntree", "canopygenerator", "solarposition", "radiation", "visualizer", "energybalance"]
             else:
-                plugins = filter_profile_by_platform("standard")
+                plugins = ["weberpenntree", "canopygenerator", "solarposition", "visualizer", "energybalance"]
         else:
             raise ConfigurationError(
                 f"Invalid selection_mode '{self.plugin_config.selection_mode}'. "
-                "Must be 'profile', 'explicit', or 'auto'"
+                "Must be 'explicit' or 'auto'"
             )
         
         # Apply platform-specific modifications
@@ -334,7 +324,6 @@ class ConfigManager:
         config_data = {
             'plugins': {
                 'selection_mode': self.plugin_config.selection_mode,
-                'profile': self.plugin_config.profile,
                 'explicit_plugins': self.plugin_config.explicit_plugins,
                 'excluded_plugins': self.plugin_config.excluded_plugins,
                 'include_optional': self.plugin_config.include_optional,
@@ -369,9 +358,7 @@ class ConfigManager:
         
         print(f"\nPlugin Configuration:")
         print(f"  Selection mode: {self.plugin_config.selection_mode}")
-        if self.plugin_config.selection_mode == "profile":
-            print(f"  Profile: {self.plugin_config.profile}")
-        elif self.plugin_config.selection_mode == "explicit":
+        if self.plugin_config.selection_mode == "explicit":
             print(f"  Explicit plugins: {self.plugin_config.explicit_plugins}")
         
         if self.plugin_config.excluded_plugins:

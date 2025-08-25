@@ -1,16 +1,25 @@
 # Changelog
 
+# [v0.0.4] 2025-08-25
+
+🚨++ New Plug-in Integrated ++ 🚨
+- Energy Balance plug-in integrated with PyHelios
+
+## Visualizer
+- Added `Visualizer.colorContextPrimitivesByData()`
+- Fixed a number of issues where visualizer methods were using lists instead of Helios data types (e.g., vec2, vec3, etc.)
+
 # [v0.0.3] 2025-08-23
 
 ## Context
-- Added comprehensive file loading support with `loadPLY()`, `loadOBJ()`, and `loadXML()` methods
-- Enhanced `loadPLY()` with 5 overloads supporting origin, height, rotation, color, and upaxis transformations
-- Enhanced `loadOBJ()` with 4 overloads including scale transformations and upaxis specification
-- Added complete `loadXML()` implementation for Helios XML geometry files
+- Added comprehensive file loading support with `Context.loadPLY()`, `Context.loadOBJ()`, and `Context.loadXML()` methods
+- Enhanced `Context.loadPLY()` with 5 overloads supporting origin, height, rotation, color, and upaxis transformations
+- Enhanced `Context.loadOBJ()` with 4 overloads including scale transformations and upaxis specification
+- Added complete `Context.loadXML()` implementation for Helios XML geometry files
 - Extended native C++ wrapper with 9 new file loading functions and proper error handling
 - Added comprehensive parameter validation and security path checking
-- Implemented `addTriangleTextured()`
-- Implemented `addTrianglesFromArraysTextured()`
+- Implemented `Context.addTriangleTextured()`
+- Implemented `Context.addTrianglesFromArraysTextured()`
 
 ## Examples
 - Added example geometry files: `suzanne.ply`, `suzanne.obj`, `suzanne.mtl`, and `leaf_cube.xml`

@@ -111,8 +111,8 @@ class RadiationModel:
                 "To enable radiation modeling:\n"
                 "1. Build PyHelios with radiation plugin:\n"
                 "   build_scripts/build_helios --plugins radiation\n"
-                "2. Or use a profile that includes radiation:\n"
-                "   build_scripts/build_helios --profile gpu-accelerated\n"
+                "2. Or build with multiple plugins:\n"
+                "   build_scripts/build_helios --plugins radiation,visualizer,weberpenntree\n"
                 f"\nCurrently available plugins: {available_plugins}"
             )
             

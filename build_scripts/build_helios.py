@@ -219,7 +219,7 @@ class HeliosBuilder:
         With the current architecture, all build artifacts are contained within
         the build directory, so cleaning is simply removing that directory.
         """
-        print("🧹 Cleaning build artifacts...")
+        print("[CLEAN] Cleaning build artifacts...")
         
         # Remove the build directory - this contains all build artifacts
         if self.build_dir.exists():
@@ -265,13 +265,13 @@ class HeliosBuilder:
         
         if result.warnings:
             for warning in result.warnings:
-                print(f"⚠️  Warning: {warning}")
+                print(f"[WARN] {warning}")
         
         if result.added_plugins:
             print(f"[OK] Added dependencies: {result.added_plugins}")
         
         if result.removed_plugins:
-            print(f"🚫 Removed incompatible plugins: {result.removed_plugins}")
+            print(f"[EXCLUDED] Removed incompatible plugins: {result.removed_plugins}")
         
         print(f"[OK] Final plugin selection: {result.final_plugins}")
         return result.final_plugins
@@ -1027,7 +1027,7 @@ class HeliosBuilder:
         target_base_dir = self.output_dir.parent / 'plugins' / 'visualizer'
         
         if not build_visualizer_dir.exists():
-            print(f"ℹ️  Visualizer assets directory not found: {build_visualizer_dir} (visualizer plugin may not be enabled)")
+            print(f"[INFO] Visualizer assets directory not found: {build_visualizer_dir} (visualizer plugin may not be enabled)")
             return
         
         total_files_copied = 0
@@ -1093,9 +1093,9 @@ class HeliosBuilder:
                 print(f"[OK] Copied {font_count} font files")
         
         if total_files_copied > 0:
-            print(f"🎨 Successfully copied {total_files_copied} visualizer assets to {target_base_dir}")
+            print(f"[OK] Successfully copied {total_files_copied} visualizer assets to {target_base_dir}")
         else:
-            print(f"⚠️  No visualizer assets found to copy")
+            print(f"[WARN] No visualizer assets found to copy")
     
     def _clean_duplicate_symbols(self, main_lib_path: Path, build_lib_dir: Path) -> Dict[str, Any]:
         """
@@ -1399,18 +1399,19 @@ class HeliosBuilder:
 
 def get_default_plugins() -> List[str]:
     """
-    Get the default set of plugins (only the 3 currently integrated plugins).
+    Get the default set of plugins (only the currently integrated plugins).
     
-    Currently only 3 plugins are integrated into PyHelios:
+    Currently integrated plugins in PyHelios:
     - visualizer: OpenGL-based 3D visualization
     - weberpenntree: Procedural tree generation
     - radiation: OptiX-accelerated ray tracing (GPU optional)
+    - energybalance: GPU-accelerated thermal modeling and energy balance
     
     Returns:
         List of default plugins
     """
-    # Only return the 3 plugins that are actually integrated into PyHelios
-    integrated_plugins = ["visualizer", "weberpenntree", "radiation"]
+    # Return the plugins that are actually integrated into PyHelios
+    integrated_plugins = ["visualizer", "weberpenntree", "radiation", "energybalance"]
     
     # Filter by platform compatibility
     default_plugins = []
@@ -1449,24 +1450,40 @@ def parse_plugin_selection(args) -> List[str]:
     # 2. Apply exclusion flags
     if args.nogpu:
         # Remove GPU-dependent plugins
+        gpu_plugins = [p for p in selected_plugins 
+                      if PLUGIN_METADATA.get(p, PluginMetadata("", "", [], [], [], False, True, [], [])).gpu_required]
         selected_plugins = [p for p in selected_plugins 
                           if not PLUGIN_METADATA.get(p, PluginMetadata("", "", [], [], [], False, True, [], [])).gpu_required]
+        if gpu_plugins:
+            print(f"[EXCLUDED] GPU-dependent plugins excluded (--nogpu): {gpu_plugins}")
     
     if args.novis:
         # Remove visualization plugins
+        vis_plugins = [p for p in selected_plugins 
+                      if any(dep in ["opengl", "glfw", "imgui"] 
+                           for dep in PLUGIN_METADATA.get(p, PluginMetadata("", "", [], [], [], False, True, [], [])).system_dependencies)]
         selected_plugins = [p for p in selected_plugins 
                           if not any(dep in ["opengl", "glfw", "imgui"] 
                                    for dep in PLUGIN_METADATA.get(p, PluginMetadata("", "", [], [], [], False, True, [], [])).system_dependencies)]
+        if vis_plugins:
+            print(f"[EXCLUDED] Visualization plugins excluded (--novis): {vis_plugins}")
     
     # 3. Apply additional exclusions
     if args.exclude:
+        excluded_plugins = [p for p in selected_plugins if p in args.exclude]
         selected_plugins = [p for p in selected_plugins if p not in args.exclude]
+        if excluded_plugins:
+            print(f"[EXCLUDED] Explicitly excluded plugins (--exclude): {excluded_plugins}")
     
     
     # 4. Check environment variables for additional exclusions
     if os.environ.get('PYHELIOS_EXCLUDE_GPU', '').lower() in ['1', 'true', 'yes']:
+        env_gpu_plugins = [p for p in selected_plugins 
+                          if PLUGIN_METADATA.get(p, PluginMetadata("", "", [], [], [], False, True, [], [])).gpu_required]
         selected_plugins = [p for p in selected_plugins 
                           if not PLUGIN_METADATA.get(p, PluginMetadata("", "", [], [], [], False, True, [], [])).gpu_required]
+        if env_gpu_plugins:
+            print(f"[EXCLUDED] GPU-dependent plugins excluded (PYHELIOS_EXCLUDE_GPU): {env_gpu_plugins}")
     
     # 5. Return final plugin list
     return selected_plugins
@@ -1657,7 +1674,7 @@ Build Examples:
             print(f"[ERROR] Invalid plugins: {validation['invalid_plugins']}")
         print(f"Platform compatible: {validation['platform_compatible']}")
         if validation['platform_incompatible']:
-            print(f"⚠️  Platform incompatible: {validation['platform_incompatible']}")
+            print(f"[WARN] Platform incompatible: {validation['platform_incompatible']}")
         
         if validation['system_dependencies']:
             print("\nSystem Dependencies:")
@@ -1733,7 +1750,7 @@ Build Examples:
             # PyHelios automatically discovers libraries in the build directory
                 
         except Exception as e:
-            print(f"⚠️  Warning: Could not load built library: {e}")
+            print(f"[WARN] Could not load built library: {e}")
             if platform.system() != 'Windows':
                 print("   Try setting LD_LIBRARY_PATH and running again:")
                 print(f"   export LD_LIBRARY_PATH=\"{args.output_dir}:$LD_LIBRARY_PATH\"")

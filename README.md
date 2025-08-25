@@ -14,6 +14,10 @@ PyHelios provides a Python interface to the powerful Helios C++ library for 3D p
 
 📖 **[Complete Documentation](https://plantsimulationlab.github.io/PyHelios/)**
 
+⚠️Note that this is a work in progress. Not all Helios functionality has been implemented in PyHelios ⚠️
+
+See the Helios C++ documentation for a more in-depth description of Helios: https://baileylab.ucdavis.edu/software/helios
+
 ## Quick Start
 
 ### Installation
@@ -66,10 +70,6 @@ pip install -e .
 - Python 3.7+
 
 ```bash
-# Install prerequisites
-sudo apt-get update
-sudo apt-get install build-essential cmake python3-dev
-
 # Clone repository
 git clone --recursive https://github.com/PlantSimulationLab/PyHelios.git
 cd PyHelios/
@@ -100,18 +100,6 @@ patch_uuid = context.addPatch(center=center, size=size, color=color)
 print(f"Created patch: {patch_uuid}")
 ```
 
-### Tree Modeling
-
-```python
-from pyhelios import Context, WeberPennTree
-
-context = Context()
-wpt = WeberPennTree(context)
-
-# Generate procedural tree
-tree_id = wpt.buildTree(WeberPennTree.WPTType.LEMON)
-```
-
 ## Documentation
 
 | Section | Description |
@@ -127,7 +115,7 @@ tree_id = wpt.buildTree(WeberPennTree.WPTType.LEMON)
 - **Plant modeling**: WeberPennTree procedural generation 
 - **GPU acceleration**: OptiX-powered radiation simulation
 - **3D visualization**: OpenGL-based real-time rendering
-- **Flexible plugins**: 21 available plugins for specialized tasks
+- **Flexible plugins**: Currently 4 plug-ins implemented
 - **Development mode**: Mock mode for development without native libraries
 
 ## Quick Commands
