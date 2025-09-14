@@ -2341,5 +2341,156 @@ extern "C" {
         }
     }
 
+    //=============================================================================
+    // File Export Functions
+    //=============================================================================
+
+    void writePLY(helios::Context* context, const char* filename) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+
+            context->writePLY(filename);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (Context::writePLY): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::writePLY): Unknown error writing PLY file.");
+        }
+    }
+
+    void writePLYWithUUIDs(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+            if (!uuids && count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null but count > 0");
+                return;
+            }
+
+            // Convert C array to vector
+            std::vector<unsigned int> uuid_vector(uuids, uuids + count);
+
+            context->writePLY(filename, uuid_vector);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (Context::writePLY): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::writePLY): Unknown error writing PLY file.");
+        }
+    }
+
+    void writeOBJ(helios::Context* context, const char* filename, bool write_normals, bool silent) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+
+            context->writeOBJ(filename, write_normals, silent);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (Context::writeOBJ): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::writeOBJ): Unknown error writing OBJ file.");
+        }
+    }
+
+    void writeOBJWithUUIDs(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count, bool write_normals, bool silent) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+            if (!uuids && count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null but count > 0");
+                return;
+            }
+
+            // Convert C array to vector
+            std::vector<unsigned int> uuid_vector(uuids, uuids + count);
+
+            context->writeOBJ(filename, uuid_vector, write_normals, silent);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (Context::writeOBJ): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::writeOBJ): Unknown error writing OBJ file.");
+        }
+    }
+
+    void writeOBJWithPrimitiveData(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count, const char** data_fields, unsigned int field_count, bool write_normals, bool silent) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+            if (!uuids && count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null but count > 0");
+                return;
+            }
+            if (!data_fields && field_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Data fields array is null but field_count > 0");
+                return;
+            }
+
+            // Convert C arrays to vectors
+            std::vector<unsigned int> uuid_vector(uuids, uuids + count);
+            std::vector<std::string> field_vector;
+
+            for (unsigned int i = 0; i < field_count; i++) {
+                if (data_fields[i]) {
+                    field_vector.push_back(std::string(data_fields[i]));
+                }
+            }
+
+            context->writeOBJ(filename, uuid_vector, field_vector, write_normals, silent);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (Context::writeOBJ): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::writeOBJ): Unknown error writing OBJ file.");
+        }
+    }
+
 
 } //extern "C"

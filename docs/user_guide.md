@@ -197,9 +197,9 @@ print(f"Created {len(tile_uuids)} patches in tile")
 ```python
 # Create a tessellated sphere
 sphere_uuids = context.addSphere(
-    Ndivisions=10,  # Number of subdivisions
     center=vec3(0, 0, 2),
     radius=1.0,
+    ndivs=10,  # Number of subdivisions
     color=RGBcolor(0.2, 0.5, 0.8)
 )
 print(f"Created sphere with {len(sphere_uuids)} triangular faces")
@@ -213,10 +213,10 @@ nodes = [vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 0, 2)]
 radii = [0.1, 0.15, 0.05]  # Variable radius along tube
 
 tube_uuids = context.addTube(
-    Ndivisions=8,  # Circumferential divisions
     nodes=nodes,
     radii=radii,
-    color=RGBcolor(0.4, 0.2, 0.1)
+    ndivs=8,  # Circumferential divisions
+    colors=RGBcolor(0.4, 0.2, 0.1)
 )
 print(f"Created tube with {len(tube_uuids)} primitives")
 ```

@@ -71,7 +71,7 @@ def demonstrate_basic_visualization():
     try:
         with Context() as context:
             # Create geometry
-            patch_uuids = context.addPatch( center=make_vec3(0, 0, 0), size=make_vec2(10, 10) )
+            patch_uuids = context.addPatch(center=vec3(0, 0, 0), size=vec2(10, 10))
             tree_id, tree_uuids = create_sample_tree(context)
             
             # Create visualizer (smaller window for demo)

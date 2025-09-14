@@ -156,11 +156,13 @@ jobs:
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
         CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
         
-        # Platform-specific build commands with broad CUDA compatibility  
-        CIBW_BEFORE_BUILD_MACOS: 'python build_scripts/prepare_wheel.py --buildmode release --nogpu --novis --verbose --clean --cmake-args=-DENABLE_OPENMP=OFF --cmake-args=-DCMAKE_IGNORE_PATH=/opt/homebrew --cmake-args=-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew --cmake-args=-DCMAKE_SYSTEM_IGNORE_PATH=/opt/homebrew'
+        # Platform-specific build commands with explicit plugin selection for consistency
+        # macOS: Include visualizer but exclude GPU plugins due to cross-compilation issues
+        CIBW_BEFORE_BUILD_MACOS: 'python build_scripts/prepare_wheel.py --buildmode release --plugins weberpenntree,visualizer,photosynthesis,solarposition,stomatalconductance --verbose --clean --cmake-args=-DENABLE_OPENMP=OFF --cmake-args=-DCMAKE_IGNORE_PATH=/opt/homebrew --cmake-args=-DCMAKE_IGNORE_PREFIX_PATH=/opt/homebrew --cmake-args=-DCMAKE_SYSTEM_IGNORE_PATH=/opt/homebrew'
         CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=${{ matrix.arch == 'x86_64' && '13.0' || '14.0' }} CMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} SYSTEM_VERSION_COMPAT=0"
-        CIBW_BEFORE_BUILD_WINDOWS: "set CMAKE_RC_COMPILER= && set PYHELIOS_CUDA_ARCHITECTURES=50;60;70;75;80;86;90 && python build_scripts/prepare_wheel.py --buildmode release --verbose"
-        CIBW_BEFORE_BUILD_LINUX: "yum install -y zlib-devel && export PYHELIOS_CUDA_ARCHITECTURES='50;60;70;75;80;86;90' && python build_scripts/prepare_wheel.py --buildmode release --verbose"
+        # Windows/Linux: Include GPU plugins (radiation, energybalance) in addition to visualization
+        CIBW_BEFORE_BUILD_WINDOWS: "set CMAKE_RC_COMPILER= && set PYHELIOS_CUDA_ARCHITECTURES=50;60;70;75;80;86;90 && python build_scripts/prepare_wheel.py --buildmode release --plugins weberpenntree,visualizer,photosynthesis,solarposition,stomatalconductance,energybalance,radiation --verbose"
+        CIBW_BEFORE_BUILD_LINUX: "yum install -y zlib-devel && export PYHELIOS_CUDA_ARCHITECTURES='50;60;70;75;80;86;90' && python build_scripts/prepare_wheel.py --buildmode release --plugins weberpenntree,visualizer,photosynthesis,solarposition,stomatalconductance,energybalance,radiation --verbose"
         
         # Manylinux-specific environment for zlib compatibility
         CIBW_ENVIRONMENT_LINUX: "CFLAGS='-D_GNU_SOURCE -I/usr/include' CXXFLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0 -I/usr/include' CMAKE_C_FLAGS='-D_GNU_SOURCE' CMAKE_CXX_FLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0'"
@@ -244,6 +246,32 @@ jobs:
                   lib_path = info.get('library_path', 'Unknown')
                   print(f'[SUCCESS] Native library loaded: {lib_path}')
 
+                  # Test Linux testable plugins (CI containers don't have GPU for radiation/energybalance testing)
+                  # We build GPU plugins but can't test them in CI environment
+                  available_plugins = info.get('available_plugins', [])
+                  testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance']
+                  built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation']
+
+                  print(f'[INFO] Available plugins: {sorted(available_plugins)}')
+                  print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
+                  print(f'[INFO] Testable plugins (in CI): {sorted(testable_plugins)}')
+
+                  # Check that we have at least the testable plugins (GPU plugins may not be testable in CI)
+                  missing_testable = set(testable_plugins) - set(available_plugins)
+                  if missing_testable:
+                      print(f'[FAILED] Missing testable plugins: {sorted(missing_testable)}')
+                      raise RuntimeError(f'Missing testable plugins: {missing_testable}')
+                  else:
+                      print(f'[SUCCESS] All {len(testable_plugins)} testable plugins are available')
+
+                  # Report on GPU plugins (built but may not be testable in CI)
+                  gpu_plugins = ['energybalance', 'radiation']
+                  available_gpu = [p for p in gpu_plugins if p in available_plugins]
+                  if available_gpu:
+                      print(f'[INFO] GPU plugins available for testing: {sorted(available_gpu)}')
+                  else:
+                      print(f'[INFO] GPU plugins not available for CI testing (expected in containerized environment)')
+
               # Asset validation (non-critical, allow failure)
               try:
                   from pyhelios.assets import get_asset_manager
@@ -264,7 +292,7 @@ jobs:
               traceback.print_exc()
               raise
           " &&
-          python -m pytest {project}/tests/test_cross_platform.py {project}/tests/test_datatypes.py --tb=short -v --forked
+          python -m pytest {project}/tests/ --tb=short -v --forked
 
         CIBW_TEST_COMMAND_MACOS: |
           python -c "
@@ -294,6 +322,19 @@ jobs:
                   lib_path = info.get('library_path', 'Unknown')
                   print(f'[SUCCESS] Native library loaded: {lib_path}')
 
+                  # Test macOS expected plugins (5 plugins including visualization but no GPU)
+                  available_plugins = info.get('available_plugins', [])
+                  expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance']
+                  print(f'[INFO] Available plugins: {sorted(available_plugins)}')
+                  print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')
+
+                  missing_plugins = set(expected_plugins) - set(available_plugins)
+                  if missing_plugins:
+                      print(f'[FAILED] Missing expected plugins: {sorted(missing_plugins)}')
+                      raise RuntimeError(f'Missing expected plugins: {missing_plugins}')
+                  else:
+                      print(f'[SUCCESS] All {len(expected_plugins)} expected plugins are available')
+
               # Asset validation (non-critical, allow failure)
               try:
                   from pyhelios.assets import get_asset_manager
@@ -314,7 +355,7 @@ jobs:
               traceback.print_exc()
               raise
           " &&
-          python -m pytest {project}/tests/test_cross_platform.py {project}/tests/test_datatypes.py --tb=short -v --forked
+          python -m pytest {project}/tests/ --tb=short -v --forked
 
         CIBW_TEST_COMMAND_WINDOWS: |
           python -c "
@@ -344,6 +385,32 @@ jobs:
                   lib_path = info.get('library_path', 'Unknown')
                   print(f'[SUCCESS] Native library loaded: {lib_path}')
 
+                  # Test Windows testable plugins (CI containers don't have GPU for radiation/energybalance testing)
+                  # We build GPU plugins but can't test them in CI environment
+                  available_plugins = info.get('available_plugins', [])
+                  testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance']
+                  built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation']
+
+                  print(f'[INFO] Available plugins: {sorted(available_plugins)}')
+                  print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
+                  print(f'[INFO] Testable plugins (in CI): {sorted(testable_plugins)}')
+
+                  # Check that we have at least the testable plugins (GPU plugins may not be testable in CI)
+                  missing_testable = set(testable_plugins) - set(available_plugins)
+                  if missing_testable:
+                      print(f'[FAILED] Missing testable plugins: {sorted(missing_testable)}')
+                      raise RuntimeError(f'Missing testable plugins: {missing_testable}')
+                  else:
+                      print(f'[SUCCESS] All {len(testable_plugins)} testable plugins are available')
+
+                  # Report on GPU plugins (built but may not be testable in CI)
+                  gpu_plugins = ['energybalance', 'radiation']
+                  available_gpu = [p for p in gpu_plugins if p in available_plugins]
+                  if available_gpu:
+                      print(f'[INFO] GPU plugins available for testing: {sorted(available_gpu)}')
+                  else:
+                      print(f'[INFO] GPU plugins not available for CI testing (expected in containerized environment)')
+
               # Asset validation (non-critical, allow failure)
               try:
                   from pyhelios.assets import get_asset_manager
@@ -364,7 +431,7 @@ jobs:
               traceback.print_exc()
               raise
           " &&
-          python -m pytest {project}/tests/test_cross_platform.py {project}/tests/test_datatypes.py --tb=short -v
+          python -m pytest {project}/tests/ --tb=short -v
         
         # Platform-specific test requirements (pytest-forked only works on Unix systems)
         CIBW_TEST_REQUIRES_LINUX: "pytest pytest-forked"

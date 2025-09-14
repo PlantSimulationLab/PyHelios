@@ -1180,6 +1180,284 @@ end_header
                 _safe_unlink(tmp_file.name)
 
 
+@pytest.mark.cross_platform
+class TestFileExportMockMode:
+    """Test file export methods in mock mode for cross-platform compatibility."""
+
+    @pytest.mark.mock_mode
+    def test_writePLY_mock_mode(self):
+        """Test writePLY availability check in mock mode."""
+        from pyhelios.plugins.loader import get_library_info
+
+        library_info = get_library_info()
+        if library_info.get('is_mock', False):
+            with Context() as context:
+                with pytest.raises(RuntimeError, match="mock mode"):
+                    context.writePLY("test.ply")
+
+    @pytest.mark.mock_mode
+    def test_writeOBJ_mock_mode(self):
+        """Test writeOBJ availability check in mock mode."""
+        from pyhelios.plugins.loader import get_library_info
+
+        library_info = get_library_info()
+        if library_info.get('is_mock', False):
+            with Context() as context:
+                with pytest.raises(RuntimeError, match="mock mode"):
+                    context.writeOBJ("test.obj")
+
+    def test_file_export_api_structure(self):
+        """Test that export methods have expected structure."""
+        # Test method signatures exist
+        assert hasattr(Context, 'writePLY')
+        assert hasattr(Context, 'writeOBJ')
+
+        # Test that methods are callable
+        assert callable(getattr(Context, 'writePLY'))
+        assert callable(getattr(Context, 'writeOBJ'))
+
+    def test_export_parameter_validation_types(self):
+        """Test export parameter validation without native library."""
+        # This tests parameter validation logic that doesn't require native calls
+        pass  # Parameter validation will be tested in native tests
+
+
+@pytest.mark.native_only
+class TestFileExportOperations:
+    """Test file export methods with actual file I/O operations."""
+
+    def test_writePLY_all_primitives(self, basic_context):
+        """Test PLY export with all primitives."""
+        # Create some geometry
+        patch_uuid = basic_context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        # Test export to PLY file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test_output.ply")
+
+            # Export all primitives
+            basic_context.writePLY(output_file)
+
+            # Verify file was created
+            assert os.path.exists(output_file)
+            assert os.path.isfile(output_file)
+
+            # Verify file has content
+            with open(output_file, 'r') as f:
+                content = f.read()
+                assert 'ply' in content
+                assert 'format ascii 1.0' in content
+
+    def test_writePLY_subset_primitives(self, basic_context):
+        """Test PLY export with subset of primitives."""
+        # Create geometry
+        patch_uuid = basic_context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        # Test export specific UUIDs
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test_subset.ply")
+
+            # Export only the triangle
+            basic_context.writePLY(output_file, UUIDs=[tri_uuid])
+
+            # Verify file was created
+            assert os.path.exists(output_file)
+
+            # Verify file has content
+            with open(output_file, 'r') as f:
+                content = f.read()
+                assert 'ply' in content
+
+    def test_writeOBJ_all_primitives(self, basic_context):
+        """Test OBJ export with all primitives."""
+        # Create some geometry
+        patch_uuid = basic_context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        # Test export to OBJ file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test_output.obj")
+
+            # Export all primitives
+            basic_context.writeOBJ(output_file)
+
+            # Verify OBJ file was created
+            assert os.path.exists(output_file)
+
+            # OBJ export also creates MTL file
+            mtl_file = os.path.join(temp_dir, "test_output.mtl")
+            assert os.path.exists(mtl_file)
+
+            # Verify files have content
+            with open(output_file, 'r') as f:
+                content = f.read()
+                assert 'v ' in content  # vertex data
+                assert 'f ' in content  # face data
+
+    def test_writeOBJ_with_options(self, basic_context):
+        """Test OBJ export with write_normals and silent options."""
+        # Create geometry
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test_normals.obj")
+
+            # Export with normals enabled and silent mode
+            basic_context.writeOBJ(output_file, write_normals=True, silent=True)
+
+            assert os.path.exists(output_file)
+
+    def test_writeOBJ_subset_primitives(self, basic_context):
+        """Test OBJ export with subset of primitives."""
+        # Create geometry
+        patch_uuid = basic_context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test_subset.obj")
+
+            # Export only the patch
+            basic_context.writeOBJ(output_file, UUIDs=[patch_uuid])
+
+            assert os.path.exists(output_file)
+
+    def test_writeOBJ_with_primitive_data(self, basic_context):
+        """Test OBJ export with primitive data fields."""
+        # Create geometry and add data
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+        basic_context.setPrimitiveDataFloat(tri_uuid, "temperature", 25.5)
+        basic_context.setPrimitiveDataString(tri_uuid, "label", "test_triangle")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test_data.obj")
+
+            # Export with primitive data
+            basic_context.writeOBJ(output_file, UUIDs=[tri_uuid],
+                                 primitive_data_fields=["temperature", "label"])
+
+            assert os.path.exists(output_file)
+
+    def test_export_file_path_validation(self, basic_context):
+        """Test file path validation for export operations."""
+        # Test invalid extensions
+        with pytest.raises(ValueError, match="Invalid file extension"):
+            basic_context.writePLY("test.txt")
+
+        with pytest.raises(ValueError, match="Invalid file extension"):
+            basic_context.writeOBJ("test.txt")
+
+        # Test non-existent output directory
+        with pytest.raises(ValueError, match="Output directory does not exist"):
+            basic_context.writePLY("/nonexistent/directory/test.ply")
+
+        with pytest.raises(ValueError, match="Output directory does not exist"):
+            basic_context.writeOBJ("/nonexistent/directory/test.obj")
+
+    def test_export_uuid_validation(self, basic_context):
+        """Test UUID validation in export operations."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test.ply")
+
+            # Test with non-existent UUID
+            with pytest.raises(RuntimeError, match="UUID"):
+                basic_context.writePLY(output_file, UUIDs=[99999])
+
+            # Test with empty UUID list
+            with pytest.raises(ValueError, match="UUIDs list cannot be empty"):
+                basic_context.writePLY(output_file, UUIDs=[])
+
+            # Same tests for OBJ
+            obj_file = os.path.join(temp_dir, "test.obj")
+
+            with pytest.raises(RuntimeError, match="UUID"):
+                basic_context.writeOBJ(obj_file, UUIDs=[99999])
+
+            with pytest.raises(ValueError, match="UUIDs list cannot be empty"):
+                basic_context.writeOBJ(obj_file, UUIDs=[])
+
+    def test_export_parameter_validation(self, basic_context):
+        """Test parameter validation for export methods."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Test empty filename
+            with pytest.raises(ValueError, match="cannot be empty"):
+                basic_context.writePLY("")
+
+            with pytest.raises(ValueError, match="cannot be empty"):
+                basic_context.writeOBJ("")
+
+            # Test OBJ with empty data fields
+            tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+            obj_file = os.path.join(temp_dir, "test.obj")
+
+            with pytest.raises(ValueError, match="primitive_data_fields list cannot be empty"):
+                basic_context.writeOBJ(obj_file, UUIDs=[tri_uuid], primitive_data_fields=[])
+
+            with pytest.raises(ValueError, match="UUIDs list cannot be empty when exporting primitive data"):
+                basic_context.writeOBJ(obj_file, UUIDs=[], primitive_data_fields=["temperature"])
+
+    def test_round_trip_export_import(self, basic_context):
+        """Test round-trip: create geometry → export → import → verify."""
+        # Create original geometry
+        original_patch = basic_context.addPatch(center=vec3(1, 2, 3), size=vec2(2, 2))
+        original_tri = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Export to PLY
+            ply_file = os.path.join(temp_dir, "roundtrip.ply")
+            basic_context.writePLY(ply_file)
+
+            # Create new context and import
+            with Context() as new_context:
+                imported_uuids = new_context.loadPLY(ply_file)
+
+                # Verify we got some UUIDs back
+                assert len(imported_uuids) > 0
+                assert all(isinstance(uuid, int) for uuid in imported_uuids)
+
+            # Test OBJ round-trip
+            obj_file = os.path.join(temp_dir, "roundtrip.obj")
+            basic_context.writeOBJ(obj_file)
+
+            with Context() as new_context:
+                imported_uuids = new_context.loadOBJ(obj_file)
+                assert len(imported_uuids) > 0
+
+    def test_export_large_geometry_performance(self, basic_context):
+        """Test export performance with larger geometry sets."""
+        import time
+
+        # Create moderate amount of geometry (100 triangles)
+        uuids = []
+        for i in range(100):
+            x_offset = i * 0.1
+            uuid = basic_context.addTriangle(
+                vec3(x_offset, 0, 0),
+                vec3(x_offset + 0.05, 0, 0),
+                vec3(x_offset + 0.025, 0.05, 0)
+            )
+            uuids.append(uuid)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Test PLY export performance
+            ply_file = os.path.join(temp_dir, "performance.ply")
+            start_time = time.time()
+            basic_context.writePLY(ply_file)
+            ply_time = time.time() - start_time
+
+            # Should complete within reasonable time (adjust if needed)
+            assert ply_time < 5.0, f"PLY export took too long: {ply_time:.2f}s"
+
+            # Test OBJ export performance
+            obj_file = os.path.join(temp_dir, "performance.obj")
+            start_time = time.time()
+            basic_context.writeOBJ(obj_file)
+            obj_time = time.time() - start_time
+
+            assert obj_time < 5.0, f"OBJ export took too long: {obj_time:.2f}s"
+
+
 @pytest.mark.native_only
 class TestPrimitiveInfoOperations:
     """Test PrimitiveInfo and related methods."""

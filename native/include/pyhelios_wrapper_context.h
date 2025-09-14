@@ -476,6 +476,55 @@ PYHELIOS_API unsigned int* loadOBJWithOriginScaleRotationColorUpaxis(helios::Con
  */
 PYHELIOS_API unsigned int* loadXML(helios::Context* context, const char* filename, bool quiet, unsigned int* size);
 
+/**
+ * @brief Write geometry to PLY file (all primitives)
+ * @param context Pointer to the Context
+ * @param filename Output PLY filename
+ */
+PYHELIOS_API void writePLY(helios::Context* context, const char* filename);
+
+/**
+ * @brief Write geometry to PLY file (subset of primitives)
+ * @param context Pointer to the Context
+ * @param filename Output PLY filename
+ * @param uuids Array of primitive UUIDs to export
+ * @param count Number of UUIDs in the array
+ */
+PYHELIOS_API void writePLYWithUUIDs(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count);
+
+/**
+ * @brief Write geometry to OBJ file (all primitives)
+ * @param context Pointer to the Context
+ * @param filename Output OBJ filename
+ * @param write_normals Whether to include vertex normals
+ * @param silent Whether to suppress output messages
+ */
+PYHELIOS_API void writeOBJ(helios::Context* context, const char* filename, bool write_normals, bool silent);
+
+/**
+ * @brief Write geometry to OBJ file (subset of primitives)
+ * @param context Pointer to the Context
+ * @param filename Output OBJ filename
+ * @param uuids Array of primitive UUIDs to export
+ * @param count Number of UUIDs in the array
+ * @param write_normals Whether to include vertex normals
+ * @param silent Whether to suppress output messages
+ */
+PYHELIOS_API void writeOBJWithUUIDs(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count, bool write_normals, bool silent);
+
+/**
+ * @brief Write geometry to OBJ file with primitive data fields
+ * @param context Pointer to the Context
+ * @param filename Output OBJ filename
+ * @param uuids Array of primitive UUIDs to export
+ * @param count Number of UUIDs in the array
+ * @param data_fields Array of primitive data field names to export
+ * @param field_count Number of data fields
+ * @param write_normals Whether to include vertex normals
+ * @param silent Whether to suppress output messages
+ */
+PYHELIOS_API void writeOBJWithPrimitiveData(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count, const char** data_fields, unsigned int field_count, bool write_normals, bool silent);
+
 //=============================================================================
 // Primitive Data Functions
 //=============================================================================

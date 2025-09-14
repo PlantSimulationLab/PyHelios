@@ -36,26 +36,24 @@ def main():
         with Context() as context:
             # Add a few patches with different colors
             colors = [
-                [1.0, 0.2, 0.2],  # Red
-                [0.2, 1.0, 0.2],  # Green 
-                [0.2, 0.2, 1.0],  # Blue
-                [1.0, 1.0, 0.2],  # Yellow
+                RGBcolor(1.0, 0.2, 0.2),  # Red
+                RGBcolor(0.2, 1.0, 0.2),  # Green
+                RGBcolor(0.2, 0.2, 1.0),  # Blue
+                RGBcolor(1.0, 1.0, 0.2),  # Yellow
             ]
-            
+
             positions = [
-                [0, 0, 0],
-                [2, 0, 0], 
-                [0, 2, 0],
-                [1, 1, 1],
+                vec3(0, 0, 0),
+                vec3(2, 0, 0),
+                vec3(0, 2, 0),
+                vec3(1, 1, 1),
             ]
             
             print("Creating sample geometry...")
             for i, (pos, color) in enumerate(zip(positions, colors)):
-                center = vec3(*pos)
                 size = vec2(0.8, 0.8)
-                color_rgb = RGBcolor(*color)
-                uuid = context.addPatch(center=center, size=size, color=color_rgb)
-                print(f"  Created patch {i+1} at {pos} with color {color}")
+                uuid = context.addPatch(center=pos, size=size, color=color)
+                print(f"  Created patch {i+1} at ({pos.x}, {pos.y}, {pos.z}) with color ({color.r}, {color.g}, {color.b})")
             
             # Create visualizer and display
             print("\nOpening visualization...")

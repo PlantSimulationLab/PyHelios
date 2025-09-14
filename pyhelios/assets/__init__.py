@@ -73,7 +73,8 @@ class AssetPathManager:
         pyhelios_parent = package_root.parent.parent  # Go up to site-packages level
         
         # Look for .dist-info directory which indicates wheel installation
-        return any(pyhelios_parent.glob('pyhelios-*.dist-info'))
+        # Check for both pyhelios and pyhelios3d (the PyPI package name)
+        return any(pyhelios_parent.glob('pyhelios-*.dist-info')) or any(pyhelios_parent.glob('pyhelios3d-*.dist-info'))
     
     def _get_helios_build_path(self) -> Optional[Path]:
         """

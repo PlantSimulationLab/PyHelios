@@ -131,24 +131,27 @@ class Context:
     
     def _validate_uuid(self, uuid: int):
         """Validate that a UUID exists in this context.
-        
+
         Args:
             uuid: The UUID to validate
-            
+
         Raises:
-            ValueError: If UUID is invalid or doesn't exist in context
+            RuntimeError: If UUID is invalid or doesn't exist in context
         """
         # First check if it's a reasonable UUID value
         if not isinstance(uuid, int) or uuid < 0:
-            raise ValueError(f"Invalid UUID: {uuid}. UUIDs must be non-negative integers.")
-        
+            raise RuntimeError(f"Invalid UUID: {uuid}. UUIDs must be non-negative integers.")
+
         # Check if UUID exists in context by getting all valid UUIDs
         try:
             valid_uuids = self.getAllUUIDs()
             if uuid not in valid_uuids:
-                raise ValueError(f"UUID {uuid} does not exist in context. Valid UUIDs: {valid_uuids[:10]}{'...' if len(valid_uuids) > 10 else ''}")
-        except:
-            # If we can't get valid UUIDs (e.g., in mock mode), skip validation
+                raise RuntimeError(f"UUID {uuid} does not exist in context. Valid UUIDs: {valid_uuids[:10]}{'...' if len(valid_uuids) > 10 else ''}")
+        except RuntimeError:
+            # Re-raise RuntimeError (validation failed)
+            raise
+        except Exception:
+            # If we can't get valid UUIDs due to other issues (e.g., mock mode), skip validation
             # The _check_context_available() call will have already caught mock mode
             pass
         
@@ -193,6 +196,49 @@ class Context:
         if not os.path.isfile(abs_path):
             raise ValueError(f"Path is not a file: {abs_path}")
         
+        return abs_path
+
+    def _validate_output_file_path(self, filename: str, expected_extensions: List[str] = None) -> str:
+        """Validate and normalize output file path for security.
+
+        Args:
+            filename: Output file path to validate
+            expected_extensions: List of allowed file extensions (e.g., ['.ply', '.obj'])
+
+        Returns:
+            Normalized absolute path
+
+        Raises:
+            ValueError: If path is invalid or potentially dangerous
+            PermissionError: If output directory is not writable
+        """
+        import os.path
+
+        # Check for empty filename
+        if not filename or not filename.strip():
+            raise ValueError("Filename cannot be empty")
+
+        # Convert to absolute path and normalize
+        abs_path = os.path.abspath(filename)
+
+        # Check for path traversal attempts
+        normalized_path = os.path.normpath(abs_path)
+        if abs_path != normalized_path:
+            raise ValueError(f"Invalid file path (potential path traversal): {filename}")
+
+        # Check file extension
+        if expected_extensions:
+            file_ext = os.path.splitext(abs_path)[1].lower()
+            if file_ext not in [ext.lower() for ext in expected_extensions]:
+                raise ValueError(f"Invalid file extension '{file_ext}'. Expected one of: {expected_extensions}")
+
+        # Check if output directory exists and is writable
+        output_dir = os.path.dirname(abs_path)
+        if not os.path.exists(output_dir):
+            raise ValueError(f"Output directory does not exist: {output_dir}")
+        if not os.access(output_dir, os.W_OK):
+            raise PermissionError(f"Output directory is not writable: {output_dir}")
+
         return abs_path
 
     def __enter__(self):
@@ -729,6 +775,102 @@ class Context:
         validated_filename = self._validate_file_path(filename, ['.xml'])
         
         return context_wrapper.loadXML(self.context, validated_filename, quiet)
+
+    def writePLY(self, filename: str, UUIDs: Optional[List[int]] = None) -> None:
+        """
+        Write geometry to a PLY (Stanford Polygon) file.
+
+        Args:
+            filename: Path to the output PLY file
+            UUIDs: Optional list of primitive UUIDs to export. If None, exports all primitives
+
+        Raises:
+            ValueError: If filename is invalid or UUIDs are invalid
+            PermissionError: If output directory is not writable
+            FileNotFoundError: If UUIDs do not exist in context
+            RuntimeError: If Context is in mock mode
+
+        Example:
+            >>> context.writePLY("output.ply")  # Export all primitives
+            >>> context.writePLY("subset.ply", [uuid1, uuid2])  # Export specific primitives
+        """
+        self._check_context_available()
+
+        # Validate output file path for security
+        validated_filename = self._validate_output_file_path(filename, ['.ply'])
+
+        if UUIDs is None:
+            # Export all primitives
+            context_wrapper.writePLY(self.context, validated_filename)
+        else:
+            # Validate UUIDs exist in context
+            if not UUIDs:
+                raise ValueError("UUIDs list cannot be empty. Use UUIDs=None to export all primitives")
+
+            # Validate each UUID exists
+            for uuid in UUIDs:
+                self._validate_uuid(uuid)
+
+            # Export specified UUIDs
+            context_wrapper.writePLYWithUUIDs(self.context, validated_filename, UUIDs)
+
+    def writeOBJ(self, filename: str, UUIDs: Optional[List[int]] = None,
+                 primitive_data_fields: Optional[List[str]] = None,
+                 write_normals: bool = False, silent: bool = False) -> None:
+        """
+        Write geometry to an OBJ (Wavefront) file.
+
+        Args:
+            filename: Path to the output OBJ file
+            UUIDs: Optional list of primitive UUIDs to export. If None, exports all primitives
+            primitive_data_fields: Optional list of primitive data field names to export
+            write_normals: Whether to include vertex normals in the output
+            silent: Whether to suppress output messages during export
+
+        Raises:
+            ValueError: If filename is invalid, UUIDs are invalid, or data fields don't exist
+            PermissionError: If output directory is not writable
+            FileNotFoundError: If UUIDs do not exist in context
+            RuntimeError: If Context is in mock mode
+
+        Example:
+            >>> context.writeOBJ("output.obj")  # Export all primitives
+            >>> context.writeOBJ("subset.obj", [uuid1, uuid2])  # Export specific primitives
+            >>> context.writeOBJ("with_data.obj", [uuid1], ["temperature", "area"])  # Export with data
+        """
+        self._check_context_available()
+
+        # Validate output file path for security
+        validated_filename = self._validate_output_file_path(filename, ['.obj'])
+
+        if UUIDs is None:
+            # Export all primitives
+            context_wrapper.writeOBJ(self.context, validated_filename, write_normals, silent)
+        elif primitive_data_fields is None:
+            # Export specified UUIDs without data fields
+            if not UUIDs:
+                raise ValueError("UUIDs list cannot be empty. Use UUIDs=None to export all primitives")
+
+            # Validate each UUID exists
+            for uuid in UUIDs:
+                self._validate_uuid(uuid)
+
+            context_wrapper.writeOBJWithUUIDs(self.context, validated_filename, UUIDs, write_normals, silent)
+        else:
+            # Export specified UUIDs with primitive data fields
+            if not UUIDs:
+                raise ValueError("UUIDs list cannot be empty when exporting primitive data")
+            if not primitive_data_fields:
+                raise ValueError("primitive_data_fields list cannot be empty")
+
+            # Validate each UUID exists
+            for uuid in UUIDs:
+                self._validate_uuid(uuid)
+
+            # Note: Primitive data field validation is handled by the native library
+            # which will raise appropriate errors if fields don't exist for the specified primitives
+
+            context_wrapper.writeOBJWithPrimitiveData(self.context, validated_filename, UUIDs, primitive_data_fields, write_normals, silent)
 
     def addTrianglesFromArrays(self, vertices: np.ndarray, faces: np.ndarray, 
                               colors: Optional[np.ndarray] = None) -> List[int]:

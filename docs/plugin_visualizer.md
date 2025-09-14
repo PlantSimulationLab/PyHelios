@@ -32,17 +32,17 @@ patch_uuid = context.addPatch(
 with Visualizer(width=1024, height=768) as visualizer:
     # Build scene geometry
     visualizer.buildContextGeometry(context)
-    
+
     # Set up camera
     visualizer.setCameraPosition(
-        position=[5, 5, 5],
-        lookAt=[0, 0, 0]
+        position=vec3(5, 5, 5),
+        lookAt=vec3(0, 0, 0)
     )
-    
+
     # Configure scene
-    visualizer.setBackgroundColor([0.5, 0.7, 1.0])  # Sky blue
+    visualizer.setBackgroundColor(RGBcolor(0.5, 0.7, 1.0))  # Sky blue
     visualizer.setLightingModel("phong")
-    
+
     # Show interactive visualization
     visualizer.plotInteractive()
 ```
@@ -156,20 +156,20 @@ for frame in range(100):
 ```python
 # Set camera position using Cartesian coordinates (verified method)
 visualizer.setCameraPosition(
-    position=[10, 10, 10],  # Camera position [x, y, z]
-    lookAt=[0, 0, 0]        # Look-at point [x, y, z]
+    position=vec3(10, 10, 10),  # Camera position
+    lookAt=vec3(0, 0, 0)        # Look-at point
 )
 
 # Top-down view
 visualizer.setCameraPosition(
-    position=[0, 0, 20],
-    lookAt=[0, 0, 0]
+    position=vec3(0, 0, 20),
+    lookAt=vec3(0, 0, 0)
 )
 
 # Side view
 visualizer.setCameraPosition(
-    position=[20, 0, 5],
-    lookAt=[0, 0, 5]
+    position=vec3(20, 0, 5),
+    lookAt=vec3(0, 0, 5)
 )
 ```
 
@@ -178,8 +178,8 @@ visualizer.setCameraPosition(
 ```python
 # Set camera position using spherical coordinates (verified method)
 visualizer.setCameraPositionSpherical(
-    angle=[15, 0.785, 1.57],  # [radius, zenith, azimuth] in radians
-    lookAt=[0, 0, 0]          # Look-at point [x, y, z]
+    angle=SphericalCoord(15, 0.785, 1.57),  # [radius, elevation, azimuth] in radians
+    lookAt=vec3(0, 0, 0)                    # Look-at point
 )
 
 # Orbit around scene
@@ -187,8 +187,8 @@ import math
 for angle in range(0, 360, 10):
     azimuth = math.radians(angle)
     visualizer.setCameraPositionSpherical(
-        angle=[20, math.pi/4, azimuth],  # Fixed radius and zenith
-        lookAt=[0, 0, 0]
+        angle=SphericalCoord(20, math.pi/4, azimuth),  # Fixed radius and elevation
+        lookAt=vec3(0, 0, 0)
     )
     visualizer.plotUpdate()
     visualizer.printWindow(f"orbit_{angle:03d}.jpg")
@@ -202,18 +202,19 @@ def animate_camera(visualizer, start_pos, end_pos, frames=30):
     for i in range(frames):
         # Linear interpolation
         t = i / (frames - 1)
-        current_pos = [
-            start_pos[j] + t * (end_pos[j] - start_pos[j])
-            for j in range(3)
-        ]
-        
-        visualizer.setCameraPosition(current_pos, [0, 0, 0])
+        current_pos = vec3(
+            start_pos.x + t * (end_pos.x - start_pos.x),
+            start_pos.y + t * (end_pos.y - start_pos.y),
+            start_pos.z + t * (end_pos.z - start_pos.z)
+        )
+
+        visualizer.setCameraPosition(current_pos, vec3(0, 0, 0))
         visualizer.plotUpdate()
         visualizer.printWindow(f"camera_anim_{i:03d}.jpg")
 
 # Use the animation
-start = [20, 0, 10]
-end = [0, 20, 10]
+start = vec3(20, 0, 10)
+end = vec3(0, 20, 10)
 animate_camera(visualizer, start, end)
 ```
 
@@ -223,12 +224,12 @@ animate_camera(visualizer, start, end)
 
 ```python
 # Set background color (verified method)
-visualizer.setBackgroundColor([0.2, 0.3, 0.5])  # Dark blue
-visualizer.setBackgroundColor([1.0, 1.0, 1.0])  # White
-visualizer.setBackgroundColor([0.0, 0.0, 0.0])  # Black
+visualizer.setBackgroundColor(RGBcolor(0.2, 0.3, 0.5))  # Dark blue
+visualizer.setBackgroundColor(RGBcolor(1.0, 1.0, 1.0))  # White
+visualizer.setBackgroundColor(RGBcolor(0.0, 0.0, 0.0))  # Black
 
 # Set light direction (verified method)
-visualizer.setLightDirection([0.5, 0.5, -1.0])  # Directional light
+visualizer.setLightDirection(vec3(0.5, 0.5, -1.0))  # Directional light
 
 # Configure lighting model (verified method and constants)
 visualizer.setLightingModel(0)              # No lighting
@@ -243,19 +244,19 @@ visualizer.setLightingModel("phong_shadowed")  # String equivalent
 
 ```python
 # Outdoor daylight
-visualizer.setBackgroundColor([0.5, 0.7, 1.0])     # Sky blue
-visualizer.setLightDirection([0.3, 0.3, -0.9])     # Sun direction
-visualizer.setLightingModel("phong_shadowed")       # Realistic shadows
+visualizer.setBackgroundColor(RGBcolor(0.5, 0.7, 1.0))     # Sky blue
+visualizer.setLightDirection(vec3(0.3, 0.3, -0.9))         # Sun direction
+visualizer.setLightingModel("phong_shadowed")               # Realistic shadows
 
 # Indoor studio lighting
-visualizer.setBackgroundColor([0.1, 0.1, 0.1])     # Dark background
-visualizer.setLightDirection([0.0, 0.0, -1.0])     # Top-down light
-visualizer.setLightingModel("phong")                # Clean lighting
+visualizer.setBackgroundColor(RGBcolor(0.1, 0.1, 0.1))     # Dark background
+visualizer.setLightDirection(vec3(0.0, 0.0, -1.0))         # Top-down light
+visualizer.setLightingModel("phong")                        # Clean lighting
 
 # Technical/CAD view
-visualizer.setBackgroundColor([0.9, 0.9, 0.9])     # Light gray
-visualizer.setLightDirection([0.577, 0.577, -0.577])  # Isometric
-visualizer.setLightingModel("phong")                # Even lighting
+visualizer.setBackgroundColor(RGBcolor(0.9, 0.9, 0.9))     # Light gray
+visualizer.setLightDirection(vec3(0.577, 0.577, -0.577))   # Isometric
+visualizer.setLightingModel("phong")                        # Even lighting
 ```
 
 ### Data Visualization
@@ -335,8 +336,8 @@ try:
         
         # Set camera for good viewing angle
         visualizer.setCameraPosition(
-            position=[8, 8, 8],
-            lookAt=[2.5, 2.5, 2]
+            position=vec3(8, 8, 8),
+            lookAt=vec3(2.5, 2.5, 2)
         )
         
         # Use lighting that doesn't interfere with data visualization
@@ -407,7 +408,7 @@ views = {
 }
 
 for view_name, (position, look_at) in views.items():
-    visualizer.setCameraPosition(position, look_at)
+    visualizer.setCameraPosition(vec3(*position), vec3(*look_at))
     visualizer.plotUpdate()
     visualizer.printWindow(f"scene_{view_name}.jpg")
 ```
@@ -453,9 +454,9 @@ try:
         visualizer.buildContextGeometry(context)
         
         # Set up nice view
-        visualizer.setCameraPosition([8, 8, 6], [0, 0, 3])
-        visualizer.setBackgroundColor([0.5, 0.7, 1.0])
-        visualizer.setLightDirection([0.3, 0.3, -0.9])
+        visualizer.setCameraPosition(vec3(8, 8, 6), vec3(0, 0, 3))
+        visualizer.setBackgroundColor(RGBcolor(0.5, 0.7, 1.0))
+        visualizer.setLightDirection(vec3(0.3, 0.3, -0.9))
         visualizer.setLightingModel("phong_shadowed")
         
         # Show interactive view
@@ -478,7 +479,7 @@ with WeberPennTree(context) as wpt:
 try:
     with Visualizer(800, 600, headless=True) as visualizer:
         visualizer.buildContextGeometry(context)
-        visualizer.setBackgroundColor([0.8, 0.9, 1.0])
+        visualizer.setBackgroundColor(RGBcolor(0.8, 0.9, 1.0))
         visualizer.setLightingModel("phong")
         
         # Create 360-degree rotation
@@ -489,7 +490,7 @@ try:
             x = radius * math.cos(radians)
             y = radius * math.sin(radians)
             
-            visualizer.setCameraPosition([x, y, 6], [0, 0, 3])
+            visualizer.setCameraPosition(vec3(x, y, 6), vec3(0, 0, 3))
             visualizer.plotUpdate()
             visualizer.printWindow(f"animation/frame_{angle:03d}.jpg")
             
@@ -516,8 +517,8 @@ for i, tree_type in enumerate(tree_types):
             visualizer.buildContextGeometry(context)
             
             # Standardized view
-            visualizer.setCameraPosition([6, 6, 6], [0, 0, 3])
-            visualizer.setBackgroundColor([1.0, 1.0, 1.0])
+            visualizer.setCameraPosition(vec3(6, 6, 6), vec3(0, 0, 3))
+            visualizer.setBackgroundColor(RGBcolor(1.0, 1.0, 1.0))
             visualizer.setLightingModel("phong")
             
             visualizer.plotUpdate()

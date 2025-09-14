@@ -196,45 +196,6 @@ for uuid in leaf_uuids:
     context.setPrimitiveDataInt(uuid, "tree_id", tree_id)
 ```
 
-### With RadiationModel
-
-```python
-from pyhelios import RadiationModel, RadiationModelError
-
-# Generate tree
-tree_id = wpt.buildTree(WPTType.APPLE)
-
-# Run radiation simulation if available
-try:
-    with RadiationModel(context) as radiation:
-        radiation.add_radiation_band("PAR")
-        radiation.set_direct_ray_count("PAR", 1000)
-        
-        # Add solar radiation
-        source_id = radiation.add_collimated_radiation_source(
-            direction=(0.3, 0.3, -0.9)
-        )
-        radiation.set_source_flux(source_id, "PAR", 1200.0)
-        
-        radiation.run_band("PAR")
-        
-        # Analyze results on tree
-        leaf_uuids = wpt.getLeafUUIDs(tree_id)
-        total_par_absorption = 0
-        for uuid in leaf_uuids:
-            try:
-                par_flux = context.getPrimitiveData(uuid, "radiation_flux_PAR")
-                leaf_area = context.getPrimitiveArea(uuid)
-                total_par_absorption += par_flux * leaf_area
-            except:
-                pass
-        
-        print(f"Tree PAR absorption: {total_par_absorption:.2f} W")
-        
-except RadiationModelError:
-    print("Radiation modeling not available")
-```
-
 ### With Visualization
 
 ```python

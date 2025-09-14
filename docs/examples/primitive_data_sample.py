@@ -63,10 +63,10 @@ def main():
         context.setPrimitiveData(patch_uuid, "wind_direction", wind_direction)
         print(f"Set wind_direction (vec3): {wind_direction}")
         
-        # Set vec3 data using list
-        soil_nutrients = [2.1, 1.8, 3.2]
+        # Set vec3 data using vec3 type
+        soil_nutrients = vec3(2.1, 1.8, 3.2)
         context.setPrimitiveData(patch_uuid, "soil_nutrients", soil_nutrients)
-        print(f"Set soil_nutrients (list as vec3): {soil_nutrients}")
+        print(f"Set soil_nutrients (vec3): {soil_nutrients}")
         
         # === CHECKING DATA EXISTENCE ===
         print("\n--- Checking Data Existence ---")
@@ -153,15 +153,15 @@ def main():
         context.setPrimitiveData(patch_uuid, "rgba_int", rgba_int)
         print(f"Set rgba_int (int4): {rgba_int}")
         
-        # List/tuple automatic type detection
-        context.setPrimitiveData(patch_uuid, "size_2d", [10.5, 15.2])  # Will be vec2
-        context.setPrimitiveData(patch_uuid, "grid_pos", [5, 7])        # Will be int2
-        context.setPrimitiveData(patch_uuid, "transform", [1.0, 0.0, 0.0, 1.0])  # Will be vec4
-        context.setPrimitiveData(patch_uuid, "indices", [100, 200, 300, 400])    # Will be int4
-        print("Set size_2d (list->vec2): [10.5, 15.2]")
-        print("Set grid_pos (list->int2): [5, 7]")
-        print("Set transform (list->vec4): [1.0, 0.0, 0.0, 1.0]")
-        print("Set indices (list->int4): [100, 200, 300, 400]")
+        # Vector type examples
+        context.setPrimitiveData(patch_uuid, "size_2d", vec2(10.5, 15.2))
+        context.setPrimitiveData(patch_uuid, "grid_pos", int2(5, 7))
+        context.setPrimitiveData(patch_uuid, "transform", vec4(1.0, 0.0, 0.0, 1.0))
+        context.setPrimitiveData(patch_uuid, "indices", int4(100, 200, 300, 400))
+        print("Set size_2d (vec2): (10.5, 15.2)")
+        print("Set grid_pos (int2): (5, 7)")
+        print("Set transform (vec4): (1.0, 0.0, 0.0, 1.0)")
+        print("Set indices (int4): (100, 200, 300, 400)")
         
         # Retrieving extended types (auto-detection)
         print("\n--- Retrieving Extended Types (Auto-Detection) ---")
@@ -236,7 +236,7 @@ def main():
         
         # Create more geometry
         sphere_center = vec3(3, 0, 0)
-        sphere_uuid = context.addSphere(8, sphere_center, 1.0)[0]  # Get first triangle UUID
+        sphere_uuid = context.addSphere(center=sphere_center, radius=1.0, ndivs=8)[0]  # Get first triangle UUID
         print(f"Created sphere with first triangle UUID: {sphere_uuid}")
         
         # Add data to sphere

@@ -287,8 +287,58 @@ except AttributeError:
 # Check if basic file loading functions are available
 _BASIC_FILE_LOADING_AVAILABLE = _BASIC_PLY_AVAILABLE
 
-# For backward compatibility, set this to True if any file loading functions are available  
+# For backward compatibility, set this to True if any file loading functions are available
 _FILE_LOADING_FUNCTIONS_AVAILABLE = _PLY_LOADING_FUNCTIONS_AVAILABLE or _OBJ_XML_LOADING_FUNCTIONS_AVAILABLE or _BASIC_FILE_LOADING_AVAILABLE
+
+# Try to set up file export function prototypes individually
+_AVAILABLE_EXPORT_FUNCTIONS = []
+_FILE_EXPORT_FUNCTIONS_AVAILABLE = False
+
+# writePLY functions
+try:
+    helios_lib.writePLY.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.writePLY.restype = None
+    helios_lib.writePLY.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writePLY')
+except AttributeError:
+    pass
+
+try:
+    helios_lib.writePLYWithUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.writePLYWithUUIDs.restype = None
+    helios_lib.writePLYWithUUIDs.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writePLYWithUUIDs')
+except AttributeError:
+    pass
+
+# writeOBJ functions
+try:
+    helios_lib.writeOBJ.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_bool, ctypes.c_bool]
+    helios_lib.writeOBJ.restype = None
+    helios_lib.writeOBJ.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writeOBJ')
+except AttributeError:
+    pass
+
+try:
+    helios_lib.writeOBJWithUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_bool, ctypes.c_bool]
+    helios_lib.writeOBJWithUUIDs.restype = None
+    helios_lib.writeOBJWithUUIDs.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writeOBJWithUUIDs')
+except AttributeError:
+    pass
+
+try:
+    helios_lib.writeOBJWithPrimitiveData.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.c_bool, ctypes.c_bool]
+    helios_lib.writeOBJWithPrimitiveData.restype = None
+    helios_lib.writeOBJWithPrimitiveData.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writeOBJWithPrimitiveData')
+except AttributeError:
+    pass
+
+# Mark export functions as available if we found any
+if _AVAILABLE_EXPORT_FUNCTIONS:
+    _FILE_EXPORT_FUNCTIONS_AVAILABLE = True
 
 # Try to set up triangle function prototypes individually (critical pattern from plugin integration guide)
 _AVAILABLE_TRIANGLE_FUNCTIONS = []
@@ -607,6 +657,125 @@ def loadXML(context, filename:str, quiet:bool=False):
     filename_encoded = filename.encode('utf-8')
     uuids_ptr = helios_lib.loadXML(context, filename_encoded, quiet, ctypes.byref(size))
     return list(uuids_ptr[:size.value])
+
+# Python wrappers for file export functions
+def writePLY(context, filename: str) -> None:
+    """Write all geometry to PLY file"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writePLY' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writePLY function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+    # errcheck handles automatic error checking
+    helios_lib.writePLY(context, filename_encoded)
+
+def writePLYWithUUIDs(context, filename: str, uuids: List[int]) -> None:
+    """Write subset of geometry to PLY file"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writePLYWithUUIDs' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writePLYWithUUIDs function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.writePLYWithUUIDs(context, filename_encoded, uuids_array, len(uuids))
+
+def writeOBJ(context, filename: str, write_normals: bool = False, silent: bool = False) -> None:
+    """Write all geometry to OBJ file"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writeOBJ' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writeOBJ function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+    helios_lib.writeOBJ(context, filename_encoded, write_normals, silent)
+
+def writeOBJWithUUIDs(context, filename: str, uuids: List[int], write_normals: bool = False, silent: bool = False) -> None:
+    """Write subset of geometry to OBJ file"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writeOBJWithUUIDs' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writeOBJWithUUIDs function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.writeOBJWithUUIDs(context, filename_encoded, uuids_array, len(uuids), write_normals, silent)
+
+def writeOBJWithPrimitiveData(context, filename: str, uuids: List[int], data_fields: List[str], write_normals: bool = False, silent: bool = False) -> None:
+    """Write geometry to OBJ file with primitive data fields"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writeOBJWithPrimitiveData' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writeOBJWithPrimitiveData function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    if not data_fields:
+        raise ValueError("Data fields list cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+
+    # Create array of c_char_p for string array
+    data_fields_encoded = [field.encode('utf-8') for field in data_fields]
+    data_fields_array = (ctypes.c_char_p * len(data_fields_encoded))(*data_fields_encoded)
+
+    helios_lib.writeOBJWithPrimitiveData(context, filename_encoded, uuids_array, len(uuids), data_fields_array, len(data_fields), write_normals, silent)
+
+# Mock mode functions for development when export functions are unavailable
+if not _FILE_EXPORT_FUNCTIONS_AVAILABLE:
+    def mock_writePLY(*args, **kwargs):
+        raise RuntimeError(
+            "Mock mode: writePLY not available. "
+            "This would export geometry to PLY format with native library."
+        )
+
+    def mock_writeOBJ(*args, **kwargs):
+        raise RuntimeError(
+            "Mock mode: writeOBJ not available. "
+            "This would export geometry to OBJ format with native library."
+        )
+
+    # Replace functions with mocks for development
+    writePLY = mock_writePLY
+    writePLYWithUUIDs = mock_writePLY
+    writeOBJ = mock_writeOBJ
+    writeOBJWithUUIDs = mock_writeOBJ
+    writeOBJWithPrimitiveData = mock_writeOBJ
 
 # Python wrappers for addTriangle functions
 def addTriangle(context, vertex0:List[float], vertex1:List[float], vertex2:List[float]):

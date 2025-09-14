@@ -1,5 +1,18 @@
 # Changelog
 
+# [v0.1.1] 2025-09-14
+
+*PyPI Package Distribution Fixes*
+- Fixed wheel building configuration with explicit plugin selection for cross-platform consistency
+- **macOS wheels**: Include visualization support while excluding GPU plugins due to cross-compilation constraints
+- **Windows/Linux wheels**: Include GPU plugins (radiation, energybalance) in addition to visualization for full feature support
+- Improved CI/CD testing with comprehensive plugin validation and better error reporting
+
+*Many documentation error fixes*
+
+## Context
+- Enhanced Context with new file export capabilities: `writePLY()`, `writeOBJ()` methods with comprehensive parameter support
+
 # [v0.1.0] 2025-09-06
 
 🎉++ PyPI Package Distribution ++ 🎉
