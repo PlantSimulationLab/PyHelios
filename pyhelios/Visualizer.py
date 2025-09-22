@@ -112,18 +112,28 @@ class Visualizer:
     def __init__(self, width: int, height: int, antialiasing_samples: int = 1, headless: bool = False):
         """
         Initialize Visualizer with graceful plugin handling.
-        
+
         Args:
             width: Window width in pixels
             height: Window height in pixels
             antialiasing_samples: Number of antialiasing samples (default: 1)
             headless: Enable headless mode for offscreen rendering (default: False)
-            
+
         Raises:
             VisualizerError: If visualizer plugin is not available
             ValueError: If parameters are invalid
         """
-        # Validate parameters
+        # Validate parameter types first
+        if not isinstance(width, int):
+            raise ValueError(f"Width must be an integer, got {type(width).__name__}")
+        if not isinstance(height, int):
+            raise ValueError(f"Height must be an integer, got {type(height).__name__}")
+        if not isinstance(antialiasing_samples, int):
+            raise ValueError(f"Antialiasing samples must be an integer, got {type(antialiasing_samples).__name__}")
+        if not isinstance(headless, bool):
+            raise ValueError(f"Headless must be a boolean, got {type(headless).__name__}")
+
+        # Validate parameter values
         if width <= 0 or height <= 0:
             raise ValueError("Width and height must be positive integers")
         if antialiasing_samples < 1:

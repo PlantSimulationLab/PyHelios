@@ -84,6 +84,10 @@ if("stomatalconductance" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_stomatalconductance.cpp)
 endif()
 
+if("plantarchitecture" IN_LIST PLUGINS)
+    list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_plantarchitecture.cpp)
+endif()
+
 # Only build static library if not building for wheels
 if(NOT DEFINED ENV{CIBUILDWHEEL})
     add_library(pyhelios_interface STATIC ${PYHELIOS_WRAPPER_SOURCES})
@@ -158,6 +162,14 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
     if("stomatalconductance" IN_LIST PLUGINS)
         target_include_directories(pyhelios_interface PRIVATE
             ${BASE_DIRECTORY}/plugins/stomatalconductance/include
+        )
+    endif()
+endif()
+
+if(NOT DEFINED ENV{CIBUILDWHEEL})
+    if("plantarchitecture" IN_LIST PLUGINS)
+        target_include_directories(pyhelios_interface PRIVATE
+            ${BASE_DIRECTORY}/plugins/plantarchitecture/include
         )
     endif()
 endif()
@@ -253,6 +265,12 @@ endif()
 if("stomatalconductance" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/stomatalconductance/include
+    )
+endif()
+
+if("plantarchitecture" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_shared PRIVATE
+        ${BASE_DIRECTORY}/plugins/plantarchitecture/include
     )
 endif()
 

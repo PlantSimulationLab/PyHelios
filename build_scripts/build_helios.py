@@ -36,6 +36,19 @@ PluginMetadata = plugin_metadata_globals['PluginMetadata']
 get_all_plugin_names = plugin_metadata_globals['get_all_plugin_names']
 get_platform_compatible_plugins = plugin_metadata_globals['get_platform_compatible_plugins']
 
+# Canonical list of plugins integrated into PyHelios
+# This is the single source of truth - add new integrated plugins here
+INTEGRATED_PLUGINS = [
+    "visualizer",
+    "weberpenntree",
+    "radiation",
+    "energybalance",
+    "solarposition",
+    "stomatalconductance",
+    "photosynthesis",
+    "plantarchitecture"
+]
+
 # Execute dependency_resolver.py to get PluginDependencyResolver
 dependency_resolver_globals = plugin_metadata_globals.copy()  # Start with plugin_metadata context
 dependency_resolver_globals['__name__'] = 'dependency_resolver'
@@ -1269,15 +1282,7 @@ class HeliosBuilder:
         
         # Validate that the copied library can be loaded by ctypes (FAIL-FAST validation)
         self._validate_library_loadable(output_path)
-        
-        # NOTE: Asset copying for visualizer plugin disabled - Stage 1 asset management
-        # uses environment variables to reference assets directly from helios-core source
-        # self._copy_visualizer_assets()
-        
-        # NOTE: Asset copying for weberpenntree plugin disabled - Stage 1 asset management  
-        # uses environment variables to reference assets directly from helios-core source
-        # self._copy_weberpenntree_assets()
-        
+
         # Also copy any additional required files
         if self.platform_name == 'Windows':
             # Look for PDB files for debugging
@@ -1287,95 +1292,7 @@ class HeliosBuilder:
                 print(f"Copied debug symbols: {pdb_path}")
         
         return output_path
-    
-    def _copy_visualizer_assets(self) -> None:
-        """
-        Copy all visualizer assets (shaders, textures, fonts) to the expected location.
-        
-        The C++ Visualizer code expects assets at "plugins/visualizer/" relative to the
-        working directory. This method copies all assets from the build directory to
-        the PyHelios directory structure where they can be found at runtime.
-        
-        Assets copied:
-        - Shader files (.vert, .frag) 
-        - Texture files 
-        - Font files
-        """
-        # Base paths
-        build_visualizer_dir = self.build_dir / 'plugins' / 'visualizer'
-        target_base_dir = self.output_dir.parent / 'plugins' / 'visualizer'
-        
-        if not build_visualizer_dir.exists():
-            print(f"[INFO] Visualizer assets directory not found: {build_visualizer_dir} (visualizer plugin may not be enabled)")
-            return
-        
-        total_files_copied = 0
-        
-        # Copy shader files
-        build_shader_dir = build_visualizer_dir / 'shaders'
-        if build_shader_dir.exists():
-            target_shader_dir = target_base_dir / 'shaders'
-            target_shader_dir.mkdir(parents=True, exist_ok=True)
-            
-            shader_count = 0
-            for shader_file in build_shader_dir.glob('*'):
-                if shader_file.is_file():
-                    dest_file = target_shader_dir / shader_file.name
-                    shutil.copy2(shader_file, dest_file)
-                    shader_count += 1
-                    print(f"Copied shader: {shader_file.name}")
-            
-            total_files_copied += shader_count
-            if shader_count > 0:
-                print(f"[OK] Copied {shader_count} shader files")
-        
-        # Copy texture files  
-        build_texture_dir = build_visualizer_dir / 'textures'
-        if build_texture_dir.exists():
-            target_texture_dir = target_base_dir / 'textures'
-            target_texture_dir.mkdir(parents=True, exist_ok=True)
-            
-            texture_count = 0
-            for texture_file in build_texture_dir.rglob('*'):
-                if texture_file.is_file():
-                    # Preserve directory structure for textures
-                    rel_path = texture_file.relative_to(build_texture_dir)
-                    dest_file = target_texture_dir / rel_path
-                    dest_file.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(texture_file, dest_file)
-                    texture_count += 1
-                    print(f"Copied texture: {rel_path}")
-            
-            total_files_copied += texture_count
-            if texture_count > 0:
-                print(f"[OK] Copied {texture_count} texture files")
-        
-        # Copy font files
-        build_font_dir = build_visualizer_dir / 'fonts'
-        if build_font_dir.exists():
-            target_font_dir = target_base_dir / 'fonts'
-            target_font_dir.mkdir(parents=True, exist_ok=True)
-            
-            font_count = 0
-            for font_file in build_font_dir.rglob('*'):
-                if font_file.is_file():
-                    # Preserve directory structure for fonts
-                    rel_path = font_file.relative_to(build_font_dir)
-                    dest_file = target_font_dir / rel_path
-                    dest_file.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(font_file, dest_file)
-                    font_count += 1
-                    print(f"Copied font: {rel_path}")
-            
-            total_files_copied += font_count
-            if font_count > 0:
-                print(f"[OK] Copied {font_count} font files")
-        
-        if total_files_copied > 0:
-            print(f"[OK] Successfully copied {total_files_copied} visualizer assets to {target_base_dir}")
-        else:
-            print(f"[WARN] No visualizer assets found to copy")
-    
+
     def _clean_duplicate_symbols(self, main_lib_path: Path, build_lib_dir: Path) -> Dict[str, Any]:
         """
         Clean duplicate symbols from static libraries by removing test objects.
@@ -1710,7 +1627,7 @@ class HeliosBuilder:
 def get_default_plugins() -> List[str]:
     """
     Get the default set of plugins (only the currently integrated plugins).
-    
+
     Currently integrated plugins in PyHelios:
     - visualizer: OpenGL-based 3D visualization
     - weberpenntree: Procedural tree generation
@@ -1718,12 +1635,13 @@ def get_default_plugins() -> List[str]:
     - energybalance: GPU-accelerated thermal modeling and energy balance
     - solarposition: Solar position calculations and sun angle modeling
     - photosynthesis: Photosynthesis modeling and carbon assimilation
-    
+    - plantarchitecture: Advanced plant structure and architecture modeling with procedural plant library
+
     Returns:
         List of default plugins
     """
     # Return the plugins that are actually integrated into PyHelios
-    integrated_plugins = ["visualizer", "weberpenntree", "radiation", "energybalance", "solarposition", "stomatalconductance", "photosynthesis"]
+    integrated_plugins = INTEGRATED_PLUGINS
     
     # Filter by platform compatibility
     default_plugins = []
@@ -1843,7 +1761,7 @@ def interactive_plugin_selection() -> List[str]:
             elif choice == "6":
                 print("\nAvailable plugins:")
                 compatible_plugins = get_platform_compatible_plugins()
-                integrated_plugins = ["visualizer", "weberpenntree", "radiation", "energybalance", "solarposition", "stomatalconductance", "photosynthesis"]
+                integrated_plugins = INTEGRATED_PLUGINS
 
                 for plugin in sorted(get_all_plugin_names()):
                     metadata = PLUGIN_METADATA[plugin]
@@ -1939,7 +1857,7 @@ Build Examples:
         print("PyHelios Integrated Plugins:")
         print("=" * 30)
         compatible_plugins = get_platform_compatible_plugins()
-        integrated_plugins = ["visualizer", "weberpenntree", "radiation", "energybalance", "solarposition", "stomatalconductance", "photosynthesis"]
+        integrated_plugins = INTEGRATED_PLUGINS
 
         for plugin in sorted(integrated_plugins):
             if plugin in PLUGIN_METADATA:
@@ -1964,7 +1882,7 @@ Build Examples:
         print("All Helios-Core Plugins:")
         print("=" * 25)
         compatible_plugins = get_platform_compatible_plugins()
-        integrated_plugins = ["visualizer", "weberpenntree", "radiation", "energybalance", "solarposition", "stomatalconductance", "photosynthesis"]
+        integrated_plugins = INTEGRATED_PLUGINS
 
         for plugin in sorted(get_all_plugin_names()):
             metadata = PLUGIN_METADATA[plugin]

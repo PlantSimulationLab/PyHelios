@@ -2,7 +2,8 @@ name: Build Wheels
 
 on:
   push:
-    tags: ['v*']
+    branches: [ master ]
+    tags: ['v*','testing-v*']
   workflow_dispatch:
 
 jobs:
@@ -335,8 +336,8 @@ jobs:
                     # Test Linux testable plugins including headless visualizer
                     # Only GPU-accelerated plugins require special hardware not available in CI
                     available_plugins = info.get('available_plugins', [])
-                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance']
-                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation']
+                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture']
+                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation', 'plantarchitecture']
             
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
@@ -431,9 +432,9 @@ jobs:
                     lib_path = info.get('library_path', 'Unknown')
                     print(f'[SUCCESS] Native library loaded: {lib_path}')
             
-                    # Test macOS expected plugins (5 plugins including visualization but no GPU)
+                    # Test macOS expected plugins (6 plugins including visualization but no GPU)
                     available_plugins = info.get('available_plugins', [])
-                    expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance']
+                    expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture']
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')
             
@@ -524,8 +525,8 @@ jobs:
                     # Test Windows testable plugins (CI containers don't have GPU for radiation/energybalance testing)
                     # We build GPU plugins but can't test them in CI environment
                     available_plugins = info.get('available_plugins', [])
-                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance']
-                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation']
+                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture']
+                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation', 'plantarchitecture']
             
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
@@ -783,33 +784,122 @@ jobs:
           merge-multiple: true
           path: wheelhouse
 
-      - name: Install wheel and test dependencies
+      - name: Create fresh virtual environment and install wheel
         run: |
+          set -euxo pipefail
+
+          # Fresh venv
+          VENV_DIR="/tmp/gpu_wheel_test_venv_$(date +%s)"
+          echo "Creating fresh virtual environment: $VENV_DIR"
+          python -m venv "$VENV_DIR"
+          . "$VENV_DIR/bin/activate"
+
+          echo "Installing dependencies in fresh environment"
           python -m pip install --upgrade pip
           python -m pip install numpy pytest pyyaml pytest-forked
-          python -m pip install --no-index --find-links wheelhouse pyhelios3d
+
+          echo "Installing PyHelios from downloaded wheels"
+          # IMPORTANT: use the workspace path explicitly while our CWD is NOT the workspace
+          python -m pip install --no-index --find-links "$GITHUB_WORKSPACE/wheelhouse" pyhelios3d
+
+          # Export the venv path early so later steps still have it even if a check fails
+          echo "VENV_DIR=$VENV_DIR" >> "$GITHUB_ENV"
+
+          # Verify from a completely isolated directory with isolated mode
+          ISODIR="$(mktemp -d /tmp/pyhelios_iso.XXXXXX)"
+          cd "$ISODIR"
+          # Extra safety: clear PYTHONPATH and avoid user site
+          export PYTHONPATH=
+          export PYTHONNOUSERSITE=1
+          
+          echo "=== Installation Verification (isolated) ==="
+          "$VENV_DIR/bin/python" -I -c "
+          import sys, importlib
+          print(f'Python: {sys.executable}')
+          print(f'sys.path[0]: {sys.path[0]!r}')
+          import pyhelios
+          print(f'PyHelios version: {pyhelios.__version__}')
+          print(f'PyHelios location: {pyhelios.__file__}')
+          if '/site-packages/' not in pyhelios.__file__.replace('\\\\','/'):
+            raise SystemExit('FAIL: import resolved to non-site-packages location')
+          print('OK: imported from wheel in site-packages')
+          "
 
       - name: Test GPU wheel functionality
         run: |
-          # Create isolated directory for GPU wheel testing
-          ISOLATED_DIR="/tmp/gpu_wheel_test"
+          # CRITICAL: Move to completely isolated directory BEFORE any Python operations
+          # This ensures Python cannot find source files in $GITHUB_WORKSPACE
+          ISOLATED_DIR="/tmp/gpu_wheel_test_$(date +%s)"
           mkdir -p "$ISOLATED_DIR"
           cd "$ISOLATED_DIR"
 
-          echo "Testing GPU wheel from isolated directory: $ISOLATED_DIR"
+          echo "=== Testing GPU wheel from completely isolated directory ==="
+          echo "Isolated directory: $ISOLATED_DIR"
           echo "Current directory: $(pwd)"
+          echo "Source directory (should not affect testing): $GITHUB_WORKSPACE"
 
-          # Test wheel import and GPU plugin availability
-          python -c "
+          # Activate the fresh virtual environment AFTER changing directory
+          source "$VENV_DIR/bin/activate"
+
+          echo "Virtual environment: $VIRTUAL_ENV"
+          echo "Python executable: $(which python)"
+
+          # Clear ALL environment variables that could cause Python to find source files
+          SOURCE_WORKSPACE_SAVE="$GITHUB_WORKSPACE"
+          export SOURCE_WORKSPACE_SAVE
+          unset GITHUB_WORKSPACE
+          unset RUNNER_WORKSPACE
+          unset GITHUB_WORKSPACE_PATH
+          unset PYHELIOS_DEV_MODE
+          unset PYHELIOS_BUILD_DIR
+
+          # CRITICAL: Complete Python environment isolation (based on research)
+          export PYTHONDONTWRITEBYTECODE=1
+          export PYTHONPATH=""  # Critical: Clear PYTHONPATH completely
+          export PYTHONNOUSERSITE=1  # Don't use user site-packages
+
+          # Test wheel import using ABSOLUTE PATH to virtual environment Python
+          # This bypasses Python's current directory import priority completely
+          echo "=== Testing PyHelios import with complete isolation ==="
+          "$VENV_DIR/bin/python" -I -c "
           import sys, os
-          print(f'=== GPU Wheel Test Environment ===')
+          print(f'=== GPU Wheel Test Environment (Isolated Mode) ===')
           print(f'Python: {sys.executable}')
           print(f'Platform: {sys.platform}')
           print(f'Working directory: {os.getcwd()}')
 
+          print(f'sys.path verification:')
+          workspace = os.environ.get('SOURCE_WORKSPACE_SAVE') or os.environ.get('GITHUB_WORKSPACE')
+          def is_contaminated(p: str) -> bool:
+            if not p:
+              return False
+            # flag only if path is inside the actual repo checkout
+            if workspace and p.startswith(workspace):
+              return True
+            # also flag if it’s directly under the repo name pattern inside _work
+            return '/_work/PyHelios/PyHelios' in p
+
+          source_contamination = [p for p in sys.path if is_contaminated(p)]
+          if source_contamination:
+            print(f'[FATAL] Source directory contamination detected: {source_contamination}')
+            raise RuntimeError('Python import path contaminated with source directories')
+          else:
+            print('[SUCCESS] No source directory contamination in sys.path')
+
           try:
               import pyhelios
               print(f'[SUCCESS] PyHelios3D {pyhelios.__version__} imported successfully')
+
+              # CRITICAL: Verify we imported from virtual environment, not source
+              pyhelios_path = pyhelios.__file__
+              print(f'[INFO] PyHelios imported from: {pyhelios_path}')
+              if '/site-packages/' not in pyhelios_path:
+                  print(f'[FATAL] PyHelios imported from source directory instead of virtual environment!')
+                  print(f'Expected path containing: /site-packages/')
+                  print(f'Actual path: {pyhelios_path}')
+                  raise RuntimeError('PyHelios imported from source directory - virtual environment isolation failed')
+              else:
+                  print('[SUCCESS] PyHelios correctly imported from virtual environment site-packages')
 
               # Test native library functionality with focus on GPU plugins
               from pyhelios.plugins import get_plugin_info
@@ -825,12 +915,233 @@ jobs:
                   lib_path = info.get('library_path', 'Unknown')
                   print(f'[SUCCESS] Native library loaded: {lib_path}')
 
+                  # DETAILED PLUGIN DETECTION DEBUG - Check PlantArchitecture specifically
+                  print('[DEBUG] Performing detailed plugin detection...')
+                  from pyhelios.plugins.loader import get_loader
+                  loader = get_loader()
+                  library = loader.library
+
+                  # Test PlantArchitecture detection specifically
+                  plantarch_functions = ['createPlantArchitecture']
+                  print(f'[DEBUG] Testing PlantArchitecture functions: {plantarch_functions}')
+
+                  for func_name in plantarch_functions:
+                      try:
+                          func = getattr(library, func_name)
+                          print(f'[DEBUG] ✓ Found function: {func_name} -> {func}')
+                      except AttributeError as e:
+                          print(f'[DEBUG] ✗ Missing function: {func_name} -> AttributeError: {e}')
+                      except Exception as e:
+                          print(f'[DEBUG] ✗ Error accessing function: {func_name} -> {type(e).__name__}: {e}')
+
+                      # Also test hasattr for comparison
+                      has_attr = hasattr(library, func_name)
+                      print(f'[DEBUG] hasattr(library, \"{func_name}\"): {has_attr}')
+
+                  # COMPREHENSIVE DEBUGGING: Check everything about the library and environment
+                  print(f'[DEBUG] Library file path: {lib_path}')
+                  if os.path.exists(lib_path):
+                      print(f'[DEBUG] Library file exists and size: {os.path.getsize(lib_path)} bytes')
+
+                      import subprocess
+
+                      # 1. Check if createPlantArchitecture symbol exists in the library file
+                      print('[DEBUG] Checking symbol table for createPlantArchitecture...')
+                      try:
+                          # Check dynamic symbols
+                          result = subprocess.run(['nm', '-D', lib_path], capture_output=True, text=True, timeout=15)
+                          if result.returncode == 0:
+                              plantarch_symbols = [line for line in result.stdout.split('\n') if 'createPlantArchitecture' in line]
+                              if plantarch_symbols:
+                                  print(f'[DEBUG] ✓ Found createPlantArchitecture in dynamic symbols:')
+                                  for sym in plantarch_symbols:
+                                      print(f'[DEBUG]   {sym}')
+                              else:
+                                  print('[DEBUG] ✗ createPlantArchitecture NOT found in dynamic symbols')
+                          else:
+                              print(f'[DEBUG] nm -D failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not run nm -D: {e}')
+
+                      # 2. Check all symbols (not just dynamic)
+                      try:
+                          result = subprocess.run(['nm', lib_path], capture_output=True, text=True, timeout=15)
+                          if result.returncode == 0:
+                              plantarch_symbols = [line for line in result.stdout.split('\n') if 'createPlantArchitecture' in line]
+                              if plantarch_symbols:
+                                  print(f'[DEBUG] ✓ Found createPlantArchitecture in all symbols:')
+                                  for sym in plantarch_symbols:
+                                      print(f'[DEBUG]   {sym}')
+                              else:
+                                  print('[DEBUG] ✗ createPlantArchitecture NOT found in any symbols')
+                          else:
+                              print(f'[DEBUG] nm failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not run nm: {e}')
+
+                      # 3. Check objdump for exported symbols
+                      try:
+                          result = subprocess.run(['objdump', '-T', lib_path], capture_output=True, text=True, timeout=15)
+                          if result.returncode == 0:
+                              plantarch_symbols = [line for line in result.stdout.split('\n') if 'createPlantArchitecture' in line]
+                              if plantarch_symbols:
+                                  print(f'[DEBUG] ✓ Found createPlantArchitecture in objdump -T:')
+                                  for sym in plantarch_symbols:
+                                      print(f'[DEBUG]   {sym}')
+                              else:
+                                  print('[DEBUG] ✗ createPlantArchitecture NOT found in objdump -T')
+                          else:
+                              print(f'[DEBUG] objdump -T failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not run objdump -T: {e}')
+
+                      # 4. Search for any PlantArchitecture-related symbols
+                      try:
+                          result = subprocess.run(['nm', lib_path], capture_output=True, text=True, timeout=15)
+                          if result.returncode == 0:
+                              plantarch_related = [line for line in result.stdout.split('\n') if 'PlantArchitecture' in line or 'plantarchitecture' in line.lower()]
+                              if plantarch_related:
+                                  print(f'[DEBUG] Found {len(plantarch_related)} PlantArchitecture-related symbols:')
+                                  for sym in plantarch_related[:10]:  # First 10 only
+                                      print(f'[DEBUG]   {sym}')
+                                  if len(plantarch_related) > 10:
+                                      print(f'[DEBUG]   ... and {len(plantarch_related) - 10} more')
+                              else:
+                                  print('[DEBUG] ✗ NO PlantArchitecture-related symbols found')
+                          else:
+                              print(f'[DEBUG] nm search failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not search for PlantArchitecture symbols: {e}')
+
+                      # 5. Check library dependencies using ldd
+                      try:
+                          result = subprocess.run(['ldd', lib_path], capture_output=True, text=True, timeout=10)
+                          if result.returncode == 0:
+                              print('[DEBUG] Library dependencies (ldd) - first 15 lines:')
+                              for line in result.stdout.strip().split('\n')[:15]:
+                                  print(f'[DEBUG]   {line}')
+                          else:
+                              print(f'[DEBUG] ldd failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not run ldd: {e}')
+
+                      # 6. Check for missing dependencies
+                      try:
+                          result = subprocess.run(['ldd', lib_path], capture_output=True, text=True, timeout=10)
+                          if result.returncode == 0:
+                              missing_deps = [line for line in result.stdout.split('\n') if 'not found' in line]
+                              if missing_deps:
+                                  print(f'[DEBUG] ⚠️ MISSING DEPENDENCIES FOUND:')
+                                  for dep in missing_deps:
+                                      print(f'[DEBUG]   {dep}')
+                              else:
+                                  print('[DEBUG] ✓ All dependencies resolved')
+                          else:
+                              print(f'[DEBUG] ldd dependency check failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not check dependencies: {e}')
+
+                      # 7. Check file type and architecture
+                      try:
+                          result = subprocess.run(['file', lib_path], capture_output=True, text=True, timeout=10)
+                          if result.returncode == 0:
+                              print(f'[DEBUG] Library file type: {result.stdout.strip()}')
+                          else:
+                              print(f'[DEBUG] file command failed: {result.stderr}')
+                      except Exception as e:
+                          print(f'[DEBUG] Could not run file command: {e}')
+
+                  else:
+                      print('[DEBUG] Library file does not exist!')
+
+                  # 8. Environment debugging
+                  print('[DEBUG] === ENVIRONMENT ANALYSIS ===')
+                  print(f'[DEBUG] LD_LIBRARY_PATH: {os.environ.get(\"LD_LIBRARY_PATH\", \"NOT SET\")}')
+                  print(f'[DEBUG] PYTHONPATH: {os.environ.get(\"PYTHONPATH\", \"NOT SET\")}')
+                  print(f'[DEBUG] Current working directory: {os.getcwd()}')
+                  print(f'[DEBUG] Python sys.path first 5 entries:')
+                  import sys
+                  for i, path in enumerate(sys.path[:5]):
+                      print(f'[DEBUG]   [{i}] {path}')
+
+                  # 9. Check system info
+                  try:
+                      with open('/proc/version', 'r') as f:
+                          print(f'[DEBUG] Kernel version: {f.read().strip()}')
+                  except:
+                      print('[DEBUG] Could not read kernel version')
+
+                  try:
+                      result = subprocess.run(['uname', '-a'], capture_output=True, text=True, timeout=5)
+                      if result.returncode == 0:
+                          print(f'[DEBUG] System info: {result.stdout.strip()}')
+                  except:
+                      print('[DEBUG] Could not get system info')
+
+                  # 10. Check GPU/CUDA environment
+                  try:
+                      result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv,noheader'], capture_output=True, text=True, timeout=10)
+                      if result.returncode == 0:
+                          print(f'[DEBUG] GPU info: {result.stdout.strip()}')
+                      else:
+                          print(f'[DEBUG] nvidia-smi failed or no GPU: {result.stderr}')
+                  except:
+                      print('[DEBUG] nvidia-smi not available')
+
+                  # 11. Check if CUDA libraries are interfering
+                  cuda_libs = ['/usr/local/cuda/lib64', '/usr/lib/x86_64-linux-gnu']
+                  for cuda_path in cuda_libs:
+                      if os.path.exists(cuda_path):
+                          try:
+                              cuda_files = [f for f in os.listdir(cuda_path) if f.startswith('libcuda') and f.endswith('.so')]
+                              if cuda_files:
+                                  print(f'[DEBUG] CUDA libraries in {cuda_path}: {cuda_files[:5]}')
+                          except:
+                              pass
+
+                  # 12. Test ctypes loading directly
+                  print('[DEBUG] === DIRECT CTYPES LOADING TEST ===')
+                  try:
+                      import ctypes
+                      direct_lib = ctypes.CDLL(lib_path)
+                      print('[DEBUG] ✓ Direct ctypes.CDLL loading succeeded')
+
+                      # Try to access the function directly
+                      try:
+                          func = direct_lib.createPlantArchitecture
+                          print(f'[DEBUG] ✓ Direct access to createPlantArchitecture: {func}')
+                      except AttributeError as e:
+                          print(f'[DEBUG] ✗ Direct access failed: {e}')
+
+                      # List some symbols we can access
+                      known_functions = ['createContext', 'destroyContext', 'getPrimitiveCount']
+                      accessible_funcs = []
+                      for fname in known_functions:
+                          try:
+                              func = getattr(direct_lib, fname)
+                              accessible_funcs.append(fname)
+                          except:
+                              pass
+                      print(f'[DEBUG] Accessible known functions: {accessible_funcs}')
+
+                  except Exception as e:
+                      print(f'[DEBUG] ✗ Direct ctypes loading failed: {e}')
+
                   # Test GPU plugin availability (critical for GPU wheels)
                   available_plugins = info.get('available_plugins', [])
                   gpu_plugins = ['energybalance', 'radiation']
+                  expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture', 'energybalance', 'radiation']
 
                   print(f'[INFO] Available plugins: {sorted(available_plugins)}')
+                  print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')
                   print(f'[INFO] GPU plugins to test: {sorted(gpu_plugins)}')
+
+                  # Check for missing expected plugins
+                  missing_plugins = set(expected_plugins) - set(available_plugins)
+                  if missing_plugins:
+                      print(f'[WARNING] Missing expected plugins: {sorted(missing_plugins)}')
+                      if 'plantarchitecture' in missing_plugins:
+                          print('[CRITICAL] PlantArchitecture is missing! This is the bug we are investigating.')
 
                   available_gpu = [p for p in gpu_plugins if p in available_plugins]
                   if available_gpu:
@@ -862,18 +1173,56 @@ jobs:
 
           # Copy and run complete test suite for comprehensive validation
           echo "Copying complete test suite to isolated directory"
+
+          # Use the saved workspace path (we saved it before unsetting env vars)
+          : "${SOURCE_WORKSPACE_SAVE:?SOURCE_WORKSPACE_SAVE missing}"
           mkdir -p "$ISOLATED_DIR/tests"
-          cp "$GITHUB_WORKSPACE/tests/test_"*.py "$ISOLATED_DIR/tests/"
-          cp "$GITHUB_WORKSPACE/tests/conftest.py" "$ISOLATED_DIR/tests/"
-          cp "$GITHUB_WORKSPACE/pytest.ini" "$ISOLATED_DIR/"
+          cp "$SOURCE_WORKSPACE_SAVE/tests/test_"*.py "$ISOLATED_DIR/tests/"
+          cp "$SOURCE_WORKSPACE_SAVE/tests/conftest.py" "$ISOLATED_DIR/tests/"
+          cp "$SOURCE_WORKSPACE_SAVE/pytest.ini" "$ISOLATED_DIR/"
           touch "$ISOLATED_DIR/tests/__init__.py"
 
-          # Run complete test suite in isolated directory
+          # Run complete test suite in isolated directory with fresh virtual environment
           cd "$ISOLATED_DIR"
           echo "Running complete test suite in isolated directory: $(pwd)"
+          echo "Using virtual environment: $VIRTUAL_ENV"
 
-          # Run all tests to ensure comprehensive validation on GPU hardware
-          python -m pytest tests/ --tb=short -v -s
+          # Clear environment variables that might confuse PyHelios library loading
+          unset GITHUB_WORKSPACE
+          unset RUNNER_WORKSPACE
+          unset PYHELIOS_DEV_MODE
+
+          # Use proper environment isolation (research-backed best practice)
+          export PYTHONDONTWRITEBYTECODE=1
+          export PYTHONPATH=""  # Clear PYTHONPATH completely
+
+          # Verify we're using the correct environment with isolated mode
+          python -I -c "
+          import sys
+          print(f'Python executable: {sys.executable}')
+          print(f'Virtual environment isolated mode sys.path length: {len(sys.path)}')
+          "
+
+          # Test PyHelios import in isolated mode
+          python -I -c "
+          import pyhelios
+          print(f'PyHelios version: {pyhelios.__version__}')
+          print(f'PyHelios location: {pyhelios.__file__}')
+          "
+
+          # Run pytest with isolated mode for complete source isolation
+          python -I -m pytest tests/ --tb=short -v -s
+
+      - name: Cleanup virtual environment
+        if: always()  # Run cleanup even if tests fail
+        run: |
+          if [ -n "$VENV_DIR" ] && [ -d "$VENV_DIR" ]; then
+            echo "Cleaning up virtual environment: $VENV_DIR"
+            rm -rf "$VENV_DIR"
+            echo "Virtual environment cleanup completed"
+          else
+            echo "No virtual environment to clean up"
+          fi
 
   stop-gpu:
     name: Stop GPU instance

@@ -148,13 +148,13 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
     
     "plantarchitecture": PluginMetadata(
         name="plantarchitecture",
-        description="Advanced plant structure and architecture modeling",
+        description="Advanced plant structure and architecture modeling with procedural plant library",
         system_dependencies=[],
         plugin_dependencies=[],
         platforms=["windows", "linux", "macos"],
         gpu_required=False,
         optional=True,
-        test_symbols=["buildPlantArchitecture", "setArchitectureParameters"]
+        test_symbols=["createPlantArchitecture", "loadPlantModelFromLibrary", "buildPlantInstanceFromLibrary"]
     ),
     
     "planthydraulics": PluginMetadata(
@@ -215,10 +215,10 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
     "collisiondetection": PluginMetadata(
         name="collisiondetection",
         description="Collision detection with optional GPU acceleration",
-        system_dependencies=["cuda"],
+        system_dependencies=[],
         plugin_dependencies=[],
         platforms=["windows", "linux"],
-        gpu_required=True,
+        gpu_required=False,
         optional=True,
         test_symbols=["runCollisionDetection", "setCollisionParameters"]
     ),

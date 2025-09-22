@@ -77,7 +77,10 @@ class Context:
     def __init__(self):
         # Initialize plugin registry for availability checking
         self._plugin_registry = get_plugin_registry()
-        
+
+        # Track Context lifecycle state for better error messages
+        self._lifecycle_state = 'initializing'
+
         # Check if we're in mock/development mode
         library_info = get_library_info()
         if library_info.get('is_mock', False):
@@ -85,6 +88,7 @@ class Context:
             print("Warning: PyHelios running in development mock mode - functionality is limited")
             print("Available plugins: None (mock mode)")
             self.context = None  # Mock context
+            self._lifecycle_state = 'mock_mode'
             return
         
         # Validate native library is properly loaded before creating context
@@ -106,21 +110,54 @@ class Context:
         try:
             self.context = context_wrapper.createContext()
             if self.context is None:
+                self._lifecycle_state = 'creation_failed'
                 raise LibraryLoadError(
                     "Failed to create Helios context. Native library may not be functioning correctly."
                 )
-                
+
+            self._lifecycle_state = 'active'
+
         except Exception as e:
+            self._lifecycle_state = 'creation_failed'
             raise LibraryLoadError(
                 f"Failed to create Helios context: {e}. "
                 f"Ensure native libraries are built and accessible."
             )
         
     def _check_context_available(self):
-        """Helper method to check if context is available (not in mock mode)."""
+        """Helper method to check if context is available with detailed error messages."""
         if self.context is None:
-            raise RuntimeError("Context is in mock mode - native functionality not available. "
-                             "Build native libraries with 'python build_scripts/build_helios.py' or set PYHELIOS_DEV_MODE=1 for development.")
+            # Provide specific error message based on lifecycle state
+            if self._lifecycle_state == 'mock_mode':
+                raise RuntimeError(
+                    "Context is in mock mode - native functionality not available.\n"
+                    "Build native libraries with 'python build_scripts/build_helios.py' or set PYHELIOS_DEV_MODE=1 for development."
+                )
+            elif self._lifecycle_state == 'cleaned_up':
+                raise RuntimeError(
+                    "Context has been cleaned up and is no longer usable.\n"
+                    "This usually means you're trying to use a Context outside its 'with' statement scope.\n"
+                    "\n"
+                    "Fix: Ensure all Context usage is inside the 'with Context() as context:' block:\n"
+                    "  with Context() as context:\n"
+                    "      # All context operations must be here\n"
+                    "      with SomePlugin(context) as plugin:\n"
+                    "          plugin.do_something()\n"
+                    "      with Visualizer() as vis:\n"
+                    "          vis.buildContextGeometry(context)  # Still inside Context scope\n"
+                    "  # Context is cleaned up here - cannot use context after this point"
+                )
+            elif self._lifecycle_state == 'creation_failed':
+                raise RuntimeError(
+                    "Context creation failed - native functionality not available.\n"
+                    "Build native libraries with 'python build_scripts/build_helios.py'"
+                )
+            else:
+                # Fallback for unknown states
+                raise RuntimeError(
+                    f"Context is not available (state: {self._lifecycle_state}).\n"
+                    "Build native libraries with 'python build_scripts/build_helios.py' or set PYHELIOS_DEV_MODE=1 for development."
+                )
     
     def _validate_uuid(self, uuid: int):
         """Validate that a UUID exists in this context.
@@ -241,6 +278,7 @@ class Context:
         if self.context is not None:
             context_wrapper.destroyContext(self.context)
             self.context = None  # Prevent double deletion
+            self._lifecycle_state = 'cleaned_up'
 
     def getNativePtr(self):
         self._check_context_available()
@@ -469,8 +507,20 @@ class Context:
             >>> print(f"Created {len(tile_uuids)} patches")
         """
         self._check_context_available()
-        
-        # Parameter validation
+
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(size, vec2):
+            raise ValueError(f"Size must be a vec2, got {type(size).__name__}")
+        if rotation is not None and not isinstance(rotation, SphericalCoord):
+            raise ValueError(f"Rotation must be a SphericalCoord or None, got {type(rotation).__name__}")
+        if not isinstance(subdiv, int2):
+            raise ValueError(f"Subdiv must be an int2, got {type(subdiv).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
+        # Parameter value validation
         if any(s <= 0 for s in size.to_list()):
             raise ValueError("All size dimensions must be positive")
         if any(s <= 0 for s in subdiv.to_list()):
@@ -524,7 +574,18 @@ class Context:
             >>> print(f"Created sphere with {len(sphere_uuids)} triangles")
         """
         self._check_context_available()
-        
+
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(radius, (int, float)):
+            raise ValueError(f"Radius must be a number, got {type(radius).__name__}")
+        if not isinstance(ndivs, int):
+            raise ValueError(f"Ndivs must be an integer, got {type(ndivs).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
+        # Parameter value validation
         if radius <= 0:
             raise ValueError("Sphere radius must be positive")
         if ndivs < 3:
@@ -573,7 +634,16 @@ class Context:
             >>> print(f"Created tube with {len(tube_uuids)} triangles")
         """
         self._check_context_available()
-        
+
+        # Parameter type validation
+        if not isinstance(nodes, (list, tuple)):
+            raise ValueError(f"Nodes must be a list or tuple, got {type(nodes).__name__}")
+        if not isinstance(ndivs, int):
+            raise ValueError(f"Ndivs must be an integer, got {type(ndivs).__name__}")
+        if colors is not None and not isinstance(colors, (RGBcolor, list, tuple)):
+            raise ValueError(f"Colors must be RGBcolor, list, tuple, or None, got {type(colors).__name__}")
+
+        # Parameter value validation
         if len(nodes) < 2:
             raise ValueError("Tube requires at least 2 nodes")
         if ndivs < 3:
@@ -643,7 +713,18 @@ class Context:
             >>> print(f"Created box with {len(box_uuids)} patches")
         """
         self._check_context_available()
-        
+
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(size, vec3):
+            raise ValueError(f"Size must be a vec3, got {type(size).__name__}")
+        if not isinstance(subdiv, int3):
+            raise ValueError(f"Subdiv must be an int3, got {type(subdiv).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
+        # Parameter value validation
         if any(s <= 0 for s in size.to_list()):
             raise ValueError("All box dimensions must be positive")
         if any(s < 1 for s in subdiv.to_list()):

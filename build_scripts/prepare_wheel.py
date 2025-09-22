@@ -212,7 +212,8 @@ def copy_assets_for_packaging(project_root):
     plugin_asset_dirs = {
         'weberpenntree': ['leaves', 'wood', 'xml'],
         'visualizer': ['textures', 'shaders'],
-        # NOTE: plantarchitecture and canopygenerator are not integrated with PyHelios - assets not needed
+        'plantarchitecture': ['assets/textures', 'assets/obj'],
+        # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
     }
 
     # Add radiation assets only on platforms that build GPU plugins (Windows/Linux)
@@ -273,11 +274,19 @@ def copy_assets_for_packaging(project_root):
             asset_src = plugin_dir / asset_dir_path
             if not asset_src.exists():
                 continue
-                
-            # Use just the final directory name for destination
-            asset_dir_name = asset_dir_path.split('/')[-1]
-            asset_dest = plugin_dest / asset_dir_name
-            
+
+            # For nested paths, preserve the directory structure
+            if '/' in asset_dir_path:
+                # Create nested destination path to preserve structure
+                asset_dest = plugin_dest / asset_dir_path
+            else:
+                # Use just the final directory name for flat directories
+                asset_dir_name = asset_dir_path.split('/')[-1]
+                asset_dest = plugin_dest / asset_dir_name
+
+            # Ensure parent directories exist
+            asset_dest.parent.mkdir(parents=True, exist_ok=True)
+
             if asset_dest.exists():
                 shutil.rmtree(asset_dest)
             shutil.copytree(asset_src, asset_dest)

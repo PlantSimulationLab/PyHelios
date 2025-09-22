@@ -462,7 +462,7 @@ def detect_available_plugins() -> List[str]:
             'planthydraulics': ['createPlantHydraulicsModel'],
             'lidar': ['createLiDARmodel', 'addLiDARSource'],
             'aeriallidar': ['createAerialLiDARmodel'],
-            'plantarchitecture': ['createPlantArchitectureModel'],
+            'plantarchitecture': ['createPlantArchitecture'],
             'voxelintersection': ['voxelIntersection'],
             'syntheticannotation': ['createSyntheticAnnotation'],
             'parameteroptimization': ['createParameterOptimization'],

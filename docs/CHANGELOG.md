@@ -1,5 +1,24 @@
 # Changelog
 
+# [v0.1.3] 2025-09-22
+
+🚨++ New Plug-in Integrated ++ 🚨
+- Initial phase of plant architecture plug-in integrated with PyHelios. This includes basic functionality for building plants from the library.
+
+- Updated Helios native C++ library to v1.3.50
+
+*Improved Error Handling, Build System Optimization, and Testing Infrastructure*
+- **Context API**: Enhanced lifecycle state tracking with detailed error messages for better debugging
+- **Build System**: Streamlined asset management by removing redundant asset copying code and optimizing build process
+- **Testing**: Enhanced cross-platform test coverage with improved mock mode handling and context lifecycle testing
+- **Documentation**: Major updates to plugin integration guide with critical implementation patterns and best practices
+- **Visualizer**: Enhanced compatibility and error handling for cross-platform visualization workflows
+
+## Build System
+- Removed redundant asset copying for visualizer and weberpenntree plugins (using environment variable approach)
+- Optimized build process with cleaner CMake integration
+- Enhanced cross-platform library validation with fail-fast behavior
+
 # [v0.1.2] 2025-09-18
 
 🎉PyPI package distribution should now be working for all integrated plug-ins 🎉

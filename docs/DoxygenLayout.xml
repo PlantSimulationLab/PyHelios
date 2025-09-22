@@ -25,6 +25,7 @@
       <!-- Currently Implemented Plugins (Alphabetized) -->
       <tab type="user" visible="yes" url="@ref EnergyBalanceDoc" title="Energy Balance Model"/>
       <tab type="user" visible="yes" url="@ref PhotosynthesisDoc" title="Photosynthesis Model"/>
+      <tab type="user" visible="yes" url="@ref PlantArchitectureDoc" title="Plant Architecture"/>
       <tab type="user" visible="yes" url="@ref RadiationDoc" title="Radiation Model"/>
       <tab type="user" visible="yes" url="@ref SolarPositionDoc" title="Solar Position"/>
       <tab type="user" visible="yes" url="@ref StomatalConductanceDoc" title="Stomatal Conductance Model"/>

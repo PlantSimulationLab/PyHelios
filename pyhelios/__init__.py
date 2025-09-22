@@ -105,6 +105,13 @@ except (AttributeError, ImportError):
     # PhotosynthesisModel functions not available in current library
     PhotosynthesisModel = None
     PhotosynthesisModelError = None
+
+try:
+    from .PlantArchitecture import PlantArchitecture, PlantArchitectureError
+except (AttributeError, ImportError):
+    # PlantArchitecture functions not available in current library
+    PlantArchitecture = None
+    PlantArchitectureError = None
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
 from .exceptions import (

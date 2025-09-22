@@ -16,3 +16,4 @@ from . import UEnergyBalanceWrapper
 from . import USolarPositionWrapper
 from . import UStomatalConductanceWrapper
 from . import UPhotosynthesisWrapper
+from . import UPlantArchitectureWrapper

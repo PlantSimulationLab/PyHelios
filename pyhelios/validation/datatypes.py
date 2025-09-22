@@ -142,25 +142,33 @@ def validate_vector_finite(vector: Any, param_name: str = "vector", expected_dim
 def validate_vec2(vector: Any, param_name: str = "vector", function_name: str = None):
     """
     Validate vec2 has finite x,y components.
-    
+
     Args:
         vector: vec2 object to validate
         param_name: Parameter name for error messages
         function_name: Function name for error messages
+
+    Returns:
+        The validated vec2 object
     """
     validate_vector_finite(vector, param_name, expected_dims=2, function_name=function_name)
+    return vector
 
 
 def validate_vec3(vector: Any, param_name: str = "vector", function_name: str = None):
     """
     Validate vec3 has finite x,y,z components.
-    
+
     Args:
         vector: vec3 object to validate
         param_name: Parameter name for error messages
         function_name: Function name for error messages
+
+    Returns:
+        The validated vec3 object
     """
     validate_vector_finite(vector, param_name, expected_dims=3, function_name=function_name)
+    return vector
 
 
 def validate_vec4(vector: Any, param_name: str = "vector", function_name: str = None):
@@ -274,3 +282,43 @@ def validate_integer_vector(vector: Any, param_name: str = "vector", expected_di
                 actual_value=value,
                 suggestion="Ensure all vector components are integers."
             )
+
+
+def validate_int2(vector: Any, param_name: str = "vector", function_name: str = None):
+    """
+    Validate int2 has valid integer x,y components.
+
+    Args:
+        vector: int2 object to validate
+        param_name: Parameter name for error messages
+        function_name: Function name for error messages
+
+    Returns:
+        The validated vector
+    """
+    validate_integer_vector(vector, param_name, expected_dims=2, function_name=function_name)
+    return vector
+
+
+def validate_int3(vector: Any, param_name: str = "vector", function_name: str = None):
+    """
+    Validate int3 has valid integer x,y,z components.
+
+    Args:
+        vector: int3 object to validate
+        param_name: Parameter name for error messages
+        function_name: Function name for error messages
+    """
+    validate_integer_vector(vector, param_name, expected_dims=3, function_name=function_name)
+
+
+def validate_int4(vector: Any, param_name: str = "vector", function_name: str = None):
+    """
+    Validate int4 has valid integer x,y,z,w components.
+
+    Args:
+        vector: int4 object to validate
+        param_name: Parameter name for error messages
+        function_name: Function name for error messages
+    """
+    validate_integer_vector(vector, param_name, expected_dims=4, function_name=function_name)

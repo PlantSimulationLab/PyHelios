@@ -4,11 +4,8 @@ Tests for Visualizer functionality in PyHelios.
 This module tests the Visualizer class and 3D visualization capabilities.
 Tests are designed to work in both native and mock modes.
 
-TODO: TEMPORARY TEST SKIP - Remove after helios-core master merge
-The test_color_primitives_integration_workflow test is currently skipped due to a 
-Helios C++ visualizer bug (plotUpdate() crashes in headless mode). The fix has been 
-implemented locally and needs to be merged into helios-core master branch.
-After merge, remove the @pytest.mark.skipif decorator from that test.
+The test_color_primitives_integration_workflow test has been re-enabled after the
+Helios C++ visualizer fixes for headless mode were merged into helios-core master branch.
 """
 
 import pytest
@@ -384,12 +381,13 @@ class TestVisualizerAPI:
     
     def test_visualizer_context_manager_protocol(self):
         """Test context manager protocol"""
-        # TEMPORARY SKIP: This test crashes with SIGABRT on macOS CI due to OpenGL context issues
-        # TODO: Remove this skip once Helios C++ visualizer plugin is fixed to handle headless mode gracefully
-        # See: https://github.com/baileylab/PyHelios/issues/[issue-number]
-        if os.environ.get('CI') and platform.system() == 'Darwin':
-            pytest.skip("TEMPORARY: Skipping macOS CI visualizer test due to OpenGL SIGABRT crash. "
-                       "Remove this skip after fixing C++ visualizer headless mode initialization.")
+        # Skip on macOS-13 due to Objective-C framework incompatibility with fork()
+        # The new helios-core v1.3.50 visualizer initialization triggers NSResponder
+        # initialization which cannot be safely used after fork() on macOS-13
+        if (os.environ.get('CI') and platform.system() == 'Darwin' and
+            platform.mac_ver()[0].startswith('13.')):
+            pytest.skip("Skipping on macOS-13 CI: Visualizer initialization incompatible with fork() - "
+                       "NSResponder framework conflicts with pytest-forked execution")
 
         # This should work even in mock mode for API validation
         try:
@@ -457,12 +455,13 @@ class TestVisualizerDataColoring:
     
     def test_color_primitives_api_compatibility(self):
         """Test API compatibility in mock mode"""
-        # TEMPORARY SKIP: This test crashes with SIGABRT on macOS CI due to OpenGL context issues
-        # TODO: Remove this skip once Helios C++ visualizer plugin is fixed to handle headless mode gracefully
-        # See: https://github.com/baileylab/PyHelios/issues/[issue-number]
-        if os.environ.get('CI') and platform.system() == 'Darwin':
-            pytest.skip("TEMPORARY: Skipping macOS CI visualizer test due to OpenGL SIGABRT crash. "
-                       "Remove this skip after fixing C++ visualizer headless mode initialization.")
+        # Skip on macOS-13 due to Objective-C framework incompatibility with fork()
+        # The new helios-core v1.3.50 visualizer initialization triggers NSResponder
+        # initialization which cannot be safely used after fork() on macOS-13
+        if (os.environ.get('CI') and platform.system() == 'Darwin' and
+            platform.mac_ver()[0].startswith('13.')):
+            pytest.skip("Skipping on macOS-13 CI: Visualizer initialization incompatible with fork() - "
+                       "NSResponder framework conflicts with pytest-forked execution")
 
         try:
             visualizer = Visualizer(400, 300, headless=True)
@@ -592,21 +591,12 @@ class TestVisualizerDataColoringNative:
             # Expected if plugin not available
             pass
     
-    @pytest.mark.skipif(True, reason="TEMPORARY: Skip until Helios C++ visualizer headless plotUpdate() fix is merged to master. "
-                                    "Fix implemented in local helios-core but needs to be merged upstream. "
-                                    "TODO: Remove this skip and re-enable test after merge.")
     def test_color_primitives_integration_workflow(self, visualizer_and_context):
         """Test complete workflow with primitive coloring
-        
-        TEMPORARY NOTE: This test is currently skipped due to a bug in the Helios C++ 
-        visualizer plugin where plotUpdate() crashes in headless mode. The fix has been 
-        implemented locally but needs to be merged into helios-core master branch.
-        
-        Fix details:
-        - VisualizerRendering.cpp: Add headless check to glfwShowWindow()  
-        - VisualizerCore.cpp: Proper OpenGL context initialization for headless mode
-        
-        TODO: Re-enable this test after the C++ fix is merged upstream.
+
+        This test validates the complete visualization workflow including primitive coloring
+        and visualization updates in headless mode. The previous Helios C++ visualizer issues
+        with plotUpdate() crashes in headless mode have been resolved.
         """
         visualizer, context, uuids = visualizer_and_context
         
@@ -617,13 +607,13 @@ class TestVisualizerDataColoringNative:
         
         # Color by temperature
         visualizer.colorContextPrimitivesByData("temperature")
-        
-        # Update visualization
-        visualizer.plotUpdate()
-        
+
+        # Update visualization (use plotUpdateWithVisibility for headless mode)
+        visualizer.plotUpdateWithVisibility(hide_window=True)
+
         # Color by different data
         visualizer.colorContextPrimitivesByData("radiation_flux", uuids[:2])
-        visualizer.plotUpdate()
+        visualizer.plotUpdateWithVisibility(hide_window=True)
         
         # Test should complete without error
 

@@ -77,7 +77,7 @@ PLUGIN_METADATA = {
         platforms=["windows", "linux", "macos"],       # Supported platforms
         gpu_required=False,                            # True if requires GPU
         optional=True,                                 # False for core plugins
-        test_symbols=["function1", "function2"]        # Functions to test availability
+        test_symbols=["createYourPlugin", "yourPluginMethod1", "yourPluginMethod2"]  # CRITICAL: Must match C++ function names EXACTLY
     ),
 }
 ```
@@ -137,7 +137,26 @@ endif()
 
 ### 2.3 Add to Default Build
 
-**Important**: For mature plugins that should be included in default builds, add your plugin to the `integrated_plugins` list in `get_default_plugins()` function in `build_scripts/build_helios.py`.
+**Important**: For mature plugins that should be included in default builds, add your plugin to the `INTEGRATED_PLUGINS` constant at the top of `build_scripts/build_helios.py`.
+
+**CRITICAL**: PyHelios uses a single canonical list to prevent maintenance issues. There is only ONE place to add new integrated plugins:
+
+```python
+# In build_scripts/build_helios.py (lines ~40-50)
+INTEGRATED_PLUGINS = [
+    "visualizer",
+    "weberpenntree",
+    "radiation",
+    "energybalance",
+    "solarposition",
+    "stomatalconductance",
+    "photosynthesis",
+    "plantarchitecture",
+    "yourplugin"  # Add new plugin here
+]
+```
+
+**DO NOT** modify any other hardcoded lists in the file - they have all been replaced with references to `INTEGRATED_PLUGINS`.
 
 ### 2.4 Test Build Integration
 
@@ -326,6 +345,9 @@ This enables:
 ```python
 import ctypes
 from typing import List, Optional, Union
+
+# CRITICAL: Import UContext from UContextWrapper for ctypes compatibility
+from .UContextWrapper import UContext
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
 
@@ -640,6 +662,37 @@ from .Context import Context
 from .plugins.registry import get_plugin_registry
 from .exceptions import HeliosError
 
+# CRITICAL: Import validation functions and ensure they RETURN validated objects
+try:
+    from .validation.datatypes import validate_vec3, validate_vec2, validate_int2
+except ImportError:
+    # Fallback validation functions that MUST return validated objects
+    def validate_vec3(value, name, func):
+        if hasattr(value, 'x') and hasattr(value, 'y') and hasattr(value, 'z'):
+            return value  # CRITICAL: Must return the validated object
+        if isinstance(value, (list, tuple)) and len(value) == 3:
+            from .wrappers.DataTypes import vec3
+            return vec3(*value)  # CRITICAL: Must return the converted object
+        raise ValueError(f"{name} must be vec3 or 3-element list/tuple")
+
+    def validate_vec2(value, name, func):
+        if hasattr(value, 'x') and hasattr(value, 'y'):
+            return value  # CRITICAL: Must return the validated object
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            from .wrappers.DataTypes import vec2
+            return vec2(*value)  # CRITICAL: Must return the converted object
+        raise ValueError(f"{name} must be vec2 or 2-element list/tuple")
+
+    def validate_int2(value, name, func):
+        if hasattr(value, 'x') and hasattr(value, 'y'):
+            return value  # CRITICAL: Must return the validated object
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            from .wrappers.DataTypes import int2
+            return int2(*value)  # CRITICAL: Must return the converted object
+        raise ValueError(f"{name} must be int2 or 2-element list/tuple")
+
+from .validation.core import validate_positive_value
+
 class YourPluginError(HeliosError):
     """Exception raised for YourPlugin-specific errors"""
     pass
@@ -828,88 +881,135 @@ grep -r "load\|read\|open" src/
 grep -r "\.png\|\.jpg\|\.xml\|\.glsl" src/
 ```
 
-### 6.3 Implement Asset Copying
+### 6.3 Asset Management Strategy: Stage 1 vs Stage 2
 
-**File**: `build_scripts/build_helios.py`
+**CRITICAL LESSON FROM PLANTARCHITECTURE INTEGRATION**: PyHelios uses two distinct asset management strategies depending on the distribution method.
 
-Add asset copying method:
+#### Stage 1: CMake + Working Directory Pattern (Current Standard)
+
+**For development builds and most current plugins**, use the CMake asset copying + working directory context manager pattern:
+
+**CMake Level (already implemented for most plugins)**:
+- CMake automatically copies assets to `build/plugins/yourplugin/` during build
+- Assets include `copy_obj_assets`, `copy_texture_assets`, etc. targets
+- No manual Python asset copying required
+
+**Python Level (required for all plugins with assets)**:
+```python
+from contextlib import contextmanager
+from .assets import get_asset_manager
+
+@contextmanager
+def _yourplugin_working_directory():
+    """
+    Context manager that temporarily changes working directory to where YourPlugin assets are located.
+
+    YourPlugin C++ code uses hardcoded relative paths like "plugins/yourplugin/assets/"
+    expecting assets relative to working directory. This manager temporarily changes to the build
+    directory where assets are actually located.
+    """
+    # Find the build directory containing YourPlugin assets
+    asset_manager = get_asset_manager()
+    working_dir = asset_manager._get_helios_build_path()
+
+    if working_dir and working_dir.exists():
+        yourplugin_assets = working_dir / 'plugins' / 'yourplugin'
+    else:
+        # Fallback to development paths
+        current_dir = Path(__file__).parent
+        repo_root = current_dir.parent
+        build_lib_dir = repo_root / 'pyhelios_build' / 'build' / 'lib'
+        working_dir = build_lib_dir.parent
+        yourplugin_assets = working_dir / 'plugins' / 'yourplugin'
+
+        if not build_lib_dir.exists():
+            raise RuntimeError(
+                f"PyHelios build directory not found at {build_lib_dir}. "
+                f"YourPlugin requires native libraries to be built. "
+                f"Run: build_scripts/build_helios --plugins yourplugin"
+            )
+
+    if not yourplugin_assets.exists():
+        raise RuntimeError(
+            f"YourPlugin assets not found at {yourplugin_assets}. "
+            f"Build system failed to copy YourPlugin assets. "
+            f"Run: build_scripts/build_helios --clean --plugins yourplugin"
+        )
+
+    # Change to the build directory temporarily
+    original_dir = os.getcwd()
+    try:
+        os.chdir(working_dir)
+        logger.debug(f"Changed working directory to {working_dir} for YourPlugin asset access")
+        yield working_dir
+    finally:
+        os.chdir(original_dir)
+        logger.debug(f"Restored working directory to {original_dir}")
+
+# Use in plugin operations
+class YourPlugin:
+    def __init__(self, context: Context):
+        # Create plugin instance with asset-aware working directory
+        with _yourplugin_working_directory():
+            self._plugin_ptr = plugin_wrapper.createYourPlugin(context.getNativePtr())
+
+    def some_method(self):
+        # Use working directory for operations requiring assets
+        with _yourplugin_working_directory():
+            return plugin_wrapper.yourPluginMethod(self._plugin_ptr, ...)
+```
+
+#### Stage 2: Python Asset Copying (Future Wheel Distribution)
+
+**For future wheel-based distribution**, Python will copy assets to package directories:
 
 ```python
 def _copy_yourplugin_assets(self) -> None:
     """
-    Copy YourPlugin runtime assets to expected locations.
-    
-    The C++ YourPlugin code expects assets at specific locations relative
-    to the working directory. This method copies all required assets.
+    Copy YourPlugin runtime assets to expected locations for wheel distribution.
+
+    NOTE: This is Stage 2 asset management for future wheel distribution.
+    Most plugins currently use Stage 1 (CMake + working directory) pattern.
     """
-    # Source and destination paths
-    build_plugin_dir = self.build_dir / 'plugins' / 'yourplugin'
-    target_base_dir = self.output_dir.parent / 'plugins' / 'yourplugin'
-    
-    if not build_plugin_dir.exists():
-        print(f"ℹ️  YourPlugin assets directory not found: {build_plugin_dir}")
-        return
-    
-    total_files_copied = 0
-    
-    # Copy shader files
-    build_shader_dir = build_plugin_dir / 'shaders'
-    if build_shader_dir.exists():
-        target_shader_dir = target_base_dir / 'shaders'
-        target_shader_dir.mkdir(parents=True, exist_ok=True)
-        
-        for shader_file in build_shader_dir.rglob('*'):
-            if shader_file.is_file():
-                rel_path = shader_file.relative_to(build_shader_dir)
-                dest_file = target_shader_dir / rel_path
-                dest_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(shader_file, dest_file)
-                total_files_copied += 1
-                print(f"Copied shader: {rel_path}")
-    
-    # Copy configuration files
-    build_config_dir = build_plugin_dir / 'config'
-    if build_config_dir.exists():
-        target_config_dir = target_base_dir / 'config'
-        target_config_dir.mkdir(parents=True, exist_ok=True)
-        
-        for config_file in build_config_dir.rglob('*'):
-            if config_file.is_file():
-                rel_path = config_file.relative_to(build_config_dir)
-                dest_file = target_config_dir / rel_path
-                dest_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(config_file, dest_file)
-                total_files_copied += 1
-                print(f"Copied config: {rel_path}")
-    
-    # Copy data files
-    for data_pattern in ['*.xml', '*.json', '*.dat']:
-        for data_file in build_plugin_dir.rglob(data_pattern):
-            if data_file.is_file():
-                rel_path = data_file.relative_to(build_plugin_dir)
-                dest_file = target_base_dir / rel_path
-                dest_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(data_file, dest_file)
-                total_files_copied += 1
-                print(f"Copied data: {rel_path}")
-    
-    if total_files_copied > 0:
-        print(f"📦 Successfully copied {total_files_copied} YourPlugin assets to {target_base_dir}")
+    # Implementation for when needed...
 ```
 
-### 6.4 Integrate Asset Copying
+**CRITICAL WHEEL BUILD REQUIREMENT FOR STAGE 1 PLUGINS**: Even Stage 1 plugins require wheel packaging configuration to work in distributed wheels.
 
-Add to the main copy method in `build_scripts/build_helios.py`:
+**File**: `build_scripts/prepare_wheel.py`
+
+Add your plugin to the `plugin_asset_dirs` mapping:
 
 ```python
-def copy_to_output(self, library_path: Path) -> None:
-    # ... existing code ...
-    
-    # Copy plugin-specific assets
-    if 'yourplugin' in self.plugins:
-        self._copy_yourplugin_assets()
-    
-    # ... rest of method ...
+# Line ~215 in build_scripts/prepare_wheel.py
+plugin_asset_dirs = {
+    'weberpenntree': ['leaves', 'wood', 'xml'],
+    'visualizer': ['textures', 'shaders'],
+    'yourplugin': ['textures', 'obj', 'xml'],  # Add this line
+    # Include only essential runtime asset directories
+}
+```
+
+**Asset Directory Selection Guidelines**:
+- **Include**: Runtime assets required by C++ code (textures, models, configs)
+- **Exclude**: Source files (`.blend`, development tools, documentation)
+- **Verify**: Check helios-core/plugins/yourplugin/assets/ for directory structure
+
+**Why This Is Required**: The working directory context manager looks for assets via the asset manager, which searches multiple paths including `pyhelios/assets/build/plugins/yourplugin/`. During wheel builds, assets must be copied to this location by `prepare_wheel.py` or the plugin will fail with "assets not found" errors.
+
+**INTEGRATION RULE**: New plugins should follow the **Stage 1 pattern** (CMake + working directory context manager) like WeberPennTree, Visualizer, and PlantArchitecture, **AND** must be added to `plugin_asset_dirs` in `prepare_wheel.py` for wheel distribution.
+
+### 6.4 Plugin-Specific Asset Considerations
+
+Some plugins may require special asset handling:
+
+```python
+# In build_scripts/build_helios.py, most plugins have commented-out asset copying
+# NOTE: Asset copying for yourplugin plugin disabled - Stage 1 asset management
+# uses CMake targets (copy_obj_assets, copy_texture_assets) with working directory context manager
+# self._copy_yourplugin_assets()
+
+# Only uncomment and implement if Stage 2 distribution specifically required
 ```
 
 ## Phase 7: Testing Integration
@@ -1120,10 +1220,61 @@ markers =
     yourplugin: tests requiring YourPlugin
 ```
 
-### 7.3 Run Tests
+### 7.3 Critical Test Fixture Requirements
+
+**LESSON FROM PLANTARCHITECTURE INTEGRATION**: Test fixtures MUST include proper cleanup patterns to prevent state contamination between tests. PyHelios uses pytest-forked for subprocess isolation, but proper fixture cleanup is still required for resource management.
+
+#### Proper Fixture Patterns
+
+**✅ CORRECT - Use conftest.py patterns with cleanup:**
+```python
+@pytest.fixture
+def basic_context(check_native_library):
+    """Fixture providing basic context with proper cleanup"""
+    context = Context()
+    yield context
+    # CRITICAL: Proper cleanup
+    context.__exit__(None, None, None)
+
+@pytest.fixture
+def yourplugin_instance(basic_context):
+    """Fixture providing plugin instance with proper cleanup"""
+    if not basic_context.is_plugin_available('yourplugin'):
+        pytest.skip("YourPlugin not available")
+
+    plugin = YourPlugin(basic_context)
+    yield plugin
+    # CRITICAL: Proper cleanup
+    plugin.__exit__(None, None, None)
+```
+
+**❌ WRONG - Missing cleanup causes resource leaks:**
+```python
+@pytest.fixture
+def context(self):
+    return Context()  # NO CLEANUP - causes resource leaks
+
+@pytest.fixture
+def plugin(self):
+    context = Context()
+    return YourPlugin(context)  # NO CLEANUP - causes resource leaks
+```
+
+#### Cleanup Verification
+
+Always verify that your test fixtures follow the established patterns in `conftest.py`:
 
 ```bash
-# Run all plugin tests
+# Check that test fixtures include proper cleanup
+grep -A 10 -B 5 "__exit__" tests/test_yourplugin.py
+
+# Should show context manager exits or proper cleanup calls
+```
+
+### 7.4 Run Tests
+
+```bash
+# Run all plugin tests (automatically uses pytest-forked for isolation)
 pytest tests/test_yourplugin.py -v
 
 # Run only cross-platform tests
@@ -1134,6 +1285,9 @@ pytest tests/test_yourplugin.py -m native_only
 
 # Run with coverage
 pytest tests/test_yourplugin.py --cov=pyhelios.YourPlugin
+
+# Verify pytest-forked is working (should show "plugins: forked-X.X.X")
+pytest tests/test_yourplugin.py --tb=short
 ```
 
 ## Phase 8: Documentation
@@ -1783,7 +1937,7 @@ mv tests/test_your_plugin.py tests/test_yourplugin.py
 
 #### Pytest Test Isolation Issues (State Contamination)
 
-**CRITICAL PROBLEM**: A persistent issue where tests pass individually but fail when run as part of the full test suite, affecting multiple plugins (energybalance, radiation, stomatalconductance).
+**CRITICAL PROBLEM**: A persistent issue where tests pass individually but fail when run as part of the full test suite, affecting multiple plugins (energybalance, radiation, stomatalconductance, plantarchitecture).
 
 **Symptoms**:
 - Tests pass when run with `pytest tests/test_yourplugin.py -v`
@@ -1791,13 +1945,20 @@ mv tests/test_your_plugin.py tests/test_yourplugin.py
 - Import-related failures with class identity mismatches
 - Error messages like `AssertionError: False = issubclass(...)` or ctypes pointer type mismatches
 - Error messages like `expected LP_UContext instance instead of LP_UContext`
+- Resource accumulation and memory leaks between tests
+- Segmentation faults during test cleanup
 
-**Root Cause Identified**: 
-**ctypes Structure Type Identity Problem** - This is a well-documented limitation of ctypes where identical Structure classes are treated as different types when redefined during pytest module reloading. When pytest reloads modules, ctypes sees "new" pointer types (like `LP_UContext`) as incompatible with "old" ones, even when they have identical memory layout and field definitions.
+**Root Causes Identified**:
 
-**PERMANENT SOLUTION IMPLEMENTED** (v0.1.0+):
+1. **ctypes Structure Type Identity Problem** - Well-documented limitation where identical Structure classes are treated as different types when redefined during pytest module reloading.
 
-**pytest-forked for Complete Test Isolation** - The definitive solution to prevent ctypes contamination by running each test in a separate subprocess:
+2. **Improper Test Fixture Cleanup** - **CRITICAL DISCOVERY FROM PLANTARCHITECTURE INTEGRATION**: Incorrect fixture patterns cause resource leaks and state contamination even with pytest-forked protection.
+
+**COMPREHENSIVE SOLUTION IMPLEMENTED** (v0.1.0+):
+
+#### 1. pytest-forked for Subprocess Isolation
+
+**Complete test isolation** by running each test in a separate subprocess:
 
 ```bash
 # Installation (automatically included in development dependencies)
@@ -1807,13 +1968,98 @@ pip install pytest-forked>=1.6.0
 pytest  # Now uses --forked by default
 ```
 
-This solution:
+#### 2. MANDATORY Fixture Cleanup Patterns
+
+**LESSON FROM PLANTARCHITECTURE**: Even with subprocess isolation, fixtures must follow proper cleanup patterns to prevent resource leaks within individual test processes.
+
+**✅ CORRECT Fixture Patterns**:
+```python
+# Context fixtures - MUST use yield + cleanup
+@pytest.fixture
+def context(self, check_native_library):
+    """Context fixture with proper cleanup"""
+    context = Context()
+    yield context
+    # CRITICAL: Explicit cleanup prevents resource leaks
+    context.__exit__(None, None, None)
+
+# Plugin fixtures - MUST avoid nested context managers
+@pytest.fixture
+def yourplugin_instance(self, context):
+    """Plugin fixture with proper cleanup"""
+    if not plugin_available('yourplugin'):
+        pytest.skip("Plugin not available")
+
+    plugin = YourPlugin(context)
+    yield plugin
+    # CRITICAL: Explicit cleanup prevents resource leaks
+    plugin.__exit__(None, None, None)
+```
+
+**❌ WRONG Patterns That Cause Contamination**:
+```python
+# ❌ WRONG - Return without cleanup causes resource leaks
+@pytest.fixture
+def context(self):
+    return Context()  # NO CLEANUP!
+
+# ❌ WRONG - Nested context manager in fixture
+@pytest.fixture
+def plugin(self, context):
+    try:
+        with YourPlugin(context) as plugin:  # Nested context manager
+            yield plugin
+    except PluginError:
+        pytest.skip("Plugin failed")
+
+# ❌ WRONG - Double context manager usage
+@pytest.fixture
+def context(self):
+    with Context() as context:  # Context manager in fixture
+        yield context
+```
+
+#### 3. State Contamination Prevention Checklist
+
+**MANDATORY for all new plugin integrations**:
+
+- [ ] **Context fixtures use yield + __exit__ cleanup pattern**
+- [ ] **Plugin fixtures avoid nested context managers**
+- [ ] **All fixtures follow conftest.py established patterns**
+- [ ] **Test isolation verified with both individual and suite runs**
+- [ ] **Resource cleanup verified with fixture pattern checking**
+
+#### 4. Verification Commands
+
+**Test fixture cleanup patterns**:
+```bash
+# Verify fixtures include proper cleanup
+grep -A 10 -B 5 "__exit__" tests/test_yourplugin.py
+
+# Should show context manager exits or proper cleanup calls
+# If no results, fixtures need cleanup implementation
+```
+
+**Test state contamination elimination**:
+```bash
+# Individual test (should pass)
+pytest tests/test_yourplugin.py -v
+
+# Full suite (should also pass with no contamination)
+pytest --tb=short
+
+# Verify pytest-forked active (should show "plugins: forked-X.X.X")
+pytest tests/test_yourplugin.py --tb=short
+```
+
+This comprehensive solution:
 - ✅ Completely eliminates ctypes type contamination between tests
-- ✅ Provides clean module state for each test execution  
+- ✅ Prevents resource leaks and memory accumulation within tests
+- ✅ Provides clean module state for each test execution
 - ✅ Works across all platforms (Windows, macOS, Linux)
 - ✅ Maintains test performance (minimal subprocess overhead)
-- ✅ Requires no code changes to PyHelios plugins
-- ✅ Prevents ALL forms of test state contamination, not just ctypes
+- ✅ Requires proper fixture patterns for all plugins
+- ✅ Prevents ALL forms of test state contamination
 
 **Alternative Solutions** (Legacy - for reference):
 
@@ -2076,6 +2322,7 @@ The code reviewer should verify completion of all integration phases:
 ✅ Phase 6: Asset Management
    - All runtime assets identified and documented
    - Asset copying implemented in build system
+   - **Plugin added to plugin_asset_dirs in prepare_wheel.py for wheel distribution**
    - Assets available at expected locations
    - Working directory handling if needed
 
