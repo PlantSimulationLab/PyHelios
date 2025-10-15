@@ -323,20 +323,23 @@ class Visualizer:
     def plotUpdate(self) -> None:
         """
         Update visualization (non-interactive).
-        
+
         This method updates the visualization window without user interaction.
         The program continues immediately after rendering. Useful for batch
         processing or creating image sequences.
-        
+
+        In headless mode, automatically hides the window to prevent graphics driver crashes on some platforms.
+
         Raises:
             VisualizerError: If visualization update fails
         """
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
-        
+
         try:
             with _visualizer_working_directory():
-                visualizer_wrapper.plot_update(self.visualizer)
+                # In headless mode, hide the window to avoid OpenGL/Metal crashes on macOS
+                visualizer_wrapper.plot_update(self.visualizer, hide_window=self.headless)
             logger.debug("Visualization updated")
         except Exception as e:
             raise VisualizerError(f"Visualization update failed: {e}")

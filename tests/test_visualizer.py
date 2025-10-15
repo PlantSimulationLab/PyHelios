@@ -591,12 +591,18 @@ class TestVisualizerDataColoringNative:
             # Expected if plugin not available
             pass
     
+    @pytest.mark.skipif(platform.system() == "Darwin",
+                        reason="macOS OpenGL/Metal cannot properly initialize in pytest-forked headless mode - known driver limitation")
     def test_color_primitives_integration_workflow(self, visualizer_and_context):
         """Test complete workflow with primitive coloring
 
         This test validates the complete visualization workflow including primitive coloring
         in headless mode. Note: We avoid calling plotUpdate() multiple times in headless
         mode as this triggers a known C++ visualizer bug.
+
+        Note: Skipped on macOS due to OpenGL/Metal driver limitations when running in
+        forked pytest processes (pytest-forked). The macOS graphics drivers cannot properly
+        initialize OpenGL contexts in forked child processes.
         """
         visualizer, context, uuids = visualizer_and_context
 
@@ -788,6 +794,8 @@ class TestVisualizerV1353Features:
             visualizer.hideNavigationGizmo()
             visualizer.showNavigationGizmo()
 
+    @pytest.mark.skipif(platform.system() == "Darwin",
+                        reason="macOS OpenGL/Metal cannot properly initialize in pytest-forked headless mode")
     def test_printwindow_png_format(self):
         """Test PNG format support in printWindow"""
         import tempfile
@@ -850,6 +858,8 @@ class TestVisualizerV1353Features:
                 with pytest.raises(ValueError, match="must be 'jpeg' or 'png'"):
                     visualizer.printWindow(tmp.name, image_format="invalid")
 
+    @pytest.mark.skipif(platform.system() == "Darwin",
+                        reason="macOS OpenGL/Metal cannot properly initialize in pytest-forked headless mode")
     def test_transparent_background_with_png_workflow(self):
         """Test complete workflow: transparent background + PNG export"""
         import tempfile

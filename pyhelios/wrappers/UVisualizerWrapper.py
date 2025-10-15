@@ -455,13 +455,14 @@ def plot_interactive(visualizer: ctypes.POINTER(UVisualizer)) -> None:
     helios_lib.plotInteractive(visualizer)
     _check_for_helios_error()
 
-def plot_update(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+def plot_update(visualizer: ctypes.POINTER(UVisualizer), hide_window: bool = False) -> None:
     """
     Update visualization (non-interactive).
-    
+
     Args:
         visualizer: Pointer to UVisualizer
-        
+        hide_window: Whether to hide the window during update (use True for headless mode)
+
     Raises:
         NotImplementedError: If visualizer functions not available
         RuntimeError: If visualization update fails
@@ -471,11 +472,12 @@ def plot_update(visualizer: ctypes.POINTER(UVisualizer)) -> None:
             "Visualizer functions not available in current Helios library. "
             "Rebuild with visualizer plugin enabled."
         )
-    
+
     if not visualizer:
         raise ValueError("Visualizer pointer is null")
-    
-    helios_lib.plotUpdate(visualizer)
+
+    # Use plotUpdateWithVisibility to properly handle headless mode
+    helios_lib.plotUpdateWithVisibility(visualizer, ctypes.c_bool(hide_window))
     _check_for_helios_error()
 
 def print_window(visualizer: ctypes.POINTER(UVisualizer), filename: str) -> None:

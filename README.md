@@ -16,6 +16,7 @@ PyHelios provides a Python interface to the powerful Helios C++ library for 3D p
 📖 **[Complete Documentation](https://plantsimulationlab.github.io/PyHelios/)**
 
 ⚠️Note that this is a work in progress. Not all Helios functionality has been implemented in PyHelios ⚠️
+
 ⚠️Help make PyHelios better by reporting issues: https://github.com/PlantSimulationLab/PyHelios/issues ⚠️
 
 See the Helios C++ documentation for a more in-depth description of Helios: https://baileylab.ucdavis.edu/software/helios
@@ -151,12 +152,12 @@ print(f"Created patch: {patch_uuid}")
 
 ## Documentation
 
-| Section | Description |
-|---------|-------------|
-| **[Getting Started](https://plantsimulationlab.github.io/PyHelios/getting_started.html)** | Installation, setup, and first steps |
-| **[User Guide](https://plantsimulationlab.github.io/PyHelios/user_guide.html)** | Core concepts, API reference, and examples |
-| **[Cross-Platform](https://plantsimulationlab.github.io/PyHelios/cross_platform.html)** | Platform-specific usage and deployment |
-| **[Plugin System](https://plantsimulationlab.github.io/PyHelios/plugin_system.html)** | Available plugins and configuration |
+| Section                                                                                  | Description |
+|------------------------------------------------------------------------------------------|-------------|
+| **[Getting Started](https://plantsimulationlab.github.io/PyHelios/GettingStarted.html)** | Installation, setup, and first steps |
+| **[User Guide](https://plantsimulationlab.github.io/PyHelios/UserGuide.html)**           | Core concepts, API reference, and examples |
+| **[Cross-Platform](https://plantsimulationlab.github.io/PyHelios/CrossPlatform.html)**   | Platform-specific usage and deployment |
+| **[Plugin System](https://plantsimulationlab.github.io/PyHelios/PluginSystem.html)**     | Available plugins and configuration |
 
 ## Key Features
 
@@ -169,7 +170,17 @@ print(f"Created patch: {patch_uuid}")
 
 ## Updating PyHelios
 
-To update your PyHelios installation with the latest changes:
+### PyPI Installation
+
+If you installed via pip, simply upgrade to the latest version:
+
+```bash
+pip install --upgrade pyhelios3d
+```
+
+### Source Installation
+
+If you built PyHelios from source, update with the latest changes:
 
 ```bash
 # Update main repository and submodules recursively

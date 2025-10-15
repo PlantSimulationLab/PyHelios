@@ -791,10 +791,10 @@ extern "C" {
             }
             
             bool append = (append_file != 0);
-            
+
             radiation_model->writeImageSegmentationMasks(std::string(camera_label), std::string(primitive_data_label),
-                                                         object_class_id, std::string(json_filename), 
-                                                         std::string(image_file), append);
+                                                         object_class_id, std::string(json_filename),
+                                                         std::string(image_file), {}, append);
             
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeImageSegmentationMasks): ") + e.what());
@@ -830,10 +830,10 @@ extern "C" {
             }
             
             bool append = (append_file != 0);
-            
+
             radiation_model->writeImageSegmentationMasks(std::string(camera_label), label_vector,
                                                          class_id_vector, std::string(json_filename),
-                                                         std::string(image_file), append);
+                                                         std::string(image_file), {}, append);
             
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeImageSegmentationMasksVector): ") + e.what());
@@ -858,10 +858,10 @@ extern "C" {
             }
             
             bool append = (append_file != 0);
-            
+
             radiation_model->writeImageSegmentationMasks_ObjectData(std::string(camera_label), std::string(object_data_label),
                                                                     object_class_id, std::string(json_filename),
-                                                                    std::string(image_file), append);
+                                                                    std::string(image_file), {}, append);
             
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeImageSegmentationMasks_ObjectData): ") + e.what());
@@ -897,10 +897,10 @@ extern "C" {
             }
             
             bool append = (append_file != 0);
-            
+
             radiation_model->writeImageSegmentationMasks_ObjectData(std::string(camera_label), label_vector,
                                                                     class_id_vector, std::string(json_filename),
-                                                                    std::string(image_file), append);
+                                                                    std::string(image_file), {}, append);
             
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeImageSegmentationMasks_ObjectDataVector): ") + e.what());

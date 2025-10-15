@@ -1,5 +1,16 @@
 # Changelog
 
+# [v0.1.8] 2025-10-15
+
+- Updated helios-core to v1.3.55
+
+## PlantArchitecture
+- Added custom plant building API with `addPlantInstance()`, `addBaseStemShoot()`, and `addChildShoot()`
+- Added collision detection support with `plantDoesCollide()`
+- Added `AxisRotation` data type for shoot rotation control
+- Expanded plant library to 28 models (added apple_fruitingwall, asparagus, tomato)
+- Added `plantarch_custom_building_sample.py`, `plantarch_collision_sample.py`, `plantarch_file_io_sample.py`
+
 # [v0.1.7] 2025-10-11
 
 - Updated helios-core to v1.3.53, which includes a number of upgrades to the visualizer
