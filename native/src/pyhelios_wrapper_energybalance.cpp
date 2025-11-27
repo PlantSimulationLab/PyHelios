@@ -322,7 +322,7 @@ extern "C" {
         }
     }
     
-    PYHELIOS_API void optionalOutputPrimitiveData(EnergyBalanceModel* energy_model, const char* label) {
+    PYHELIOS_API void energyBalanceOptionalOutputPrimitiveData(EnergyBalanceModel* energy_model, const char* label) {
         try {
             clearError();
             if (!energy_model) {
@@ -333,9 +333,9 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
                 return;
             }
-            
+
             energy_model->optionalOutputPrimitiveData(label);
-            
+
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::optionalOutputPrimitiveData): ") + e.what());
         } catch (...) {

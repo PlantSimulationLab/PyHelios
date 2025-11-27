@@ -1097,6 +1097,96 @@ class TestPrimitiveDataOperations:
 
 
 @pytest.mark.native_only
+class TestBroadcastPrimitiveData:
+    """Test broadcast setPrimitiveData operations (same value to multiple UUIDs)."""
+
+    def test_broadcast_int(self, basic_context):
+        """Test broadcast setting of integer data to multiple primitives."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(5)]
+        basic_context.setPrimitiveDataInt(uuids, "test_int", 42)
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "test_int") == 42
+
+    def test_broadcast_uint(self, basic_context):
+        """Test broadcast setting of unsigned integer data."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(5)]
+        basic_context.setPrimitiveDataUInt(uuids, "test_uint", 100)
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "test_uint", "uint") == 100
+
+    def test_broadcast_float(self, basic_context):
+        """Test broadcast setting of float data to multiple primitives."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(5)]
+        basic_context.setPrimitiveDataFloat(uuids, "temperature", 25.5)
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "temperature") == pytest.approx(25.5)
+
+    def test_broadcast_double(self, basic_context):
+        """Test broadcast setting of double data to multiple primitives."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(5)]
+        basic_context.setPrimitiveDataDouble(uuids, "precise_value", 3.141592653589793)
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "precise_value", "double") == pytest.approx(3.141592653589793)
+
+    def test_broadcast_string(self, basic_context):
+        """Test broadcast setting of string data to multiple primitives."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(3)]
+        basic_context.setPrimitiveDataString(uuids, "material", "glass")
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "material") == "glass"
+
+    def test_broadcast_vec3(self, basic_context):
+        """Test broadcast setting of vec3 data to multiple primitives."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(5)]
+        basic_context.setPrimitiveDataVec3(uuids, "wind", 1.0, 0.5, 0.2)
+        for uuid in uuids:
+            result = basic_context.getPrimitiveData(uuid, "wind")
+            assert result[0] == pytest.approx(1.0)
+            assert result[1] == pytest.approx(0.5)
+            assert result[2] == pytest.approx(0.2)
+
+    def test_broadcast_vec3_with_object(self, basic_context):
+        """Test broadcast setting of vec3 data using vec3 object."""
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(3)]
+        wind_vector = vec3(2.0, 1.5, 0.5)
+        basic_context.setPrimitiveDataVec3(uuids, "wind", wind_vector)
+        for uuid in uuids:
+            result = basic_context.getPrimitiveData(uuid, "wind")
+            assert result[0] == pytest.approx(2.0)
+            assert result[1] == pytest.approx(1.5)
+            assert result[2] == pytest.approx(0.5)
+
+    def test_broadcast_empty_uuids_error(self, basic_context):
+        """Test that empty UUID list raises error."""
+        with pytest.raises(ValueError, match="empty"):
+            basic_context.setPrimitiveDataInt([], "test", 42)
+
+    def test_single_uuid_still_works(self, basic_context):
+        """Test that single UUID (non-list) still works with existing behavior."""
+        uuid = basic_context.addPatch()
+        basic_context.setPrimitiveDataFloat(uuid, "temp", 30.0)
+        assert basic_context.getPrimitiveData(uuid, "temp") == pytest.approx(30.0)
+
+    def test_broadcast_with_tuple(self, basic_context):
+        """Test that tuples work as well as lists for UUIDs."""
+        uuids = tuple(basic_context.addPatch(center=vec3(i, 0, 0)) for i in range(3))
+        basic_context.setPrimitiveDataInt(uuids, "count", 99)
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "count") == 99
+
+    def test_broadcast_large_uuid_list(self, basic_context):
+        """Test broadcast with a larger number of primitives."""
+        n = 100
+        uuids = [basic_context.addPatch(center=vec3(i % 10, i // 10, 0)) for i in range(n)]
+        basic_context.setPrimitiveDataFloat(uuids, "value", 12.34)
+
+        # Verify all values are set correctly
+        data_array = basic_context.getPrimitiveDataArray(uuids, "value")
+        assert len(data_array) == n
+        np.testing.assert_array_almost_equal(data_array, [12.34] * n, decimal=4)
+
+
+@pytest.mark.native_only
 class TestFileLoadingOperations:
     """Test file loading methods with proper error handling."""
     
@@ -1457,6 +1547,155 @@ class TestFileExportOperations:
             obj_time = time.time() - start_time
 
             assert obj_time < 5.0, f"OBJ export took too long: {obj_time:.2f}s"
+
+    def test_writePrimitiveData_basic(self, basic_context):
+        """Test basic writePrimitiveData with all primitives."""
+        # Create geometry and add primitive data
+        patch_uuid = basic_context.addPatch(center=vec3(1, 2, 3), size=vec2(2, 2))
+        tri_uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.5, 1, 0))
+
+        basic_context.setPrimitiveDataFloat(patch_uuid, "temperature", 25.5)
+        basic_context.setPrimitiveDataFloat(tri_uuid, "temperature", 30.2)
+        basic_context.setPrimitiveDataInt(patch_uuid, "count", 10)
+        basic_context.setPrimitiveDataInt(tri_uuid, "count", 20)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "primitive_data.txt")
+
+            # Write all primitives with temperature column
+            basic_context.writePrimitiveData(output_file, ["temperature"])
+
+            assert os.path.exists(output_file)
+            assert os.path.getsize(output_file) > 0
+
+    def test_writePrimitiveData_with_header(self, basic_context):
+        """Test writePrimitiveData with header option."""
+        patch_uuid = basic_context.addPatch()
+        basic_context.setPrimitiveDataFloat(patch_uuid, "value", 42.0)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "with_header.txt")
+
+            # Write with header
+            basic_context.writePrimitiveData(output_file, ["value"], print_header=True)
+
+            assert os.path.exists(output_file)
+
+            # Read and verify header is present
+            with open(output_file, 'r') as f:
+                lines = f.readlines()
+                assert len(lines) >= 2  # Header + at least one data line
+                assert "value" in lines[0]  # Header should contain column name
+
+    def test_writePrimitiveData_multiple_columns(self, basic_context):
+        """Test writePrimitiveData with multiple columns."""
+        patch_uuid = basic_context.addPatch()
+        basic_context.setPrimitiveDataFloat(patch_uuid, "temperature", 25.5)
+        basic_context.setPrimitiveDataInt(patch_uuid, "count", 100)
+        basic_context.setPrimitiveDataString(patch_uuid, "material", "glass")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "multi_column.txt")
+
+            # Write with multiple columns
+            basic_context.writePrimitiveData(
+                output_file,
+                ["temperature", "count", "material"],
+                print_header=True
+            )
+
+            assert os.path.exists(output_file)
+
+            with open(output_file, 'r') as f:
+                header = f.readline()
+                assert "temperature" in header
+                assert "count" in header
+                assert "material" in header
+
+    def test_writePrimitiveData_with_uuid_column(self, basic_context):
+        """Test writePrimitiveData with UUID special column."""
+        patch_uuid = basic_context.addPatch()
+        basic_context.setPrimitiveDataFloat(patch_uuid, "value", 1.0)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "with_uuid.txt")
+
+            # Write with UUID column
+            basic_context.writePrimitiveData(
+                output_file,
+                ["UUID", "value"],
+                print_header=True
+            )
+
+            assert os.path.exists(output_file)
+
+            with open(output_file, 'r') as f:
+                header = f.readline()
+                assert "UUID" in header
+
+    def test_writePrimitiveData_with_selected_uuids(self, basic_context):
+        """Test writePrimitiveData with selected UUIDs."""
+        patch1_uuid = basic_context.addPatch(center=vec3(0, 0, 0))
+        patch2_uuid = basic_context.addPatch(center=vec3(1, 0, 0))
+        patch3_uuid = basic_context.addPatch(center=vec3(2, 0, 0))
+
+        basic_context.setPrimitiveDataFloat(patch1_uuid, "value", 1.0)
+        basic_context.setPrimitiveDataFloat(patch2_uuid, "value", 2.0)
+        basic_context.setPrimitiveDataFloat(patch3_uuid, "value", 3.0)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Write all primitives
+            all_file = os.path.join(temp_dir, "all_primitives.txt")
+            basic_context.writePrimitiveData(all_file, ["value"])
+
+            # Write only selected primitives
+            selected_file = os.path.join(temp_dir, "selected_primitives.txt")
+            basic_context.writePrimitiveData(
+                selected_file,
+                ["value"],
+                UUIDs=[patch1_uuid, patch3_uuid]
+            )
+
+            assert os.path.exists(all_file)
+            assert os.path.exists(selected_file)
+
+            # Selected file should have fewer lines
+            with open(all_file, 'r') as f:
+                all_lines = len(f.readlines())
+            with open(selected_file, 'r') as f:
+                selected_lines = len(f.readlines())
+
+            assert selected_lines < all_lines
+
+    def test_writePrimitiveData_empty_column_labels_error(self, basic_context):
+        """Test writePrimitiveData raises error for empty column labels."""
+        basic_context.addPatch()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test.txt")
+
+            with pytest.raises(ValueError, match="column_labels.*cannot be empty"):
+                basic_context.writePrimitiveData(output_file, [])
+
+    def test_writePrimitiveData_empty_uuids_error(self, basic_context):
+        """Test writePrimitiveData raises error for empty UUIDs list."""
+        basic_context.addPatch()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = os.path.join(temp_dir, "test.txt")
+
+            with pytest.raises(ValueError, match="UUIDs.*cannot be empty"):
+                basic_context.writePrimitiveData(output_file, ["value"], UUIDs=[])
+
+    def test_writePrimitiveData_invalid_directory_error(self, basic_context):
+        """Test writePrimitiveData raises error for non-existent directory."""
+        basic_context.addPatch()
+
+        with pytest.raises(ValueError, match="[Oo]utput directory|[Pp]arent directory"):
+            basic_context.writePrimitiveData(
+                "/nonexistent/directory/test.txt",
+                ["value"]
+            )
 
 
 @pytest.mark.native_only
@@ -2504,3 +2743,268 @@ class TestContextTimeDateMockMode:
             
             with pytest.raises(NotImplementedError, match="not available"):
                 context.getDate()
+
+
+# =============================================================================
+# Primitive and Object Deletion Tests
+# =============================================================================
+
+@pytest.mark.native_only
+class TestDeletePrimitive:
+    """Test primitive deletion functionality with native library."""
+
+    def test_delete_single_primitive(self, basic_context):
+        """Test deleting a single primitive by UUID."""
+        # Create a patch
+        patch_uuid = basic_context.addPatch()
+        assert basic_context.getPrimitiveCount() == 1
+        assert patch_uuid in basic_context.getAllUUIDs()
+
+        # Delete the patch
+        basic_context.deletePrimitive(patch_uuid)
+
+        # Verify deletion
+        assert basic_context.getPrimitiveCount() == 0
+        assert patch_uuid not in basic_context.getAllUUIDs()
+
+    def test_delete_multiple_primitives_list(self, basic_context):
+        """Test deleting multiple primitives using a list."""
+        # Create multiple patches
+        uuids = [basic_context.addPatch() for _ in range(5)]
+        assert basic_context.getPrimitiveCount() == 5
+
+        # Delete all using list
+        basic_context.deletePrimitive(uuids)
+
+        # Verify all deleted
+        assert basic_context.getPrimitiveCount() == 0
+        assert basic_context.getAllUUIDs() == []
+
+    def test_delete_partial_primitives(self, basic_context):
+        """Test deleting some primitives while keeping others."""
+        # Create 5 patches
+        uuids = [basic_context.addPatch() for _ in range(5)]
+        assert basic_context.getPrimitiveCount() == 5
+
+        # Delete only first 3
+        basic_context.deletePrimitive(uuids[:3])
+
+        # Verify partial deletion
+        assert basic_context.getPrimitiveCount() == 2
+        remaining_uuids = basic_context.getAllUUIDs()
+        for uuid in uuids[:3]:
+            assert uuid not in remaining_uuids
+        for uuid in uuids[3:]:
+            assert uuid in remaining_uuids
+
+    def test_delete_empty_list_is_noop(self, basic_context):
+        """Test that deleting an empty list is a no-op."""
+        # Create a patch
+        patch_uuid = basic_context.addPatch()
+        assert basic_context.getPrimitiveCount() == 1
+
+        # Delete empty list
+        basic_context.deletePrimitive([])
+
+        # Verify no change
+        assert basic_context.getPrimitiveCount() == 1
+        assert patch_uuid in basic_context.getAllUUIDs()
+
+    def test_delete_nonexistent_uuid_raises_error(self, basic_context):
+        """Test that deleting a non-existent UUID raises RuntimeError."""
+        # Create a patch
+        basic_context.addPatch()
+        nonexistent_uuid = 99999
+
+        # Attempt to delete non-existent UUID
+        with pytest.raises((RuntimeError, HeliosRuntimeError)):
+            basic_context.deletePrimitive(nonexistent_uuid)
+
+    def test_delete_negative_uuid_raises_valueerror(self, basic_context):
+        """Test that negative UUID raises ValueError."""
+        with pytest.raises(ValueError, match="non-negative"):
+            basic_context.deletePrimitive(-1)
+
+    def test_delete_negative_uuid_in_list_raises_valueerror(self, basic_context):
+        """Test that negative UUID in list raises ValueError."""
+        uuid = basic_context.addPatch()
+        with pytest.raises(ValueError, match="non-negative"):
+            basic_context.deletePrimitive([uuid, -1])
+
+    def test_delete_different_primitive_types(self, basic_context):
+        """Test deleting various primitive types."""
+        # Create different primitives
+        patch_uuid = basic_context.addPatch()
+        triangle_uuid = basic_context.addTriangle(
+            vertex0=vec3(0, 0, 0),
+            vertex1=vec3(1, 0, 0),
+            vertex2=vec3(0.5, 1, 0)
+        )
+
+        initial_count = basic_context.getPrimitiveCount()
+        assert initial_count >= 2
+
+        # Delete patch
+        basic_context.deletePrimitive(patch_uuid)
+        assert basic_context.getPrimitiveCount() == initial_count - 1
+
+        # Delete triangle
+        basic_context.deletePrimitive(triangle_uuid)
+        assert basic_context.getPrimitiveCount() == initial_count - 2
+
+
+@pytest.mark.native_only
+class TestDeleteObject:
+    """Test compound object deletion functionality with native library."""
+
+    def test_delete_single_object(self, basic_context):
+        """Test deleting a single compound object."""
+        # Create a sphere (compound object with multiple triangles)
+        sphere_uuids = basic_context.addSphere(
+            ndivs=4,
+            center=vec3(0, 0, 0),
+            radius=1.0
+        )
+
+        assert len(sphere_uuids) > 0
+        initial_primitive_count = basic_context.getPrimitiveCount()
+
+        # Get object ID(s) - sphere should create a compound object
+        object_ids = basic_context.getAllObjectIDs()
+        if len(object_ids) == 0:
+            pytest.skip("Compound objects not created by addSphere in this Helios version")
+
+        # Delete the object
+        obj_id = object_ids[0]
+        basic_context.deleteObject(obj_id)
+
+        # Verify object and its primitives are deleted
+        assert basic_context.getObjectCount() < len(object_ids)
+
+    def test_delete_multiple_objects_list(self, basic_context):
+        """Test deleting multiple objects using a list."""
+        # Create multiple spheres
+        for i in range(3):
+            basic_context.addSphere(
+                ndivs=4,
+                center=vec3(i * 5, 0, 0),
+                radius=1.0
+            )
+
+        object_ids = basic_context.getAllObjectIDs()
+        if len(object_ids) < 3:
+            pytest.skip("Compound objects not created by addSphere in this Helios version")
+
+        initial_object_count = basic_context.getObjectCount()
+
+        # Delete all objects
+        basic_context.deleteObject(object_ids)
+
+        # All should be deleted
+        assert basic_context.getObjectCount() == 0
+
+    def test_delete_empty_object_list_is_noop(self, basic_context):
+        """Test that deleting an empty object list is a no-op."""
+        # Create a sphere
+        basic_context.addSphere(
+            ndivs=4,
+            center=vec3(0, 0, 0),
+            radius=1.0
+        )
+        initial_count = basic_context.getObjectCount()
+
+        # Delete empty list
+        basic_context.deleteObject([])
+
+        # Verify no change
+        assert basic_context.getObjectCount() == initial_count
+
+    def test_delete_nonexistent_object_raises_error(self, basic_context):
+        """Test that deleting a non-existent object ID raises RuntimeError."""
+        nonexistent_obj_id = 99999
+
+        # Attempt to delete non-existent object
+        with pytest.raises((RuntimeError, HeliosRuntimeError)):
+            basic_context.deleteObject(nonexistent_obj_id)
+
+    def test_delete_negative_object_id_raises_valueerror(self, basic_context):
+        """Test that negative object ID raises ValueError."""
+        with pytest.raises(ValueError, match="non-negative"):
+            basic_context.deleteObject(-1)
+
+    def test_delete_object_also_deletes_child_primitives(self, basic_context):
+        """Test that deleting an object also deletes its child primitives."""
+        # Create a sphere (compound object with many triangles)
+        sphere_uuids = basic_context.addSphere(
+            ndivs=6,
+            center=vec3(0, 0, 0),
+            radius=1.0
+        )
+
+        assert len(sphere_uuids) > 0
+        initial_primitive_count = basic_context.getPrimitiveCount()
+
+        # Get object ID
+        object_ids = basic_context.getAllObjectIDs()
+        if len(object_ids) == 0:
+            pytest.skip("Compound objects not created by addSphere in this Helios version")
+
+        # Delete the object
+        basic_context.deleteObject(object_ids[0])
+
+        # Primitive count should be reduced
+        assert basic_context.getPrimitiveCount() < initial_primitive_count
+
+
+@pytest.mark.cross_platform
+class TestDeletePrimitiveMockMode:
+    """Test deletePrimitive method in mock mode for cross-platform compatibility."""
+
+    def test_delete_methods_exist(self):
+        """Test that delete methods exist on Context."""
+        context = Context()
+
+        assert hasattr(context, 'deletePrimitive')
+        assert hasattr(context, 'deleteObject')
+        assert callable(context.deletePrimitive)
+        assert callable(context.deleteObject)
+
+    def test_delete_primitive_mock_behavior(self):
+        """Test deletePrimitive behavior when functions are not available."""
+        from pyhelios.wrappers import UContextWrapper
+
+        # Force delete functions to be unavailable
+        with patch.object(UContextWrapper, '_DELETE_FUNCTIONS_AVAILABLE', False):
+            context = Context()
+
+            # Method should raise NotImplementedError
+            with pytest.raises(NotImplementedError, match="not available"):
+                context.deletePrimitive(1)
+
+    def test_delete_object_mock_behavior(self):
+        """Test deleteObject behavior when functions are not available."""
+        from pyhelios.wrappers import UContextWrapper
+
+        # Force delete functions to be unavailable
+        with patch.object(UContextWrapper, '_DELETE_FUNCTIONS_AVAILABLE', False):
+            context = Context()
+
+            # Method should raise NotImplementedError
+            with pytest.raises(NotImplementedError, match="not available"):
+                context.deleteObject(1)
+
+    def test_delete_primitive_negative_validation(self):
+        """Test that negative UUID validation happens before native call."""
+        context = Context()
+
+        # Should raise ValueError immediately without calling native library
+        with pytest.raises(ValueError, match="non-negative"):
+            context.deletePrimitive(-1)
+
+    def test_delete_object_negative_validation(self):
+        """Test that negative object ID validation happens before native call."""
+        context = Context()
+
+        # Should raise ValueError immediately without calling native library
+        with pytest.raises(ValueError, match="non-negative"):
+            context.deleteObject(-1)

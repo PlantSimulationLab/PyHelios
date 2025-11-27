@@ -137,7 +137,27 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::copyRadiationBand): Unknown error copying radiation band.");
         }
     }
-    
+
+    PYHELIOS_API void copyRadiationBandWithWavelengths(RadiationModel* radiation_model, const char* old_label, const char* new_label,
+                                                        float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!old_label || !new_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+            radiation_model->copyRadiationBand(std::string(old_label), std::string(new_label), wavelength_min, wavelength_max);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::copyRadiationBand): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::copyRadiationBand): Unknown error copying radiation band with wavelengths.");
+        }
+    }
+
     PYHELIOS_API unsigned int addCollimatedRadiationSourceDefault(RadiationModel* radiation_model) {
         try {
             clearError();
@@ -513,9 +533,9 @@ extern "C" {
             }
             
             std::vector<float> flux_data = radiation_model->getTotalAbsorbedFlux();
-            
+
             // Allocate static buffer for flux data
-            static std::vector<float> flux_buffer;
+            static thread_local std::vector<float> flux_buffer;
             flux_buffer = flux_data;
             *size = flux_buffer.size();
             return flux_buffer.data();
@@ -528,6 +548,1056 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getTotalAbsorbedFlux): Unknown error getting absorbed flux.");
             if (size) *size = 0;
             return nullptr;
+        }
+    }
+
+    //=========================================================================
+    // Diffuse Radiation Functions
+    //=========================================================================
+
+    PYHELIOS_API void setDiffuseRadiationExtinctionCoeffVec3(RadiationModel* radiation_model, const char* label,
+                                                             float K, float peak_dir_x, float peak_dir_y, float peak_dir_z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            helios::vec3 peak_direction(peak_dir_x, peak_dir_y, peak_dir_z);
+            radiation_model->setDiffuseRadiationExtinctionCoeff(std::string(label), K, peak_direction);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseRadiationExtinctionCoeff): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseRadiationExtinctionCoeff): Unknown error setting extinction coefficient.");
+        }
+    }
+
+    PYHELIOS_API void setDiffuseRadiationExtinctionCoeffSpherical(RadiationModel* radiation_model, const char* label,
+                                                                  float K, float radius, float elevation, float azimuth) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            helios::SphericalCoord peak_direction = helios::make_SphericalCoord(radius, elevation, azimuth);
+            radiation_model->setDiffuseRadiationExtinctionCoeff(std::string(label), K, peak_direction);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseRadiationExtinctionCoeff): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseRadiationExtinctionCoeff): Unknown error setting extinction coefficient.");
+        }
+    }
+
+    PYHELIOS_API float getDiffuseFlux(RadiationModel* radiation_model, const char* band_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!band_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Band label is null");
+                return 0.0f;
+            }
+
+            return radiation_model->getDiffuseFlux(std::string(band_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getDiffuseFlux): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getDiffuseFlux): Unknown error getting diffuse flux.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API void setDiffuseSpectrum(RadiationModel* radiation_model, const char* band_label,
+                                         const char* spectrum_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!band_label || !spectrum_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            radiation_model->setDiffuseSpectrum(std::string(band_label), std::string(spectrum_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrum): Unknown error setting diffuse spectrum.");
+        }
+    }
+
+    PYHELIOS_API void setDiffuseSpectrumMultiple(RadiationModel* radiation_model,
+                                                 const char** band_labels, size_t band_count,
+                                                 const char* spectrum_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!band_labels || !spectrum_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            // Convert array to vector
+            std::vector<std::string> band_vec;
+            band_vec.reserve(band_count);
+            for (size_t i = 0; i < band_count; i++) {
+                if (band_labels[i]) {
+                    band_vec.push_back(std::string(band_labels[i]));
+                }
+            }
+
+            radiation_model->setDiffuseSpectrum(band_vec, std::string(spectrum_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrum): Unknown error setting diffuse spectrum for multiple bands.");
+        }
+    }
+
+    PYHELIOS_API void setDiffuseSpectrumIntegralAll(RadiationModel* radiation_model, float spectrum_integral) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->setDiffuseSpectrumIntegral(spectrum_integral);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrumIntegral): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrumIntegral): Unknown error setting diffuse spectrum integral.");
+        }
+    }
+
+    PYHELIOS_API void setDiffuseSpectrumIntegralAllRange(RadiationModel* radiation_model, float spectrum_integral,
+                                                         float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->setDiffuseSpectrumIntegral(spectrum_integral, wavelength_min, wavelength_max);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrumIntegral): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrumIntegral): Unknown error setting diffuse spectrum integral with range.");
+        }
+    }
+
+    PYHELIOS_API void setDiffuseSpectrumIntegralBand(RadiationModel* radiation_model, const char* band_label,
+                                                     float spectrum_integral) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!band_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Band label is null");
+                return;
+            }
+
+            radiation_model->setDiffuseSpectrumIntegral(std::string(band_label), spectrum_integral);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrumIntegral): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrumIntegral): Unknown error setting diffuse spectrum integral for band.");
+        }
+    }
+
+    PYHELIOS_API void setDiffuseSpectrumIntegralBandRange(RadiationModel* radiation_model, const char* band_label,
+                                                          float spectrum_integral,
+                                                          float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!band_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Band label is null");
+                return;
+            }
+
+            radiation_model->setDiffuseSpectrumIntegral(std::string(band_label), spectrum_integral,
+                                                       wavelength_min, wavelength_max);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrumIntegral): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrumIntegral): Unknown error setting diffuse spectrum integral for band with range.");
+        }
+    }
+
+    //=========================================================================
+    // Band Query Functions
+    //=========================================================================
+
+    PYHELIOS_API int doesBandExist(RadiationModel* radiation_model, const char* label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return -1;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return -1;
+            }
+
+            bool exists = radiation_model->doesBandExist(std::string(label));
+            return exists ? 1 : 0;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::doesBandExist): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::doesBandExist): Unknown error checking band existence.");
+            return -1;
+        }
+    }
+
+    //=========================================================================
+    // Source Management Functions
+    //=========================================================================
+
+    PYHELIOS_API void deleteRadiationSource(RadiationModel* radiation_model, unsigned int source_id) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->deleteRadiationSource(source_id);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::deleteRadiationSource): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::deleteRadiationSource): Unknown error deleting radiation source.");
+        }
+    }
+
+    PYHELIOS_API void getSourcePosition(RadiationModel* radiation_model, unsigned int source_id, float* position) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!position) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Position array pointer is null");
+                return;
+            }
+
+            helios::vec3 pos = radiation_model->getSourcePosition(source_id);
+            position[0] = pos.x;
+            position[1] = pos.y;
+            position[2] = pos.z;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getSourcePosition): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getSourcePosition): Unknown error getting source position.");
+        }
+    }
+
+    PYHELIOS_API void setSourcePositionVec3(RadiationModel* radiation_model, unsigned int source_id,
+                                           float x, float y, float z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            helios::vec3 position(x, y, z);
+            radiation_model->setSourcePosition(source_id, position);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourcePosition): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourcePosition): Unknown error setting source position.");
+        }
+    }
+
+    PYHELIOS_API void setSourcePositionSpherical(RadiationModel* radiation_model, unsigned int source_id,
+                                                 float radius, float elevation, float azimuth) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            helios::SphericalCoord position = helios::make_SphericalCoord(radius, elevation, azimuth);
+            radiation_model->setSourcePosition(source_id, position);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourcePosition): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourcePosition): Unknown error setting source position.");
+        }
+    }
+
+    PYHELIOS_API unsigned int addRectangleRadiationSource(RadiationModel* radiation_model,
+                                                         float position_x, float position_y, float position_z,
+                                                         float size_x, float size_y,
+                                                         float rotation_x, float rotation_y, float rotation_z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0;
+            }
+
+            helios::vec3 position(position_x, position_y, position_z);
+            helios::vec2 size(size_x, size_y);
+            helios::vec3 rotation(rotation_x, rotation_y, rotation_z);
+            return radiation_model->addRectangleRadiationSource(position, size, rotation);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addRectangleRadiationSource): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addRectangleRadiationSource): Unknown error adding rectangle source.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned int addDiskRadiationSource(RadiationModel* radiation_model,
+                                                    float position_x, float position_y, float position_z,
+                                                    float radius,
+                                                    float rotation_x, float rotation_y, float rotation_z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0;
+            }
+
+            helios::vec3 position(position_x, position_y, position_z);
+            helios::vec3 rotation(rotation_x, rotation_y, rotation_z);
+            return radiation_model->addDiskRadiationSource(position, radius, rotation);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addDiskRadiationSource): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addDiskRadiationSource): Unknown error adding disk source.");
+            return 0;
+        }
+    }
+
+    //=========================================================================
+    // Source Spectrum Management Functions
+    //=========================================================================
+
+    PYHELIOS_API void setSourceSpectrum(RadiationModel* radiation_model, unsigned int source_id,
+                                        const float* spectrum_data, size_t spectrum_size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!spectrum_data) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return;
+            }
+            if (spectrum_size == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum size must be greater than zero");
+                return;
+            }
+
+            // Convert flat array [w1,v1,w2,v2,...] to vector<vec2>
+            std::vector<helios::vec2> spectrum_vec;
+            spectrum_vec.reserve(spectrum_size);
+            for (size_t i = 0; i < spectrum_size; i++) {
+                spectrum_vec.emplace_back(spectrum_data[i*2], spectrum_data[i*2+1]);
+            }
+
+            radiation_model->setSourceSpectrum(source_id, spectrum_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourceSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourceSpectrum): Unknown error setting source spectrum.");
+        }
+    }
+
+    PYHELIOS_API void setSourceSpectrumMultiple(RadiationModel* radiation_model,
+                                                const unsigned int* source_ids, size_t source_count,
+                                                const float* spectrum_data, size_t spectrum_size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!source_ids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Source IDs pointer is null");
+                return;
+            }
+            if (!spectrum_data) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return;
+            }
+
+            // Convert arrays to vectors
+            std::vector<uint> source_vec(source_ids, source_ids + source_count);
+
+            std::vector<helios::vec2> spectrum_vec;
+            spectrum_vec.reserve(spectrum_size);
+            for (size_t i = 0; i < spectrum_size; i++) {
+                spectrum_vec.emplace_back(spectrum_data[i*2], spectrum_data[i*2+1]);
+            }
+
+            radiation_model->setSourceSpectrum(source_vec, spectrum_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourceSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourceSpectrum): Unknown error setting source spectrum for multiple sources.");
+        }
+    }
+
+    PYHELIOS_API void setSourceSpectrumLabel(RadiationModel* radiation_model, unsigned int source_id,
+                                             const char* spectrum_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!spectrum_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum label is null");
+                return;
+            }
+
+            radiation_model->setSourceSpectrum(source_id, std::string(spectrum_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourceSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourceSpectrum): Unknown error setting source spectrum from label.");
+        }
+    }
+
+    PYHELIOS_API void setSourceSpectrumLabelMultiple(RadiationModel* radiation_model,
+                                                     const unsigned int* source_ids, size_t source_count,
+                                                     const char* spectrum_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!source_ids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Source IDs pointer is null");
+                return;
+            }
+            if (!spectrum_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum label is null");
+                return;
+            }
+
+            std::vector<uint> source_vec(source_ids, source_ids + source_count);
+            radiation_model->setSourceSpectrum(source_vec, std::string(spectrum_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourceSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourceSpectrum): Unknown error setting source spectrum from label for multiple sources.");
+        }
+    }
+
+    PYHELIOS_API void setSourceSpectrumIntegral(RadiationModel* radiation_model, unsigned int source_id,
+                                                float source_integral) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->setSourceSpectrumIntegral(source_id, source_integral);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourceSpectrumIntegral): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourceSpectrumIntegral): Unknown error setting source spectrum integral.");
+        }
+    }
+
+    PYHELIOS_API void setSourceSpectrumIntegralRange(RadiationModel* radiation_model, unsigned int source_id,
+                                                     float source_integral, float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->setSourceSpectrumIntegral(source_id, source_integral, wavelength_min, wavelength_max);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setSourceSpectrumIntegral): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setSourceSpectrumIntegral): Unknown error setting source spectrum integral with range.");
+        }
+    }
+
+    //=========================================================================
+    // Spectrum Integration Functions
+    //=========================================================================
+
+    PYHELIOS_API float integrateSpectrum(RadiationModel* radiation_model,
+                                         const float* object_spectrum, size_t spectrum_size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!object_spectrum) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return 0.0f;
+            }
+
+            // Convert flat array to vector<vec2>
+            std::vector<helios::vec2> spectrum_vec;
+            spectrum_vec.reserve(spectrum_size);
+            for (size_t i = 0; i < spectrum_size; i++) {
+                spectrum_vec.emplace_back(object_spectrum[i*2], object_spectrum[i*2+1]);
+            }
+
+            return radiation_model->integrateSpectrum(spectrum_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::integrateSpectrum): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::integrateSpectrum): Unknown error integrating spectrum.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float integrateSpectrumRange(RadiationModel* radiation_model,
+                                              const float* object_spectrum, size_t spectrum_size,
+                                              float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!object_spectrum) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return 0.0f;
+            }
+
+            // Convert flat array to vector<vec2>
+            std::vector<helios::vec2> spectrum_vec;
+            spectrum_vec.reserve(spectrum_size);
+            for (size_t i = 0; i < spectrum_size; i++) {
+                spectrum_vec.emplace_back(object_spectrum[i*2], object_spectrum[i*2+1]);
+            }
+
+            return radiation_model->integrateSpectrum(spectrum_vec, wavelength_min, wavelength_max);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::integrateSpectrum): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::integrateSpectrum): Unknown error integrating spectrum with range.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float integrateSpectrumWithSource(RadiationModel* radiation_model, unsigned int source_id,
+                                                   const float* object_spectrum, size_t spectrum_size,
+                                                   float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!object_spectrum) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return 0.0f;
+            }
+
+            // Convert flat array to vector<vec2>
+            std::vector<helios::vec2> spectrum_vec;
+            spectrum_vec.reserve(spectrum_size);
+            for (size_t i = 0; i < spectrum_size; i++) {
+                spectrum_vec.emplace_back(object_spectrum[i*2], object_spectrum[i*2+1]);
+            }
+
+            return radiation_model->integrateSpectrum(source_id, spectrum_vec, wavelength_min, wavelength_max);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::integrateSpectrum): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::integrateSpectrum): Unknown error integrating spectrum with source.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float integrateSpectrumWithCamera(RadiationModel* radiation_model,
+                                                   const float* object_spectrum, size_t object_spectrum_size,
+                                                   const float* camera_spectrum, size_t camera_spectrum_size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!object_spectrum || !camera_spectrum) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return 0.0f;
+            }
+
+            // Convert flat arrays to vector<vec2>
+            std::vector<helios::vec2> object_vec;
+            object_vec.reserve(object_spectrum_size);
+            for (size_t i = 0; i < object_spectrum_size; i++) {
+                object_vec.emplace_back(object_spectrum[i*2], object_spectrum[i*2+1]);
+            }
+
+            std::vector<helios::vec2> camera_vec;
+            camera_vec.reserve(camera_spectrum_size);
+            for (size_t i = 0; i < camera_spectrum_size; i++) {
+                camera_vec.emplace_back(camera_spectrum[i*2], camera_spectrum[i*2+1]);
+            }
+
+            return radiation_model->integrateSpectrum(object_vec, camera_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::integrateSpectrum): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::integrateSpectrum): Unknown error integrating spectrum with camera.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float integrateSpectrumWithSourceAndCamera(RadiationModel* radiation_model, unsigned int source_id,
+                                                            const float* object_spectrum, size_t object_spectrum_size,
+                                                            const float* camera_spectrum, size_t camera_spectrum_size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!object_spectrum || !camera_spectrum) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum data pointer is null");
+                return 0.0f;
+            }
+
+            // Convert flat arrays to vector<vec2>
+            std::vector<helios::vec2> object_vec;
+            object_vec.reserve(object_spectrum_size);
+            for (size_t i = 0; i < object_spectrum_size; i++) {
+                object_vec.emplace_back(object_spectrum[i*2], object_spectrum[i*2+1]);
+            }
+
+            std::vector<helios::vec2> camera_vec;
+            camera_vec.reserve(camera_spectrum_size);
+            for (size_t i = 0; i < camera_spectrum_size; i++) {
+                camera_vec.emplace_back(camera_spectrum[i*2], camera_spectrum[i*2+1]);
+            }
+
+            return radiation_model->integrateSpectrum(source_id, object_vec, camera_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::integrateSpectrum): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::integrateSpectrum): Unknown error integrating spectrum with source and camera.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float integrateSourceSpectrum(RadiationModel* radiation_model, unsigned int source_id,
+                                               float wavelength_min, float wavelength_max) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+
+            return radiation_model->integrateSourceSpectrum(source_id, wavelength_min, wavelength_max);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::integrateSourceSpectrum): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::integrateSourceSpectrum): Unknown error integrating source spectrum.");
+            return 0.0f;
+        }
+    }
+
+    //=========================================================================
+    // Spectral Interpolation Functions
+    //=========================================================================
+
+    PYHELIOS_API void interpolateSpectrumFromPrimitiveData(RadiationModel* radiation_model,
+                                                           const unsigned int* primitive_uuids, size_t uuid_count,
+                                                           const char** spectra_labels, size_t spectra_count,
+                                                           const float* values, size_t value_count,
+                                                           const char* primitive_data_query_label,
+                                                           const char* primitive_data_radprop_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!primitive_uuids || !spectra_labels || !values) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required array parameter is null");
+                return;
+            }
+            if (!primitive_data_query_label || !primitive_data_radprop_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required label parameter is null");
+                return;
+            }
+            if (spectra_count != value_count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectra count must match values count");
+                return;
+            }
+
+            // Convert arrays to vectors
+            std::vector<uint> uuid_vec(primitive_uuids, primitive_uuids + uuid_count);
+
+            std::vector<std::string> spectra_vec;
+            spectra_vec.reserve(spectra_count);
+            for (size_t i = 0; i < spectra_count; i++) {
+                if (spectra_labels[i]) {
+                    spectra_vec.push_back(std::string(spectra_labels[i]));
+                }
+            }
+
+            std::vector<float> values_vec(values, values + value_count);
+
+            radiation_model->interpolateSpectrumFromPrimitiveData(uuid_vec, spectra_vec, values_vec,
+                                                                 std::string(primitive_data_query_label),
+                                                                 std::string(primitive_data_radprop_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::interpolateSpectrumFromPrimitiveData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::interpolateSpectrumFromPrimitiveData): Unknown error interpolating spectrum.");
+        }
+    }
+
+    PYHELIOS_API void interpolateSpectrumFromObjectData(RadiationModel* radiation_model,
+                                                        const unsigned int* object_ids, size_t object_count,
+                                                        const char** spectra_labels, size_t spectra_count,
+                                                        const float* values, size_t value_count,
+                                                        const char* object_data_query_label,
+                                                        const char* primitive_data_radprop_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!object_ids || !spectra_labels || !values) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required array parameter is null");
+                return;
+            }
+            if (!object_data_query_label || !primitive_data_radprop_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required label parameter is null");
+                return;
+            }
+            if (spectra_count != value_count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectra count must match values count");
+                return;
+            }
+
+            // Convert arrays to vectors
+            std::vector<uint> object_vec(object_ids, object_ids + object_count);
+
+            std::vector<std::string> spectra_vec;
+            spectra_vec.reserve(spectra_count);
+            for (size_t i = 0; i < spectra_count; i++) {
+                if (spectra_labels[i]) {
+                    spectra_vec.push_back(std::string(spectra_labels[i]));
+                }
+            }
+
+            std::vector<float> values_vec(values, values + value_count);
+
+            radiation_model->interpolateSpectrumFromObjectData(object_vec, spectra_vec, values_vec,
+                                                              std::string(object_data_query_label),
+                                                              std::string(primitive_data_radprop_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::interpolateSpectrumFromObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::interpolateSpectrumFromObjectData): Unknown error interpolating spectrum.");
+        }
+    }
+
+    //=========================================================================
+    // Spectral Manipulation Functions
+    //=========================================================================
+
+    PYHELIOS_API void scaleSpectrumToNew(RadiationModel* radiation_model, const char* existing_label,
+                                         const char* new_label, float scale_factor) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!existing_label || !new_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            radiation_model->scaleSpectrum(std::string(existing_label), std::string(new_label), scale_factor);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::scaleSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::scaleSpectrum): Unknown error scaling spectrum.");
+        }
+    }
+
+    PYHELIOS_API void scaleSpectrumInPlace(RadiationModel* radiation_model, const char* label,
+                                           float scale_factor) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            radiation_model->scaleSpectrum(std::string(label), scale_factor);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::scaleSpectrum): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::scaleSpectrum): Unknown error scaling spectrum in-place.");
+        }
+    }
+
+    PYHELIOS_API void scaleSpectrumRandomly(RadiationModel* radiation_model, const char* existing_label,
+                                            const char* new_label, float min_scale, float max_scale) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!existing_label || !new_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            radiation_model->scaleSpectrumRandomly(std::string(existing_label), std::string(new_label),
+                                                  min_scale, max_scale);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::scaleSpectrumRandomly): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::scaleSpectrumRandomly): Unknown error scaling spectrum randomly.");
+        }
+    }
+
+    PYHELIOS_API void blendSpectra(RadiationModel* radiation_model, const char* new_label,
+                                   const char** spectrum_labels, size_t label_count,
+                                   const float* weights) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!new_label || !spectrum_labels || !weights) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            // Convert arrays to vectors
+            std::vector<std::string> label_vec;
+            label_vec.reserve(label_count);
+            for (size_t i = 0; i < label_count; i++) {
+                if (spectrum_labels[i]) {
+                    label_vec.push_back(std::string(spectrum_labels[i]));
+                }
+            }
+
+            std::vector<float> weight_vec(weights, weights + label_count);
+
+            radiation_model->blendSpectra(std::string(new_label), label_vec, weight_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::blendSpectra): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::blendSpectra): Unknown error blending spectra.");
+        }
+    }
+
+    PYHELIOS_API void blendSpectraRandomly(RadiationModel* radiation_model, const char* new_label,
+                                           const char** spectrum_labels, size_t label_count) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!new_label || !spectrum_labels) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            // Convert array to vector
+            std::vector<std::string> label_vec;
+            label_vec.reserve(label_count);
+            for (size_t i = 0; i < label_count; i++) {
+                if (spectrum_labels[i]) {
+                    label_vec.push_back(std::string(spectrum_labels[i]));
+                }
+            }
+
+            radiation_model->blendSpectraRandomly(std::string(new_label), label_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::blendSpectraRandomly): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::blendSpectraRandomly): Unknown error blending spectra randomly.");
+        }
+    }
+
+    //=========================================================================
+    // Advanced Simulation Functions
+    //=========================================================================
+
+    PYHELIOS_API float getSkyEnergy(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+
+            return radiation_model->getSkyEnergy();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getSkyEnergy): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getSkyEnergy): Unknown error getting sky energy.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float calculateGtheta(RadiationModel* radiation_model, helios::Context* context,
+                                       float view_x, float view_y, float view_z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.0f;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0.0f;
+            }
+
+            helios::vec3 view_direction(view_x, view_y, view_z);
+            return radiation_model->calculateGtheta(context, view_direction);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::calculateGtheta): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::calculateGtheta): Unknown error calculating G-function.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API void radiationOptionalOutputPrimitiveData(RadiationModel* radiation_model, const char* label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            radiation_model->optionalOutputPrimitiveData(label);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::optionalOutputPrimitiveData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::optionalOutputPrimitiveData): Unknown error enabling optional output.");
+        }
+    }
+
+    PYHELIOS_API void enforcePeriodicBoundary(RadiationModel* radiation_model, const char* boundary) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!boundary) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Boundary specification is null");
+                return;
+            }
+
+            radiation_model->enforcePeriodicBoundary(std::string(boundary));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enforcePeriodicBoundary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enforcePeriodicBoundary): Unknown error enforcing periodic boundary.");
         }
     }
 
@@ -1054,6 +2124,342 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addRadiationCamera): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addRadiationCamera): Unknown error adding radiation camera.");
+        }
+    }
+
+    //=========================================================================
+    // Camera Management Functions
+    //=========================================================================
+
+    PYHELIOS_API void setRadiationCameraPosition(RadiationModel* radiation_model, const char* camera_label,
+                                        float x, float y, float z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+
+            helios::vec3 position(x, y, z);
+            radiation_model->setCameraPosition(std::string(camera_label), position);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraPosition): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraPosition): Unknown error setting camera position.");
+        }
+    }
+
+    PYHELIOS_API void getRadiationCameraPosition(RadiationModel* radiation_model, const char* camera_label,
+                                        float* position) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+            if (!position) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Position array pointer is null");
+                return;
+            }
+
+            helios::vec3 pos = radiation_model->getCameraPosition(std::string(camera_label));
+            position[0] = pos.x;
+            position[1] = pos.y;
+            position[2] = pos.z;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraPosition): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraPosition): Unknown error getting camera position.");
+        }
+    }
+
+    PYHELIOS_API void setCameraLookat(RadiationModel* radiation_model, const char* camera_label,
+                                      float x, float y, float z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+
+            helios::vec3 lookat(x, y, z);
+            radiation_model->setCameraLookat(std::string(camera_label), lookat);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraLookat): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraLookat): Unknown error setting camera lookat.");
+        }
+    }
+
+    PYHELIOS_API void getCameraLookat(RadiationModel* radiation_model, const char* camera_label,
+                                      float* lookat) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+            if (!lookat) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Lookat array pointer is null");
+                return;
+            }
+
+            helios::vec3 lookat_vec = radiation_model->getCameraLookat(std::string(camera_label));
+            lookat[0] = lookat_vec.x;
+            lookat[1] = lookat_vec.y;
+            lookat[2] = lookat_vec.z;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraLookat): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraLookat): Unknown error getting camera lookat.");
+        }
+    }
+
+    PYHELIOS_API void setCameraOrientationVec3(RadiationModel* radiation_model, const char* camera_label,
+                                               float x, float y, float z) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+
+            helios::vec3 direction(x, y, z);
+            radiation_model->setCameraOrientation(std::string(camera_label), direction);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraOrientation): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraOrientation): Unknown error setting camera orientation.");
+        }
+    }
+
+    PYHELIOS_API void setCameraOrientationSpherical(RadiationModel* radiation_model, const char* camera_label,
+                                                    float radius, float elevation, float azimuth) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+
+            helios::SphericalCoord direction = helios::make_SphericalCoord(radius, elevation, azimuth);
+            radiation_model->setCameraOrientation(std::string(camera_label), direction);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraOrientation): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraOrientation): Unknown error setting camera orientation.");
+        }
+    }
+
+    PYHELIOS_API void getCameraOrientation(RadiationModel* radiation_model, const char* camera_label,
+                                           float* orientation) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+            if (!orientation) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Orientation array pointer is null");
+                return;
+            }
+
+            helios::SphericalCoord orient = radiation_model->getCameraOrientation(std::string(camera_label));
+            orientation[0] = orient.radius;
+            orientation[1] = orient.elevation;
+            orientation[2] = orient.azimuth;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraOrientation): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraOrientation): Unknown error getting camera orientation.");
+        }
+    }
+
+    PYHELIOS_API const char** getAllCameraLabels(RadiationModel* radiation_model, size_t* count) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<std::string> labels = radiation_model->getAllCameraLabels();
+
+            // Convert to static array of C strings for return
+            static thread_local std::vector<std::string> static_labels;
+            static thread_local std::vector<const char*> static_c_strings;
+
+            static_labels = labels;
+            static_c_strings.clear();
+            static_c_strings.reserve(static_labels.size());
+
+            for (const auto& label : static_labels) {
+                static_c_strings.push_back(label.c_str());
+            }
+
+            *count = static_c_strings.size();
+            return static_c_strings.data();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getAllCameraLabels): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getAllCameraLabels): Unknown error getting camera labels.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API void setCameraSpectralResponse(RadiationModel* radiation_model, const char* camera_label,
+                                                const char* band_label, const char* global_data) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !band_label || !global_data) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            radiation_model->setCameraSpectralResponse(std::string(camera_label), std::string(band_label),
+                                                      std::string(global_data));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraSpectralResponse): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraSpectralResponse): Unknown error setting camera spectral response.");
+        }
+    }
+
+    PYHELIOS_API void setCameraSpectralResponseFromLibrary(RadiationModel* radiation_model, const char* camera_label,
+                                                           const char* camera_library_name) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !camera_library_name) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            radiation_model->setCameraSpectralResponseFromLibrary(std::string(camera_label),
+                                                                 std::string(camera_library_name));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraSpectralResponseFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraSpectralResponseFromLibrary): Unknown error setting camera response from library.");
+        }
+    }
+
+    PYHELIOS_API const float* getCameraPixelData(RadiationModel* radiation_model, const char* camera_label,
+                                                 const char* band_label, size_t* size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!camera_label || !band_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Size pointer is null");
+                return nullptr;
+            }
+
+            std::vector<float> pixel_data = radiation_model->getCameraPixelData(std::string(camera_label),
+                                                                                std::string(band_label));
+
+            // Store in thread-local static buffer
+            static thread_local std::vector<float> pixel_buffer;
+            pixel_buffer = pixel_data;
+            *size = pixel_buffer.size();
+            return pixel_buffer.data();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraPixelData): ") + e.what());
+            if (size) *size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraPixelData): Unknown error getting camera pixel data.");
+            if (size) *size = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API void setCameraPixelData(RadiationModel* radiation_model, const char* camera_label,
+                                         const char* band_label, const float* pixel_data, size_t size) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !band_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+            if (!pixel_data) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Pixel data pointer is null");
+                return;
+            }
+
+            std::vector<float> pixel_vec(pixel_data, pixel_data + size);
+            radiation_model->setCameraPixelData(std::string(camera_label), std::string(band_label), pixel_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraPixelData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraPixelData): Unknown error setting camera pixel data.");
         }
     }
 

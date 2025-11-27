@@ -237,6 +237,16 @@ class PlantArchitecture:
             plantarch_wrapper.destroyPlantArchitecture(self._plantarch_ptr)
             self._plantarch_ptr = None
 
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, '_plantarch_ptr') and self._plantarch_ptr is not None:
+            try:
+                plantarch_wrapper.destroyPlantArchitecture(self._plantarch_ptr)
+                self._plantarch_ptr = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in PlantArchitecture.__del__: {e}")
+
     def loadPlantModelFromLibrary(self, plant_label: str) -> None:
         """
         Load a plant model from the built-in library.

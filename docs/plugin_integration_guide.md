@@ -644,7 +644,64 @@ from . import UYourPluginWrapper
 - `RadiationModel.addRadiationBand()` matches C++ `RadiationModel::addRadiationBand()`
 - `WeberPennTree.buildTree()` matches C++ `WeberPennTree::buildTree()`
 
-### 5.2 Create High-Level Class
+### 5.2 Mandatory `__del__` Method Requirement
+
+**CRITICAL FOR MEMORY LEAK PREVENTION**: All plugin classes managing C++ resources MUST implement a `__del__` method as a fallback destructor.
+
+**Why This is Mandatory**:
+- Python only calls `__exit__` when using `with` statements
+- If users don't use `with` statements, C++ destructors are NEVER called
+- Objects accumulate in memory until Python's garbage collector runs (much later)
+- This causes linear memory growth in loops, especially time series simulations
+
+**The Problem**:
+```python
+for timestep in range(100):
+    context = Context()  # No 'with' statement
+    plugin = YourPlugin(context)  # No 'with' statement
+    # ... use ...
+    # Objects sit in memory - C++ destructors not called!
+    # Memory accumulates linearly
+```
+
+**The Solution**:
+```python
+def __del__(self):
+    """MANDATORY: Destructor to ensure C++ resources freed even without 'with' statement."""
+    if hasattr(self, '_plugin_ptr') and self._plugin_ptr is not None:
+        try:
+            plugin_wrapper.destroyYourPlugin(self._plugin_ptr)
+            self._plugin_ptr = None
+        except Exception as e:
+            import warnings
+            warnings.warn(f"Error in YourPlugin.__del__: {e}")
+```
+
+**Key Implementation Details**:
+1. **Always use `hasattr()`** - `__del__` might be called during partially-initialized objects
+2. **Check for `None`** - Prevent attempting to destroy already-cleaned-up resources
+3. **Use try/except** - `__del__` must NEVER raise exceptions
+4. **Use warnings.warn()** - Inform users of cleanup errors without crashing
+5. **Set pointer to None** - Prevent double-deletion if `__del__` called multiple times
+
+**Testing `__del__` Implementation**:
+```python
+def test_cleanup_without_with_statement():
+    """Verify __del__ provides fallback cleanup."""
+    import gc
+
+    context = Context()
+    plugin = YourPlugin(context)  # No 'with' statement
+
+    # Delete and force garbage collection
+    del plugin
+    del context
+    gc.collect()
+
+    # If __del__ works correctly, no warnings and memory freed
+```
+
+### 5.3 Create High-Level Class
 
 **File**: `pyhelios/YourPlugin.py`
 
@@ -753,7 +810,17 @@ class YourPlugin:
         if hasattr(self, '_plugin_ptr') and self._plugin_ptr:
             plugin_wrapper.destroyYourPlugin(self._plugin_ptr)
             self._plugin_ptr = None
-    
+
+    def __del__(self):
+        """MANDATORY: Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, '_plugin_ptr') and self._plugin_ptr is not None:
+            try:
+                plugin_wrapper.destroyYourPlugin(self._plugin_ptr)
+                self._plugin_ptr = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in YourPlugin.__del__: {e}")
+
     def computeSomething(self, parameters: List[float]) -> int:
         """
         Perform plugin computation with given parameters.

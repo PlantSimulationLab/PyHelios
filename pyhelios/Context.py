@@ -280,6 +280,17 @@ class Context:
             self.context = None  # Prevent double deletion
             self._lifecycle_state = 'cleaned_up'
 
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, 'context') and self.context is not None:
+            try:
+                context_wrapper.destroyContext(self.context)
+                self.context = None
+                self._lifecycle_state = 'cleaned_up'
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in Context.__del__: {e}")
+
     def getNativePtr(self):
         self._check_context_available()
         return self.context
@@ -946,6 +957,61 @@ class Context:
 
             context_wrapper.writeOBJWithPrimitiveData(self.context, validated_filename, UUIDs, primitive_data_fields, write_normals, silent)
 
+    def writePrimitiveData(self, filename: str, column_labels: List[str],
+                           UUIDs: Optional[List[int]] = None,
+                           print_header: bool = False) -> None:
+        """
+        Write primitive data to an ASCII text file.
+
+        Outputs a space-separated text file where each row corresponds to a primitive
+        and each column corresponds to a primitive data label.
+
+        Args:
+            filename: Path to the output file
+            column_labels: List of primitive data labels to include as columns.
+                          Use "UUID" to include primitive UUIDs as a column.
+                          The order determines the column order in the output file.
+            UUIDs: Optional list of primitive UUIDs to include. If None, includes all primitives.
+            print_header: If True, writes column labels as the first line of the file
+
+        Raises:
+            ValueError: If filename is invalid, column_labels is empty, or UUIDs list is empty when provided
+            HeliosFileIOError: If file cannot be written
+            HeliosRuntimeError: If a column label doesn't exist for any primitive
+
+        Example:
+            >>> # Write temperature and area for all primitives
+            >>> context.writePrimitiveData("output.txt", ["UUID", "temperature", "area"])
+
+            >>> # Write with header row
+            >>> context.writePrimitiveData("output.txt", ["UUID", "radiation_flux"], print_header=True)
+
+            >>> # Write only for selected primitives
+            >>> context.writePrimitiveData("subset.txt", ["temperature"], UUIDs=[uuid1, uuid2])
+        """
+        self._check_context_available()
+
+        # Validate column_labels
+        if not column_labels:
+            raise ValueError("column_labels list cannot be empty")
+
+        # Validate output file path (allow any extension for text files)
+        validated_filename = self._validate_output_file_path(filename)
+
+        if UUIDs is None:
+            # Export all primitives
+            context_wrapper.writePrimitiveData(self.context, validated_filename, column_labels, print_header)
+        else:
+            # Export specified UUIDs
+            if not UUIDs:
+                raise ValueError("UUIDs list cannot be empty when provided. Use UUIDs=None to include all primitives")
+
+            # Validate each UUID exists
+            for uuid in UUIDs:
+                self._validate_uuid(uuid)
+
+            context_wrapper.writePrimitiveDataWithUUIDs(self.context, validated_filename, column_labels, UUIDs, print_header)
+
     def addTrianglesFromArrays(self, vertices: np.ndarray, faces: np.ndarray, 
                               colors: Optional[np.ndarray] = None) -> List[int]:
         """
@@ -1153,51 +1219,197 @@ class Context:
     # Primitive data is a flexible key-value store where users can associate 
     # arbitrary data with primitives using string keys
     
-    def setPrimitiveDataInt(self, uuid: int, label: str, value: int) -> None:
+    def setPrimitiveDataInt(self, uuids_or_uuid, label: str, value: int) -> None:
         """
-        Set primitive data as signed 32-bit integer.
+        Set primitive data as signed 32-bit integer for one or multiple primitives.
 
         Args:
-            uuid: UUID of the primitive
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Signed integer value
+            value: Signed integer value (broadcast to all UUIDs if list provided)
         """
-        context_wrapper.setPrimitiveDataInt(self.context, uuid, label, value)
-    
-    def setPrimitiveDataUInt(self, uuid: int, label: str, value: int) -> None:
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataInt(self.context, uuids_or_uuid, label, value)
+        else:
+            context_wrapper.setPrimitiveDataInt(self.context, uuids_or_uuid, label, value)
+
+    def setPrimitiveDataUInt(self, uuids_or_uuid, label: str, value: int) -> None:
         """
-        Set primitive data as unsigned 32-bit integer.
-        
+        Set primitive data as unsigned 32-bit integer for one or multiple primitives.
+
         Critical for properties like 'twosided_flag' which must be uint in C++.
-        
+
         Args:
-            uuid: UUID of the primitive
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Unsigned integer value (will be cast to uint32)
+            value: Unsigned integer value (broadcast to all UUIDs if list provided)
         """
-        context_wrapper.setPrimitiveDataUInt(self.context, uuid, label, value)
-    
-    def setPrimitiveDataFloat(self, uuid: int, label: str, value: float) -> None:
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataUInt(self.context, uuids_or_uuid, label, value)
+        else:
+            context_wrapper.setPrimitiveDataUInt(self.context, uuids_or_uuid, label, value)
+
+    def setPrimitiveDataFloat(self, uuids_or_uuid, label: str, value: float) -> None:
         """
-        Set primitive data as 32-bit float.
-        
+        Set primitive data as 32-bit float for one or multiple primitives.
+
         Args:
-            uuid: UUID of the primitive
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Float value
+            value: Float value (broadcast to all UUIDs if list provided)
         """
-        context_wrapper.setPrimitiveDataFloat(self.context, uuid, label, value)
-    
-    def setPrimitiveDataString(self, uuid: int, label: str, value: str) -> None:
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataFloat(self.context, uuids_or_uuid, label, value)
+        else:
+            context_wrapper.setPrimitiveDataFloat(self.context, uuids_or_uuid, label, value)
+
+    def setPrimitiveDataDouble(self, uuids_or_uuid, label: str, value: float) -> None:
         """
-        Set primitive data as string.
-        
+        Set primitive data as 64-bit double for one or multiple primitives.
+
         Args:
-            uuid: UUID of the primitive
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: String value
+            value: Double value (broadcast to all UUIDs if list provided)
         """
-        context_wrapper.setPrimitiveDataString(self.context, uuid, label, value)
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataDouble(self.context, uuids_or_uuid, label, value)
+        else:
+            context_wrapper.setPrimitiveDataDouble(self.context, uuids_or_uuid, label, value)
+
+    def setPrimitiveDataString(self, uuids_or_uuid, label: str, value: str) -> None:
+        """
+        Set primitive data as string for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            value: String value (broadcast to all UUIDs if list provided)
+        """
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataString(self.context, uuids_or_uuid, label, value)
+        else:
+            context_wrapper.setPrimitiveDataString(self.context, uuids_or_uuid, label, value)
+
+    def setPrimitiveDataVec2(self, uuids_or_uuid, label: str, x_or_vec, y: float = None) -> None:
+        """
+        Set primitive data as vec2 for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            x_or_vec: Either x component (float) or vec2 object
+            y: Y component (if x_or_vec is float)
+        """
+        if hasattr(x_or_vec, 'x'):
+            x, y = x_or_vec.x, x_or_vec.y
+        else:
+            x = x_or_vec
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataVec2(self.context, uuids_or_uuid, label, x, y)
+        else:
+            context_wrapper.setPrimitiveDataVec2(self.context, uuids_or_uuid, label, x, y)
+
+    def setPrimitiveDataVec3(self, uuids_or_uuid, label: str, x_or_vec, y: float = None, z: float = None) -> None:
+        """
+        Set primitive data as vec3 for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            x_or_vec: Either x component (float) or vec3 object
+            y: Y component (if x_or_vec is float)
+            z: Z component (if x_or_vec is float)
+        """
+        if hasattr(x_or_vec, 'x'):
+            x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
+        else:
+            x = x_or_vec
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataVec3(self.context, uuids_or_uuid, label, x, y, z)
+        else:
+            context_wrapper.setPrimitiveDataVec3(self.context, uuids_or_uuid, label, x, y, z)
+
+    def setPrimitiveDataVec4(self, uuids_or_uuid, label: str, x_or_vec, y: float = None, z: float = None, w: float = None) -> None:
+        """
+        Set primitive data as vec4 for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            x_or_vec: Either x component (float) or vec4 object
+            y: Y component (if x_or_vec is float)
+            z: Z component (if x_or_vec is float)
+            w: W component (if x_or_vec is float)
+        """
+        if hasattr(x_or_vec, 'x'):
+            x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
+        else:
+            x = x_or_vec
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataVec4(self.context, uuids_or_uuid, label, x, y, z, w)
+        else:
+            context_wrapper.setPrimitiveDataVec4(self.context, uuids_or_uuid, label, x, y, z, w)
+
+    def setPrimitiveDataInt2(self, uuids_or_uuid, label: str, x_or_vec, y: int = None) -> None:
+        """
+        Set primitive data as int2 for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            x_or_vec: Either x component (int) or int2 object
+            y: Y component (if x_or_vec is int)
+        """
+        if hasattr(x_or_vec, 'x'):
+            x, y = x_or_vec.x, x_or_vec.y
+        else:
+            x = x_or_vec
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataInt2(self.context, uuids_or_uuid, label, x, y)
+        else:
+            context_wrapper.setPrimitiveDataInt2(self.context, uuids_or_uuid, label, x, y)
+
+    def setPrimitiveDataInt3(self, uuids_or_uuid, label: str, x_or_vec, y: int = None, z: int = None) -> None:
+        """
+        Set primitive data as int3 for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            x_or_vec: Either x component (int) or int3 object
+            y: Y component (if x_or_vec is int)
+            z: Z component (if x_or_vec is int)
+        """
+        if hasattr(x_or_vec, 'x'):
+            x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
+        else:
+            x = x_or_vec
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataInt3(self.context, uuids_or_uuid, label, x, y, z)
+        else:
+            context_wrapper.setPrimitiveDataInt3(self.context, uuids_or_uuid, label, x, y, z)
+
+    def setPrimitiveDataInt4(self, uuids_or_uuid, label: str, x_or_vec, y: int = None, z: int = None, w: int = None) -> None:
+        """
+        Set primitive data as int4 for one or multiple primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
+            label: String key for the data
+            x_or_vec: Either x component (int) or int4 object
+            y: Y component (if x_or_vec is int)
+            z: Z component (if x_or_vec is int)
+            w: W component (if x_or_vec is int)
+        """
+        if hasattr(x_or_vec, 'x'):
+            x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
+        else:
+            x = x_or_vec
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setBroadcastPrimitiveDataInt4(self.context, uuids_or_uuid, label, x, y, z, w)
+        else:
+            context_wrapper.setPrimitiveDataInt4(self.context, uuids_or_uuid, label, x, y, z, w)
     
     def getPrimitiveData(self, uuid: int, label: str, data_type: type = None):
         """
@@ -1551,7 +1763,83 @@ class Context:
             >>> print(f"Current date: {year}-{month:02d}-{day:02d}")
         """
         return context_wrapper.getDate(self.context)
-    
+
+    # ==========================================================================
+    # Primitive and Object Deletion Methods
+    # ==========================================================================
+
+    def deletePrimitive(self, uuids_or_uuid: Union[int, List[int]]) -> None:
+        """
+        Delete one or more primitives from the context.
+
+        This removes the primitive(s) entirely from the context. If a primitive
+        belongs to a compound object, it will be removed from that object. If the
+        object becomes empty after removal, it is automatically deleted.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to delete
+
+        Raises:
+            RuntimeError: If any UUID doesn't exist in the context
+            ValueError: If UUID is invalid (negative)
+            NotImplementedError: If delete functions not available in current library build
+
+        Example:
+            >>> context = Context()
+            >>> patch_id = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            >>> context.deletePrimitive(patch_id)  # Single deletion
+            >>>
+            >>> # Multiple deletion
+            >>> ids = [context.addPatch() for _ in range(5)]
+            >>> context.deletePrimitive(ids)  # Delete all at once
+        """
+        self._check_context_available()
+
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            for uuid in uuids_or_uuid:
+                if uuid < 0:
+                    raise ValueError(f"UUID must be non-negative, got {uuid}")
+            context_wrapper.deletePrimitives(self.context, list(uuids_or_uuid))
+        else:
+            if uuids_or_uuid < 0:
+                raise ValueError(f"UUID must be non-negative, got {uuids_or_uuid}")
+            context_wrapper.deletePrimitive(self.context, uuids_or_uuid)
+
+    def deleteObject(self, objIDs_or_objID: Union[int, List[int]]) -> None:
+        """
+        Delete one or more compound objects from the context.
+
+        This removes the compound object(s) AND all their child primitives.
+        Use this when you want to delete an entire object hierarchy at once.
+
+        Args:
+            objIDs_or_objID: Single object ID (int) or list of object IDs to delete
+
+        Raises:
+            RuntimeError: If any object ID doesn't exist in the context
+            ValueError: If object ID is invalid (negative)
+            NotImplementedError: If delete functions not available in current library build
+
+        Example:
+            >>> context = Context()
+            >>> # Create a compound object (e.g., a tile with multiple patches)
+            >>> patch_ids = context.addTile(center=vec3(0, 0, 0), size=vec2(2, 2),
+            ...                            tile_divisions=int2(2, 2))
+            >>> obj_id = context.getPrimitiveParentObjectID(patch_ids[0])
+            >>> context.deleteObject(obj_id)  # Deletes tile and all its patches
+        """
+        self._check_context_available()
+
+        if isinstance(objIDs_or_objID, (list, tuple)):
+            for objID in objIDs_or_objID:
+                if objID < 0:
+                    raise ValueError(f"Object ID must be non-negative, got {objID}")
+            context_wrapper.deleteObjects(self.context, list(objIDs_or_objID))
+        else:
+            if objIDs_or_objID < 0:
+                raise ValueError(f"Object ID must be non-negative, got {objIDs_or_objID}")
+            context_wrapper.deleteObject(self.context, objIDs_or_objID)
+
     # Plugin-related methods
     def get_available_plugins(self) -> List[str]:
         """

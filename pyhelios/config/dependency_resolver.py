@@ -232,51 +232,28 @@ class PluginDependencyResolver:
     
     def _check_cuda(self) -> bool:
         """Check if CUDA is available."""
-        # Debug: Print environment information for Windows CI
         import os
-        if platform.system() == "Windows":
-            print(f"[DEBUG] Windows CUDA detection:")
-            print(f"[DEBUG] CUDA_PATH: {os.environ.get('CUDA_PATH', 'NOT_SET')}")
-            print(f"[DEBUG] CUDA_HOME: {os.environ.get('CUDA_HOME', 'NOT_SET')}")
-            print(f"[DEBUG] PATH contains CUDA: {'CUDA' in os.environ.get('PATH', '')}")
 
         # First try nvcc command (most reliable when available)
         try:
             result = subprocess.run(["nvcc", "--version"],
                                   capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                print(f"[DEBUG] nvcc command succeeded")
                 return True
-            else:
-                print(f"[DEBUG] nvcc command failed with code {result.returncode}")
-        except FileNotFoundError as e:
-            print(f"[DEBUG] nvcc command not found: {e}")
-        except subprocess.TimeoutExpired as e:
-            print(f"[DEBUG] nvcc command timed out: {e}")
-        except Exception as e:
-            print(f"[DEBUG] nvcc command error: {e}")
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            pass
 
         # Fallback: Check for CUDA libraries and headers in common locations
         # Check CUDA environment variables first (set by CI and most installations)
         cuda_env_vars = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT", "CUDAHOME"]
         for env_var in cuda_env_vars:
             cuda_path = os.environ.get(env_var)
-            print(f"[DEBUG] Checking {env_var}: {cuda_path}")
             if cuda_path and os.path.exists(cuda_path):
-                print(f"[DEBUG] {env_var} path exists: {cuda_path}")
                 # Verify it's a real CUDA installation by checking for nvcc
                 nvcc_name = "nvcc.exe" if platform.system() == "Windows" else "nvcc"
                 nvcc_path = os.path.join(cuda_path, "bin", nvcc_name)
-                print(f"[DEBUG] Looking for nvcc at: {nvcc_path}")
                 if os.path.exists(nvcc_path):
-                    print(f"[DEBUG] Found nvcc, CUDA available via {env_var}")
                     return True
-                else:
-                    print(f"[DEBUG] nvcc not found at {nvcc_path}")
-            elif cuda_path:
-                print(f"[DEBUG] {env_var} path does not exist: {cuda_path}")
-            else:
-                print(f"[DEBUG] {env_var} not set")
 
         # Fallback: Check standard installation paths
         cuda_paths = [
@@ -295,9 +272,7 @@ class PluginDependencyResolver:
             "/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
         ]
 
-        print(f"[DEBUG] Checking standard CUDA installation paths...")
         for cuda_path in cuda_paths:
-            print(f"[DEBUG] Checking path: {cuda_path}")
             # Check for CUDA runtime library
             if platform.system() == "Windows":
                 lib_patterns = ["cudart64*.lib", "cudart*.lib", "cudart64*.dll", "cudart*.dll"]
@@ -307,19 +282,12 @@ class PluginDependencyResolver:
                 lib_dirs = [os.path.join(cuda_path, "lib64"), os.path.join(cuda_path, "lib"), cuda_path]
 
             for lib_dir in lib_dirs:
-                print(f"[DEBUG]   Checking lib dir: {lib_dir}")
                 if os.path.exists(lib_dir):
-                    print(f"[DEBUG]   Lib dir exists: {lib_dir}")
                     for pattern in lib_patterns:
                         matches = glob.glob(os.path.join(lib_dir, pattern))
-                        print(f"[DEBUG]     Pattern {pattern}: {len(matches)} matches")
                         if matches:
-                            print(f"[DEBUG]     Found CUDA library: {matches[0]}")
                             return True
-                else:
-                    print(f"[DEBUG]   Lib dir does not exist: {lib_dir}")
 
-        print(f"[DEBUG] CUDA not found in any location")
         return False
     
     def _check_optix(self) -> bool:

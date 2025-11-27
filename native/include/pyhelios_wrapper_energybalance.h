@@ -132,7 +132,7 @@ PYHELIOS_API void evaluateAirEnergyBalanceForUUIDs(EnergyBalanceModel* energy_mo
  * @param energy_model Pointer to the EnergyBalanceModel
  * @param label Name of the primitive data to add (e.g., "vapor_pressure_deficit")
  */
-PYHELIOS_API void optionalOutputPrimitiveData(EnergyBalanceModel* energy_model, const char* label);
+PYHELIOS_API void energyBalanceOptionalOutputPrimitiveData(EnergyBalanceModel* energy_model, const char* label);
 
 /**
  * @brief Print default value report for all primitives

@@ -244,7 +244,8 @@ float getSolarFlux(HeliosSolarPosition* solar_pos, float pressure_Pa, float temp
         }
         
         SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
-        return sp->getSolarFlux(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        sp->setAtmosphericConditions(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        return sp->getSolarFlux();
         
     } catch (const std::runtime_error& e) {
         setError(PYHELIOS_ERROR_RUNTIME, e.what());
@@ -285,7 +286,8 @@ float getSolarFluxPAR(HeliosSolarPosition* solar_pos, float pressure_Pa, float t
         }
         
         SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
-        return sp->getSolarFluxPAR(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        sp->setAtmosphericConditions(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        return sp->getSolarFluxPAR();
         
     } catch (const std::runtime_error& e) {
         setError(PYHELIOS_ERROR_RUNTIME, e.what());
@@ -326,7 +328,8 @@ float getSolarFluxNIR(HeliosSolarPosition* solar_pos, float pressure_Pa, float t
         }
         
         SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
-        return sp->getSolarFluxNIR(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        sp->setAtmosphericConditions(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        return sp->getSolarFluxNIR();
         
     } catch (const std::runtime_error& e) {
         setError(PYHELIOS_ERROR_RUNTIME, e.what());
@@ -367,7 +370,8 @@ float getDiffuseFraction(HeliosSolarPosition* solar_pos, float pressure_Pa, floa
         }
         
         SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
-        return sp->getDiffuseFraction(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        sp->setAtmosphericConditions(pressure_Pa, temperature_K, humidity_rel, turbidity);
+        return sp->getDiffuseFraction();
         
     } catch (const std::runtime_error& e) {
         setError(PYHELIOS_ERROR_RUNTIME, e.what());

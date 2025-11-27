@@ -1,5 +1,24 @@
 # Changelog
 
+# [v0.1.9] 2025-11-27
+
+- Updated helios-core to v1.3.57
+- There was a memory leak issue in the core and all plug-ins due to missing `__del__` methods, which should be fixed now.
+
+## Core
+- Added overloaded `Context.setPrimitiveData[*]()` to accept a list of UUIDs
+- Added `Context.deletePrimitive()` and `Context.deleteObject()` methods
+- Added `Context.writePrimitiveData()` method to write primitive data to a file
+
+ ## Radiation Model
+  - Added new radiation source types: `addRectangleRadiationSource()`, `addDiskRadiationSource()`
+  - Added source management: `setSourcePosition()`, `getSourcePosition()`, `deleteRadiationSource()`
+  - Added spectrum manipulation: `setSourceSpectrum()`, `integrateSpectrum()`, `scaleSpectrum()`, `blendSpectra()`
+  - Added diffuse radiation support: `setDiffuseRadiationExtinctionCoeff()`, `setDiffuseSpectrum()`, `getDiffuseFlux()`
+  - Added camera system: position, lookat, orientation, spectral response, and pixel data methods
+  - Added utility methods: `doesBandExist()`, `getSkyEnergy()`, `calculateGtheta()`, `enforcePeriodicBoundary()`
+  - Extended `copyRadiationBand()` to support optional wavelength range parameters
+
 # [v0.1.8] 2025-10-15
 
 - Updated helios-core to v1.3.55

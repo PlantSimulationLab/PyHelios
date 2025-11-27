@@ -142,6 +142,16 @@ class BoundaryLayerConductanceModel:
             finally:
                 self.bl_model = None
 
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, 'bl_model') and self.bl_model is not None:
+            try:
+                bl_wrapper.destroyBoundaryLayerConductanceModel(self.bl_model)
+                self.bl_model = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in BoundaryLayerConductanceModel.__del__: {e}")
+
     def getNativePtr(self):
         """Get the native pointer for advanced operations."""
         return self.bl_model

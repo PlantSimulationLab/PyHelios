@@ -236,6 +236,60 @@ except AttributeError:
     # Primitive data functions not available in current native library
     _PRIMITIVE_DATA_FUNCTIONS_AVAILABLE = False
 
+# Try to set up broadcast primitive data function prototypes
+_BROADCAST_PRIMITIVE_DATA_AVAILABLE = False
+try:
+    # Broadcast setPrimitiveData function prototypes - same value to all UUIDs
+    helios_lib.setBroadcastPrimitiveDataInt.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.setBroadcastPrimitiveDataInt.restype = None
+    helios_lib.setBroadcastPrimitiveDataInt.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataUInt.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_uint]
+    helios_lib.setBroadcastPrimitiveDataUInt.restype = None
+    helios_lib.setBroadcastPrimitiveDataUInt.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_float]
+    helios_lib.setBroadcastPrimitiveDataFloat.restype = None
+    helios_lib.setBroadcastPrimitiveDataFloat.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataDouble.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_double]
+    helios_lib.setBroadcastPrimitiveDataDouble.restype = None
+    helios_lib.setBroadcastPrimitiveDataDouble.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataString.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setBroadcastPrimitiveDataString.restype = None
+    helios_lib.setBroadcastPrimitiveDataString.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataVec2.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_float, ctypes.c_float]
+    helios_lib.setBroadcastPrimitiveDataVec2.restype = None
+    helios_lib.setBroadcastPrimitiveDataVec2.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataVec3.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setBroadcastPrimitiveDataVec3.restype = None
+    helios_lib.setBroadcastPrimitiveDataVec3.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataVec4.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setBroadcastPrimitiveDataVec4.restype = None
+    helios_lib.setBroadcastPrimitiveDataVec4.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataInt2.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    helios_lib.setBroadcastPrimitiveDataInt2.restype = None
+    helios_lib.setBroadcastPrimitiveDataInt2.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataInt3.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setBroadcastPrimitiveDataInt3.restype = None
+    helios_lib.setBroadcastPrimitiveDataInt3.errcheck = _check_error
+
+    helios_lib.setBroadcastPrimitiveDataInt4.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setBroadcastPrimitiveDataInt4.restype = None
+    helios_lib.setBroadcastPrimitiveDataInt4.errcheck = _check_error
+
+    _BROADCAST_PRIMITIVE_DATA_AVAILABLE = True
+
+except AttributeError:
+    # Broadcast primitive data functions not available
+    _BROADCAST_PRIMITIVE_DATA_AVAILABLE = False
+
 # Try to set up PLY loading function prototypes separately
 # Note: Some PLY functions may not be available in the native library, so we set them up individually
 
@@ -361,6 +415,24 @@ try:
     helios_lib.writeOBJWithPrimitiveData.restype = None
     helios_lib.writeOBJWithPrimitiveData.errcheck = _check_error
     _AVAILABLE_EXPORT_FUNCTIONS.append('writeOBJWithPrimitiveData')
+except AttributeError:
+    pass
+
+# writePrimitiveData - write primitive data to ASCII file (all primitives)
+try:
+    helios_lib.writePrimitiveData.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.c_bool]
+    helios_lib.writePrimitiveData.restype = None
+    helios_lib.writePrimitiveData.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writePrimitiveData')
+except AttributeError:
+    pass
+
+# writePrimitiveDataWithUUIDs - write primitive data to ASCII file (selected primitives)
+try:
+    helios_lib.writePrimitiveDataWithUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_bool]
+    helios_lib.writePrimitiveDataWithUUIDs.restype = None
+    helios_lib.writePrimitiveDataWithUUIDs.errcheck = _check_error
+    _AVAILABLE_EXPORT_FUNCTIONS.append('writePrimitiveDataWithUUIDs')
 except AttributeError:
     pass
 
@@ -784,6 +856,51 @@ def writeOBJWithPrimitiveData(context, filename: str, uuids: List[int], data_fie
 
     helios_lib.writeOBJWithPrimitiveData(context, filename_encoded, uuids_array, len(uuids), data_fields_array, len(data_fields), write_normals, silent)
 
+def writePrimitiveData(context, filename: str, column_labels: List[str], print_header: bool = False) -> None:
+    """Write primitive data to ASCII file (all primitives)"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writePrimitiveData' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writePrimitiveData function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not column_labels:
+        raise ValueError("column_labels list cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+
+    # Create array of c_char_p for string array
+    labels_encoded = [label.encode('utf-8') for label in column_labels]
+    labels_array = (ctypes.c_char_p * len(labels_encoded))(*labels_encoded)
+
+    helios_lib.writePrimitiveData(context, filename_encoded, labels_array, len(column_labels), print_header)
+
+def writePrimitiveDataWithUUIDs(context, filename: str, column_labels: List[str], uuids: List[int], print_header: bool = False) -> None:
+    """Write primitive data to ASCII file (selected primitives)"""
+    if not _FILE_EXPORT_FUNCTIONS_AVAILABLE or 'writePrimitiveDataWithUUIDs' not in _AVAILABLE_EXPORT_FUNCTIONS:
+        raise NotImplementedError(
+            "writePrimitiveDataWithUUIDs function not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+    # Validate inputs
+    if not column_labels:
+        raise ValueError("column_labels list cannot be empty")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+
+    filename_encoded = filename.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+
+    # Create array of c_char_p for string array
+    labels_encoded = [label.encode('utf-8') for label in column_labels]
+    labels_array = (ctypes.c_char_p * len(labels_encoded))(*labels_encoded)
+
+    helios_lib.writePrimitiveDataWithUUIDs(context, filename_encoded, labels_array, len(column_labels), uuids_array, len(uuids), print_header)
+
 # Mock mode functions for development when export functions are unavailable
 if not _FILE_EXPORT_FUNCTIONS_AVAILABLE:
     def mock_writePLY(*args, **kwargs):
@@ -798,12 +915,20 @@ if not _FILE_EXPORT_FUNCTIONS_AVAILABLE:
             "This would export geometry to OBJ format with native library."
         )
 
+    def mock_writePrimitiveData(*args, **kwargs):
+        raise RuntimeError(
+            "Mock mode: writePrimitiveData not available. "
+            "This would write primitive data to ASCII file with native library."
+        )
+
     # Replace functions with mocks for development
     writePLY = mock_writePLY
     writePLYWithUUIDs = mock_writePLY
     writeOBJ = mock_writeOBJ
     writeOBJWithUUIDs = mock_writeOBJ
     writeOBJWithPrimitiveData = mock_writeOBJ
+    writePrimitiveData = mock_writePrimitiveData
+    writePrimitiveDataWithUUIDs = mock_writePrimitiveData
 
 # Python wrappers for addTriangle functions
 def addTriangle(context, vertex0:List[float], vertex1:List[float], vertex2:List[float]):
@@ -1436,6 +1561,119 @@ def getPrimitiveDataAuto(context, uuid:int, label:str):
         raise ValueError(f"Unknown data type {data_type} for primitive {uuid}, label '{label}'")
 
 
+# Python wrappers for broadcast primitive data functions - same value to all UUIDs
+def setBroadcastPrimitiveDataInt(context, uuids: List[int], label: str, value: int):
+    """Set integer primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataInt(context, uuids_array, len(uuids), label_encoded, value)
+
+def setBroadcastPrimitiveDataUInt(context, uuids: List[int], label: str, value: int):
+    """Set unsigned integer primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataUInt(context, uuids_array, len(uuids), label_encoded, value)
+
+def setBroadcastPrimitiveDataFloat(context, uuids: List[int], label: str, value: float):
+    """Set float primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataFloat(context, uuids_array, len(uuids), label_encoded, value)
+
+def setBroadcastPrimitiveDataDouble(context, uuids: List[int], label: str, value: float):
+    """Set double primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataDouble(context, uuids_array, len(uuids), label_encoded, value)
+
+def setBroadcastPrimitiveDataString(context, uuids: List[int], label: str, value: str):
+    """Set string primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    value_encoded = value.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataString(context, uuids_array, len(uuids), label_encoded, value_encoded)
+
+def setBroadcastPrimitiveDataVec2(context, uuids: List[int], label: str, x: float, y: float):
+    """Set vec2 primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataVec2(context, uuids_array, len(uuids), label_encoded, x, y)
+
+def setBroadcastPrimitiveDataVec3(context, uuids: List[int], label: str, x: float, y: float, z: float):
+    """Set vec3 primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataVec3(context, uuids_array, len(uuids), label_encoded, x, y, z)
+
+def setBroadcastPrimitiveDataVec4(context, uuids: List[int], label: str, x: float, y: float, z: float, w: float):
+    """Set vec4 primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataVec4(context, uuids_array, len(uuids), label_encoded, x, y, z, w)
+
+def setBroadcastPrimitiveDataInt2(context, uuids: List[int], label: str, x: int, y: int):
+    """Set int2 primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataInt2(context, uuids_array, len(uuids), label_encoded, x, y)
+
+def setBroadcastPrimitiveDataInt3(context, uuids: List[int], label: str, x: int, y: int, z: int):
+    """Set int3 primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataInt3(context, uuids_array, len(uuids), label_encoded, x, y, z)
+
+def setBroadcastPrimitiveDataInt4(context, uuids: List[int], label: str, x: int, y: int, z: int, w: int):
+    """Set int4 primitive data for multiple primitives (broadcast same value to all)."""
+    if not _BROADCAST_PRIMITIVE_DATA_AVAILABLE:
+        raise NotImplementedError("Broadcast primitive data functions not available. Rebuild native library with updated version.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty")
+    label_encoded = label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setBroadcastPrimitiveDataInt4(context, uuids_array, len(uuids), label_encoded, x, y, z, w)
+
+
 # Try to set up pseudocolor function prototypes
 try:
     # colorPrimitiveByDataPseudocolor function prototypes
@@ -1569,4 +1807,117 @@ def getDate(context):
     
     return (year.value, month.value, day.value)
 
+
+# ============================================================================
+# Primitive and Object Deletion Functions
+# ============================================================================
+
+_DELETE_FUNCTIONS_AVAILABLE = False
+
+try:
+    # Single primitive deletion
+    helios_lib.deletePrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.deletePrimitive.restype = None
+
+    # Multiple primitive deletion
+    helios_lib.deletePrimitives.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.deletePrimitives.restype = None
+
+    # Single object deletion
+    helios_lib.deleteObject.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.deleteObject.restype = None
+
+    # Multiple object deletion
+    helios_lib.deleteObjects.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.deleteObjects.restype = None
+
+    # Mark that delete functions are available
+    _DELETE_FUNCTIONS_AVAILABLE = True
+
+except AttributeError:
+    # Delete functions not available in current native library
+    _DELETE_FUNCTIONS_AVAILABLE = False
+
+# Set up automatic error checking for delete functions
+if _DELETE_FUNCTIONS_AVAILABLE:
+    helios_lib.deletePrimitive.errcheck = _check_error
+    helios_lib.deletePrimitives.errcheck = _check_error
+    helios_lib.deleteObject.errcheck = _check_error
+    helios_lib.deleteObjects.errcheck = _check_error
+
+# Primitive deletion wrapper functions
+def deletePrimitive(context, uuid: int) -> None:
+    """Delete a single primitive by UUID.
+
+    Args:
+        context: The Helios context pointer
+        uuid: UUID of the primitive to delete
+
+    Raises:
+        RuntimeError: If primitive UUID doesn't exist in context
+    """
+    if not _DELETE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "deletePrimitive function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper implementation."
+        )
+    helios_lib.deletePrimitive(context, ctypes.c_uint(uuid))
+
+def deletePrimitives(context, uuids: List[int]) -> None:
+    """Delete multiple primitives by UUID.
+
+    Args:
+        context: The Helios context pointer
+        uuids: List of UUIDs of primitives to delete
+
+    Raises:
+        RuntimeError: If any primitive UUID doesn't exist in context
+    """
+    if not _DELETE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "deletePrimitives function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper implementation."
+        )
+    if not uuids:
+        return  # No-op for empty list
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.deletePrimitives(context, uuids_array, len(uuids))
+
+# Object deletion wrapper functions
+def deleteObject(context, objID: int) -> None:
+    """Delete a single compound object and all its child primitives.
+
+    Args:
+        context: The Helios context pointer
+        objID: Object ID to delete
+
+    Raises:
+        RuntimeError: If object ID doesn't exist in context
+    """
+    if not _DELETE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "deleteObject function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper implementation."
+        )
+    helios_lib.deleteObject(context, ctypes.c_uint(objID))
+
+def deleteObjects(context, objIDs: List[int]) -> None:
+    """Delete multiple compound objects and all their child primitives.
+
+    Args:
+        context: The Helios context pointer
+        objIDs: List of object IDs to delete
+
+    Raises:
+        RuntimeError: If any object ID doesn't exist in context
+    """
+    if not _DELETE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "deleteObjects function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper implementation."
+        )
+    if not objIDs:
+        return  # No-op for empty list
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.deleteObjects(context, objIDs_array, len(objIDs))
 

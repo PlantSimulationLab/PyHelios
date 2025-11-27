@@ -525,6 +525,30 @@ PYHELIOS_API void writeOBJWithUUIDs(helios::Context* context, const char* filena
  */
 PYHELIOS_API void writeOBJWithPrimitiveData(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count, const char** data_fields, unsigned int field_count, bool write_normals, bool silent);
 
+/**
+ * @brief Write primitive data to an ASCII text file (all primitives)
+ * @param context Pointer to the Context
+ * @param filename Output filename
+ * @param column_labels Array of primitive data labels to include as columns
+ * @param label_count Number of column labels
+ * @param print_header Whether to print column headers as first line
+ * @note Use "UUID" as a column label to include primitive UUIDs
+ */
+PYHELIOS_API void writePrimitiveData(helios::Context* context, const char* filename, const char** column_labels, unsigned int label_count, bool print_header);
+
+/**
+ * @brief Write primitive data to an ASCII text file (selected primitives)
+ * @param context Pointer to the Context
+ * @param filename Output filename
+ * @param column_labels Array of primitive data labels to include as columns
+ * @param label_count Number of column labels
+ * @param uuids Array of primitive UUIDs to include
+ * @param uuid_count Number of UUIDs
+ * @param print_header Whether to print column headers as first line
+ * @note Use "UUID" as a column label to include primitive UUIDs
+ */
+PYHELIOS_API void writePrimitiveDataWithUUIDs(helios::Context* context, const char* filename, const char** column_labels, unsigned int label_count, unsigned int* uuids, unsigned int uuid_count, bool print_header);
+
 //=============================================================================
 // Primitive Data Functions
 //=============================================================================
@@ -815,6 +839,132 @@ PYHELIOS_API void colorPrimitiveByDataPseudocolor(helios::Context* context, unsi
  */
 PYHELIOS_API void colorPrimitiveByDataPseudocolorWithRange(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* primitive_data, const char* colormap, unsigned int ncolors, float data_min, float data_max);
 
+//=============================================================================
+// Batch Primitive Data Functions - Broadcast Pattern (same value to all UUIDs)
+//=============================================================================
+
+/**
+ * @brief Set primitive data as int for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param value Integer value to set on all primitives
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataInt(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, int value);
+
+/**
+ * @brief Set primitive data as unsigned int for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param value Unsigned integer value to set on all primitives
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataUInt(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, unsigned int value);
+
+/**
+ * @brief Set primitive data as float for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param value Float value to set on all primitives
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataFloat(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, float value);
+
+/**
+ * @brief Set primitive data as double for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param value Double value to set on all primitives
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataDouble(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, double value);
+
+/**
+ * @brief Set primitive data as string for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param value String value to set on all primitives
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataString(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, const char* value);
+
+/**
+ * @brief Set primitive data as vec2 for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param x X component
+ * @param y Y component
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataVec2(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, float x, float y);
+
+/**
+ * @brief Set primitive data as vec3 for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param x X component
+ * @param y Y component
+ * @param z Z component
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataVec3(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, float x, float y, float z);
+
+/**
+ * @brief Set primitive data as vec4 for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param x X component
+ * @param y Y component
+ * @param z Z component
+ * @param w W component
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataVec4(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, float x, float y, float z, float w);
+
+/**
+ * @brief Set primitive data as int2 for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param x X component
+ * @param y Y component
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataInt2(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, int x, int y);
+
+/**
+ * @brief Set primitive data as int3 for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param x X component
+ * @param y Y component
+ * @param z Z component
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataInt3(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, int x, int y, int z);
+
+/**
+ * @brief Set primitive data as int4 for multiple primitives (broadcast)
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs
+ * @param num_uuids Number of UUIDs in the array
+ * @param label Name/label of the data
+ * @param x X component
+ * @param y Y component
+ * @param z Z component
+ * @param w W component
+ */
+PYHELIOS_API void setBroadcastPrimitiveDataInt4(helios::Context* context, unsigned int* uuids, size_t num_uuids, const char* label, int x, int y, int z, int w);
+
 /**
  * @brief Set the simulation time using hour and minute
  * @param context Pointer to the Context
@@ -866,6 +1016,46 @@ PYHELIOS_API void getTime(helios::Context* context, int* hour, int* minute, int*
  * @param year Output parameter for year
  */
 PYHELIOS_API void getDate(helios::Context* context, int* day, int* month, int* year);
+
+//=============================================================================
+// Primitive and Object Deletion Functions
+//=============================================================================
+
+/**
+ * @brief Delete a single primitive from the context
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to delete
+ * @note If the primitive belongs to a compound object, it is removed from that object.
+ *       If the object becomes empty, it is automatically deleted.
+ */
+PYHELIOS_API void deletePrimitive(helios::Context* context, unsigned int uuid);
+
+/**
+ * @brief Delete multiple primitives from the context
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs to delete
+ * @param count Number of UUIDs in the array
+ * @note If any primitive belongs to a compound object, it is removed from that object.
+ *       If any object becomes empty, it is automatically deleted.
+ */
+PYHELIOS_API void deletePrimitives(helios::Context* context, unsigned int* uuids, unsigned int count);
+
+/**
+ * @brief Delete a single compound object from the context
+ * @param context Pointer to the Context
+ * @param objID Object ID to delete
+ * @note Deleting an object also deletes ALL its child primitives.
+ */
+PYHELIOS_API void deleteObject(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Delete multiple compound objects from the context
+ * @param context Pointer to the Context
+ * @param objIDs Array of object IDs to delete
+ * @param count Number of object IDs in the array
+ * @note Deleting objects also deletes ALL their child primitives.
+ */
+PYHELIOS_API void deleteObjects(helios::Context* context, unsigned int* objIDs, unsigned int count);
 
 #ifdef __cplusplus
 }

@@ -116,9 +116,9 @@ try:
     helios_lib.evaluateAirEnergyBalanceForUUIDs.errcheck = _check_error
 
     # Optional output and reporting
-    helios_lib.optionalOutputPrimitiveData.argtypes = [ctypes.POINTER(UEnergyBalanceModel), ctypes.c_char_p]
-    helios_lib.optionalOutputPrimitiveData.restype = None
-    helios_lib.optionalOutputPrimitiveData.errcheck = _check_error
+    helios_lib.energyBalanceOptionalOutputPrimitiveData.argtypes = [ctypes.POINTER(UEnergyBalanceModel), ctypes.c_char_p]
+    helios_lib.energyBalanceOptionalOutputPrimitiveData.restype = None
+    helios_lib.energyBalanceOptionalOutputPrimitiveData.errcheck = _check_error
 
     helios_lib.printDefaultValueReport.argtypes = [ctypes.POINTER(UEnergyBalanceModel)]
     helios_lib.printDefaultValueReport.restype = None
@@ -331,7 +331,7 @@ def optionalOutputPrimitiveData(energy_model: ctypes.POINTER(UEnergyBalanceModel
     if not label:
         raise ValueError("Label cannot be empty.")
     
-    helios_lib.optionalOutputPrimitiveData(energy_model, label.encode('utf-8'))
+    helios_lib.energyBalanceOptionalOutputPrimitiveData(energy_model, label.encode('utf-8'))
 
 
 def printDefaultValueReport(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> None:

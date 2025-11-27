@@ -179,7 +179,21 @@ class WeberPennTree:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        wpt_wrapper.destroyWeberPennTree(self.wpt)
+        if self.wpt is not None:
+            try:
+                wpt_wrapper.destroyWeberPennTree(self.wpt)
+            finally:
+                self.wpt = None  # Prevent double deletion
+
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, 'wpt') and self.wpt is not None:
+            try:
+                wpt_wrapper.destroyWeberPennTree(self.wpt)
+                self.wpt = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in WeberPennTree.__del__: {e}")
 
     def getNativePtr(self):
         return self.wpt

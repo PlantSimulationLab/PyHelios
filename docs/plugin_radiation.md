@@ -305,6 +305,591 @@ print(f"  Min: {min_flux:.2f} W")
 print(f"  Std Dev: {std_flux:.2f} W")
 ```
 
+## Advanced Band Management
+
+### Query Band Existence
+
+```python
+# Check if band exists before using it
+if radiation.doesBandExist("PAR"):
+    print("PAR band exists")
+    radiation.setDirectRayCount("PAR", 1000)
+else:
+    radiation.addRadiationBand("PAR")
+```
+
+### Copy Band with Wavelength Range
+
+```python
+# Copy band preserving original wavelength range
+radiation.addRadiationBand("fullspectrum", 300, 3000)
+radiation.copyRadiationBand("fullspectrum", "fullspectrum_copy")
+
+# Copy band with new wavelength range
+radiation.copyRadiationBand("fullspectrum", "PAR", 400, 700)
+radiation.copyRadiationBand("fullspectrum", "NIR", 700, 1100)
+```
+
+## Geometric Radiation Sources
+
+### Rectangle Sources (LED Panels, Grow Lights)
+
+```python
+from pyhelios.types import vec3, vec2
+
+# Add rectangular radiation source (e.g., LED panel)
+led_panel = radiation.addRectangleRadiationSource(
+    position=vec3(0, 0, 5),      # Center position 5m above ground
+    size=vec2(2.0, 1.0),          # 2m × 1m panel
+    rotation=vec3(0, 0, 0)        # Rotation (Euler angles in radians)
+)
+
+# Configure the LED panel
+radiation.addRadiationBand("LED")
+radiation.setSourceFlux(led_panel, "LED", 500.0)  # 500 W/m²
+
+# Set LED spectrum
+led_spectrum = [
+    (400, 0.0), (450, 0.3), (500, 0.8),
+    (550, 0.5), (600, 0.2), (700, 0.0)
+]
+radiation.setSourceSpectrum(led_panel, led_spectrum)
+```
+
+### Disk Sources (Spotlights, Circular LEDs)
+
+```python
+# Add circular disk source (e.g., spotlight)
+spotlight = radiation.addDiskRadiationSource(
+    position=vec3(2, 2, 5),      # Position
+    radius=0.5,                   # 0.5m radius
+    rotation=vec3(0, 0, 0)        # Rotation
+)
+
+radiation.setSourceFlux(spotlight, "PAR", 800.0)
+```
+
+### Dynamic Source Positioning
+
+```python
+# Reposition sources for time-series simulations
+for time_step in range(24):  # 24 hour simulation
+    # Move sun position
+    sun_position = calculate_sun_position(time_step)
+    radiation.setSourcePosition(sun_id, sun_position)
+
+    # Run simulation for this time step
+    radiation.runBand("PAR")
+    results = radiation.getTotalAbsorbedFlux()
+    save_results(time_step, results)
+
+# Delete sources when no longer needed
+radiation.deleteRadiationSource(temporary_source_id)
+```
+
+## Spectral Data Management
+
+### Setting Source Spectra
+
+```python
+# Define custom spectrum (wavelength in nm, relative intensity)
+sunlight_spectrum = [
+    (300, 0.1), (400, 0.5), (500, 1.0),
+    (600, 0.9), (700, 0.7), (800, 0.5)
+]
+
+# Set spectrum for single source
+radiation.setSourceSpectrum(sun_source, sunlight_spectrum)
+
+# Set spectrum for multiple sources
+led_sources = [led1, led2, led3]
+radiation.setSourceSpectrum(led_sources, led_spectrum)
+
+# Use predefined spectrum from global data
+radiation.setSourceSpectrum(source_id, "D65_illuminant")
+```
+
+### Spectrum Integration and Analysis
+
+```python
+# Define leaf reflectance spectrum
+leaf_reflectance = [
+    (400, 0.08), (500, 0.10), (550, 0.45),
+    (600, 0.15), (650, 0.12), (700, 0.50),
+    (750, 0.55), (800, 0.52)
+]
+
+# Basic integration (total)
+total = radiation.integrateSpectrum(leaf_reflectance)
+print(f"Total reflectance: {total}")
+
+# Integration over PAR range (400-700nm)
+par_reflectance = radiation.integrateSpectrum(leaf_reflectance, 400, 700)
+print(f"PAR reflectance: {par_reflectance}")
+
+# Integration weighted by source spectrum
+source_weighted = radiation.integrateSpectrum(
+    leaf_reflectance, 400, 700, source_id=sun_id
+)
+
+# Integration with camera spectral response
+camera_response = [(400, 0.2), (550, 1.0), (700, 0.3)]
+camera_weighted = radiation.integrateSpectrum(
+    leaf_reflectance, camera_spectrum=camera_response
+)
+
+# Integrate source spectrum directly
+sun_par_flux = radiation.integrateSourceSpectrum(sun_id, 400, 700)
+print(f"Sun PAR flux: {sun_par_flux} W/m²")
+```
+
+### Spectrum Normalization
+
+```python
+# Set spectrum integral (normalizes spectrum to target value)
+radiation.setSourceSpectrumIntegral(source_id, 1000.0)  # Total = 1000 W/m²
+
+# Set integral over specific wavelength range (PAR)
+radiation.setSourceSpectrumIntegral(source_id, 500.0, 400, 700)  # PAR = 500 W/m²
+```
+
+### Spectrum Manipulation
+
+```python
+# Scale existing spectrum in-place
+radiation.scaleSpectrum("leaf_reflectance", 1.2)  # Increase by 20%
+
+# Create new scaled spectrum
+radiation.scaleSpectrum("leaf_reflectance", "bright_leaf", 1.5)
+
+# Random scaling for stochastic simulations
+radiation.scaleSpectrumRandomly("base_leaf", "variant_leaf", 0.8, 1.2)
+
+# Blend multiple spectra with weights
+radiation.blendSpectra(
+    new_label="mixed_leaf",
+    spectrum_labels=["young_leaf", "mature_leaf", "old_leaf"],
+    weights=[0.2, 0.5, 0.3]
+)
+
+# Random blending
+radiation.blendSpectraRandomly(
+    new_label="random_canopy",
+    spectrum_labels=["leaf_type_a", "leaf_type_b", "leaf_type_c"]
+)
+```
+
+## Diffuse Radiation
+
+### Directionally-Biased Diffuse Radiation
+
+```python
+# Set diffuse radiation with extinction coefficient and peak direction
+radiation.addRadiationBand("SW")
+radiation.setDiffuseRadiationFlux("SW", 200.0)
+
+# Sky radiation peaked at zenith
+from pyhelios.types import vec3
+radiation.setDiffuseRadiationExtinctionCoeff(
+    label="SW",
+    K=0.5,                    # Extinction coefficient
+    peak_direction=vec3(0, 0, 1)  # Zenith direction
+)
+
+# Or use spherical coordinates
+from pyhelios.types import SphericalCoord
+radiation.setDiffuseRadiationExtinctionCoeff(
+    label="SW",
+    K=0.3,
+    peak_direction=SphericalCoord(1.0, 45.0, 90.0)
+)
+
+# Query diffuse flux
+diffuse_flux = radiation.getDiffuseFlux("SW")
+print(f"Diffuse flux: {diffuse_flux} W/m²")
+```
+
+### Diffuse Spectrum Configuration
+
+```python
+# Set diffuse spectrum from global data
+radiation.setDiffuseSpectrum("SW", "sky_spectrum")
+
+# Set for multiple bands
+radiation.setDiffuseSpectrum(["SW", "NIR"], "atmospheric_spectrum")
+
+# Set diffuse spectrum integral (all bands)
+radiation.setDiffuseSpectrumIntegral(1000.0)
+
+# Set integral with wavelength range
+radiation.setDiffuseSpectrumIntegral(500.0, 400, 700)
+
+# Set integral for specific band
+radiation.setDiffuseSpectrumIntegral(300.0, band_label="PAR")
+radiation.setDiffuseSpectrumIntegral(200.0, 400, 700, band_label="PAR")
+```
+
+## Spectral Interpolation
+
+### Primitive-Based Spectral Assignment
+
+```python
+# Automatically assign spectra based on primitive data values
+leaf_patches = context.getAllUUIDs("patch")
+
+# Assign leaf reflectance based on age
+radiation.interpolateSpectrumFromPrimitiveData(
+    primitive_uuids=leaf_patches,
+    spectra_labels=["young_leaf_spectrum", "mature_leaf_spectrum", "old_leaf_spectrum"],
+    values=[0.0, 50.0, 100.0],  # Days since emergence
+    primitive_data_query_label="leaf_age",
+    primitive_data_radprop_label="reflectance"
+)
+
+# Assign based on nitrogen content
+radiation.interpolateSpectrumFromPrimitiveData(
+    primitive_uuids=leaf_patches,
+    spectra_labels=["low_n_leaf", "medium_n_leaf", "high_n_leaf"],
+    values=[0.5, 2.0, 4.0],  # % nitrogen
+    primitive_data_query_label="nitrogen_percent",
+    primitive_data_radprop_label="reflectance"
+)
+```
+
+### Object-Based Spectral Assignment
+
+```python
+# Assign spectra based on object-level data
+tree_ids = [tree1_id, tree2_id, tree3_id]
+
+radiation.interpolateSpectrumFromObjectData(
+    object_ids=tree_ids,
+    spectra_labels=["healthy_tree", "stressed_tree", "diseased_tree"],
+    values=[1.0, 0.5, 0.0],  # Health index (0-1)
+    object_data_query_label="health_index",
+    primitive_data_radprop_label="reflectance"
+)
+```
+
+## Camera Management
+
+### Dynamic Camera Control
+
+```python
+from pyhelios.types import vec3, SphericalCoord
+
+# Create camera
+radiation.addRadiationCamera("cam1", ["red", "green", "blue"],
+                           position=vec3(0, 0, 10),
+                           lookat_or_direction=vec3(0, 0, 0))
+
+# Reposition camera dynamically
+radiation.setCameraPosition("cam1", vec3(5, 5, 15))
+position = radiation.getCameraPosition("cam1")
+print(f"Camera at: {position}")
+
+# Update camera target
+radiation.setCameraLookat("cam1", vec3(2, 2, 0))
+lookat = radiation.getCameraLookat("cam1")
+print(f"Camera looking at: {lookat}")
+
+# Set camera orientation
+radiation.setCameraOrientation("cam1", vec3(0, 0, 1))  # Look down
+orientation = radiation.getCameraOrientation("cam1")
+print(f"Camera orientation: {orientation}")
+
+# Query all cameras
+cameras = radiation.getAllCameraLabels()
+print(f"Available cameras: {cameras}")
+```
+
+### Camera Spectral Response
+
+```python
+# Set custom camera spectral response
+radiation.setCameraSpectralResponse("cam1", "red", "custom_red_response")
+
+# Use standard camera models
+radiation.setCameraSpectralResponseFromLibrary("cam1", "iPhone13")
+radiation.setCameraSpectralResponseFromLibrary("cam2", "NikonD850")
+radiation.setCameraSpectralResponseFromLibrary("cam3", "CanonEOS5D")
+
+# Available camera models: iPhone13, NikonD850, CanonEOS5D, and more
+```
+
+### Programmatic Pixel Access
+
+```python
+# Get raw pixel data
+pixels = radiation.getCameraPixelData("cam1", "red")
+print(f"Image size: {len(pixels)} pixels")
+print(f"Mean intensity: {sum(pixels)/len(pixels)}")
+
+# Modify pixels programmatically
+enhanced_pixels = [p * 1.3 for p in pixels]  # Brighten by 30%
+radiation.setCameraPixelData("cam1", "red", enhanced_pixels)
+
+# Apply custom image processing
+import numpy as np
+pixel_array = np.array(pixels)
+filtered = apply_custom_filter(pixel_array)
+radiation.setCameraPixelData("cam1", "red", filtered.tolist())
+```
+
+## Advanced Simulation Features
+
+### Periodic Boundary Conditions
+
+```python
+# Enable periodic boundaries for large-scale simulations
+radiation.enforcePeriodicBoundary("xy")   # Periodic in x and y
+radiation.enforcePeriodicBoundary("xyz")  # Periodic in all dimensions
+radiation.enforcePeriodicBoundary("x")    # Periodic in x only
+```
+
+### G-Function Calculation
+
+```python
+# Calculate geometry factor for canopy radiation modeling
+from pyhelios.types import vec3
+
+# Vertical view
+g_vertical = radiation.calculateGtheta(vec3(0, 0, 1))
+print(f"G-function (vertical): {g_vertical}")
+
+# Oblique view
+g_oblique = radiation.calculateGtheta(vec3(0.5, 0.5, 0.7))
+print(f"G-function (oblique): {g_oblique}")
+
+# Horizontal view
+g_horizontal = radiation.calculateGtheta(vec3(1, 0, 0))
+print(f"G-function (horizontal): {g_horizontal}")
+```
+
+### Sky Energy and Optional Outputs
+
+```python
+# Get total sky energy
+sky_energy = radiation.getSkyEnergy()
+print(f"Sky energy: {sky_energy} W")
+
+# Enable optional primitive data outputs
+radiation.optionalOutputPrimitiveData("temperature")
+radiation.optionalOutputPrimitiveData("absorbed_PAR")
+radiation.optionalOutputPrimitiveData("transmitted_flux")
+```
+
+## Spectral Modeling Workflows
+
+### Realistic Sunlight Modeling
+
+```python
+# Create realistic solar spectrum
+solar_spectrum = [
+    (300, 0.05), (350, 0.15), (400, 0.35), (450, 0.65),
+    (500, 0.90), (550, 1.00), (600, 0.95), (650, 0.85),
+    (700, 0.75), (750, 0.70), (800, 0.65), (900, 0.55)
+]
+
+# Add sun source
+sun_id = radiation.addSunSphereRadiationSource(
+    radius=1.0, zenith=30.0, azimuth=180.0
+)
+
+# Set solar spectrum
+radiation.setSourceSpectrum(sun_id, solar_spectrum)
+
+# Normalize to total solar irradiance (1000 W/m²)
+radiation.setSourceSpectrumIntegral(sun_id, 1000.0)
+
+# Or normalize just PAR component to 500 W/m²
+radiation.setSourceSpectrumIntegral(sun_id, 500.0, 400, 700)
+```
+
+### Multi-Spectral Leaf Modeling
+
+```python
+# Define leaf spectra at different developmental stages
+young_leaf = [(400, 0.08), (550, 0.40), (700, 0.45), (800, 0.50)]
+mature_leaf = [(400, 0.10), (550, 0.45), (700, 0.50), (800, 0.55)]
+old_leaf = [(400, 0.06), (550, 0.30), (700, 0.35), (800, 0.40)]
+
+# Create interpolated spectra for intermediate ages
+for age in [10, 20, 30, 40]:
+    radiation.scaleSpectrum(
+        "young_leaf",
+        f"leaf_age_{age}",
+        scale_factor=1.0 + (age / 100.0)
+    )
+
+# Generate stochastic leaf variations
+for i in range(100):
+    radiation.scaleSpectrumRandomly(
+        "mature_leaf",
+        f"leaf_variant_{i}",
+        min_scale=0.85,
+        max_scale=1.15
+    )
+```
+
+### Canopy Spectral Diversity
+
+```python
+# Get all leaf patches
+leaf_patches = context.getAllUUIDs("patch")
+
+# Assign spectra based on canopy height
+radiation.interpolateSpectrumFromPrimitiveData(
+    primitive_uuids=leaf_patches,
+    spectra_labels=["upper_canopy", "middle_canopy", "lower_canopy"],
+    values=[15.0, 8.0, 2.0],  # Height thresholds (meters)
+    primitive_data_query_label="height",
+    primitive_data_radprop_label="reflectance"
+)
+
+# Mix leaf types for realistic heterogeneity
+radiation.blendSpectra(
+    new_label="canopy_average",
+    spectrum_labels=["sunlit_leaf", "shaded_leaf"],
+    weights=[0.3, 0.7]  # 30% sunlit, 70% shaded
+)
+```
+
+## Multi-View Camera Imaging
+
+### Time-Series Camera Capture
+
+```python
+from pyhelios.types import vec3
+
+# Set up camera
+radiation.addRadiationCamera("timelapse", ["red", "green", "blue"],
+                           position=vec3(0, 0, 20),
+                           lookat_or_direction=vec3(0, 0, 0))
+
+# Capture from multiple viewpoints
+viewpoints = [
+    vec3(10, 0, 15), vec3(0, 10, 15),
+    vec3(-10, 0, 15), vec3(0, -10, 15)
+]
+
+for i, viewpoint in enumerate(viewpoints):
+    # Move camera
+    radiation.setCameraPosition("timelapse", viewpoint)
+
+    # Update lookat to track target
+    radiation.setCameraLookat("timelapse", vec3(0, 0, 5))
+
+    # Capture image
+    radiation.writeCameraImage(
+        "timelapse", ["red", "green", "blue"],
+        f"view_{i}", frame=i
+    )
+```
+
+### Multi-Spectral Imaging with Standard Cameras
+
+```python
+# Create camera with iPhone 13 spectral response
+radiation.addRadiationCamera("iphone_cam", ["red", "green", "blue"],
+                           position=vec3(0, 0, 10),
+                           lookat_or_direction=vec3(0, 0, 0))
+
+radiation.setCameraSpectralResponseFromLibrary("iphone_cam", "iPhone13")
+
+# Create camera with professional DSLR response
+radiation.addRadiationCamera("dslr_cam", ["red", "green", "blue"],
+                           position=vec3(5, 0, 10),
+                           lookat_or_direction=vec3(0, 0, 0))
+
+radiation.setCameraSpectralResponseFromLibrary("dslr_cam", "NikonD850")
+
+# Run simulation and compare
+radiation.runBand(["red", "green", "blue"])
+
+iphone_img = radiation.writeCameraImage("iphone_cam", ["red", "green", "blue"], "iphone")
+dslr_img = radiation.writeCameraImage("dslr_cam", ["red", "green", "blue"], "dslr")
+```
+
+## Advanced Workflows
+
+### Growth Simulation with Spectral Changes
+
+```python
+# Simulate plant growth over 100 days
+for day in range(100):
+    # Update leaf age data
+    leaf_patches = context.getAllUUIDs("patch")
+    for patch_id in leaf_patches:
+        current_age = context.getPrimitiveData(patch_id, "age")[0]
+        context.setPrimitiveData(patch_id, "age", current_age + 1.0)
+
+    # Interpolate spectra based on updated ages
+    radiation.interpolateSpectrumFromPrimitiveData(
+        primitive_uuids=leaf_patches,
+        spectra_labels=["juvenile", "mature", "senescent"],
+        values=[0.0, 50.0, 100.0],
+        primitive_data_query_label="age",
+        primitive_data_radprop_label="reflectance"
+    )
+
+    # Run radiation simulation
+    radiation.runBand("PAR")
+
+    # Analyze results
+    flux = radiation.getTotalAbsorbedFlux()
+    daily_radiation[day] = sum(flux)
+```
+
+### Multi-Source Lighting Scenarios
+
+```python
+# Create complex lighting setup
+# Natural sunlight
+sun = radiation.addSunSphereRadiationSource(1.0, 45.0, 180.0)
+radiation.setSourceFlux(sun, "PAR", 600.0)
+
+# Supplemental LED grow lights (rectangular panels)
+led1 = radiation.addRectangleRadiationSource(
+    position=vec3(-3, 0, 4), size=vec2(1, 2), rotation=vec3(0, 0, 0)
+)
+led2 = radiation.addRectangleRadiationSource(
+    position=vec3(3, 0, 4), size=vec2(1, 2), rotation=vec3(0, 0, 0)
+)
+
+# LED spectrum (red-blue for photosynthesis)
+led_spectrum = [
+    (400, 0.0), (450, 0.8), (500, 0.2),
+    (600, 0.1), (660, 1.0), (700, 0.0)
+]
+
+radiation.setSourceSpectrum([led1, led2], led_spectrum)
+radiation.setSourceFlux([led1, led2], "PAR", 200.0)
+
+# Run combined natural + artificial lighting
+radiation.runBand("PAR")
+```
+
+### Quality Control with Source Position Tracking
+
+```python
+# Query and verify source positions
+all_cameras = radiation.getAllCameraLabels()
+print(f"Configured cameras: {all_cameras}")
+
+# Get source positions for verification
+for source_id in [sun, led1, led2]:
+    pos = radiation.getSourcePosition(source_id)
+    print(f"Source {source_id} at: {pos}")
+
+# Verify band configuration
+bands = ["PAR", "NIR", "SW"]
+for band in bands:
+    if radiation.doesBandExist(band):
+        flux = radiation.getDiffuseFlux(band)
+        print(f"{band}: {flux} W/m² diffuse")
+```
+
 ## Complete Workflow Example
 
 ```python
@@ -423,7 +1008,7 @@ The RadiationModel now includes advanced camera functionality for generating syn
 
 ```python
 # Basic camera image writing (returns output filename)
-filename = radiation.write_camera_image(
+filename = radiation.writeCameraImage(
     camera="overhead_camera",
     bands=["Red", "Green", "Blue"],
     imagefile_base="scene_rgb",
@@ -433,7 +1018,7 @@ filename = radiation.write_camera_image(
 print(f"Camera image saved to: {filename}")
 
 # Normalized camera images  
-filename = radiation.write_norm_camera_image(
+filename = radiation.writeNormCameraImage(
     camera="side_camera",
     bands=["NIR", "Red"], 
     imagefile_base="false_color",
@@ -441,7 +1026,7 @@ filename = radiation.write_norm_camera_image(
 )
 
 # Camera image data in ASCII format
-radiation.write_camera_image_data(
+radiation.writeCameraImageData(
     camera="overhead_camera",
     band="RGB",
     imagefile_base="raw_data",
@@ -455,7 +1040,7 @@ Generate YOLO-format bounding boxes for machine learning training:
 
 ```python
 # Single primitive data label
-radiation.write_image_bounding_boxes(
+radiation.writeImageBoundingBoxes(
     camera_label="training_camera",
     primitive_data_labels="leaf_type",
     object_class_ids=1,  # Class ID for "leaf"
@@ -465,7 +1050,7 @@ radiation.write_image_bounding_boxes(
 )
 
 # Multiple primitive data labels for multi-class detection
-radiation.write_image_bounding_boxes(
+radiation.writeImageBoundingBoxes(
     camera_label="training_camera", 
     primitive_data_labels=["leaves", "stems", "fruits"],
     object_class_ids=[0, 1, 2],  # Different class IDs
@@ -474,7 +1059,7 @@ radiation.write_image_bounding_boxes(
 )
 
 # Object-based bounding boxes (entire objects)
-radiation.write_image_bounding_boxes(
+radiation.writeImageBoundingBoxes(
     camera_label="training_camera",
     object_data_labels=["tree_1", "tree_2", "shrub_1"], 
     object_class_ids=[10, 10, 20],  # Tree class=10, Shrub class=20
@@ -488,7 +1073,7 @@ Generate COCO-format JSON files for semantic/instance segmentation:
 
 ```python
 # Single primitive segmentation
-radiation.write_image_segmentation_masks(
+radiation.writeImageSegmentationMasks(
     camera_label="segmentation_camera",
     primitive_data_labels="plant_part",
     object_class_ids=1,
@@ -498,7 +1083,7 @@ radiation.write_image_segmentation_masks(
 )
 
 # Multiple primitive classes in one image
-radiation.write_image_segmentation_masks(
+radiation.writeImageSegmentationMasks(
     camera_label="segmentation_camera",
     primitive_data_labels=["leaf", "bark", "soil"],
     object_class_ids=[1, 2, 3],
@@ -508,7 +1093,7 @@ radiation.write_image_segmentation_masks(
 )
 
 # Object-level segmentation
-radiation.write_image_segmentation_masks(
+radiation.writeImageSegmentationMasks(
     camera_label="segmentation_camera",
     object_data_labels=["individual_plant_1", "individual_plant_2"],
     object_class_ids=[100, 101],  # Unique instance IDs
@@ -523,7 +1108,7 @@ Automatic color correction for realistic imagery:
 
 ```python
 # Basic auto-calibration with default settings
-filename = radiation.auto_calibrate_camera_image(
+filename = radiation.autoCalibrateCameraImage(
     camera_label="rgb_camera",
     red_band_label="Red",
     green_band_label="Green", 
@@ -532,7 +1117,7 @@ filename = radiation.auto_calibrate_camera_image(
 )
 
 # Advanced auto-calibration with quality report
-filename = radiation.auto_calibrate_camera_image(
+filename = radiation.autoCalibrateCameraImage(
     camera_label="multispectral_camera",
     red_band_label="Band_670nm",
     green_band_label="Band_550nm",
@@ -558,7 +1143,7 @@ algorithms = {
 
 # Test different algorithms
 for algorithm, description in algorithms.items():
-    filename = radiation.auto_calibrate_camera_image(
+    filename = radiation.autoCalibrateCameraImage(
         camera_label="test_camera",
         red_band_label="R", green_band_label="G", blue_band_label="B",
         output_file_path=f"calibrated_{algorithm.lower()}.jpg",
@@ -621,20 +1206,20 @@ try:
         radiation.runBand(["Red", "Green", "Blue", "NIR"])
         
         # Generate camera images
-        rgb_filename = radiation.write_camera_image(
+        rgb_filename = radiation.writeCameraImage(
             camera="overhead_rgb",
             bands=["Red", "Green", "Blue"],
             imagefile_base="apple_tree_rgb"
         )
         
-        nir_filename = radiation.write_camera_image(
+        nir_filename = radiation.writeCameraImage(
             camera="side_view", 
             bands=["NIR"],
             imagefile_base="apple_tree_nir"
         )
         
         # Generate training data for object detection
-        radiation.write_image_bounding_boxes(
+        radiation.writeImageBoundingBoxes(
             camera_label="overhead_rgb",
             primitive_data_labels=["leaf", "branch", "soil"],
             object_class_ids=[0, 1, 2],  # leaf=0, branch=1, soil=2
@@ -643,7 +1228,7 @@ try:
         )
         
         # Generate segmentation masks 
-        radiation.write_image_segmentation_masks(
+        radiation.writeImageSegmentationMasks(
             camera_label="overhead_rgb",
             primitive_data_labels=["leaf", "branch", "soil"],
             object_class_ids=[0, 1, 2],
@@ -652,7 +1237,7 @@ try:
         )
         
         # Create auto-calibrated realistic image
-        calibrated_filename = radiation.auto_calibrate_camera_image(
+        calibrated_filename = radiation.autoCalibrateCameraImage(
             camera_label="overhead_rgb",
             red_band_label="Red",
             green_band_label="Green", 
@@ -677,7 +1262,7 @@ except RadiationModelError as e:
 ```python
 try:
     # Camera functions with comprehensive error handling
-    filename = radiation.write_camera_image(
+    filename = radiation.writeCameraImage(
         camera="test_camera",
         bands=["R", "G", "B"],
         imagefile_base="test"

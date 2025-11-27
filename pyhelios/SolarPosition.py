@@ -127,7 +127,17 @@ class SolarPosition:
         if hasattr(self, '_solar_pos') and self._solar_pos:
             solar_wrapper.destroySolarPosition(self._solar_pos)
             self._solar_pos = None
-    
+
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, '_solar_pos') and self._solar_pos is not None:
+            try:
+                solar_wrapper.destroySolarPosition(self._solar_pos)
+                self._solar_pos = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in SolarPosition.__del__: {e}")
+
     # Solar angle calculations
     def getSunElevation(self) -> float:
         """

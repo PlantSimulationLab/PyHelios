@@ -189,7 +189,17 @@ class StomatalConductanceModel:
                 logger.warning(f"Error destroying StomatalConductanceModel: {e}")
             finally:
                 self.stomatal_model = None
-    
+
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, 'stomatal_model') and self.stomatal_model is not None:
+            try:
+                stomatal_wrapper.destroyStomatalConductanceModel(self.stomatal_model)
+                self.stomatal_model = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in StomatalConductanceModel.__del__: {e}")
+
     def getNativePtr(self):
         """Get the native pointer for advanced operations."""
         return self.stomatal_model

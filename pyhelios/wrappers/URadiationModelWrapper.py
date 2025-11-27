@@ -53,6 +53,10 @@ try:
     helios_lib.copyRadiationBand.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_char_p]
     helios_lib.copyRadiationBand.restype = None
 
+    helios_lib.copyRadiationBandWithWavelengths.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_char_p,
+                                                             ctypes.c_float, ctypes.c_float]
+    helios_lib.copyRadiationBandWithWavelengths.restype = None
+
     # Source management  
     helios_lib.addCollimatedRadiationSourceDefault.argtypes = [ctypes.POINTER(URadiationModel)]
     helios_lib.addCollimatedRadiationSourceDefault.restype = ctypes.c_uint
@@ -79,6 +83,39 @@ try:
     # Flux configuration
     helios_lib.setDiffuseRadiationFlux.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_float]
     helios_lib.setDiffuseRadiationFlux.restype = None
+
+    # Advanced diffuse radiation configuration
+    helios_lib.setDiffuseRadiationExtinctionCoeffVec3.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                                  ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setDiffuseRadiationExtinctionCoeffVec3.restype = None
+
+    helios_lib.setDiffuseRadiationExtinctionCoeffSpherical.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                                       ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setDiffuseRadiationExtinctionCoeffSpherical.restype = None
+
+    helios_lib.getDiffuseFlux.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.getDiffuseFlux.restype = ctypes.c_float
+
+    helios_lib.setDiffuseSpectrum.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setDiffuseSpectrum.restype = None
+
+    helios_lib.setDiffuseSpectrumMultiple.argtypes = [ctypes.POINTER(URadiationModel),
+                                                      ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t, ctypes.c_char_p]
+    helios_lib.setDiffuseSpectrumMultiple.restype = None
+
+    helios_lib.setDiffuseSpectrumIntegralAll.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_float]
+    helios_lib.setDiffuseSpectrumIntegralAll.restype = None
+
+    helios_lib.setDiffuseSpectrumIntegralAllRange.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_float,
+                                                              ctypes.c_float, ctypes.c_float]
+    helios_lib.setDiffuseSpectrumIntegralAllRange.restype = None
+
+    helios_lib.setDiffuseSpectrumIntegralBand.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.setDiffuseSpectrumIntegralBand.restype = None
+
+    helios_lib.setDiffuseSpectrumIntegralBandRange.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                               ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setDiffuseSpectrumIntegralBandRange.restype = None
 
     helios_lib.setSourceFlux.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float]
     helios_lib.setSourceFlux.restype = None
@@ -119,6 +156,145 @@ try:
     # Results and information
     helios_lib.getTotalAbsorbedFlux.argtypes = [ctypes.POINTER(URadiationModel), ctypes.POINTER(ctypes.c_size_t)]
     helios_lib.getTotalAbsorbedFlux.restype = ctypes.POINTER(ctypes.c_float)
+
+    # Band query functions
+    helios_lib.doesBandExist.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.doesBandExist.restype = ctypes.c_int
+
+    # Advanced source management
+    helios_lib.deleteRadiationSource.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint]
+    helios_lib.deleteRadiationSource.restype = None
+
+    helios_lib.getSourcePosition.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getSourcePosition.restype = None
+
+    helios_lib.setSourcePositionVec3.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                                 ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setSourcePositionVec3.restype = None
+
+    helios_lib.setSourcePositionSpherical.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                                      ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setSourcePositionSpherical.restype = None
+
+    helios_lib.addRectangleRadiationSource.argtypes = [ctypes.POINTER(URadiationModel),
+                                                       ctypes.c_float, ctypes.c_float, ctypes.c_float,
+                                                       ctypes.c_float, ctypes.c_float,
+                                                       ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.addRectangleRadiationSource.restype = ctypes.c_uint
+
+    helios_lib.addDiskRadiationSource.argtypes = [ctypes.POINTER(URadiationModel),
+                                                  ctypes.c_float, ctypes.c_float, ctypes.c_float,
+                                                  ctypes.c_float,
+                                                  ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.addDiskRadiationSource.restype = ctypes.c_uint
+
+    # Source spectrum management functions
+    helios_lib.setSourceSpectrum.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                             ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+    helios_lib.setSourceSpectrum.restype = None
+
+    helios_lib.setSourceSpectrumMultiple.argtypes = [ctypes.POINTER(URadiationModel),
+                                                     ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,
+                                                     ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+    helios_lib.setSourceSpectrumMultiple.restype = None
+
+    helios_lib.setSourceSpectrumLabel.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.setSourceSpectrumLabel.restype = None
+
+    helios_lib.setSourceSpectrumLabelMultiple.argtypes = [ctypes.POINTER(URadiationModel),
+                                                          ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,
+                                                          ctypes.c_char_p]
+    helios_lib.setSourceSpectrumLabelMultiple.restype = None
+
+    helios_lib.setSourceSpectrumIntegral.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint, ctypes.c_float]
+    helios_lib.setSourceSpectrumIntegral.restype = None
+
+    helios_lib.setSourceSpectrumIntegralRange.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                                          ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setSourceSpectrumIntegralRange.restype = None
+
+    # Spectrum integration functions
+    helios_lib.integrateSpectrum.argtypes = [ctypes.POINTER(URadiationModel),
+                                             ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+    helios_lib.integrateSpectrum.restype = ctypes.c_float
+
+    helios_lib.integrateSpectrumRange.argtypes = [ctypes.POINTER(URadiationModel),
+                                                  ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
+                                                  ctypes.c_float, ctypes.c_float]
+    helios_lib.integrateSpectrumRange.restype = ctypes.c_float
+
+    helios_lib.integrateSpectrumWithSource.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                                       ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
+                                                       ctypes.c_float, ctypes.c_float]
+    helios_lib.integrateSpectrumWithSource.restype = ctypes.c_float
+
+    helios_lib.integrateSpectrumWithCamera.argtypes = [ctypes.POINTER(URadiationModel),
+                                                       ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
+                                                       ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+    helios_lib.integrateSpectrumWithCamera.restype = ctypes.c_float
+
+    helios_lib.integrateSpectrumWithSourceAndCamera.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                                                ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
+                                                                ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+    helios_lib.integrateSpectrumWithSourceAndCamera.restype = ctypes.c_float
+
+    helios_lib.integrateSourceSpectrum.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_uint,
+                                                   ctypes.c_float, ctypes.c_float]
+    helios_lib.integrateSourceSpectrum.restype = ctypes.c_float
+
+    # Spectral interpolation functions
+    helios_lib.interpolateSpectrumFromPrimitiveData.argtypes = [
+        ctypes.POINTER(URadiationModel),
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,  # primitive_uuids, uuid_count
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,  # spectra_labels, spectra_count
+        ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,  # values, value_count
+        ctypes.c_char_p, ctypes.c_char_p  # query_label, radprop_label
+    ]
+    helios_lib.interpolateSpectrumFromPrimitiveData.restype = None
+
+    helios_lib.interpolateSpectrumFromObjectData.argtypes = [
+        ctypes.POINTER(URadiationModel),
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,  # object_ids, object_count
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,  # spectra_labels, spectra_count
+        ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,  # values, value_count
+        ctypes.c_char_p, ctypes.c_char_p  # query_label, radprop_label
+    ]
+    helios_lib.interpolateSpectrumFromObjectData.restype = None
+
+    # Spectral manipulation functions
+    helios_lib.scaleSpectrumToNew.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                              ctypes.c_char_p, ctypes.c_float]
+    helios_lib.scaleSpectrumToNew.restype = None
+
+    helios_lib.scaleSpectrumInPlace.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.scaleSpectrumInPlace.restype = None
+
+    helios_lib.scaleSpectrumRandomly.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                 ctypes.c_char_p, ctypes.c_float, ctypes.c_float]
+    helios_lib.scaleSpectrumRandomly.restype = None
+
+    helios_lib.blendSpectra.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
+                                        ctypes.POINTER(ctypes.c_float)]
+    helios_lib.blendSpectra.restype = None
+
+    helios_lib.blendSpectraRandomly.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
+    helios_lib.blendSpectraRandomly.restype = None
+
+    # Advanced simulation functions
+    helios_lib.getSkyEnergy.argtypes = [ctypes.POINTER(URadiationModel)]
+    helios_lib.getSkyEnergy.restype = ctypes.c_float
+
+    helios_lib.calculateGtheta.argtypes = [ctypes.POINTER(URadiationModel), ctypes.POINTER(UContext),
+                                           ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.calculateGtheta.restype = ctypes.c_float
+
+    helios_lib.radiationOptionalOutputPrimitiveData.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.radiationOptionalOutputPrimitiveData.restype = None
+
+    helios_lib.enforcePeriodicBoundary.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.enforcePeriodicBoundary.restype = None
 
     # Camera and Image Functions (v1.3.47)
     helios_lib.writeCameraImage.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, 
@@ -202,6 +378,55 @@ try:
                                                        ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
     helios_lib.addRadiationCameraSpherical.restype = None
 
+    # Camera management functions
+    helios_lib.setRadiationCameraPosition.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                             ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setRadiationCameraPosition.restype = None
+
+    helios_lib.getRadiationCameraPosition.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                             ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getRadiationCameraPosition.restype = None
+
+    helios_lib.setCameraLookat.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                           ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setCameraLookat.restype = None
+
+    helios_lib.getCameraLookat.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                           ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getCameraLookat.restype = None
+
+    helios_lib.setCameraOrientationVec3.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                    ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setCameraOrientationVec3.restype = None
+
+    helios_lib.setCameraOrientationSpherical.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                         ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setCameraOrientationSpherical.restype = None
+
+    helios_lib.getCameraOrientation.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getCameraOrientation.restype = None
+
+    helios_lib.getAllCameraLabels.argtypes = [ctypes.POINTER(URadiationModel), ctypes.POINTER(ctypes.c_size_t)]
+    helios_lib.getAllCameraLabels.restype = ctypes.POINTER(ctypes.c_char_p)
+
+    # Advanced camera functions
+    helios_lib.setCameraSpectralResponse.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                     ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setCameraSpectralResponse.restype = None
+
+    helios_lib.setCameraSpectralResponseFromLibrary.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                                ctypes.c_char_p]
+    helios_lib.setCameraSpectralResponseFromLibrary.restype = None
+
+    helios_lib.getCameraPixelData.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_char_p,
+                                              ctypes.POINTER(ctypes.c_size_t)]
+    helios_lib.getCameraPixelData.restype = ctypes.POINTER(ctypes.c_float)
+
+    helios_lib.setCameraPixelData.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p, ctypes.c_char_p,
+                                              ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
+    helios_lib.setCameraPixelData.restype = None
+
     # Add automatic error checking to all RadiationModel functions
     helios_lib.createRadiationModel.errcheck = _check_error
     # Note: destroyRadiationModel doesn't need errcheck as it doesn't fail
@@ -214,6 +439,7 @@ try:
     helios_lib.addRadiationBand.errcheck = _check_error
     helios_lib.addRadiationBandWithWavelengths.errcheck = _check_error
     helios_lib.copyRadiationBand.errcheck = _check_error
+    helios_lib.copyRadiationBandWithWavelengths.errcheck = _check_error
 
     # Source management
     helios_lib.addCollimatedRadiationSourceDefault.errcheck = _check_error
@@ -228,6 +454,18 @@ try:
 
     # Flux configuration
     helios_lib.setDiffuseRadiationFlux.errcheck = _check_error
+
+    # Advanced diffuse radiation
+    helios_lib.setDiffuseRadiationExtinctionCoeffVec3.errcheck = _check_error
+    helios_lib.setDiffuseRadiationExtinctionCoeffSpherical.errcheck = _check_error
+    helios_lib.getDiffuseFlux.errcheck = _check_error
+    helios_lib.setDiffuseSpectrum.errcheck = _check_error
+    helios_lib.setDiffuseSpectrumMultiple.errcheck = _check_error
+    helios_lib.setDiffuseSpectrumIntegralAll.errcheck = _check_error
+    helios_lib.setDiffuseSpectrumIntegralAllRange.errcheck = _check_error
+    helios_lib.setDiffuseSpectrumIntegralBand.errcheck = _check_error
+    helios_lib.setDiffuseSpectrumIntegralBandRange.errcheck = _check_error
+
     helios_lib.setSourceFlux.errcheck = _check_error
     helios_lib.setSourceFluxMultiple.errcheck = _check_error
     helios_lib.getSourceFlux.errcheck = _check_error
@@ -248,6 +486,50 @@ try:
 
     # Results and information
     helios_lib.getTotalAbsorbedFlux.errcheck = _check_error
+
+    # Band query functions
+    helios_lib.doesBandExist.errcheck = _check_error
+
+    # Advanced source management
+    helios_lib.deleteRadiationSource.errcheck = _check_error
+    helios_lib.getSourcePosition.errcheck = _check_error
+    helios_lib.setSourcePositionVec3.errcheck = _check_error
+    helios_lib.setSourcePositionSpherical.errcheck = _check_error
+    helios_lib.addRectangleRadiationSource.errcheck = _check_error
+    helios_lib.addDiskRadiationSource.errcheck = _check_error
+
+    # Source spectrum management
+    helios_lib.setSourceSpectrum.errcheck = _check_error
+    helios_lib.setSourceSpectrumMultiple.errcheck = _check_error
+    helios_lib.setSourceSpectrumLabel.errcheck = _check_error
+    helios_lib.setSourceSpectrumLabelMultiple.errcheck = _check_error
+    helios_lib.setSourceSpectrumIntegral.errcheck = _check_error
+    helios_lib.setSourceSpectrumIntegralRange.errcheck = _check_error
+
+    # Spectrum integration functions
+    helios_lib.integrateSpectrum.errcheck = _check_error
+    helios_lib.integrateSpectrumRange.errcheck = _check_error
+    helios_lib.integrateSpectrumWithSource.errcheck = _check_error
+    helios_lib.integrateSpectrumWithCamera.errcheck = _check_error
+    helios_lib.integrateSpectrumWithSourceAndCamera.errcheck = _check_error
+    helios_lib.integrateSourceSpectrum.errcheck = _check_error
+
+    # Spectral interpolation functions
+    helios_lib.interpolateSpectrumFromPrimitiveData.errcheck = _check_error
+    helios_lib.interpolateSpectrumFromObjectData.errcheck = _check_error
+
+    # Spectral manipulation functions
+    helios_lib.scaleSpectrumToNew.errcheck = _check_error
+    helios_lib.scaleSpectrumInPlace.errcheck = _check_error
+    helios_lib.scaleSpectrumRandomly.errcheck = _check_error
+    helios_lib.blendSpectra.errcheck = _check_error
+    helios_lib.blendSpectraRandomly.errcheck = _check_error
+
+    # Advanced simulation functions
+    helios_lib.getSkyEnergy.errcheck = _check_error
+    helios_lib.calculateGtheta.errcheck = _check_error
+    helios_lib.radiationOptionalOutputPrimitiveData.errcheck = _check_error
+    helios_lib.enforcePeriodicBoundary.errcheck = _check_error
 
     # Camera and Image Functions
     helios_lib.writeCameraImage.errcheck = _check_error
@@ -273,6 +555,22 @@ try:
     helios_lib.addRadiationCameraVec3.errcheck = _check_error
     helios_lib.addRadiationCameraSpherical.errcheck = _check_error
 
+    # Camera management functions
+    helios_lib.setRadiationCameraPosition.errcheck = _check_error
+    helios_lib.getRadiationCameraPosition.errcheck = _check_error
+    helios_lib.setCameraLookat.errcheck = _check_error
+    helios_lib.getCameraLookat.errcheck = _check_error
+    helios_lib.setCameraOrientationVec3.errcheck = _check_error
+    helios_lib.setCameraOrientationSpherical.errcheck = _check_error
+    helios_lib.getCameraOrientation.errcheck = _check_error
+    helios_lib.getAllCameraLabels.errcheck = _check_error
+
+    # Advanced camera functions
+    helios_lib.setCameraSpectralResponse.errcheck = _check_error
+    helios_lib.setCameraSpectralResponseFromLibrary.errcheck = _check_error
+    helios_lib.getCameraPixelData.errcheck = _check_error
+    helios_lib.setCameraPixelData.errcheck = _check_error
+
     # Mark that RadiationModel functions are available
     _RADIATION_MODEL_FUNCTIONS_AVAILABLE = True
 
@@ -281,6 +579,40 @@ except AttributeError:
     _RADIATION_MODEL_FUNCTIONS_AVAILABLE = False
 
 # Python wrapper functions
+
+#=============================================================================
+# Spectrum Conversion Helpers
+#=============================================================================
+
+def _spectrum_to_flat_array(spectrum):
+    """
+    Convert Python spectrum to flat float array for ctypes.
+
+    Accepts:
+    - List of tuples: [(wavelength1, value1), (wavelength2, value2), ...]
+    - List of vec2: [vec2(w1,v1), vec2(w2,v2), ...]
+    - List of lists: [[w1,v1], [w2,v2], ...]
+
+    Returns:
+    - (ctypes array, size) where array is [w1,v1,w2,v2,...] and size is number of points
+    """
+    if not spectrum:
+        raise ValueError("Spectrum cannot be empty")
+
+    flat_data = []
+    for point in spectrum:
+        if hasattr(point, 'x') and hasattr(point, 'y'):
+            # vec2 object
+            flat_data.extend([point.x, point.y])
+        elif isinstance(point, (list, tuple)) and len(point) == 2:
+            # List or tuple
+            flat_data.extend([float(point[0]), float(point[1])])
+        else:
+            raise ValueError(f"Spectrum points must be vec2, tuple, or list of 2 elements. Got: {type(point)}")
+
+    # Convert to ctypes array
+    arr = (ctypes.c_float * len(flat_data))(*flat_data)
+    return arr, len(spectrum)
 
 def createRadiationModel(context):
     """Create a new RadiationModel instance"""
@@ -330,15 +662,20 @@ def addRadiationBandWithWavelengths(radiation_model, label: str, wavelength_min:
     label_encoded = label.encode('utf-8')
     helios_lib.addRadiationBandWithWavelengths(radiation_model, label_encoded, wavelength_min, wavelength_max)
 
-def copyRadiationBand(radiation_model, old_label: str, new_label: str):
-    """Copy existing radiation band to new label"""
+def copyRadiationBand(radiation_model, old_label: str, new_label: str, wavelength_min: float = None, wavelength_max: float = None):
+    """Copy existing radiation band to new label, optionally with new wavelength range"""
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
     if radiation_model is None:
         raise ValueError("RadiationModel instance is None. Cannot copy radiation band.")
     old_encoded = old_label.encode('utf-8')
     new_encoded = new_label.encode('utf-8')
-    helios_lib.copyRadiationBand(radiation_model, old_encoded, new_encoded)
+
+    if wavelength_min is not None and wavelength_max is not None:
+        helios_lib.copyRadiationBandWithWavelengths(radiation_model, old_encoded, new_encoded,
+                                                     wavelength_min, wavelength_max)
+    else:
+        helios_lib.copyRadiationBand(radiation_model, old_encoded, new_encoded)
 
 def addCollimatedRadiationSourceDefault(radiation_model):
     """Add default collimated radiation source"""
@@ -408,6 +745,100 @@ def setDiffuseRadiationFlux(radiation_model, label: str, flux: float):
         raise ValueError("RadiationModel instance is None. Cannot set radiation flux.")
     label_encoded = label.encode('utf-8')
     helios_lib.setDiffuseRadiationFlux(radiation_model, label_encoded, flux)
+
+#=============================================================================
+# Advanced Diffuse Radiation Functions
+#=============================================================================
+
+def setDiffuseRadiationExtinctionCoeff(radiation_model, label: str, K: float, peak_direction):
+    """Set diffuse radiation extinction coefficient (accepts vec3, SphericalCoord, or list)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    label_encoded = label.encode('utf-8')
+
+    # Handle different direction types
+    if hasattr(peak_direction, 'radius'):  # SphericalCoord
+        helios_lib.setDiffuseRadiationExtinctionCoeffSpherical(radiation_model, label_encoded, K,
+                                                               peak_direction.radius, peak_direction.elevation,
+                                                               peak_direction.azimuth)
+    elif hasattr(peak_direction, 'x'):  # vec3
+        helios_lib.setDiffuseRadiationExtinctionCoeffVec3(radiation_model, label_encoded, K,
+                                                          peak_direction.x, peak_direction.y, peak_direction.z)
+    else:  # list/tuple
+        if len(peak_direction) == 3:
+            helios_lib.setDiffuseRadiationExtinctionCoeffVec3(radiation_model, label_encoded, K,
+                                                              peak_direction[0], peak_direction[1], peak_direction[2])
+        else:
+            raise ValueError("Peak direction must be vec3, SphericalCoord, or 3-element list/tuple")
+
+def getDiffuseFlux(radiation_model, band_label: str) -> float:
+    """Get diffuse flux for band"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    band_label_encoded = band_label.encode('utf-8')
+    return helios_lib.getDiffuseFlux(radiation_model, band_label_encoded)
+
+def setDiffuseSpectrum(radiation_model, band_label, spectrum_label: str):
+    """
+    Set diffuse spectrum from global data label.
+
+    Args:
+        band_label: Band label (string) or list of band labels
+        spectrum_label: Spectrum global data label
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    spectrum_encoded = spectrum_label.encode('utf-8')
+
+    if isinstance(band_label, (list, tuple)):
+        # Multiple bands
+        label_array = (ctypes.c_char_p * len(band_label))(*[l.encode('utf-8') for l in band_label])
+        helios_lib.setDiffuseSpectrumMultiple(radiation_model, label_array, len(band_label), spectrum_encoded)
+    else:
+        # Single band
+        band_encoded = band_label.encode('utf-8')
+        helios_lib.setDiffuseSpectrum(radiation_model, band_encoded, spectrum_encoded)
+
+def setDiffuseSpectrumIntegral(radiation_model, spectrum_integral: float, wavelength_min: float = None,
+                               wavelength_max: float = None, band_label: str = None):
+    """
+    Set diffuse spectrum integral (supports all bands or specific band, with optional wavelength range).
+
+    Args:
+        spectrum_integral: Integral value
+        wavelength_min: Optional minimum wavelength
+        wavelength_max: Optional maximum wavelength
+        band_label: Optional specific band label (None for all bands)
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    if band_label is not None:
+        # Specific band
+        band_encoded = band_label.encode('utf-8')
+        if wavelength_min is not None and wavelength_max is not None:
+            helios_lib.setDiffuseSpectrumIntegralBandRange(radiation_model, band_encoded, spectrum_integral,
+                                                           wavelength_min, wavelength_max)
+        else:
+            helios_lib.setDiffuseSpectrumIntegralBand(radiation_model, band_encoded, spectrum_integral)
+    else:
+        # All bands
+        if wavelength_min is not None and wavelength_max is not None:
+            helios_lib.setDiffuseSpectrumIntegralAllRange(radiation_model, spectrum_integral,
+                                                          wavelength_min, wavelength_max)
+        else:
+            helios_lib.setDiffuseSpectrumIntegralAll(radiation_model, spectrum_integral)
 
 def setSourceFlux(radiation_model, source_id: int, label: str, flux: float):
     """Set source flux for single source"""
@@ -519,6 +950,592 @@ def getTotalAbsorbedFlux(radiation_model) -> List[float]:
     size = ctypes.c_size_t()
     flux_ptr = helios_lib.getTotalAbsorbedFlux(radiation_model, ctypes.byref(size))
     return list(flux_ptr[:size.value])
+
+#=============================================================================
+# Band Query Functions
+#=============================================================================
+
+def doesBandExist(radiation_model, label: str) -> bool:
+    """Check if a radiation band exists"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    label_encoded = label.encode('utf-8')
+    result = helios_lib.doesBandExist(radiation_model, label_encoded)
+    if result == -1:
+        raise RuntimeError("Error checking band existence.")
+    return result == 1
+
+#=============================================================================
+# Advanced Source Management Functions
+#=============================================================================
+
+def deleteRadiationSource(radiation_model, source_id: int):
+    """Delete a radiation source"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.deleteRadiationSource(radiation_model, source_id)
+
+def getSourcePosition(radiation_model, source_id: int):
+    """Get position of a radiation source as vec3"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    position = (ctypes.c_float * 3)()
+    helios_lib.getSourcePosition(radiation_model, source_id, position)
+    return [position[0], position[1], position[2]]
+
+#=============================================================================
+# Advanced Simulation Functions
+#=============================================================================
+
+def getSkyEnergy(radiation_model) -> float:
+    """Get total sky energy"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    return helios_lib.getSkyEnergy(radiation_model)
+
+def calculateGtheta(radiation_model, context, view_direction) -> float:
+    """Calculate G-function (geometry factor) for given view direction"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None or context is None:
+        raise ValueError("RadiationModel or Context instance is None.")
+    # view_direction can be vec3 or list/tuple
+    if hasattr(view_direction, 'x'):
+        vx, vy, vz = view_direction.x, view_direction.y, view_direction.z
+    else:
+        vx, vy, vz = view_direction[0], view_direction[1], view_direction[2]
+    return helios_lib.calculateGtheta(radiation_model, context, vx, vy, vz)
+
+def optionalOutputPrimitiveData(radiation_model, label: str):
+    """Enable optional primitive data output"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    label_encoded = label.encode('utf-8')
+    helios_lib.radiationOptionalOutputPrimitiveData(radiation_model, label_encoded)
+
+def enforcePeriodicBoundary(radiation_model, boundary: str):
+    """Enforce periodic boundary conditions"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    boundary_encoded = boundary.encode('utf-8')
+    helios_lib.enforcePeriodicBoundary(radiation_model, boundary_encoded)
+
+def setSourcePosition(radiation_model, source_id: int, position):
+    """Set position of a radiation source (accepts vec3, SphericalCoord, or list)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    # Handle different position types
+    if hasattr(position, 'radius'):  # SphericalCoord
+        helios_lib.setSourcePositionSpherical(radiation_model, source_id,
+                                              position.radius, position.elevation, position.azimuth)
+    elif hasattr(position, 'x'):  # vec3
+        helios_lib.setSourcePositionVec3(radiation_model, source_id,
+                                         position.x, position.y, position.z)
+    else:  # list/tuple
+        if len(position) == 3:
+            helios_lib.setSourcePositionVec3(radiation_model, source_id,
+                                             position[0], position[1], position[2])
+        else:
+            raise ValueError("Position must be vec3, SphericalCoord, or 3-element list/tuple")
+
+def addRectangleRadiationSource(radiation_model, position, size, rotation) -> int:
+    """Add a rectangle radiation source"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    # Extract position components
+    if hasattr(position, 'x'):
+        px, py, pz = position.x, position.y, position.z
+    else:
+        px, py, pz = position[0], position[1], position[2]
+
+    # Extract size components
+    if hasattr(size, 'x'):
+        sx, sy = size.x, size.y
+    else:
+        sx, sy = size[0], size[1]
+
+    # Extract rotation components
+    if hasattr(rotation, 'x'):
+        rx, ry, rz = rotation.x, rotation.y, rotation.z
+    else:
+        rx, ry, rz = rotation[0], rotation[1], rotation[2]
+
+    return helios_lib.addRectangleRadiationSource(radiation_model, px, py, pz, sx, sy, rx, ry, rz)
+
+def addDiskRadiationSource(radiation_model, position, radius: float, rotation) -> int:
+    """Add a disk radiation source"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    # Extract position components
+    if hasattr(position, 'x'):
+        px, py, pz = position.x, position.y, position.z
+    else:
+        px, py, pz = position[0], position[1], position[2]
+
+    # Extract rotation components
+    if hasattr(rotation, 'x'):
+        rx, ry, rz = rotation.x, rotation.y, rotation.z
+    else:
+        rx, ry, rz = rotation[0], rotation[1], rotation[2]
+
+    return helios_lib.addDiskRadiationSource(radiation_model, px, py, pz, radius, rx, ry, rz)
+
+#=============================================================================
+# Source Spectrum Management Functions
+#=============================================================================
+
+def setSourceSpectrum(radiation_model, source_id, spectrum):
+    """
+    Set source spectrum from spectrum data or label.
+
+    Args:
+        source_id: Source ID (int or list of ints)
+        spectrum: Either:
+            - Spectrum data as list of (wavelength, value) tuples/lists/vec2
+            - Global data label string
+
+    Example:
+        >>> # Using spectrum data
+        >>> spectrum = [(400, 0.1), (500, 0.5), (600, 0.8), (700, 0.3)]
+        >>> radiation.setSourceSpectrum(source_id, spectrum)
+        >>> # Using global data label
+        >>> radiation.setSourceSpectrum(source_id, "D65_illuminant")
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    # Check if spectrum is a string (label) or data
+    if isinstance(spectrum, str):
+        # Spectrum label case
+        spectrum_label = spectrum.encode('utf-8')
+        if isinstance(source_id, (list, tuple)):
+            # Multiple sources
+            source_array = (ctypes.c_uint * len(source_id))(*source_id)
+            helios_lib.setSourceSpectrumLabelMultiple(radiation_model, source_array, len(source_id), spectrum_label)
+        else:
+            # Single source
+            helios_lib.setSourceSpectrumLabel(radiation_model, source_id, spectrum_label)
+    else:
+        # Spectrum data case
+        spectrum_array, spectrum_size = _spectrum_to_flat_array(spectrum)
+        if isinstance(source_id, (list, tuple)):
+            # Multiple sources
+            source_array = (ctypes.c_uint * len(source_id))(*source_id)
+            helios_lib.setSourceSpectrumMultiple(radiation_model, source_array, len(source_id),
+                                                spectrum_array, spectrum_size)
+        else:
+            # Single source
+            helios_lib.setSourceSpectrum(radiation_model, source_id, spectrum_array, spectrum_size)
+
+def setSourceSpectrumIntegral(radiation_model, source_id: int, source_integral: float,
+                              wavelength_min: float = None, wavelength_max: float = None):
+    """Set source spectrum integral, optionally over wavelength range"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    if wavelength_min is not None and wavelength_max is not None:
+        helios_lib.setSourceSpectrumIntegralRange(radiation_model, source_id, source_integral,
+                                                   wavelength_min, wavelength_max)
+    else:
+        helios_lib.setSourceSpectrumIntegral(radiation_model, source_id, source_integral)
+
+#=============================================================================
+# Spectrum Integration Functions
+#=============================================================================
+
+def integrateSpectrum(radiation_model, object_spectrum, wavelength_min: float = None,
+                     wavelength_max: float = None, source_id: int = None,
+                     camera_spectrum=None) -> float:
+    """
+    Integrate spectrum with optional source/camera spectra and wavelength range.
+
+    This is a unified function that handles multiple integration scenarios:
+    - Basic integration: integrateSpectrum(model, spectrum)
+    - Range integration: integrateSpectrum(model, spectrum, wmin, wmax)
+    - With source: integrateSpectrum(model, spectrum, wmin, wmax, source_id=sid)
+    - With camera: integrateSpectrum(model, spectrum, camera_spectrum=cam_spec)
+    - Full integration: integrateSpectrum(model, spectrum, source_id=sid, camera_spectrum=cam_spec)
+
+    Args:
+        object_spectrum: Object spectrum as list of (wavelength, value) tuples/lists/vec2
+        wavelength_min: Optional minimum wavelength
+        wavelength_max: Optional maximum wavelength
+        source_id: Optional source ID for source spectrum integration
+        camera_spectrum: Optional camera spectrum for camera integration
+
+    Returns:
+        Integrated value
+
+    Example:
+        >>> spectrum = [(400, 0.1), (500, 0.5), (600, 0.8)]
+        >>> total = radiation.integrateSpectrum(spectrum)
+        >>> par = radiation.integrateSpectrum(spectrum, 400, 700)
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    obj_array, obj_size = _spectrum_to_flat_array(object_spectrum)
+
+    # Determine which variant to call based on parameters
+    if source_id is not None and camera_spectrum is not None:
+        # Source + camera integration
+        cam_array, cam_size = _spectrum_to_flat_array(camera_spectrum)
+        return helios_lib.integrateSpectrumWithSourceAndCamera(radiation_model, source_id,
+                                                               obj_array, obj_size,
+                                                               cam_array, cam_size)
+    elif camera_spectrum is not None:
+        # Camera integration only
+        cam_array, cam_size = _spectrum_to_flat_array(camera_spectrum)
+        return helios_lib.integrateSpectrumWithCamera(radiation_model, obj_array, obj_size,
+                                                      cam_array, cam_size)
+    elif source_id is not None:
+        # Source integration with range
+        if wavelength_min is None or wavelength_max is None:
+            raise ValueError("wavelength_min and wavelength_max required when source_id is specified")
+        return helios_lib.integrateSpectrumWithSource(radiation_model, source_id, obj_array, obj_size,
+                                                      wavelength_min, wavelength_max)
+    elif wavelength_min is not None and wavelength_max is not None:
+        # Range integration
+        return helios_lib.integrateSpectrumRange(radiation_model, obj_array, obj_size,
+                                                 wavelength_min, wavelength_max)
+    else:
+        # Basic integration
+        return helios_lib.integrateSpectrum(radiation_model, obj_array, obj_size)
+
+def integrateSourceSpectrum(radiation_model, source_id: int, wavelength_min: float, wavelength_max: float) -> float:
+    """Integrate source spectrum over wavelength range"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    return helios_lib.integrateSourceSpectrum(radiation_model, source_id, wavelength_min, wavelength_max)
+
+#=============================================================================
+# Spectral Interpolation Functions
+#=============================================================================
+
+def interpolateSpectrumFromPrimitiveData(radiation_model, primitive_uuids: List[int],
+                                        spectra_labels: List[str], values: List[float],
+                                        primitive_data_query_label: str,
+                                        primitive_data_radprop_label: str):
+    """Interpolate spectrum assignment based on primitive data values"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    if len(spectra_labels) != len(values):
+        raise ValueError(f"Number of spectra ({len(spectra_labels)}) must match number of values ({len(values)})")
+
+    # Convert to ctypes arrays
+    uuid_array = (ctypes.c_uint * len(primitive_uuids))(*primitive_uuids)
+    label_array = (ctypes.c_char_p * len(spectra_labels))(*[l.encode('utf-8') for l in spectra_labels])
+    value_array = (ctypes.c_float * len(values))(*values)
+    query_encoded = primitive_data_query_label.encode('utf-8')
+    radprop_encoded = primitive_data_radprop_label.encode('utf-8')
+
+    helios_lib.interpolateSpectrumFromPrimitiveData(radiation_model,
+                                                    uuid_array, len(primitive_uuids),
+                                                    label_array, len(spectra_labels),
+                                                    value_array, len(values),
+                                                    query_encoded, radprop_encoded)
+
+def interpolateSpectrumFromObjectData(radiation_model, object_ids: List[int],
+                                     spectra_labels: List[str], values: List[float],
+                                     object_data_query_label: str,
+                                     primitive_data_radprop_label: str):
+    """Interpolate spectrum assignment based on object data values"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    if len(spectra_labels) != len(values):
+        raise ValueError(f"Number of spectra ({len(spectra_labels)}) must match number of values ({len(values)})")
+
+    # Convert to ctypes arrays
+    id_array = (ctypes.c_uint * len(object_ids))(*object_ids)
+    label_array = (ctypes.c_char_p * len(spectra_labels))(*[l.encode('utf-8') for l in spectra_labels])
+    value_array = (ctypes.c_float * len(values))(*values)
+    query_encoded = object_data_query_label.encode('utf-8')
+    radprop_encoded = primitive_data_radprop_label.encode('utf-8')
+
+    helios_lib.interpolateSpectrumFromObjectData(radiation_model,
+                                                 id_array, len(object_ids),
+                                                 label_array, len(spectra_labels),
+                                                 value_array, len(values),
+                                                 query_encoded, radprop_encoded)
+
+#=============================================================================
+# Spectral Manipulation Functions
+#=============================================================================
+
+def scaleSpectrum(radiation_model, existing_label: str, new_label_or_scale, scale_factor: float = None):
+    """
+    Scale spectrum in-place or to new label.
+
+    Supports two call patterns:
+    - scaleSpectrum(model, "label", scale) -> scales in-place
+    - scaleSpectrum(model, "existing", "new", scale) -> creates new scaled spectrum
+
+    Args:
+        existing_label: Existing global data label
+        new_label_or_scale: Either new label string or scale factor
+        scale_factor: Scale factor (only if new_label_or_scale is a string)
+
+    Example:
+        >>> radiation.scaleSpectrum("leaf_reflectance", 1.2)  # In-place
+        >>> radiation.scaleSpectrum("leaf_reflectance", "scaled_leaf", 1.5)  # New label
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    existing_encoded = existing_label.encode('utf-8')
+
+    if scale_factor is None:
+        # In-place scaling: scaleSpectrum(label, scale_factor)
+        helios_lib.scaleSpectrumInPlace(radiation_model, existing_encoded, new_label_or_scale)
+    else:
+        # New label scaling: scaleSpectrum(existing, new, scale_factor)
+        new_encoded = new_label_or_scale.encode('utf-8')
+        helios_lib.scaleSpectrumToNew(radiation_model, existing_encoded, new_encoded, scale_factor)
+
+def scaleSpectrumRandomly(radiation_model, existing_label: str, new_label: str,
+                         min_scale: float, max_scale: float):
+    """Scale spectrum with random factor and store as new label"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    existing_encoded = existing_label.encode('utf-8')
+    new_encoded = new_label.encode('utf-8')
+    helios_lib.scaleSpectrumRandomly(radiation_model, existing_encoded, new_encoded, min_scale, max_scale)
+
+def blendSpectra(radiation_model, new_label: str, spectrum_labels: List[str], weights: List[float]):
+    """Blend multiple spectra with given weights"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    if len(spectrum_labels) != len(weights):
+        raise ValueError(f"Number of labels ({len(spectrum_labels)}) must match number of weights ({len(weights)})")
+
+    new_encoded = new_label.encode('utf-8')
+    label_array = (ctypes.c_char_p * len(spectrum_labels))(*[l.encode('utf-8') for l in spectrum_labels])
+    weight_array = (ctypes.c_float * len(weights))(*weights)
+
+    helios_lib.blendSpectra(radiation_model, new_encoded, label_array, len(spectrum_labels), weight_array)
+
+def blendSpectraRandomly(radiation_model, new_label: str, spectrum_labels: List[str]):
+    """Blend multiple spectra with random weights"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    new_encoded = new_label.encode('utf-8')
+    label_array = (ctypes.c_char_p * len(spectrum_labels))(*[l.encode('utf-8') for l in spectrum_labels])
+
+    helios_lib.blendSpectraRandomly(radiation_model, new_encoded, label_array, len(spectrum_labels))
+
+#=============================================================================
+# Camera Management Functions
+#=============================================================================
+
+def setCameraPosition(radiation_model, camera_label: str, position):
+    """Set camera position (accepts vec3 or list)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_label_encoded = camera_label.encode('utf-8')
+
+    if hasattr(position, 'x'):
+        x, y, z = position.x, position.y, position.z
+    else:
+        x, y, z = position[0], position[1], position[2]
+
+    helios_lib.setRadiationCameraPosition(radiation_model, camera_label_encoded, x, y, z)
+
+def getCameraPosition(radiation_model, camera_label: str):
+    """Get camera position as list [x, y, z]"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_label_encoded = camera_label.encode('utf-8')
+    position = (ctypes.c_float * 3)()
+    helios_lib.getRadiationCameraPosition(radiation_model, camera_label_encoded, position)
+    return [position[0], position[1], position[2]]
+
+def setCameraLookat(radiation_model, camera_label: str, lookat):
+    """Set camera lookat point (accepts vec3 or list)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_label_encoded = camera_label.encode('utf-8')
+
+    if hasattr(lookat, 'x'):
+        x, y, z = lookat.x, lookat.y, lookat.z
+    else:
+        x, y, z = lookat[0], lookat[1], lookat[2]
+
+    helios_lib.setCameraLookat(radiation_model, camera_label_encoded, x, y, z)
+
+def getCameraLookat(radiation_model, camera_label: str):
+    """Get camera lookat point as list [x, y, z]"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_label_encoded = camera_label.encode('utf-8')
+    lookat = (ctypes.c_float * 3)()
+    helios_lib.getCameraLookat(radiation_model, camera_label_encoded, lookat)
+    return [lookat[0], lookat[1], lookat[2]]
+
+def setCameraOrientation(radiation_model, camera_label: str, direction):
+    """Set camera orientation (accepts vec3, SphericalCoord, or list)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_label_encoded = camera_label.encode('utf-8')
+
+    # Handle different direction types
+    if hasattr(direction, 'radius'):  # SphericalCoord
+        helios_lib.setCameraOrientationSpherical(radiation_model, camera_label_encoded,
+                                                 direction.radius, direction.elevation, direction.azimuth)
+    elif hasattr(direction, 'x'):  # vec3
+        helios_lib.setCameraOrientationVec3(radiation_model, camera_label_encoded,
+                                            direction.x, direction.y, direction.z)
+    else:  # list/tuple - assume vec3
+        if len(direction) == 3:
+            helios_lib.setCameraOrientationVec3(radiation_model, camera_label_encoded,
+                                                direction[0], direction[1], direction[2])
+        else:
+            raise ValueError("Direction must be vec3, SphericalCoord, or 3-element list/tuple")
+
+def getCameraOrientation(radiation_model, camera_label: str):
+    """Get camera orientation as list [radius, elevation, azimuth] (spherical coords)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_label_encoded = camera_label.encode('utf-8')
+    orientation = (ctypes.c_float * 3)()
+    helios_lib.getCameraOrientation(radiation_model, camera_label_encoded, orientation)
+    return [orientation[0], orientation[1], orientation[2]]
+
+def getAllCameraLabels(radiation_model) -> List[str]:
+    """Get all camera labels"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    count = ctypes.c_size_t()
+    labels_ptr = helios_lib.getAllCameraLabels(radiation_model, ctypes.byref(count))
+
+    if labels_ptr is None or count.value == 0:
+        return []
+
+    # Convert array of C strings to Python list of strings
+    return [labels_ptr[i].decode('utf-8') for i in range(count.value)]
+
+#=============================================================================
+# Advanced Camera Functions
+#=============================================================================
+
+def setCameraSpectralResponse(radiation_model, camera_label: str, band_label: str, global_data: str):
+    """Set camera spectral response from global data"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_encoded = camera_label.encode('utf-8')
+    band_encoded = band_label.encode('utf-8')
+    data_encoded = global_data.encode('utf-8')
+    helios_lib.setCameraSpectralResponse(radiation_model, camera_encoded, band_encoded, data_encoded)
+
+def setCameraSpectralResponseFromLibrary(radiation_model, camera_label: str, camera_library_name: str):
+    """Set camera spectral response from standard camera library"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_encoded = camera_label.encode('utf-8')
+    library_encoded = camera_library_name.encode('utf-8')
+    helios_lib.setCameraSpectralResponseFromLibrary(radiation_model, camera_encoded, library_encoded)
+
+def getCameraPixelData(radiation_model, camera_label: str, band_label: str) -> List[float]:
+    """Get camera pixel data for specific band"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_encoded = camera_label.encode('utf-8')
+    band_encoded = band_label.encode('utf-8')
+    size = ctypes.c_size_t()
+    pixel_ptr = helios_lib.getCameraPixelData(radiation_model, camera_encoded, band_encoded, ctypes.byref(size))
+
+    if pixel_ptr is None or size.value == 0:
+        return []
+
+    return list(pixel_ptr[:size.value])
+
+def setCameraPixelData(radiation_model, camera_label: str, band_label: str, pixel_data: List[float]):
+    """Set camera pixel data for specific band"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_encoded = camera_label.encode('utf-8')
+    band_encoded = band_label.encode('utf-8')
+    pixel_array = (ctypes.c_float * len(pixel_data))(*pixel_data)
+    helios_lib.setCameraPixelData(radiation_model, camera_encoded, band_encoded, pixel_array, len(pixel_data))
 
 #=============================================================================
 # Camera and Image Functions (v1.3.47)

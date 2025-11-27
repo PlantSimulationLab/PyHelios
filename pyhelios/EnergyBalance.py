@@ -135,7 +135,17 @@ class EnergyBalanceModel:
                 logger.warning(f"Error destroying EnergyBalanceModel: {e}")
             finally:
                 self.energy_model = None
-    
+
+    def __del__(self):
+        """Destructor to ensure C++ resources freed even without 'with' statement."""
+        if hasattr(self, 'energy_model') and self.energy_model is not None:
+            try:
+                energy_wrapper.destroyEnergyBalanceModel(self.energy_model)
+                self.energy_model = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in EnergyBalanceModel.__del__: {e}")
+
     def getNativePtr(self):
         """Get the native pointer for advanced operations."""
         return self.energy_model

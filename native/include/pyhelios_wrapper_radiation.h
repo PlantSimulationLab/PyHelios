@@ -67,6 +67,25 @@ PYHELIOS_API void addRadiationBand(RadiationModel* radiation_model, const char* 
 PYHELIOS_API void addRadiationBandWithWavelengths(RadiationModel* radiation_model, const char* label, float wavelength_min, float wavelength_max);
 
 /**
+ * @brief Copy a radiation band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param old_label Label of band to copy
+ * @param new_label Label for new band
+ */
+PYHELIOS_API void copyRadiationBand(RadiationModel* radiation_model, const char* old_label, const char* new_label);
+
+/**
+ * @brief Copy a radiation band with new wavelength range
+ * @param radiation_model Pointer to the RadiationModel
+ * @param old_label Label of band to copy
+ * @param new_label Label for new band
+ * @param wavelength_min Minimum wavelength for new band
+ * @param wavelength_max Maximum wavelength for new band
+ */
+PYHELIOS_API void copyRadiationBandWithWavelengths(RadiationModel* radiation_model, const char* old_label, const char* new_label,
+                                                    float wavelength_min, float wavelength_max);
+
+/**
  * @brief Add a collimated radiation source with default direction
  * @param radiation_model Pointer to the RadiationModel
  * @return Source ID
@@ -99,6 +118,468 @@ PYHELIOS_API unsigned int addCollimatedRadiationSourceSpherical(RadiationModel* 
  * @param label Name/label of the radiation band to run
  */
 PYHELIOS_API void runBand(RadiationModel* radiation_model, const char* label);
+
+//=============================================================================
+// Diffuse Radiation Functions
+//=============================================================================
+
+/**
+ * @brief Set diffuse radiation extinction coefficient (vec3 peak direction)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param label Band label
+ * @param K Extinction coefficient
+ * @param peak_dir_x X component of peak direction
+ * @param peak_dir_y Y component of peak direction
+ * @param peak_dir_z Z component of peak direction
+ */
+PYHELIOS_API void setDiffuseRadiationExtinctionCoeffVec3(RadiationModel* radiation_model, const char* label,
+                                                         float K, float peak_dir_x, float peak_dir_y, float peak_dir_z);
+
+/**
+ * @brief Set diffuse radiation extinction coefficient (spherical peak direction)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param label Band label
+ * @param K Extinction coefficient
+ * @param radius Spherical radius
+ * @param elevation Elevation angle
+ * @param azimuth Azimuth angle
+ */
+PYHELIOS_API void setDiffuseRadiationExtinctionCoeffSpherical(RadiationModel* radiation_model, const char* label,
+                                                              float K, float radius, float elevation, float azimuth);
+
+/**
+ * @brief Get diffuse flux for band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param band_label Band label
+ * @return Diffuse flux value
+ */
+PYHELIOS_API float getDiffuseFlux(RadiationModel* radiation_model, const char* band_label);
+
+/**
+ * @brief Set diffuse spectrum from global data label (single band)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param band_label Band label
+ * @param spectrum_label Spectrum global data label
+ */
+PYHELIOS_API void setDiffuseSpectrum(RadiationModel* radiation_model, const char* band_label,
+                                     const char* spectrum_label);
+
+/**
+ * @brief Set diffuse spectrum from global data label (multiple bands)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param band_labels Array of band labels
+ * @param band_count Number of bands
+ * @param spectrum_label Spectrum global data label
+ */
+PYHELIOS_API void setDiffuseSpectrumMultiple(RadiationModel* radiation_model,
+                                             const char** band_labels, size_t band_count,
+                                             const char* spectrum_label);
+
+/**
+ * @brief Set diffuse spectrum integral (all bands)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param spectrum_integral Integral value
+ */
+PYHELIOS_API void setDiffuseSpectrumIntegralAll(RadiationModel* radiation_model, float spectrum_integral);
+
+/**
+ * @brief Set diffuse spectrum integral over wavelength range (all bands)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param spectrum_integral Integral value
+ * @param wavelength_min Minimum wavelength
+ * @param wavelength_max Maximum wavelength
+ */
+PYHELIOS_API void setDiffuseSpectrumIntegralAllRange(RadiationModel* radiation_model, float spectrum_integral,
+                                                     float wavelength_min, float wavelength_max);
+
+/**
+ * @brief Set diffuse spectrum integral for specific band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param band_label Band label
+ * @param spectrum_integral Integral value
+ */
+PYHELIOS_API void setDiffuseSpectrumIntegralBand(RadiationModel* radiation_model, const char* band_label,
+                                                 float spectrum_integral);
+
+/**
+ * @brief Set diffuse spectrum integral over wavelength range for specific band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param band_label Band label
+ * @param spectrum_integral Integral value
+ * @param wavelength_min Minimum wavelength
+ * @param wavelength_max Maximum wavelength
+ */
+PYHELIOS_API void setDiffuseSpectrumIntegralBandRange(RadiationModel* radiation_model, const char* band_label,
+                                                      float spectrum_integral,
+                                                      float wavelength_min, float wavelength_max);
+
+//=============================================================================
+// Band Query Functions
+//=============================================================================
+
+/**
+ * @brief Check if a radiation band exists
+ * @param radiation_model Pointer to the RadiationModel
+ * @param label Name/label of the radiation band to check
+ * @return 1 if band exists, 0 if not, -1 on error
+ */
+PYHELIOS_API int doesBandExist(RadiationModel* radiation_model, const char* label);
+
+//=============================================================================
+// Source Management Functions
+//=============================================================================
+
+/**
+ * @brief Delete a radiation source
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id ID of the source to delete
+ */
+PYHELIOS_API void deleteRadiationSource(RadiationModel* radiation_model, unsigned int source_id);
+
+//=============================================================================
+// Source Spectrum Management Functions
+//=============================================================================
+
+/**
+ * @brief Set source spectrum from spectrum data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param spectrum_data Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param spectrum_size Number of spectrum points
+ */
+PYHELIOS_API void setSourceSpectrum(RadiationModel* radiation_model, unsigned int source_id,
+                                    const float* spectrum_data, size_t spectrum_size);
+
+/**
+ * @brief Set source spectrum for multiple sources from spectrum data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_ids Array of source IDs
+ * @param source_count Number of sources
+ * @param spectrum_data Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param spectrum_size Number of spectrum points
+ */
+PYHELIOS_API void setSourceSpectrumMultiple(RadiationModel* radiation_model,
+                                            const unsigned int* source_ids, size_t source_count,
+                                            const float* spectrum_data, size_t spectrum_size);
+
+/**
+ * @brief Set source spectrum from global data label
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param spectrum_label Global data label for spectrum
+ */
+PYHELIOS_API void setSourceSpectrumLabel(RadiationModel* radiation_model, unsigned int source_id,
+                                         const char* spectrum_label);
+
+/**
+ * @brief Set source spectrum for multiple sources from global data label
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_ids Array of source IDs
+ * @param source_count Number of sources
+ * @param spectrum_label Global data label for spectrum
+ */
+PYHELIOS_API void setSourceSpectrumLabelMultiple(RadiationModel* radiation_model,
+                                                 const unsigned int* source_ids, size_t source_count,
+                                                 const char* spectrum_label);
+
+/**
+ * @brief Set source spectrum integral
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param source_integral Integral value
+ */
+PYHELIOS_API void setSourceSpectrumIntegral(RadiationModel* radiation_model, unsigned int source_id,
+                                            float source_integral);
+
+/**
+ * @brief Set source spectrum integral over wavelength range
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param source_integral Integral value
+ * @param wavelength_min Minimum wavelength
+ * @param wavelength_max Maximum wavelength
+ */
+PYHELIOS_API void setSourceSpectrumIntegralRange(RadiationModel* radiation_model, unsigned int source_id,
+                                                 float source_integral, float wavelength_min, float wavelength_max);
+
+//=============================================================================
+// Spectrum Integration Functions
+//=============================================================================
+
+/**
+ * @brief Integrate spectrum over all wavelengths
+ * @param radiation_model Pointer to the RadiationModel
+ * @param object_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param spectrum_size Number of spectrum points
+ * @return Integrated value
+ */
+PYHELIOS_API float integrateSpectrum(RadiationModel* radiation_model,
+                                     const float* object_spectrum, size_t spectrum_size);
+
+/**
+ * @brief Integrate spectrum over wavelength range
+ * @param radiation_model Pointer to the RadiationModel
+ * @param object_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param spectrum_size Number of spectrum points
+ * @param wavelength_min Minimum wavelength
+ * @param wavelength_max Maximum wavelength
+ * @return Integrated value
+ */
+PYHELIOS_API float integrateSpectrumRange(RadiationModel* radiation_model,
+                                          const float* object_spectrum, size_t spectrum_size,
+                                          float wavelength_min, float wavelength_max);
+
+/**
+ * @brief Integrate spectrum with source spectrum over wavelength range
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param object_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param spectrum_size Number of spectrum points
+ * @param wavelength_min Minimum wavelength
+ * @param wavelength_max Maximum wavelength
+ * @return Integrated value
+ */
+PYHELIOS_API float integrateSpectrumWithSource(RadiationModel* radiation_model, unsigned int source_id,
+                                               const float* object_spectrum, size_t spectrum_size,
+                                               float wavelength_min, float wavelength_max);
+
+/**
+ * @brief Integrate object spectrum with camera spectrum
+ * @param radiation_model Pointer to the RadiationModel
+ * @param object_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param object_spectrum_size Number of object spectrum points
+ * @param camera_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param camera_spectrum_size Number of camera spectrum points
+ * @return Integrated value
+ */
+PYHELIOS_API float integrateSpectrumWithCamera(RadiationModel* radiation_model,
+                                               const float* object_spectrum, size_t object_spectrum_size,
+                                               const float* camera_spectrum, size_t camera_spectrum_size);
+
+/**
+ * @brief Integrate object spectrum with source and camera spectra
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param object_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param object_spectrum_size Number of object spectrum points
+ * @param camera_spectrum Flat array [wavelength1, value1, wavelength2, value2, ...]
+ * @param camera_spectrum_size Number of camera spectrum points
+ * @return Integrated value
+ */
+PYHELIOS_API float integrateSpectrumWithSourceAndCamera(RadiationModel* radiation_model, unsigned int source_id,
+                                                        const float* object_spectrum, size_t object_spectrum_size,
+                                                        const float* camera_spectrum, size_t camera_spectrum_size);
+
+/**
+ * @brief Integrate source spectrum over wavelength range
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id Source ID
+ * @param wavelength_min Minimum wavelength
+ * @param wavelength_max Maximum wavelength
+ * @return Integrated value
+ */
+PYHELIOS_API float integrateSourceSpectrum(RadiationModel* radiation_model, unsigned int source_id,
+                                           float wavelength_min, float wavelength_max);
+
+//=============================================================================
+// Spectral Interpolation Functions
+//=============================================================================
+
+/**
+ * @brief Interpolate spectrum from primitive data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param primitive_uuids Array of primitive UUIDs
+ * @param uuid_count Number of UUIDs
+ * @param spectra_labels Array of spectrum labels
+ * @param spectra_count Number of spectra
+ * @param values Array of values corresponding to spectra
+ * @param value_count Number of values
+ * @param primitive_data_query_label Primitive data label to query
+ * @param primitive_data_radprop_label Primitive data label for radiation property
+ */
+PYHELIOS_API void interpolateSpectrumFromPrimitiveData(RadiationModel* radiation_model,
+                                                       const unsigned int* primitive_uuids, size_t uuid_count,
+                                                       const char** spectra_labels, size_t spectra_count,
+                                                       const float* values, size_t value_count,
+                                                       const char* primitive_data_query_label,
+                                                       const char* primitive_data_radprop_label);
+
+/**
+ * @brief Interpolate spectrum from object data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param object_ids Array of object IDs
+ * @param object_count Number of objects
+ * @param spectra_labels Array of spectrum labels
+ * @param spectra_count Number of spectra
+ * @param values Array of values corresponding to spectra
+ * @param value_count Number of values
+ * @param object_data_query_label Object data label to query
+ * @param primitive_data_radprop_label Primitive data label for radiation property
+ */
+PYHELIOS_API void interpolateSpectrumFromObjectData(RadiationModel* radiation_model,
+                                                    const unsigned int* object_ids, size_t object_count,
+                                                    const char** spectra_labels, size_t spectra_count,
+                                                    const float* values, size_t value_count,
+                                                    const char* object_data_query_label,
+                                                    const char* primitive_data_radprop_label);
+
+//=============================================================================
+// Spectral Manipulation Functions
+//=============================================================================
+
+/**
+ * @brief Scale spectrum and store as new global data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param existing_label Existing global data label
+ * @param new_label New global data label for scaled spectrum
+ * @param scale_factor Scaling factor
+ */
+PYHELIOS_API void scaleSpectrumToNew(RadiationModel* radiation_model, const char* existing_label,
+                                     const char* new_label, float scale_factor);
+
+/**
+ * @brief Scale spectrum in-place
+ * @param radiation_model Pointer to the RadiationModel
+ * @param label Global data label
+ * @param scale_factor Scaling factor
+ */
+PYHELIOS_API void scaleSpectrumInPlace(RadiationModel* radiation_model, const char* label,
+                                       float scale_factor);
+
+/**
+ * @brief Scale spectrum randomly and store as new global data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param existing_label Existing global data label
+ * @param new_label New global data label for scaled spectrum
+ * @param min_scale Minimum scale factor
+ * @param max_scale Maximum scale factor
+ */
+PYHELIOS_API void scaleSpectrumRandomly(RadiationModel* radiation_model, const char* existing_label,
+                                        const char* new_label, float min_scale, float max_scale);
+
+/**
+ * @brief Blend multiple spectra with weights
+ * @param radiation_model Pointer to the RadiationModel
+ * @param new_label New global data label for blended spectrum
+ * @param spectrum_labels Array of spectrum labels to blend
+ * @param label_count Number of spectrum labels
+ * @param weights Array of weights (same size as labels)
+ */
+PYHELIOS_API void blendSpectra(RadiationModel* radiation_model, const char* new_label,
+                               const char** spectrum_labels, size_t label_count,
+                               const float* weights);
+
+/**
+ * @brief Blend multiple spectra with random weights
+ * @param radiation_model Pointer to the RadiationModel
+ * @param new_label New global data label for blended spectrum
+ * @param spectrum_labels Array of spectrum labels to blend
+ * @param label_count Number of spectrum labels
+ */
+PYHELIOS_API void blendSpectraRandomly(RadiationModel* radiation_model, const char* new_label,
+                                       const char** spectrum_labels, size_t label_count);
+
+/**
+ * @brief Get position of a radiation source
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id ID of the source
+ * @param position Output array [x, y, z] for source position
+ */
+PYHELIOS_API void getSourcePosition(RadiationModel* radiation_model, unsigned int source_id, float* position);
+
+/**
+ * @brief Set position of a radiation source (vec3 variant)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id ID of the source
+ * @param x X component of position
+ * @param y Y component of position
+ * @param z Z component of position
+ */
+PYHELIOS_API void setSourcePositionVec3(RadiationModel* radiation_model, unsigned int source_id,
+                                        float x, float y, float z);
+
+/**
+ * @brief Set position of a radiation source (spherical variant)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param source_id ID of the source
+ * @param radius Spherical radius
+ * @param elevation Elevation angle
+ * @param azimuth Azimuth angle
+ */
+PYHELIOS_API void setSourcePositionSpherical(RadiationModel* radiation_model, unsigned int source_id,
+                                             float radius, float elevation, float azimuth);
+
+/**
+ * @brief Add a rectangle radiation source
+ * @param radiation_model Pointer to the RadiationModel
+ * @param position_x X coordinate of position
+ * @param position_y Y coordinate of position
+ * @param position_z Z coordinate of position
+ * @param size_x Width of rectangle
+ * @param size_y Height of rectangle
+ * @param rotation_x X component of rotation vector
+ * @param rotation_y Y component of rotation vector
+ * @param rotation_z Z component of rotation vector
+ * @return Source ID
+ */
+PYHELIOS_API unsigned int addRectangleRadiationSource(RadiationModel* radiation_model,
+                                                      float position_x, float position_y, float position_z,
+                                                      float size_x, float size_y,
+                                                      float rotation_x, float rotation_y, float rotation_z);
+
+/**
+ * @brief Add a disk radiation source
+ * @param radiation_model Pointer to the RadiationModel
+ * @param position_x X coordinate of position
+ * @param position_y Y coordinate of position
+ * @param position_z Z coordinate of position
+ * @param radius Disk radius
+ * @param rotation_x X component of rotation vector
+ * @param rotation_y Y component of rotation vector
+ * @param rotation_z Z component of rotation vector
+ * @return Source ID
+ */
+PYHELIOS_API unsigned int addDiskRadiationSource(RadiationModel* radiation_model,
+                                                 float position_x, float position_y, float position_z,
+                                                 float radius,
+                                                 float rotation_x, float rotation_y, float rotation_z);
+
+//=============================================================================
+// Advanced Simulation Functions
+//=============================================================================
+
+/**
+ * @brief Get total sky energy
+ * @param radiation_model Pointer to the RadiationModel
+ * @return Sky energy value
+ */
+PYHELIOS_API float getSkyEnergy(RadiationModel* radiation_model);
+
+/**
+ * @brief Calculate G-function (geometry factor) for given view direction
+ * @param radiation_model Pointer to the RadiationModel
+ * @param context Pointer to the Helios context
+ * @param view_x X component of view direction
+ * @param view_y Y component of view direction
+ * @param view_z Z component of view direction
+ * @return G-function value
+ */
+PYHELIOS_API float calculateGtheta(RadiationModel* radiation_model, helios::Context* context,
+                                   float view_x, float view_y, float view_z);
+
+/**
+ * @brief Enable optional primitive data output
+ * @param radiation_model Pointer to the RadiationModel
+ * @param label Name/label of the primitive data to output
+ */
+PYHELIOS_API void radiationOptionalOutputPrimitiveData(RadiationModel* radiation_model, const char* label);
+
+/**
+ * @brief Enforce periodic boundary conditions
+ * @param radiation_model Pointer to the RadiationModel
+ * @param boundary Boundary specification string
+ */
+PYHELIOS_API void enforcePeriodicBoundary(RadiationModel* radiation_model, const char* boundary);
 
 //=============================================================================
 // Camera and Image Functions (v1.3.47)
@@ -327,6 +808,130 @@ PYHELIOS_API void addRadiationCameraSpherical(RadiationModel* radiation_model, c
                                               float position_x, float position_y, float position_z,
                                               float radius, float elevation, float azimuth,
                                               const float* camera_properties, unsigned int antialiasing_samples);
+
+//=============================================================================
+// Camera Management Functions
+//=============================================================================
+
+/**
+ * @brief Set camera position
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param x X component of position
+ * @param y Y component of position
+ * @param z Z component of position
+ */
+PYHELIOS_API void setRadiationCameraPosition(RadiationModel* radiation_model, const char* camera_label,
+                                    float x, float y, float z);
+
+/**
+ * @brief Get camera position
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param position Output array [x, y, z] for camera position
+ */
+PYHELIOS_API void getRadiationCameraPosition(RadiationModel* radiation_model, const char* camera_label,
+                                    float* position);
+
+/**
+ * @brief Set camera lookat point
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param x X component of lookat point
+ * @param y Y component of lookat point
+ * @param z Z component of lookat point
+ */
+PYHELIOS_API void setCameraLookat(RadiationModel* radiation_model, const char* camera_label,
+                                  float x, float y, float z);
+
+/**
+ * @brief Get camera lookat point
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param lookat Output array [x, y, z] for lookat point
+ */
+PYHELIOS_API void getCameraLookat(RadiationModel* radiation_model, const char* camera_label,
+                                  float* lookat);
+
+/**
+ * @brief Set camera orientation (vec3 direction)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param x X component of direction
+ * @param y Y component of direction
+ * @param z Z component of direction
+ */
+PYHELIOS_API void setCameraOrientationVec3(RadiationModel* radiation_model, const char* camera_label,
+                                           float x, float y, float z);
+
+/**
+ * @brief Set camera orientation (spherical coordinates)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param radius Spherical radius
+ * @param elevation Elevation angle
+ * @param azimuth Azimuth angle
+ */
+PYHELIOS_API void setCameraOrientationSpherical(RadiationModel* radiation_model, const char* camera_label,
+                                                float radius, float elevation, float azimuth);
+
+/**
+ * @brief Get camera orientation
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param orientation Output array [radius, elevation, azimuth] for spherical orientation
+ */
+PYHELIOS_API void getCameraOrientation(RadiationModel* radiation_model, const char* camera_label,
+                                       float* orientation);
+
+/**
+ * @brief Get all camera labels
+ * @param radiation_model Pointer to the RadiationModel
+ * @param count Output pointer for number of camera labels
+ * @return Array of camera label strings (NULL-terminated)
+ */
+PYHELIOS_API const char** getAllCameraLabels(RadiationModel* radiation_model, size_t* count);
+
+/**
+ * @brief Set camera spectral response from global data
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param band_label Band label
+ * @param global_data Global data label for spectral response
+ */
+PYHELIOS_API void setCameraSpectralResponse(RadiationModel* radiation_model, const char* camera_label,
+                                            const char* band_label, const char* global_data);
+
+/**
+ * @brief Set camera spectral response from standard camera library
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param camera_library_name Standard camera name (e.g., "iPhone13", "NikonD850")
+ */
+PYHELIOS_API void setCameraSpectralResponseFromLibrary(RadiationModel* radiation_model, const char* camera_label,
+                                                       const char* camera_library_name);
+
+/**
+ * @brief Get camera pixel data for specific band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param band_label Band label
+ * @param size Output pointer for data size
+ * @return Pixel data array
+ */
+PYHELIOS_API const float* getCameraPixelData(RadiationModel* radiation_model, const char* camera_label,
+                                             const char* band_label, size_t* size);
+
+/**
+ * @brief Set camera pixel data for specific band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param band_label Band label
+ * @param pixel_data Pixel data array
+ * @param size Data size
+ */
+PYHELIOS_API void setCameraPixelData(RadiationModel* radiation_model, const char* camera_label,
+                                     const char* band_label, const float* pixel_data, size_t size);
 
 #ifdef __cplusplus
 }

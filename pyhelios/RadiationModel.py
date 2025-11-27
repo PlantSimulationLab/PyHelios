@@ -243,7 +243,19 @@ class RadiationModel:
                 logger.debug("RadiationModel destroyed successfully")
             except Exception as e:
                 logger.warning(f"Error destroying RadiationModel: {e}")
-    
+            finally:
+                self.radiation_model = None  # Prevent double deletion
+
+    def __del__(self):
+        """Destructor to ensure GPU resources freed even without 'with' statement."""
+        if hasattr(self, 'radiation_model') and self.radiation_model is not None:
+            try:
+                radiation_wrapper.destroyRadiationModel(self.radiation_model)
+                self.radiation_model = None
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Error in RadiationModel.__del__: {e}")
+
     def get_native_ptr(self):
         """Get native pointer for advanced operations."""
         return self.radiation_model
@@ -284,16 +296,31 @@ class RadiationModel:
     
     @require_plugin('radiation', 'copy radiation band')
     @validate_radiation_band_params
-    def copyRadiationBand(self, old_label: str, new_label: str):
+    def copyRadiationBand(self, old_label: str, new_label: str, wavelength_min: float = None, wavelength_max: float = None):
         """
-        Copy existing radiation band to new label.
-        
+        Copy existing radiation band to new label, optionally with new wavelength range.
+
         Args:
             old_label: Existing band label to copy
             new_label: New label for the copied band
+            wavelength_min: Optional minimum wavelength for new band (μm)
+            wavelength_max: Optional maximum wavelength for new band (μm)
+
+        Example:
+            >>> # Copy band with same wavelength range
+            >>> radiation.copyRadiationBand("SW", "SW_copy")
+            >>>
+            >>> # Copy band with different wavelength range
+            >>> radiation.copyRadiationBand("full_spectrum", "PAR", 400, 700)
         """
-        radiation_wrapper.copyRadiationBand(self.radiation_model, old_label, new_label)
-        logger.debug(f"Copied radiation band {old_label} to {new_label}")
+        if wavelength_min is not None and wavelength_max is not None:
+            validate_wavelength_range(wavelength_min, wavelength_max, "wavelength_min", "wavelength_max", "copyRadiationBand")
+
+        radiation_wrapper.copyRadiationBand(self.radiation_model, old_label, new_label, wavelength_min, wavelength_max)
+        if wavelength_min is not None:
+            logger.debug(f"Copied radiation band {old_label} to {new_label} with wavelengths {wavelength_min}-{wavelength_max} μm")
+        else:
+            logger.debug(f"Copied radiation band {old_label} to {new_label}")
     
     @require_plugin('radiation', 'add radiation source')
     @validate_collimated_source_params
@@ -385,7 +412,423 @@ class RadiationModel:
         )
         logger.debug(f"Added sun radiation source: ID {source_id}")
         return source_id
-    
+
+    @require_plugin('radiation', 'set source position')
+    def setSourcePosition(self, source_id: int, position):
+        """
+        Set position of a radiation source.
+
+        Allows dynamic repositioning of radiation sources during simulation,
+        useful for time-series modeling or moving light sources.
+
+        Args:
+            source_id: ID of the radiation source
+            position: New position as vec3, SphericalCoord, or list/tuple [x, y, z]
+
+        Example:
+            >>> source_id = radiation.addCollimatedRadiationSource()
+            >>> radiation.setSourcePosition(source_id, [10, 20, 30])
+            >>> from pyhelios.types import vec3
+            >>> radiation.setSourcePosition(source_id, vec3(15, 25, 35))
+        """
+        if not isinstance(source_id, int) or source_id < 0:
+            raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        radiation_wrapper.setSourcePosition(self.radiation_model, source_id, position)
+        logger.debug(f"Updated position for radiation source {source_id}")
+
+    @require_plugin('radiation', 'add rectangle radiation source')
+    def addRectangleRadiationSource(self, position, size, rotation) -> int:
+        """
+        Add a rectangle (planar) radiation source.
+
+        Rectangle sources are ideal for modeling artificial lighting such as
+        LED panels, grow lights, or window light sources.
+
+        Args:
+            position: Center position as vec3 or list [x, y, z]
+            size: Rectangle dimensions as vec2 or list [width, height]
+            rotation: Rotation vector as vec3 or list [rx, ry, rz] (Euler angles in radians)
+
+        Returns:
+            Source ID
+
+        Example:
+            >>> from pyhelios.types import vec3, vec2
+            >>> source_id = radiation.addRectangleRadiationSource(
+            ...     position=vec3(0, 0, 5),
+            ...     size=vec2(2, 1),
+            ...     rotation=vec3(0, 0, 0)
+            ... )
+            >>> radiation.setSourceFlux(source_id, "PAR", 500.0)
+        """
+        return radiation_wrapper.addRectangleRadiationSource(self.radiation_model, position, size, rotation)
+
+    @require_plugin('radiation', 'add disk radiation source')
+    def addDiskRadiationSource(self, position, radius: float, rotation) -> int:
+        """
+        Add a disk (circular planar) radiation source.
+
+        Disk sources are useful for modeling circular light sources such as
+        spotlights, circular LED arrays, or solar simulators.
+
+        Args:
+            position: Center position as vec3 or list [x, y, z]
+            radius: Disk radius
+            rotation: Rotation vector as vec3 or list [rx, ry, rz] (Euler angles in radians)
+
+        Returns:
+            Source ID
+
+        Example:
+            >>> from pyhelios.types import vec3
+            >>> source_id = radiation.addDiskRadiationSource(
+            ...     position=vec3(0, 0, 5),
+            ...     radius=1.5,
+            ...     rotation=vec3(0, 0, 0)
+            ... )
+            >>> radiation.setSourceFlux(source_id, "PAR", 300.0)
+        """
+        if radius <= 0:
+            raise ValueError(f"Radius must be positive, got {radius}")
+        return radiation_wrapper.addDiskRadiationSource(self.radiation_model, position, radius, rotation)
+
+    # Source spectrum methods
+    @require_plugin('radiation', 'manage source spectrum')
+    def setSourceSpectrum(self, source_id, spectrum):
+        """
+        Set radiation spectrum for source(s).
+
+        Spectral distributions define how radiation intensity varies with wavelength,
+        essential for realistic modeling of different light sources (sunlight, LEDs, etc.).
+
+        Args:
+            source_id: Source ID (int) or list of source IDs
+            spectrum: Either:
+                - Spectrum data as list of (wavelength, value) tuples
+                - Global data label string
+
+        Example:
+            >>> # Define custom LED spectrum
+            >>> led_spectrum = [
+            ...     (400, 0.0), (450, 0.3), (500, 0.8),
+            ...     (550, 0.5), (600, 0.2), (700, 0.0)
+            ... ]
+            >>> radiation.setSourceSpectrum(source_id, led_spectrum)
+            >>>
+            >>> # Use predefined spectrum from global data
+            >>> radiation.setSourceSpectrum(source_id, "D65_illuminant")
+            >>>
+            >>> # Apply same spectrum to multiple sources
+            >>> radiation.setSourceSpectrum([src1, src2, src3], led_spectrum)
+        """
+        radiation_wrapper.setSourceSpectrum(self.radiation_model, source_id, spectrum)
+        logger.debug(f"Set spectrum for source(s) {source_id}")
+
+    @require_plugin('radiation', 'configure source spectrum')
+    def setSourceSpectrumIntegral(self, source_id: int, source_integral: float,
+                                  wavelength_min: float = None, wavelength_max: float = None):
+        """
+        Set source spectrum integral value.
+
+        Normalizes the spectrum so that its integral equals the specified value,
+        useful for calibrating source intensity.
+
+        Args:
+            source_id: Source ID
+            source_integral: Target integral value
+            wavelength_min: Optional minimum wavelength for integration range
+            wavelength_max: Optional maximum wavelength for integration range
+
+        Example:
+            >>> radiation.setSourceSpectrumIntegral(source_id, 1000.0)
+            >>> radiation.setSourceSpectrumIntegral(source_id, 500.0, 400, 700)  # PAR range
+        """
+        if not isinstance(source_id, int) or source_id < 0:
+            raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        if source_integral < 0:
+            raise ValueError(f"Source integral must be non-negative, got {source_integral}")
+
+        radiation_wrapper.setSourceSpectrumIntegral(self.radiation_model, source_id, source_integral,
+                                                    wavelength_min, wavelength_max)
+        logger.debug(f"Set spectrum integral for source {source_id}: {source_integral}")
+
+    # Spectrum integration and analysis methods
+    @require_plugin('radiation', 'integrate spectrum')
+    def integrateSpectrum(self, object_spectrum, wavelength_min: float = None,
+                         wavelength_max: float = None, source_id: int = None,
+                         camera_spectrum=None) -> float:
+        """
+        Integrate spectrum with optional source/camera spectra and wavelength range.
+
+        This unified method handles multiple integration scenarios:
+        - Basic: Total spectrum integration
+        - Range: Integration over wavelength range
+        - Source: Integration weighted by source spectrum
+        - Camera: Integration weighted by camera spectral response
+        - Full: Integration with both source and camera spectra
+
+        Args:
+            object_spectrum: Object spectrum as list of (wavelength, value) tuples/vec2
+            wavelength_min: Optional minimum wavelength for integration range
+            wavelength_max: Optional maximum wavelength for integration range
+            source_id: Optional source ID for source spectrum weighting
+            camera_spectrum: Optional camera spectrum for camera response weighting
+
+        Returns:
+            Integrated value
+
+        Example:
+            >>> leaf_reflectance = [(400, 0.1), (500, 0.4), (600, 0.6), (700, 0.5)]
+            >>>
+            >>> # Total integration
+            >>> total = radiation.integrateSpectrum(leaf_reflectance)
+            >>>
+            >>> # PAR range (400-700nm)
+            >>> par = radiation.integrateSpectrum(leaf_reflectance, 400, 700)
+            >>>
+            >>> # With source spectrum
+            >>> source_weighted = radiation.integrateSpectrum(
+            ...     leaf_reflectance, 400, 700, source_id=sun_source
+            ... )
+            >>>
+            >>> # With camera response
+            >>> camera_response = [(400, 0.2), (550, 1.0), (700, 0.3)]
+            >>> camera_weighted = radiation.integrateSpectrum(
+            ...     leaf_reflectance, camera_spectrum=camera_response
+            ... )
+        """
+        return radiation_wrapper.integrateSpectrum(self.radiation_model, object_spectrum,
+                                                  wavelength_min, wavelength_max,
+                                                  source_id, camera_spectrum)
+
+    @require_plugin('radiation', 'integrate source spectrum')
+    def integrateSourceSpectrum(self, source_id: int, wavelength_min: float, wavelength_max: float) -> float:
+        """
+        Integrate source spectrum over wavelength range.
+
+        Args:
+            source_id: Source ID
+            wavelength_min: Minimum wavelength
+            wavelength_max: Maximum wavelength
+
+        Returns:
+            Integrated source spectrum value
+
+        Example:
+            >>> par_flux = radiation.integrateSourceSpectrum(source_id, 400, 700)
+        """
+        if not isinstance(source_id, int) or source_id < 0:
+            raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        return radiation_wrapper.integrateSourceSpectrum(self.radiation_model, source_id,
+                                                        wavelength_min, wavelength_max)
+
+    # Spectral manipulation methods
+    @require_plugin('radiation', 'scale spectrum')
+    def scaleSpectrum(self, existing_label: str, new_label_or_scale, scale_factor: float = None):
+        """
+        Scale spectrum in-place or to new label.
+
+        Useful for adjusting spectrum intensities or creating variations of
+        existing spectra for sensitivity analysis.
+
+        Supports two call patterns:
+        - scaleSpectrum("label", scale) -> scales in-place
+        - scaleSpectrum("existing", "new", scale) -> creates new scaled spectrum
+
+        Args:
+            existing_label: Existing global data label
+            new_label_or_scale: Either new label string (if creating new) or scale factor (if in-place)
+            scale_factor: Scale factor (required only if new_label_or_scale is a string)
+
+        Example:
+            >>> # In-place scaling
+            >>> radiation.scaleSpectrum("leaf_reflectance", 1.2)
+            >>>
+            >>> # Create new scaled spectrum
+            >>> radiation.scaleSpectrum("leaf_reflectance", "scaled_leaf", 1.5)
+        """
+        if not isinstance(existing_label, str) or not existing_label.strip():
+            raise ValueError("Existing label must be a non-empty string")
+
+        radiation_wrapper.scaleSpectrum(self.radiation_model, existing_label,
+                                       new_label_or_scale, scale_factor)
+        logger.debug(f"Scaled spectrum '{existing_label}'")
+
+    @require_plugin('radiation', 'scale spectrum randomly')
+    def scaleSpectrumRandomly(self, existing_label: str, new_label: str,
+                             min_scale: float, max_scale: float):
+        """
+        Scale spectrum with random factor and store as new label.
+
+        Useful for creating stochastic variations in spectral properties for
+        Monte Carlo simulations or uncertainty quantification.
+
+        Args:
+            existing_label: Existing global data label
+            new_label: New global data label for scaled spectrum
+            min_scale: Minimum scale factor
+            max_scale: Maximum scale factor
+
+        Example:
+            >>> # Create random variation of leaf reflectance
+            >>> radiation.scaleSpectrumRandomly("leaf_base", "leaf_variant", 0.8, 1.2)
+        """
+        if not isinstance(existing_label, str) or not existing_label.strip():
+            raise ValueError("Existing label must be a non-empty string")
+        if not isinstance(new_label, str) or not new_label.strip():
+            raise ValueError("New label must be a non-empty string")
+        if min_scale >= max_scale:
+            raise ValueError(f"min_scale ({min_scale}) must be less than max_scale ({max_scale})")
+
+        radiation_wrapper.scaleSpectrumRandomly(self.radiation_model, existing_label, new_label,
+                                               min_scale, max_scale)
+        logger.debug(f"Scaled spectrum '{existing_label}' randomly to '{new_label}'")
+
+    @require_plugin('radiation', 'blend spectra')
+    def blendSpectra(self, new_label: str, spectrum_labels: List[str], weights: List[float]):
+        """
+        Blend multiple spectra with specified weights.
+
+        Creates weighted combination of spectra, useful for mixing material properties
+        or creating composite light sources.
+
+        Args:
+            new_label: New global data label for blended spectrum
+            spectrum_labels: List of spectrum labels to blend
+            weights: List of weights (must sum to reasonable values, same length as labels)
+
+        Example:
+            >>> # Mix two leaf types (70% type A, 30% type B)
+            >>> radiation.blendSpectra("mixed_leaf",
+            ...     ["leaf_type_a", "leaf_type_b"],
+            ...     [0.7, 0.3]
+            ... )
+        """
+        if not isinstance(new_label, str) or not new_label.strip():
+            raise ValueError("New label must be a non-empty string")
+        if len(spectrum_labels) != len(weights):
+            raise ValueError(f"Number of labels ({len(spectrum_labels)}) must match number of weights ({len(weights)})")
+        if not spectrum_labels:
+            raise ValueError("At least one spectrum label required")
+
+        radiation_wrapper.blendSpectra(self.radiation_model, new_label, spectrum_labels, weights)
+        logger.debug(f"Blended {len(spectrum_labels)} spectra into '{new_label}'")
+
+    @require_plugin('radiation', 'blend spectra randomly')
+    def blendSpectraRandomly(self, new_label: str, spectrum_labels: List[str]):
+        """
+        Blend multiple spectra with random weights.
+
+        Creates random combinations of spectra, useful for generating diverse
+        material properties in stochastic simulations.
+
+        Args:
+            new_label: New global data label for blended spectrum
+            spectrum_labels: List of spectrum labels to blend
+
+        Example:
+            >>> # Create random mixture of leaf spectra
+            >>> radiation.blendSpectraRandomly("random_leaf",
+            ...     ["young_leaf", "mature_leaf", "senescent_leaf"]
+            ... )
+        """
+        if not isinstance(new_label, str) or not new_label.strip():
+            raise ValueError("New label must be a non-empty string")
+        if not spectrum_labels:
+            raise ValueError("At least one spectrum label required")
+
+        radiation_wrapper.blendSpectraRandomly(self.radiation_model, new_label, spectrum_labels)
+        logger.debug(f"Blended {len(spectrum_labels)} spectra randomly into '{new_label}'")
+
+    # Spectral interpolation methods
+    @require_plugin('radiation', 'interpolate spectrum from data')
+    def interpolateSpectrumFromPrimitiveData(self, primitive_uuids: List[int],
+                                            spectra_labels: List[str], values: List[float],
+                                            primitive_data_query_label: str,
+                                            primitive_data_radprop_label: str):
+        """
+        Interpolate spectral properties based on primitive data values.
+
+        Automatically assigns spectra to primitives by interpolating between
+        reference spectra based on continuous data values (e.g., age, moisture, etc.).
+
+        Args:
+            primitive_uuids: List of primitive UUIDs to assign spectra
+            spectra_labels: List of reference spectrum labels
+            values: List of data values corresponding to each spectrum
+            primitive_data_query_label: Primitive data label containing query values
+            primitive_data_radprop_label: Primitive data label to store assigned spectra
+
+        Example:
+            >>> # Assign leaf reflectance based on age
+            >>> leaf_patches = context.getAllUUIDs("patch")
+            >>> radiation.interpolateSpectrumFromPrimitiveData(
+            ...     primitive_uuids=leaf_patches,
+            ...     spectra_labels=["young_leaf", "mature_leaf", "old_leaf"],
+            ...     values=[0.0, 50.0, 100.0],  # Days since emergence
+            ...     primitive_data_query_label="leaf_age",
+            ...     primitive_data_radprop_label="reflectance"
+            ... )
+        """
+        if not isinstance(primitive_uuids, (list, tuple)) or not primitive_uuids:
+            raise ValueError("Primitive UUIDs must be a non-empty list")
+        if not isinstance(spectra_labels, (list, tuple)) or not spectra_labels:
+            raise ValueError("Spectra labels must be a non-empty list")
+        if not isinstance(values, (list, tuple)) or not values:
+            raise ValueError("Values must be a non-empty list")
+        if len(spectra_labels) != len(values):
+            raise ValueError(f"Number of spectra ({len(spectra_labels)}) must match number of values ({len(values)})")
+
+        radiation_wrapper.interpolateSpectrumFromPrimitiveData(
+            self.radiation_model, primitive_uuids, spectra_labels, values,
+            primitive_data_query_label, primitive_data_radprop_label
+        )
+        logger.debug(f"Interpolated spectra for {len(primitive_uuids)} primitives")
+
+    @require_plugin('radiation', 'interpolate spectrum from object data')
+    def interpolateSpectrumFromObjectData(self, object_ids: List[int],
+                                         spectra_labels: List[str], values: List[float],
+                                         object_data_query_label: str,
+                                         primitive_data_radprop_label: str):
+        """
+        Interpolate spectral properties based on object data values.
+
+        Automatically assigns spectra to object primitives by interpolating between
+        reference spectra based on continuous object-level data values.
+
+        Args:
+            object_ids: List of object IDs
+            spectra_labels: List of reference spectrum labels
+            values: List of data values corresponding to each spectrum
+            object_data_query_label: Object data label containing query values
+            primitive_data_radprop_label: Primitive data label to store assigned spectra
+
+        Example:
+            >>> # Assign tree reflectance based on health index
+            >>> tree_ids = [tree1_id, tree2_id, tree3_id]
+            >>> radiation.interpolateSpectrumFromObjectData(
+            ...     object_ids=tree_ids,
+            ...     spectra_labels=["healthy_tree", "stressed_tree", "diseased_tree"],
+            ...     values=[1.0, 0.5, 0.0],  # Health index
+            ...     object_data_query_label="health_index",
+            ...     primitive_data_radprop_label="reflectance"
+            ... )
+        """
+        if not isinstance(object_ids, (list, tuple)) or not object_ids:
+            raise ValueError("Object IDs must be a non-empty list")
+        if not isinstance(spectra_labels, (list, tuple)) or not spectra_labels:
+            raise ValueError("Spectra labels must be a non-empty list")
+        if not isinstance(values, (list, tuple)) or not values:
+            raise ValueError("Values must be a non-empty list")
+        if len(spectra_labels) != len(values):
+            raise ValueError(f"Number of spectra ({len(spectra_labels)}) must match number of values ({len(values)})")
+
+        radiation_wrapper.interpolateSpectrumFromObjectData(
+            self.radiation_model, object_ids, spectra_labels, values,
+            object_data_query_label, primitive_data_radprop_label
+        )
+        logger.debug(f"Interpolated spectra for {len(object_ids)} objects")
+
     @require_plugin('radiation', 'set ray count')
     def setDirectRayCount(self, band_label: str, ray_count: int):
         """Set direct ray count for radiation band."""
@@ -406,7 +849,95 @@ class RadiationModel:
         validate_band_label(label, "label", "setDiffuseRadiationFlux")
         validate_flux_value(flux, "flux", "setDiffuseRadiationFlux")
         radiation_wrapper.setDiffuseRadiationFlux(self.radiation_model, label, flux)
-    
+
+    @require_plugin('radiation', 'configure diffuse radiation')
+    def setDiffuseRadiationExtinctionCoeff(self, label: str, K: float, peak_direction):
+        """
+        Set diffuse radiation extinction coefficient with directional bias.
+
+        Models directionally-biased diffuse radiation (e.g., sky radiation with zenith peak).
+
+        Args:
+            label: Band label
+            K: Extinction coefficient
+            peak_direction: Peak direction as vec3, SphericalCoord, or list [x, y, z]
+
+        Example:
+            >>> from pyhelios.types import vec3
+            >>> radiation.setDiffuseRadiationExtinctionCoeff("SW", 0.5, vec3(0, 0, 1))
+        """
+        validate_band_label(label, "label", "setDiffuseRadiationExtinctionCoeff")
+        if K < 0:
+            raise ValueError(f"Extinction coefficient must be non-negative, got {K}")
+        radiation_wrapper.setDiffuseRadiationExtinctionCoeff(self.radiation_model, label, K, peak_direction)
+        logger.debug(f"Set diffuse extinction coefficient for band '{label}': K={K}")
+
+    @require_plugin('radiation', 'query diffuse flux')
+    def getDiffuseFlux(self, band_label: str) -> float:
+        """
+        Get diffuse flux for band.
+
+        Args:
+            band_label: Band label
+
+        Returns:
+            Diffuse flux value
+
+        Example:
+            >>> flux = radiation.getDiffuseFlux("SW")
+        """
+        validate_band_label(band_label, "band_label", "getDiffuseFlux")
+        return radiation_wrapper.getDiffuseFlux(self.radiation_model, band_label)
+
+    @require_plugin('radiation', 'configure diffuse spectrum')
+    def setDiffuseSpectrum(self, band_label, spectrum_label: str):
+        """
+        Set diffuse spectrum from global data label.
+
+        Args:
+            band_label: Band label (string) or list of band labels
+            spectrum_label: Spectrum global data label
+
+        Example:
+            >>> radiation.setDiffuseSpectrum("SW", "sky_spectrum")
+            >>> radiation.setDiffuseSpectrum(["SW", "NIR"], "sky_spectrum")
+        """
+        if isinstance(band_label, str):
+            validate_band_label(band_label, "band_label", "setDiffuseSpectrum")
+        else:
+            for label in band_label:
+                validate_band_label(label, "band_label", "setDiffuseSpectrum")
+        if not isinstance(spectrum_label, str) or not spectrum_label.strip():
+            raise ValueError("Spectrum label must be a non-empty string")
+
+        radiation_wrapper.setDiffuseSpectrum(self.radiation_model, band_label, spectrum_label)
+        logger.debug(f"Set diffuse spectrum for band(s) {band_label}")
+
+    @require_plugin('radiation', 'configure diffuse spectrum')
+    def setDiffuseSpectrumIntegral(self, spectrum_integral: float, wavelength_min: float = None,
+                                   wavelength_max: float = None, band_label: str = None):
+        """
+        Set diffuse spectrum integral.
+
+        Args:
+            spectrum_integral: Integral value
+            wavelength_min: Optional minimum wavelength
+            wavelength_max: Optional maximum wavelength
+            band_label: Optional specific band label (None for all bands)
+
+        Example:
+            >>> radiation.setDiffuseSpectrumIntegral(1000.0)  # All bands
+            >>> radiation.setDiffuseSpectrumIntegral(500.0, 400, 700, band_label="PAR")  # Specific band
+        """
+        if spectrum_integral < 0:
+            raise ValueError(f"Spectrum integral must be non-negative, got {spectrum_integral}")
+        if band_label is not None:
+            validate_band_label(band_label, "band_label", "setDiffuseSpectrumIntegral")
+
+        radiation_wrapper.setDiffuseSpectrumIntegral(self.radiation_model, spectrum_integral,
+                                                     wavelength_min, wavelength_max, band_label)
+        logger.debug(f"Set diffuse spectrum integral: {spectrum_integral}")
+
     @require_plugin('radiation', 'set source flux')
     def setSourceFlux(self, source_id, label: str, flux: float):
         """Set source flux for single source or multiple sources."""
@@ -494,7 +1025,140 @@ class RadiationModel:
         results = radiation_wrapper.getTotalAbsorbedFlux(self.radiation_model)
         logger.debug(f"Retrieved absorbed flux data for {len(results)} primitives")
         return results
-    
+
+    # Band query methods
+    @require_plugin('radiation', 'check band existence')
+    def doesBandExist(self, label: str) -> bool:
+        """
+        Check if a radiation band exists.
+
+        Args:
+            label: Name/label of the radiation band to check
+
+        Returns:
+            True if band exists, False otherwise
+
+        Example:
+            >>> radiation.addRadiationBand("SW")
+            >>> radiation.doesBandExist("SW")
+            True
+            >>> radiation.doesBandExist("nonexistent")
+            False
+        """
+        validate_band_label(label, "label", "doesBandExist")
+        return radiation_wrapper.doesBandExist(self.radiation_model, label)
+
+    # Advanced source management methods
+    @require_plugin('radiation', 'manage radiation sources')
+    def deleteRadiationSource(self, source_id: int):
+        """
+        Delete a radiation source.
+
+        Args:
+            source_id: ID of the radiation source to delete
+
+        Example:
+            >>> source_id = radiation.addCollimatedRadiationSource()
+            >>> radiation.deleteRadiationSource(source_id)
+        """
+        if not isinstance(source_id, int) or source_id < 0:
+            raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        radiation_wrapper.deleteRadiationSource(self.radiation_model, source_id)
+        logger.debug(f"Deleted radiation source {source_id}")
+
+    @require_plugin('radiation', 'query radiation sources')
+    def getSourcePosition(self, source_id: int):
+        """
+        Get position of a radiation source.
+
+        Args:
+            source_id: ID of the radiation source
+
+        Returns:
+            vec3 position of the source
+
+        Example:
+            >>> source_id = radiation.addCollimatedRadiationSource()
+            >>> position = radiation.getSourcePosition(source_id)
+            >>> print(f"Source at: {position}")
+        """
+        if not isinstance(source_id, int) or source_id < 0:
+            raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        position_list = radiation_wrapper.getSourcePosition(self.radiation_model, source_id)
+        from .wrappers.DataTypes import vec3
+        return vec3(position_list[0], position_list[1], position_list[2])
+
+    # Advanced simulation methods
+    @require_plugin('radiation', 'get sky energy')
+    def getSkyEnergy(self) -> float:
+        """
+        Get total sky energy.
+
+        Returns:
+            Total sky energy value
+
+        Example:
+            >>> energy = radiation.getSkyEnergy()
+            >>> print(f"Sky energy: {energy}")
+        """
+        return radiation_wrapper.getSkyEnergy(self.radiation_model)
+
+    @require_plugin('radiation', 'calculate G-function')
+    def calculateGtheta(self, view_direction) -> float:
+        """
+        Calculate G-function (geometry factor) for given view direction.
+
+        The G-function describes the geometric relationship between leaf area
+        distribution and viewing direction, important for canopy radiation modeling.
+
+        Args:
+            view_direction: View direction as vec3 or list/tuple [x, y, z]
+
+        Returns:
+            G-function value
+
+        Example:
+            >>> from pyhelios.types import vec3
+            >>> g_value = radiation.calculateGtheta(vec3(0, 0, 1))
+            >>> print(f"G-function: {g_value}")
+        """
+        context_ptr = self.context.getNativePtr()
+        return radiation_wrapper.calculateGtheta(self.radiation_model, context_ptr, view_direction)
+
+    @require_plugin('radiation', 'configure output data')
+    def optionalOutputPrimitiveData(self, label: str):
+        """
+        Enable optional primitive data output.
+
+        Args:
+            label: Name/label of the primitive data to output
+
+        Example:
+            >>> radiation.optionalOutputPrimitiveData("temperature")
+        """
+        validate_band_label(label, "label", "optionalOutputPrimitiveData")
+        radiation_wrapper.optionalOutputPrimitiveData(self.radiation_model, label)
+        logger.debug(f"Enabled optional output for primitive data: {label}")
+
+    @require_plugin('radiation', 'configure boundary conditions')
+    def enforcePeriodicBoundary(self, boundary: str):
+        """
+        Enforce periodic boundary conditions.
+
+        Periodic boundaries are useful for large-scale simulations to reduce
+        edge effects by wrapping radiation at domain boundaries.
+
+        Args:
+            boundary: Boundary specification string (e.g., "xy", "xyz", "x", "y", "z")
+
+        Example:
+            >>> radiation.enforcePeriodicBoundary("xy")
+        """
+        if not isinstance(boundary, str) or not boundary:
+            raise ValueError("Boundary specification must be a non-empty string")
+        radiation_wrapper.enforcePeriodicBoundary(self.radiation_model, boundary)
+        logger.debug(f"Enforced periodic boundary: {boundary}")
+
     # Configuration methods
     @require_plugin('radiation', 'configure radiation simulation')
     @validate_scattering_depth_params
@@ -613,6 +1277,235 @@ class RadiationModel:
 
         except Exception as e:
             raise RadiationModelError(f"Failed to add radiation camera '{validated_label}': {e}")
+
+    @require_plugin('radiation', 'manage camera position')
+    def setCameraPosition(self, camera_label: str, position):
+        """
+        Set camera position.
+
+        Allows dynamic camera repositioning during simulation, useful for
+        time-series captures or multi-view imaging.
+
+        Args:
+            camera_label: Camera label string
+            position: Camera position as vec3 or list [x, y, z]
+
+        Example:
+            >>> radiation.setCameraPosition("cam1", [0, 0, 10])
+            >>> from pyhelios.types import vec3
+            >>> radiation.setCameraPosition("cam1", vec3(5, 5, 10))
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        radiation_wrapper.setCameraPosition(self.radiation_model, camera_label, position)
+        logger.debug(f"Updated camera '{camera_label}' position")
+
+    @require_plugin('radiation', 'query camera position')
+    def getCameraPosition(self, camera_label: str):
+        """
+        Get camera position.
+
+        Args:
+            camera_label: Camera label string
+
+        Returns:
+            vec3 position of the camera
+
+        Example:
+            >>> position = radiation.getCameraPosition("cam1")
+            >>> print(f"Camera at: {position}")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        position_list = radiation_wrapper.getCameraPosition(self.radiation_model, camera_label)
+        from .wrappers.DataTypes import vec3
+        return vec3(position_list[0], position_list[1], position_list[2])
+
+    @require_plugin('radiation', 'manage camera lookat')
+    def setCameraLookat(self, camera_label: str, lookat):
+        """
+        Set camera lookat point.
+
+        Args:
+            camera_label: Camera label string
+            lookat: Lookat point as vec3 or list [x, y, z]
+
+        Example:
+            >>> radiation.setCameraLookat("cam1", [0, 0, 0])
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        radiation_wrapper.setCameraLookat(self.radiation_model, camera_label, lookat)
+        logger.debug(f"Updated camera '{camera_label}' lookat point")
+
+    @require_plugin('radiation', 'query camera lookat')
+    def getCameraLookat(self, camera_label: str):
+        """
+        Get camera lookat point.
+
+        Args:
+            camera_label: Camera label string
+
+        Returns:
+            vec3 lookat point
+
+        Example:
+            >>> lookat = radiation.getCameraLookat("cam1")
+            >>> print(f"Camera looking at: {lookat}")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        lookat_list = radiation_wrapper.getCameraLookat(self.radiation_model, camera_label)
+        from .wrappers.DataTypes import vec3
+        return vec3(lookat_list[0], lookat_list[1], lookat_list[2])
+
+    @require_plugin('radiation', 'manage camera orientation')
+    def setCameraOrientation(self, camera_label: str, direction):
+        """
+        Set camera orientation.
+
+        Args:
+            camera_label: Camera label string
+            direction: View direction as vec3, SphericalCoord, or list [x, y, z]
+
+        Example:
+            >>> radiation.setCameraOrientation("cam1", [0, 0, 1])
+            >>> from pyhelios.types import SphericalCoord
+            >>> radiation.setCameraOrientation("cam1", SphericalCoord(1.0, 45.0, 90.0))
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        radiation_wrapper.setCameraOrientation(self.radiation_model, camera_label, direction)
+        logger.debug(f"Updated camera '{camera_label}' orientation")
+
+    @require_plugin('radiation', 'query camera orientation')
+    def getCameraOrientation(self, camera_label: str):
+        """
+        Get camera orientation.
+
+        Args:
+            camera_label: Camera label string
+
+        Returns:
+            SphericalCoord orientation [radius, elevation, azimuth]
+
+        Example:
+            >>> orientation = radiation.getCameraOrientation("cam1")
+            >>> print(f"Camera orientation: {orientation}")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        orientation_list = radiation_wrapper.getCameraOrientation(self.radiation_model, camera_label)
+        from .wrappers.DataTypes import SphericalCoord
+        return SphericalCoord(orientation_list[0], orientation_list[1], orientation_list[2])
+
+    @require_plugin('radiation', 'query cameras')
+    def getAllCameraLabels(self) -> List[str]:
+        """
+        Get all camera labels.
+
+        Returns:
+            List of all camera label strings
+
+        Example:
+            >>> cameras = radiation.getAllCameraLabels()
+            >>> print(f"Available cameras: {cameras}")
+        """
+        return radiation_wrapper.getAllCameraLabels(self.radiation_model)
+
+    @require_plugin('radiation', 'configure camera spectral response')
+    def setCameraSpectralResponse(self, camera_label: str, band_label: str, global_data: str):
+        """
+        Set camera spectral response from global data.
+
+        Args:
+            camera_label: Camera label
+            band_label: Band label
+            global_data: Global data label for spectral response curve
+
+        Example:
+            >>> radiation.setCameraSpectralResponse("cam1", "red", "sensor_red_response")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        validate_band_label(band_label, "band_label", "setCameraSpectralResponse")
+        if not isinstance(global_data, str) or not global_data.strip():
+            raise ValueError("Global data label must be a non-empty string")
+
+        radiation_wrapper.setCameraSpectralResponse(self.radiation_model, camera_label, band_label, global_data)
+        logger.debug(f"Set spectral response for camera '{camera_label}', band '{band_label}'")
+
+    @require_plugin('radiation', 'configure camera from library')
+    def setCameraSpectralResponseFromLibrary(self, camera_label: str, camera_library_name: str):
+        """
+        Set camera spectral response from standard camera library.
+
+        Uses pre-defined spectral response curves for common cameras.
+
+        Args:
+            camera_label: Camera label
+            camera_library_name: Standard camera name (e.g., "iPhone13", "NikonD850", "CanonEOS5D")
+
+        Example:
+            >>> radiation.setCameraSpectralResponseFromLibrary("cam1", "iPhone13")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        if not isinstance(camera_library_name, str) or not camera_library_name.strip():
+            raise ValueError("Camera library name must be a non-empty string")
+
+        radiation_wrapper.setCameraSpectralResponseFromLibrary(self.radiation_model, camera_label, camera_library_name)
+        logger.debug(f"Set camera '{camera_label}' response from library: {camera_library_name}")
+
+    @require_plugin('radiation', 'get camera pixel data')
+    def getCameraPixelData(self, camera_label: str, band_label: str) -> List[float]:
+        """
+        Get camera pixel data for specific band.
+
+        Retrieves raw pixel values for programmatic access and analysis.
+
+        Args:
+            camera_label: Camera label
+            band_label: Band label
+
+        Returns:
+            List of pixel values
+
+        Example:
+            >>> pixels = radiation.getCameraPixelData("cam1", "red")
+            >>> print(f"Mean pixel value: {sum(pixels)/len(pixels)}")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        validate_band_label(band_label, "band_label", "getCameraPixelData")
+
+        return radiation_wrapper.getCameraPixelData(self.radiation_model, camera_label, band_label)
+
+    @require_plugin('radiation', 'set camera pixel data')
+    def setCameraPixelData(self, camera_label: str, band_label: str, pixel_data: List[float]):
+        """
+        Set camera pixel data for specific band.
+
+        Allows programmatic modification of pixel values.
+
+        Args:
+            camera_label: Camera label
+            band_label: Band label
+            pixel_data: List of pixel values
+
+        Example:
+            >>> pixels = radiation.getCameraPixelData("cam1", "red")
+            >>> modified_pixels = [p * 1.2 for p in pixels]  # Brighten by 20%
+            >>> radiation.setCameraPixelData("cam1", "red", modified_pixels)
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        validate_band_label(band_label, "band_label", "setCameraPixelData")
+        if not isinstance(pixel_data, (list, tuple)):
+            raise ValueError("Pixel data must be a list or tuple")
+
+        radiation_wrapper.setCameraPixelData(self.radiation_model, camera_label, band_label, pixel_data)
+        logger.debug(f"Set pixel data for camera '{camera_label}', band '{band_label}': {len(pixel_data)} pixels")
 
     @require_plugin('radiation', 'write camera images')
     def writeCameraImage(self, camera: str, bands: List[str], imagefile_base: str,
