@@ -520,7 +520,7 @@ def validate_oxygen_concentration_params(func: Callable) -> Callable:
     return wrapper
 
 
-def validate_temperature_response_params_decorator(func: Callable) -> Callable:
+def validate_temperature_response_params(func: Callable) -> Callable:
     """Validate temperature response parameters."""
     @wraps(func)
     def wrapper(self, params, *args, **kwargs):
