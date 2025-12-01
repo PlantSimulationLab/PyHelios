@@ -199,9 +199,6 @@ class WeberPennTree:
                 f"Check plugin status with context.print_plugin_status()"
             )
         
-        # DEBUG: Log the tree type being requested
-        tree_name = wpt_type.value if isinstance(wpt_type, WPTType) else str(wpt_type)
-        
         # Use working directory context manager during tree building to access assets
         with _weberpenntree_working_directory():
             # Use scale-aware function if scale is not 1.0, otherwise use regular function
