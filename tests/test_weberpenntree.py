@@ -635,3 +635,4 @@ class TestBuildTreeFromNameFunction:
             from pyhelios.WeberPennTree import WeberPennTree
             wpt = WeberPennTree(mock_context)
             wpt.buildTreeFromName("Apple")
+            

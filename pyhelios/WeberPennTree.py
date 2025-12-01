@@ -373,8 +373,3 @@ class WeberPennTree:
                 return wpt_wrapper.buildTreeWithScale(self.wpt, tree_name, origin.to_list(), scale)
             else:
                 return wpt_wrapper.buildTree(self.wpt, tree_name, origin.to_list())
-
-    
-
-
-        
