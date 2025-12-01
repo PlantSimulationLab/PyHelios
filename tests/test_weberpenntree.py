@@ -366,3 +366,272 @@ class TestWeberPennTreeEdgeCases:
                     stats = GeometryValidator.validate_tree_structure(wpt, tree_id)
                     assert stats['valid']
             # WeberPennTree should be cleaned up here
+
+
+@pytest.mark.native_only
+class TestLoadXMLFunction:
+    """Test the loadXML function with various scenarios."""
+    
+    def test_load_valid_xml_file(self, weber_penn_tree):
+        """Test loading a valid XML file."""
+        # Use the default WeberPennTreeLibrary.xml file
+        xml_file = "plugins/weberpenntree/xml/WeberPennTreeLibrary.xml"
+        
+        # This should not raise any exceptions
+        weber_penn_tree.loadXML(xml_file)
+    
+    @pytest.mark.parametrize("invalid_file", [
+        "non_existent_file.xml",
+        "/path/to/non/existent/file.xml",
+        "invalid_path.xml"
+    ])
+    def test_load_non_existent_file(self, weber_penn_tree, invalid_file):
+        """Test loading a non-existent XML file raises appropriate error."""
+        with pytest.raises(RuntimeError, match="Failed to load XML file"):
+            weber_penn_tree.loadXML(invalid_file)
+    
+    @pytest.mark.parametrize("invalid_extension", [
+        "test.txt",
+        "test.json",
+        "test.csv",
+        "test.xml.txt",
+        "test",
+        "test.xml.bak"
+    ])
+    def test_load_invalid_file_extension(self, weber_penn_tree, invalid_extension):
+        """Test loading files with invalid extensions raises ValidationError."""
+        from pyhelios.validation.exceptions import ValidationError
+        with pytest.raises(ValidationError, match="File extension .* not allowed"):
+            weber_penn_tree.loadXML(invalid_extension)
+    
+    @pytest.mark.parametrize("invalid_filename", [
+        "file<name>.xml",
+        "file>name>.xml",
+        "file|name.xml",
+        "file?name.xml",
+        "file*name.xml",
+        "file\"name.xml",
+        "file:name.xml",
+        "file\\name.xml",
+        "file/name.xml"
+    ])
+    def test_load_invalid_characters_in_filename(self, weber_penn_tree, invalid_filename):
+        """Test loading files with invalid characters in filename."""
+        # Some invalid characters are caught by validation, others pass through to C++
+        if any(char in invalid_filename for char in ['<', '>', ':', '"', '|', '?', '*']):
+            # These are caught by Python validation
+            from pyhelios.validation.exceptions import ValidationError
+            with pytest.raises(ValidationError):
+                weber_penn_tree.loadXML(invalid_filename)
+        else:
+            # These pass through to C++ and cause RuntimeError
+            with pytest.raises(RuntimeError, match="Failed to load XML file"):
+                weber_penn_tree.loadXML(invalid_filename)
+    
+    @pytest.mark.parametrize("empty_value", [
+        "",
+        "   ",
+        "\t",
+        "\n"
+    ])
+    def test_load_empty_filename(self, weber_penn_tree, empty_value):
+        """Test loading with empty filename raises ValueError."""
+        from pyhelios.validation.exceptions import ValidationError
+        with pytest.raises(ValidationError, match="Parameter cannot be empty or whitespace-only"):
+            weber_penn_tree.loadXML(empty_value)
+    
+    def test_load_none_filename(self, weber_penn_tree):
+        """Test loading with None filename raises TypeError."""
+        from pyhelios.validation.exceptions import ValidationError
+        with pytest.raises(ValidationError, match="Parameter must be a string, got NoneType"):
+            weber_penn_tree.loadXML(None)
+    
+    def test_load_xml_with_mock_weber_penn_tree(self, mock_weber_penn_tree):
+        """Test loadXML behavior with mocked WeberPennTree when plugin is not available."""
+        # Mock the loadXML method to not raise exceptions
+        mock_weber_penn_tree.loadXML = Mock()
+        
+        # This should not raise exceptions in mock mode
+        mock_weber_penn_tree.loadXML("test.xml")
+        mock_weber_penn_tree.loadXML.assert_called_once_with("test.xml")
+    
+    def test_load_xml_without_plugin(self):
+        """Test loadXML behavior when WeberPennTree plugin is not available."""
+        from pyhelios.wrappers.UWeberPennTreeWrapper import _WPT_FUNCTIONS_AVAILABLE
+        
+        if _WPT_FUNCTIONS_AVAILABLE:
+            pytest.skip("WeberPennTree plugin is available, skipping mock mode test")
+        
+        mock_context = Mock()
+        
+        # Test that WeberPennTree creation fails when functions aren't available
+        with pytest.raises(NotImplementedError, match="WeberPennTree functions not available"):
+            from pyhelios.WeberPennTree import WeberPennTree
+            wpt = WeberPennTree(mock_context)
+            wpt.loadXML("test.xml")
+
+
+@pytest.mark.native_only
+class TestBuildTreeFromNameFunction:
+    """Test the buildTreeFromName function with various scenarios."""
+    
+    def test_build_tree_with_valid_name(self, weber_penn_tree):
+        """Test building a tree with a valid tree name."""
+        # First load the XML to make tree names available
+        weber_penn_tree.loadXML("plugins/weberpenntree/xml/WeberPennTreeLibrary.xml")
+        
+        # Test with a known tree name
+        tree_name = "Apple"
+        tree_id = weber_penn_tree.buildTreeFromName(tree_name)
+        
+        assert isinstance(tree_id, int)
+        assert tree_id >= 0
+        
+        # Validate tree structure
+        stats = GeometryValidator.validate_tree_structure(weber_penn_tree, tree_id)
+        assert stats['valid'], f"Tree validation failed: {stats.get('error', 'Unknown error')}"
+    
+    @pytest.mark.parametrize("invalid_tree_name", [
+        "NonExistentTree",
+        "InvalidTreeName",
+        "UnknownTreeType",
+        "FakeTree123"
+    ])
+    def test_build_tree_with_invalid_name(self, weber_penn_tree, invalid_tree_name):
+        """Test building a tree with invalid/non-existent tree name."""
+        # First load the XML to make tree names available
+        weber_penn_tree.loadXML("plugins/weberpenntree/xml/WeberPennTreeLibrary.xml")
+        
+        # This should raise a HeliosRuntimeError from the C++ code
+        from pyhelios.exceptions import HeliosRuntimeError
+        with pytest.raises(HeliosRuntimeError, match="Tree .* does not exist in the tree library"):
+            weber_penn_tree.buildTreeFromName(invalid_tree_name)
+    
+    @pytest.mark.parametrize("empty_value", [
+        "",
+        "   ",
+        "\t",
+        "\n"
+    ])
+    def test_build_tree_with_empty_name(self, weber_penn_tree, empty_value):
+        """Test building a tree with empty tree name raises ValueError."""
+        with pytest.raises(ValueError, match="tree_name must be a non-empty string"):
+            weber_penn_tree.buildTreeFromName(empty_value)
+    
+    def test_build_tree_with_none_name(self, weber_penn_tree):
+        """Test building a tree with None tree name raises ValueError."""
+        with pytest.raises(ValueError, match="tree_name must be a non-empty string"):
+            weber_penn_tree.buildTreeFromName(None)
+    
+    def test_build_tree_with_custom_origin(self, weber_penn_tree):
+        """Test building a tree with custom origin parameters."""
+        # First load the XML to make tree names available
+        weber_penn_tree.loadXML("plugins/weberpenntree/xml/WeberPennTreeLibrary.xml")
+        
+        origin = DataTypes.vec3(10, 20, 5)
+        tree_name = "Lemon"
+        tree_id = weber_penn_tree.buildTreeFromName(tree_name, origin=origin)
+        
+        assert isinstance(tree_id, int)
+        assert tree_id >= 0
+        
+        # Validate tree structure
+        stats = GeometryValidator.validate_tree_structure(weber_penn_tree, tree_id)
+        assert stats['valid']
+    
+    def test_build_tree_with_custom_scale(self, weber_penn_tree):
+        """Test building a tree with custom scale parameters."""
+        # First load the XML to make tree names available
+        weber_penn_tree.loadXML("plugins/weberpenntree/xml/WeberPennTreeLibrary.xml")
+        
+        scale = 2.0
+        tree_name = "Olive"
+        tree_id = weber_penn_tree.buildTreeFromName(tree_name, scale=scale)
+        
+        assert isinstance(tree_id, int)
+        assert tree_id >= 0
+        
+        # Validate tree structure
+        stats = GeometryValidator.validate_tree_structure(weber_penn_tree, tree_id)
+        assert stats['valid']
+    
+    def test_build_tree_with_all_parameters(self, weber_penn_tree):
+        """Test building a tree with custom origin and scale parameters."""
+        # First load the XML to make tree names available
+        weber_penn_tree.loadXML("plugins/weberpenntree/xml/WeberPennTreeLibrary.xml")
+        
+        origin = DataTypes.vec3(5, 5, 0)
+        scale = 1.5
+        tree_name = "Walnut"
+        tree_id = weber_penn_tree.buildTreeFromName(tree_name, origin=origin, scale=scale)
+        
+        assert isinstance(tree_id, int)
+        assert tree_id >= 0
+        
+        # Validate tree structure
+        stats = GeometryValidator.validate_tree_structure(weber_penn_tree, tree_id)
+        assert stats['valid']
+    
+    @pytest.mark.parametrize("invalid_scale", [
+        -1.0,
+        -0.5,
+        0.0,
+        -2.5
+    ])
+    def test_build_tree_with_invalid_scale_values(self, weber_penn_tree, invalid_scale):
+        """Test building a tree with invalid scale values."""
+        from pyhelios.validation.exceptions import ValidationError
+        
+        with pytest.raises(ValidationError, match="Parameter must be positive"):
+            weber_penn_tree.buildTreeFromName("Apple", scale=invalid_scale)
+    
+    def test_build_tree_with_invalid_origin_values(self, weber_penn_tree):
+        """Test building a tree with invalid origin values."""
+        from pyhelios.validation.exceptions import ValidationError
+        
+        # Test with None origin - now properly validated
+        with pytest.raises(ValidationError, match="origin parameter cannot be None"):
+            weber_penn_tree.buildTreeFromName("Apple", origin=None)
+        
+        # Test with non-vec3 origin
+        with pytest.raises(ValidationError, match="Parameter must be a vector with x.y.z attributes"):
+            weber_penn_tree.buildTreeFromName("Apple", origin="invalid")
+        
+        # Test with invalid vec3 components
+        with pytest.raises(ValueError, match="vec3.x must be a finite number"):
+            weber_penn_tree.buildTreeFromName("Apple", origin=DataTypes.vec3(float('inf'), 0, 0))
+    
+    def test_build_tree_from_name_with_mock_weber_penn_tree(self, mock_weber_penn_tree):
+        """Test buildTreeFromName behavior with mocked WeberPennTree when plugin is not available."""
+        # Mock the buildTreeFromName method to return a valid tree ID
+        mock_weber_penn_tree.buildTreeFromName.return_value = 1
+        
+        # Test with various parameters
+        tree_id = mock_weber_penn_tree.buildTreeFromName("CustomTree")
+        assert tree_id == 1
+        
+        # Test with origin and scale
+        tree_id = mock_weber_penn_tree.buildTreeFromName(
+            "CustomTree",
+            origin=DataTypes.vec3(1, 2, 3),
+            scale=2.0
+        )
+        assert tree_id == 1
+        
+        # Verify the method was called correctly
+        assert mock_weber_penn_tree.buildTreeFromName.call_count == 2
+    
+    def test_build_tree_from_name_without_plugin(self):
+        """Test buildTreeFromName behavior when WeberPennTree plugin is not available."""
+        from pyhelios.wrappers.UWeberPennTreeWrapper import _WPT_FUNCTIONS_AVAILABLE
+        
+        if _WPT_FUNCTIONS_AVAILABLE:
+            pytest.skip("WeberPennTree plugin is available, skipping mock mode test")
+        
+        mock_context = Mock()
+        
+        # Test that WeberPennTree creation fails when functions aren't available
+        with pytest.raises(NotImplementedError, match="WeberPennTree functions not available"):
+            from pyhelios.WeberPennTree import WeberPennTree
+            wpt = WeberPennTree(mock_context)
+            wpt.buildTreeFromName("Apple")

@@ -18,10 +18,12 @@ from .plugins.registry import get_plugin_registry, graceful_plugin_fallback
 from .validation.plugins import validate_wpt_parameters
 from .validation.datatypes import validate_vec3
 from .validation.core import validate_positive_value
+from .validation.exceptions import ValidationError
 from .assets import get_asset_manager
 from .validation.plugin_decorators import (
     validate_tree_uuid_params, validate_recursion_params, validate_trunk_segment_params,
-    validate_branch_segment_params, validate_leaf_subdivisions_params
+    validate_branch_segment_params, validate_leaf_subdivisions_params,
+    validate_xml_file_params
 )
 
 
@@ -197,6 +199,9 @@ class WeberPennTree:
                 f"Check plugin status with context.print_plugin_status()"
             )
         
+        # DEBUG: Log the tree type being requested
+        tree_name = wpt_type.value if isinstance(wpt_type, WPTType) else str(wpt_type)
+        
         # Use working directory context manager during tree building to access assets
         with _weberpenntree_working_directory():
             # Use scale-aware function if scale is not 1.0, otherwise use regular function
@@ -252,6 +257,125 @@ class WeberPennTree:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
         wpt_wrapper.setLeafSubdivisions(self.wpt, leaf_segs_x, leaf_segs_y)
+
+    @validate_xml_file_params
+    def loadXML(self, filename: str) -> None:
+        """
+        Load a WeberPennTree XML file.
+        
+        This method loads an XML file containing tree parameters for the WeberPennTree
+        plugin. The XML file should contain tree definitions that can be used with
+        the buildTree method.
+        
+        Args:
+            filename (str): Path to the XML file to load. The path can be either
+                          absolute or relative to the WeberPennTree working directory.
+                          
+        Raises:
+            RuntimeError: If WeberPennTree is not properly initialized.
+            TypeError: If filename is not a string.
+            ValueError: If filename is empty or None.
+            FileNotFoundError: If the XML file cannot be found.
+            ValidationError: If the file path is invalid or has wrong extension.
+            RuntimeError: If there are issues loading the XML file.
+            
+        Note:
+            This method uses the _weberpenntree_working_directory context manager to
+            ensure proper asset access during XML loading.
+        """
+        # Validate filename parameter using the existing validation framework
+        from .validation.files import validate_file_path
+        
+        # Check if WeberPennTree is properly initialized
+        if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
+            raise RuntimeError(
+                f"WeberPennTree is not properly initialized. "
+                f"This may indicate that the weberpenntree plugin is not available. "
+                f"Check plugin status with context.print_plugin_status()"
+            )
+        
+        # Validate file path and extension using the validation framework
+        # Note: We don't require file existence here since the C++ code will handle
+        # relative paths within the working directory context
+        try:
+            # First validate the basic filename format and extension
+            from .validation.plugins import validate_filename
+            validate_filename(filename, "filename", "loadXML", allowed_extensions=['.xml'])
+        except Exception as e:
+            # Re-raise validation errors with more context
+            from .validation.exceptions import ValidationError
+            if isinstance(e, ValidationError):
+                raise
+            else:
+                from .validation.exceptions import create_validation_error
+                raise create_validation_error(
+                    f"Invalid filename parameter: {str(e)}",
+                    param_name="filename",
+                    function_name="loadXML",
+                    expected_type="valid XML filename",
+                    actual_value=filename,
+                    suggestion="Provide a valid filename ending with .xml extension."
+                ) from e
+        
+        # Use working directory context manager during XML loading to access assets
+        with _weberpenntree_working_directory():
+            try:
+                wpt_wrapper.loadWeberPennTreeXML(self.wpt, filename)
+            except Exception as e:
+                # Re-raise with more context about the operation
+                raise RuntimeError(f"Failed to load XML file '{filename}': {str(e)}") from e
+    
+    def buildTreeFromName(self, tree_name: str, origin: vec3 = vec3(0, 0, 0), scale: float = 1) -> int:
+        """
+        Build a tree using a custom tree name (not limited to WPTType enum).
+        
+        This method allows building trees with custom names that were loaded
+        from XML files, bypassing the WPTType enum restriction.
+        
+        Args:
+            tree_name (str): Name of the tree type to build (from loaded XML)
+            origin (vec3): Origin position for the tree
+            scale (float): Scale factor for the tree
+            
+        Returns:
+            int: Tree ID of the created tree
+            
+        Raises:
+            RuntimeError: If WeberPennTree is not properly initialized.
+            ValueError: If tree_name is not a valid string.
+        """
+        # Validate inputs
+        if not isinstance(tree_name, str) or not tree_name.strip():
+            raise ValueError(f"tree_name must be a non-empty string, got: {tree_name}")
+        
+        if origin is None:
+            from .validation.exceptions import create_validation_error
+            raise create_validation_error(
+                "origin parameter cannot be None",
+                param_name="origin",
+                function_name="buildTreeFromName",
+                expected_type="vec3",
+                actual_value=None,
+                suggestion="Provide a vec3 object for origin parameter."
+            )
+        
+        validate_vec3(origin, "origin", "buildTreeFromName")
+        validate_positive_value(scale, "scale", "buildTreeFromName")
+        
+        if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
+            raise RuntimeError(
+                f"WeberPennTree is not properly initialized. "
+                f"This may indicate that the weberpenntree plugin is not available. "
+                f"Check plugin status with context.print_plugin_status()"
+            )
+        
+        # Use working directory context manager during tree building to access assets
+        with _weberpenntree_working_directory():
+            # Use scale-aware function if scale is not 1.0, otherwise use regular function
+            if scale != 1.0:
+                return wpt_wrapper.buildTreeWithScale(self.wpt, tree_name, origin.to_list(), scale)
+            else:
+                return wpt_wrapper.buildTree(self.wpt, tree_name, origin.to_list())
 
     
 

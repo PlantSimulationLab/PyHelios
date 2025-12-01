@@ -6,6 +6,7 @@
 #include "Context.h"
 #include <string>
 #include <exception>
+#include <fstream>
 
 #ifdef WEBERPENNTREE_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_weberpenntree.h"
@@ -209,6 +210,59 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (WeberPennTree::setLeafSubdivisions): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (WeberPennTree::setLeafSubdivisions): Unknown error setting leaf subdivisions.");
+        }
+    }
+    
+    PYHELIOS_API void loadWeberPennTreeXML(WeberPennTree* wpt, const char* filename) {
+        try {
+            clearError();
+            
+            // Validate filename parameter
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (WeberPennTree::loadXML): filename parameter is null");
+                return;
+            }
+            
+            if (strlen(filename) == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (WeberPennTree::loadXML): filename parameter is empty");
+                return;
+            }
+            
+            // Check for potentially problematic characters in filename
+            std::string filename_str(filename);
+            if (filename_str.find('<') != std::string::npos ||
+                filename_str.find('>') != std::string::npos ||
+                filename_str.find('"') != std::string::npos ||
+                filename_str.find('|') != std::string::npos ||
+                filename_str.find('?') != std::string::npos ||
+                filename_str.find('*') != std::string::npos) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                        "ERROR (WeberPennTree::loadXML): filename contains invalid characters");
+                return;
+            }
+            
+            // Check file extension
+            if (filename_str.length() < 4 ||
+                filename_str.substr(filename_str.length() - 4) != ".xml") {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                        "ERROR (WeberPennTree::loadXML): filename must have .xml extension");
+                return;
+            }
+            
+            wpt->loadXML(filename);
+            
+        } catch (const std::ifstream::failure& e) {
+            setError(PYHELIOS_ERROR_FILE_IO,
+                    std::string("ERROR (WeberPennTree::loadXML): File I/O error: ") + e.what());
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME,
+                    std::string("ERROR (WeberPennTree::loadXML): Runtime error: ") + e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME,
+                    std::string("ERROR (WeberPennTree::loadXML): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN,
+                    "ERROR (WeberPennTree::loadXML): Unknown error loading XML file.");
         }
     }
     
