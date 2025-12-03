@@ -779,7 +779,7 @@ PYHELIOS_API const char* autoCalibrateCameraImage(RadiationModel* radiation_mode
  * @param lookat_x Lookat point X coordinate
  * @param lookat_y Lookat point Y coordinate
  * @param lookat_z Lookat point Z coordinate
- * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+ * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
  * @param antialiasing_samples Number of antialiasing samples
  */
 PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const char* camera_label,
@@ -800,7 +800,7 @@ PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const 
  * @param radius Spherical coordinate radius
  * @param elevation Spherical coordinate elevation
  * @param azimuth Spherical coordinate azimuth
- * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+ * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
  * @param antialiasing_samples Number of antialiasing samples
  */
 PYHELIOS_API void addRadiationCameraSpherical(RadiationModel* radiation_model, const char* camera_label,
@@ -932,6 +932,80 @@ PYHELIOS_API const float* getCameraPixelData(RadiationModel* radiation_model, co
  */
 PYHELIOS_API void setCameraPixelData(RadiationModel* radiation_model, const char* camera_label,
                                      const char* band_label, const float* pixel_data, size_t size);
+
+//=========================================================================
+// Camera Library Functions (v1.3.58+)
+//=========================================================================
+
+/**
+ * @brief Add radiation camera loading all properties from camera library
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label for the camera instance
+ * @param library_camera_label Label of camera in library (e.g., "Canon_20D", "iPhone11")
+ * @param position_x Camera position X coordinate
+ * @param position_y Camera position Y coordinate
+ * @param position_z Camera position Z coordinate
+ * @param lookat_x Lookat point X coordinate
+ * @param lookat_y Lookat point Y coordinate
+ * @param lookat_z Lookat point Z coordinate
+ * @param antialiasing_samples Number of antialiasing samples
+ */
+PYHELIOS_API void addRadiationCameraFromLibrary(RadiationModel* radiation_model,
+                                                 const char* camera_label,
+                                                 const char* library_camera_label,
+                                                 float position_x, float position_y, float position_z,
+                                                 float lookat_x, float lookat_y, float lookat_z,
+                                                 unsigned int antialiasing_samples);
+
+/**
+ * @brief Add radiation camera from library with custom band labels
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label for the camera instance
+ * @param library_camera_label Label of camera in library
+ * @param position_x Camera position X coordinate
+ * @param position_y Camera position Y coordinate
+ * @param position_z Camera position Z coordinate
+ * @param lookat_x Lookat point X coordinate
+ * @param lookat_y Lookat point Y coordinate
+ * @param lookat_z Lookat point Z coordinate
+ * @param antialiasing_samples Number of antialiasing samples
+ * @param band_labels Custom band labels array
+ * @param band_count Number of custom band labels
+ */
+PYHELIOS_API void addRadiationCameraFromLibraryWithBands(RadiationModel* radiation_model,
+                                                           const char* camera_label,
+                                                           const char* library_camera_label,
+                                                           float position_x, float position_y, float position_z,
+                                                           float lookat_x, float lookat_y, float lookat_z,
+                                                           unsigned int antialiasing_samples,
+                                                           const char** band_labels, size_t band_count);
+
+/**
+ * @brief Update camera parameters for an existing camera
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label for the camera to update
+ * @param camera_properties Camera properties array (9 floats; v1.3.58+)
+ */
+PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
+                                         const char* camera_label,
+                                         const float* camera_properties);
+
+/**
+ * @brief Enable automatic JSON metadata file writing for a camera
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label for the camera to enable metadata for
+ */
+PYHELIOS_API void enableCameraMetadata(RadiationModel* radiation_model,
+                                       const char* camera_label);
+
+/**
+ * @brief Enable automatic JSON metadata file writing for multiple cameras
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_labels Array of camera labels
+ * @param count Number of camera labels
+ */
+PYHELIOS_API void enableCameraMetadataMultiple(RadiationModel* radiation_model,
+                                                const char** camera_labels, size_t count);
 
 #ifdef __cplusplus
 }

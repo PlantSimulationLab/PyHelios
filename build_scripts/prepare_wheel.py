@@ -204,7 +204,7 @@ def copy_assets_for_packaging(project_root):
         'leaves': ['*.xml', '*.obj', '*.ply'],
         'wood': ['*.xml', '*.obj', '*.ply'],
         'xml': ['*.xml'],
-        'spectral_data': ['*.csv', '*.txt', '*.dat'],
+        'spectral_data': ['*.csv', '*.txt', '*.dat', '*.xml'],
         'data': ['*.csv', '*.txt', '*.dat', '*.json'],
         'camera_light_models': ['*.xml', '*.json']
     }
@@ -215,6 +215,7 @@ def copy_assets_for_packaging(project_root):
         'weberpenntree': ['leaves', 'wood', 'xml'],
         'visualizer': ['textures', 'shaders', 'fonts'],
         'plantarchitecture': ['assets/textures', 'assets/obj'],
+        'leafoptics': ['spectral_data'],
         # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
     }
 

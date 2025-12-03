@@ -4,24 +4,17 @@
   <navindex>
     <!-- Main navigation -->
     <tab type="mainpage" visible="yes" title="Home"/>
-    
-    <!-- Getting Started Section -->
-    <tab type="usergroup" visible="yes" url="@ref GettingStarted" title="Getting Started" intro="">
-      <tab type="user" visible="yes" url="@ref Installation" title="Installation"/>
-      <tab type="user" visible="yes" url="@ref QuickStart" title="Quick Start"/>
-      <tab type="user" visible="yes" url="@ref CrossPlatform" title="Cross-Platform Usage"/>
-      <tab type="user" visible="yes" url="@ref PluginSystem" title="Plugin System"/>
-    </tab>
-    
+
     <!-- User's Guide Section -->
-    <tab type="usergroup" visible="yes" url="@ref UserGuide" title="User Guide" intro="">
-      <tab type="user" visible="yes" url="@ref Overview" title="Core Concepts"/>
-      <tab type="user" visible="yes" url="@ref API" title="API Reference"/>
+    <tab type="usergroup" visible="yes" url="@ref Introduction" title="User's Guide" intro="">
+      <tab type="user" visible="yes" url="@ref Introduction" title="Introduction"/>
+      <tab type="mainpage" visible="yes" title="Install and Set-up"/>
+      <tab type="user" visible="yes" url="@ref API" title="User/API Guide"/>
       <tab type="user" visible="yes" url="@ref IO" title="File I/O"/>
     </tab>
     
     <!-- Plugin Documentation Section -->
-    <tab type="usergroup" visible="yes" url="@ref Plugins" title="Plugins" intro="">
+    <tab type="usergroup" visible="yes" url="@ref PluginSystem" title="Plugins" intro="">
       <!-- Currently Implemented Plugins (Alphabetized) -->
       <tab type="user" visible="yes" url="@ref BoundaryLayerConductanceDoc" title="Boundary Layer Conductance"/>
       <tab type="user" visible="yes" url="@ref EnergyBalanceDoc" title="Energy Balance Model"/>

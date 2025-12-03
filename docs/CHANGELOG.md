@@ -1,5 +1,26 @@
 # Changelog
 
+# [v0.1.10] 2025-12-02
+
+🚨++ New Plug-in Integrated ++ 🚨
+- Leaf Optics plug-in integrated
+
+- Updated helios-core to v1.3.58
+
+## Context
+- Added complete materials system with `addMaterial()`, `setMaterialColor()`, `setMaterialTexture()`, and material assignment methods
+- Materials enable efficient memory usage by sharing visual properties across multiple primitives
+
+## Radiation Model
+- Extended camera properties with lens focal length, sensor dimensions, shutter speed, and metadata fields
+- Added camera library support with `addRadiationCameraFromLibrary()` for preconfigured camera models
+- Added `updateCameraParameters()` and `enableCameraMetadata()` for camera management
+- Camera properties array expanded from 6 to 9 floats (added lens_focal_length, sensor_width_mm, shutter_speed)
+
+## Solar Position
+- Integrated SSolar-GOA spectral solar model with `calculateDirectSolarSpectrum()`, `calculateDiffuseSolarSpectrum()`, and `calculateGlobalSolarSpectrum()`
+- Added SolarPosition plugin asset management for SSolar-GOA data files
+
 # [v0.1.9] 2025-11-27
 
 - Updated helios-core to v1.3.57
@@ -10,14 +31,14 @@
 - Added `Context.deletePrimitive()` and `Context.deleteObject()` methods
 - Added `Context.writePrimitiveData()` method to write primitive data to a file
 
- ## Radiation Model
-  - Added new radiation source types: `addRectangleRadiationSource()`, `addDiskRadiationSource()`
-  - Added source management: `setSourcePosition()`, `getSourcePosition()`, `deleteRadiationSource()`
-  - Added spectrum manipulation: `setSourceSpectrum()`, `integrateSpectrum()`, `scaleSpectrum()`, `blendSpectra()`
-  - Added diffuse radiation support: `setDiffuseRadiationExtinctionCoeff()`, `setDiffuseSpectrum()`, `getDiffuseFlux()`
-  - Added camera system: position, lookat, orientation, spectral response, and pixel data methods
-  - Added utility methods: `doesBandExist()`, `getSkyEnergy()`, `calculateGtheta()`, `enforcePeriodicBoundary()`
-  - Extended `copyRadiationBand()` to support optional wavelength range parameters
+## Radiation Model
+- Added new radiation source types: `addRectangleRadiationSource()`, `addDiskRadiationSource()`
+- Added source management: `setSourcePosition()`, `getSourcePosition()`, `deleteRadiationSource()`
+- Added spectrum manipulation: `setSourceSpectrum()`, `integrateSpectrum()`, `scaleSpectrum()`, `blendSpectra()`
+- Added diffuse radiation support: `setDiffuseRadiationExtinctionCoeff()`, `setDiffuseSpectrum()`, `getDiffuseFlux()`
+- Added camera system: position, lookat, orientation, spectral response, and pixel data methods
+- Added utility methods: `doesBandExist()`, `getSkyEnergy()`, `calculateGtheta()`, `enforcePeriodicBoundary()`
+- Extended `copyRadiationBand()` to support optional wavelength range parameters
 
 # [v0.1.8] 2025-10-15
 

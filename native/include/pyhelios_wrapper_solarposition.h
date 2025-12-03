@@ -44,6 +44,11 @@ PYHELIOS_API float calibrateTurbidityFromTimeseries(HeliosSolarPosition* solar_p
 PYHELIOS_API void enableCloudCalibration(HeliosSolarPosition* solar_pos, const char* timeseries_label);
 PYHELIOS_API void disableCloudCalibration(HeliosSolarPosition* solar_pos);
 
+// SSolar-GOA Spectral Solar Model Methods
+PYHELIOS_API void calculateDirectSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm);
+PYHELIOS_API void calculateDiffuseSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm);
+PYHELIOS_API void calculateGlobalSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm);
+
 // Note: Additional utility functions can be added here as needed
 
 #endif // SOLARPOSITION_PLUGIN_AVAILABLE

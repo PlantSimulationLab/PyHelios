@@ -75,9 +75,19 @@ try:
     
     helios_lib.disableCloudCalibration.argtypes = [ctypes.POINTER(USolarPosition)]
     helios_lib.disableCloudCalibration.restype = None
-    
+
+    # SSolar-GOA Spectral Solar Model Methods
+    helios_lib.calculateDirectSolarSpectrum.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.calculateDirectSolarSpectrum.restype = None
+
+    helios_lib.calculateDiffuseSolarSpectrum.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.calculateDiffuseSolarSpectrum.restype = None
+
+    helios_lib.calculateGlobalSolarSpectrum.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.calculateGlobalSolarSpectrum.restype = None
+
     # Note: Additional utility functions can be added here as needed
-    
+
     _SOLARPOSITION_FUNCTIONS_AVAILABLE = True
     
 except AttributeError:
@@ -109,6 +119,9 @@ if _SOLARPOSITION_FUNCTIONS_AVAILABLE:
     helios_lib.calibrateTurbidityFromTimeseries.errcheck = _check_error
     helios_lib.enableCloudCalibration.errcheck = _check_error
     helios_lib.disableCloudCalibration.errcheck = _check_error
+    helios_lib.calculateDirectSolarSpectrum.errcheck = _check_error
+    helios_lib.calculateDiffuseSolarSpectrum.errcheck = _check_error
+    helios_lib.calculateGlobalSolarSpectrum.errcheck = _check_error
 
 
 # Wrapper functions
@@ -277,8 +290,72 @@ def disableCloudCalibration(solar_pos: ctypes.POINTER(USolarPosition)) -> None:
     """Disable cloud calibration"""
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
-    
+
     helios_lib.disableCloudCalibration(solar_pos)
+
+
+# SSolar-GOA Spectral Solar Model Methods
+def calculateDirectSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
+    """
+    Calculate direct beam solar spectrum using SSolar-GOA model and store in Context global data.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        label: Label for storing spectral data in Context global data
+        resolution_nm: Wavelength resolution in nm (default: 1.0, valid range: 1.0-2300.0)
+
+    Note:
+        - Computes spectral irradiance normal to sun direction from 300-2600 nm
+        - Stores result as std::vector<helios::vec2> (wavelength_nm, W/m²/nm) in Context global data
+        - Uses SSolar-GOA model (Cachorro et al. 2022)
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    label_encoded = label.encode('utf-8')
+    helios_lib.calculateDirectSolarSpectrum(solar_pos, label_encoded, resolution_nm)
+
+
+def calculateDiffuseSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
+    """
+    Calculate diffuse solar spectrum using SSolar-GOA model and store in Context global data.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        label: Label for storing spectral data in Context global data
+        resolution_nm: Wavelength resolution in nm (default: 1.0, valid range: 1.0-2300.0)
+
+    Note:
+        - Computes diffuse spectral irradiance on horizontal surface from 300-2600 nm
+        - Stores result as std::vector<helios::vec2> (wavelength_nm, W/m²/nm) in Context global data
+        - Uses SSolar-GOA model (Cachorro et al. 2022)
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    label_encoded = label.encode('utf-8')
+    helios_lib.calculateDiffuseSolarSpectrum(solar_pos, label_encoded, resolution_nm)
+
+
+def calculateGlobalSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
+    """
+    Calculate global (total) solar spectrum using SSolar-GOA model and store in Context global data.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        label: Label for storing spectral data in Context global data
+        resolution_nm: Wavelength resolution in nm (default: 1.0, valid range: 1.0-2300.0)
+
+    Note:
+        - Computes global spectral irradiance on horizontal surface from 300-2600 nm
+        - Stores result as std::vector<helios::vec2> (wavelength_nm, W/m²/nm) in Context global data
+        - Uses SSolar-GOA model (Cachorro et al. 2022)
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    label_encoded = label.encode('utf-8')
+    helios_lib.calculateGlobalSolarSpectrum(solar_pos, label_encoded, resolution_nm)
 
 
 # Note: Additional utility functions can be added here as needed

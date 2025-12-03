@@ -442,10 +442,10 @@ class SolarPosition:
     def disableCloudCalibration(self):
         """
         Disable cloud calibration.
-        
+
         Raises:
             SolarPositionError: If operation fails
-            
+
         Example:
             >>> solar.disableCloudCalibration()
         """
@@ -453,9 +453,140 @@ class SolarPosition:
             solar_wrapper.disableCloudCalibration(self._solar_pos)
         except Exception as e:
             raise SolarPositionError(f"Failed to disable cloud calibration: {e}")
-    
-    # Note: Additional utility functions can be added here as needed
-    
+
+    # SSolar-GOA Spectral Solar Model Methods
+    def calculateDirectSolarSpectrum(self, label: str, resolution_nm: float = 1.0):
+        """
+        Calculate direct beam solar spectrum using SSolar-GOA model.
+
+        Computes the spectral irradiance of direct beam solar radiation across
+        300-2600 nm wavelength range using the SSolar-GOA (Global Ozone and
+        Atmospheric) spectral model. Results are stored in Context global data
+        as a vector of (wavelength, irradiance) pairs.
+
+        Args:
+            label: Label to store the spectrum data in Context global data
+            resolution_nm: Wavelength resolution in nanometers (1.0-2300.0).
+                          Lower values give finer spectral resolution but require
+                          more computation. Default is 1.0 nm.
+
+        Raises:
+            ValueError: If label is empty or resolution is out of valid range
+            SolarPositionError: If calculation fails
+
+        Note:
+            - Requires Context time/date to be set for accurate solar position
+            - Atmospheric parameters from Context location are used
+            - Results accessible via context.getGlobalData(label)
+            - SSolar-GOA model accounts for atmospheric absorption and scattering
+
+        Example:
+            >>> with Context() as context:
+            ...     context.setDate(2023, 6, 21)
+            ...     context.setTime(12, 0)
+            ...     with SolarPosition(context) as solar:
+            ...         solar.calculateDirectSolarSpectrum("direct_spectrum", resolution_nm=5.0)
+            ...         spectrum = context.getGlobalData("direct_spectrum")
+            ...         # spectrum is list of vec2(wavelength_nm, irradiance_W_m2_nm)
+        """
+        if not label:
+            raise ValueError("Label cannot be empty")
+        if resolution_nm < 1.0 or resolution_nm > 2300.0:
+            raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
+
+        try:
+            solar_wrapper.calculateDirectSolarSpectrum(self._solar_pos, label, resolution_nm)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate direct solar spectrum: {e}")
+
+    def calculateDiffuseSolarSpectrum(self, label: str, resolution_nm: float = 1.0):
+        """
+        Calculate diffuse solar spectrum using SSolar-GOA model.
+
+        Computes the spectral irradiance of diffuse (scattered) solar radiation
+        across 300-2600 nm wavelength range using the SSolar-GOA model. Results
+        are stored in Context global data as a vector of (wavelength, irradiance) pairs.
+
+        Args:
+            label: Label to store the spectrum data in Context global data
+            resolution_nm: Wavelength resolution in nanometers (1.0-2300.0).
+                          Lower values give finer spectral resolution but require
+                          more computation. Default is 1.0 nm.
+
+        Raises:
+            ValueError: If label is empty or resolution is out of valid range
+            SolarPositionError: If calculation fails
+
+        Note:
+            - Requires Context time/date to be set for accurate solar position
+            - Atmospheric parameters from Context location are used
+            - Results accessible via context.getGlobalData(label)
+            - Diffuse radiation results from atmospheric scattering (Rayleigh, aerosol)
+
+        Example:
+            >>> with Context() as context:
+            ...     context.setDate(2023, 6, 21)
+            ...     context.setTime(12, 0)
+            ...     with SolarPosition(context) as solar:
+            ...         solar.calculateDiffuseSolarSpectrum("diffuse_spectrum", resolution_nm=5.0)
+            ...         spectrum = context.getGlobalData("diffuse_spectrum")
+            ...         # spectrum is list of vec2(wavelength_nm, irradiance_W_m2_nm)
+        """
+        if not label:
+            raise ValueError("Label cannot be empty")
+        if resolution_nm < 1.0 or resolution_nm > 2300.0:
+            raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
+
+        try:
+            solar_wrapper.calculateDiffuseSolarSpectrum(self._solar_pos, label, resolution_nm)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate diffuse solar spectrum: {e}")
+
+    def calculateGlobalSolarSpectrum(self, label: str, resolution_nm: float = 1.0):
+        """
+        Calculate global (total) solar spectrum using SSolar-GOA model.
+
+        Computes the spectral irradiance of total solar radiation (direct + diffuse)
+        across 300-2600 nm wavelength range using the SSolar-GOA model. Results
+        are stored in Context global data as a vector of (wavelength, irradiance) pairs.
+
+        Args:
+            label: Label to store the spectrum data in Context global data
+            resolution_nm: Wavelength resolution in nanometers (1.0-2300.0).
+                          Lower values give finer spectral resolution but require
+                          more computation. Default is 1.0 nm.
+
+        Raises:
+            ValueError: If label is empty or resolution is out of valid range
+            SolarPositionError: If calculation fails
+
+        Note:
+            - Requires Context time/date to be set for accurate solar position
+            - Atmospheric parameters from Context location are used
+            - Results accessible via context.getGlobalData(label)
+            - Global spectrum = direct beam + diffuse (sky) radiation
+            - Most useful for plant canopy modeling and photosynthesis calculations
+
+        Example:
+            >>> with Context() as context:
+            ...     context.setDate(2023, 6, 21)
+            ...     context.setTime(12, 0)
+            ...     with SolarPosition(context) as solar:
+            ...         solar.calculateGlobalSolarSpectrum("global_spectrum", resolution_nm=10.0)
+            ...         spectrum = context.getGlobalData("global_spectrum")
+            ...         # spectrum is list of vec2(wavelength_nm, irradiance_W_m2_nm)
+            ...         total_irradiance = sum([s.y for s in spectrum]) * 10.0  # Integrate
+        """
+        if not label:
+            raise ValueError("Label cannot be empty")
+        if resolution_nm < 1.0 or resolution_nm > 2300.0:
+            raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
+
+        try:
+            solar_wrapper.calculateGlobalSolarSpectrum(self._solar_pos, label, resolution_nm)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate global solar spectrum: {e}")
+
     def is_available(self) -> bool:
         """
         Check if SolarPosition is available in current build.

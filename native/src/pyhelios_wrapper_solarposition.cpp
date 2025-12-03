@@ -517,6 +517,98 @@ void disableCloudCalibration(HeliosSolarPosition* solar_pos) {
     }
 }
 
+// SSolar-GOA Spectral Solar Model Methods
+
+void calculateDirectSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return;
+        }
+        if (!label) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label pointer is null");
+            return;
+        }
+
+        // Validate resolution parameter
+        if (resolution_nm < 1.0f || resolution_nm > 2300.0f) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Wavelength resolution must be between 1 and 2300 nm");
+            return;
+        }
+
+        SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
+        sp->calculateDirectSolarSpectrum(std::string(label), resolution_nm);
+
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (calculateDirectSolarSpectrum): ") + e.what());
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (calculateDirectSolarSpectrum): Unknown error");
+    }
+}
+
+void calculateDiffuseSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return;
+        }
+        if (!label) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label pointer is null");
+            return;
+        }
+
+        // Validate resolution parameter
+        if (resolution_nm < 1.0f || resolution_nm > 2300.0f) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Wavelength resolution must be between 1 and 2300 nm");
+            return;
+        }
+
+        SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
+        sp->calculateDiffuseSolarSpectrum(std::string(label), resolution_nm);
+
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (calculateDiffuseSolarSpectrum): ") + e.what());
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (calculateDiffuseSolarSpectrum): Unknown error");
+    }
+}
+
+void calculateGlobalSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return;
+        }
+        if (!label) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label pointer is null");
+            return;
+        }
+
+        // Validate resolution parameter
+        if (resolution_nm < 1.0f || resolution_nm > 2300.0f) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Wavelength resolution must be between 1 and 2300 nm");
+            return;
+        }
+
+        SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
+        sp->calculateGlobalSolarSpectrum(std::string(label), resolution_nm);
+
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (calculateGlobalSolarSpectrum): ") + e.what());
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (calculateGlobalSolarSpectrum): Unknown error");
+    }
+}
+
 // Note: Additional utility functions can be added here as needed
 
 } // extern "C"

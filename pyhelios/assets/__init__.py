@@ -242,6 +242,32 @@ class AssetPathManager:
 
         return None
 
+    def get_solarposition_assets_path(self) -> Optional[str]:
+        """
+        Get the path to SolarPosition plugin assets.
+
+        Returns:
+            Absolute path to solarposition assets directory, or None if not found
+        """
+        # First try packaged assets (for wheel installations)
+        build_path = self._get_helios_build_path()
+        if build_path:
+            solarposition_path = build_path / 'plugins' / 'solarposition'
+            if solarposition_path.exists():
+                return str(solarposition_path)
+
+        # Fallback to helios-core directory (for development)
+        helios_core = self.get_helios_core_path()
+        if helios_core:
+            solarposition_path = helios_core / 'plugins' / 'solarposition'
+            if solarposition_path.exists():
+                return str(solarposition_path)
+
+            if not self._is_wheel_install():
+                logger.warning(f"SolarPosition assets not found at: {solarposition_path}")
+
+        return None
+
     def get_all_asset_paths(self) -> Dict[str, Optional[str]]:
         """
         Get all available plugin asset paths.
@@ -253,6 +279,7 @@ class AssetPathManager:
             'weberpenntree': self.get_weberpenntree_assets_path(),
             'visualizer': self.get_visualizer_assets_path(),
             'radiation': self.get_radiation_assets_path(),
+            'solarposition': self.get_solarposition_assets_path(),
         }
 
     def set_environment_variables(self) -> None:
@@ -353,7 +380,8 @@ class AssetPathManager:
         subdirs_map = {
             'weberpenntree': ['leaves', 'wood', 'xml'],
             'visualizer': ['shaders', 'textures', 'fonts'],
-            'radiation': ['spectral_data']
+            'radiation': ['spectral_data'],
+            'solarposition': ['ssolar_goa']
         }
         return subdirs_map.get(plugin_name, [])
 
@@ -429,6 +457,11 @@ def get_radiation_assets() -> Optional[str]:
     return get_asset_manager().get_radiation_assets_path()
 
 
+def get_solarposition_assets() -> Optional[str]:
+    """Get the path to SolarPosition plugin assets."""
+    return get_asset_manager().get_solarposition_assets_path()
+
+
 def get_all_asset_paths() -> Dict[str, Optional[str]]:
     """Get all available plugin asset paths."""
     return get_asset_manager().get_all_asset_paths()
@@ -475,7 +508,8 @@ def print_asset_status():
     print("Environment Variables:")
     print("-" * 21)
     env_vars = ['HELIOS_ASSET_ROOT', 'HELIOS_WEBERPENNTREE_PATH',
-                'HELIOS_VISUALIZER_PATH', 'HELIOS_RADIATION_PATH']
+                'HELIOS_VISUALIZER_PATH', 'HELIOS_RADIATION_PATH',
+                'HELIOS_SOLARPOSITION_PATH']
 
     for var in env_vars:
         value = os.environ.get(var, 'Not set')

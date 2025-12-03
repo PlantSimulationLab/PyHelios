@@ -51,11 +51,12 @@ except (AttributeError, ImportError):
     WPTType = None
 
 try:
-    from .RadiationModel import RadiationModel, RadiationModelError, CameraProperties
+    from .RadiationModel import RadiationModel, RadiationModelError, CameraProperties, CameraMetadata
 except (AttributeError, ImportError):
     # RadiationModel functions not available in current library
     RadiationModel = None
     CameraProperties = None
+    CameraMetadata = None
     RadiationModelError = None
 
 try:
@@ -122,6 +123,14 @@ except (AttributeError, ImportError):
     # PlantArchitecture functions not available in current library
     PlantArchitecture = None
     PlantArchitectureError = None
+
+try:
+    from .LeafOptics import LeafOptics, LeafOpticsError, LeafOpticsProperties
+except (AttributeError, ImportError):
+    # LeafOptics functions not available in current library
+    LeafOptics = None
+    LeafOpticsError = None
+    LeafOpticsProperties = None
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
 from .exceptions import (

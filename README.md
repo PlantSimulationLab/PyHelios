@@ -7,7 +7,7 @@
   <img src="https://raw.githubusercontent.com/PlantSimulationLab/PyHelios/master/docs/images/PyHelios_logo_whiteborder.png"  alt="" width="300" />
 </div>
 
-# PyHelios
+# Getting Started {#GettingStarted}
 
 Cross-platform Python bindings for [Helios](https://github.com/PlantSimulationLab/Helios) 3D plant simulation library.
 
@@ -39,11 +39,11 @@ PyHelios will gracefully handle GPU features - if you don't have CUDA-capable ha
 
 > **Note for Intel Mac Users**: Due to GitHub Actions infrastructure limitations, pre-built wheels are only available for Apple Silicon Macs. Intel Mac users must build PyHelios from source following the [macOS build instructions](#macos) below.
 
-### Build from Source
+### Build from Source {#build-from-source}
 
 If you need to customize plugins or build from source:
 
-#### Windows
+#### Windows {#windows}
 
 **Prerequisites:**
 - Visual Studio 2019+ or Build Tools for Visual Studio
@@ -61,7 +61,7 @@ cd PyHelios/
 pip install -e .
 ```
 
-#### macOS
+#### macOS {#macos}
 
 **Prerequisites:**
 - Xcode command line tools
@@ -83,7 +83,7 @@ source helios-core/utilities/dependencies.sh
 pip install -e .
 ```
 
-#### Linux (Ubuntu/Debian)
+#### Linux (Ubuntu/Debian) {#linux}
 
 **Prerequisites:**
 - Build essentials

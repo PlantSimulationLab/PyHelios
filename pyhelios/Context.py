@@ -6,7 +6,7 @@ from enum import Enum
 import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
-from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, PrimitiveType
+from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
 from .validation.geometry import (
@@ -750,6 +750,944 @@ class Context:
             return context_wrapper.addBox(
                 self.context, center.to_list(), size.to_list(), subdiv.to_list()
             )
+
+    def addDisk(self, center: vec3 = vec3(0, 0, 0), size: vec2 = vec2(1, 1),
+                ndivs: Union[int, int2] = 20, rotation: Optional[SphericalCoord] = None,
+                color: Optional[Union[RGBcolor, RGBAcolor]] = None) -> List[int]:
+        """
+        Add a disk (circular or elliptical surface) to the context.
+
+        A disk is a flat circular or elliptical surface tessellated into
+        triangular faces. Supports both uniform radial subdivisions and
+        separate radial/azimuthal subdivisions for finer control.
+
+        Args:
+            center: 3D coordinates of disk center (default: origin)
+            size: Semi-major and semi-minor radii of the disk (default: 1x1 circle)
+            ndivs: Number of radial divisions (int) or [radial, azimuthal] divisions (int2)
+                   (default: 20). Higher values create smoother circles but more triangles.
+            rotation: Orientation of the disk (default: horizontal, normal = +z)
+            color: Color of the disk (default: white). Can be RGBcolor or RGBAcolor for transparency.
+
+        Returns:
+            List of UUIDs for all triangles created in the disk
+
+        Example:
+            >>> context = Context()
+            >>> # Create a red disk at (0, 0, 1) with radius 0.5
+            >>> disk_uuids = context.addDisk(
+            ...     center=vec3(0, 0, 1),
+            ...     size=vec2(0.5, 0.5),
+            ...     ndivs=30,
+            ...     color=RGBcolor(1, 0, 0)
+            ... )
+            >>> print(f"Created disk with {len(disk_uuids)} triangles")
+            >>>
+            >>> # Create a semi-transparent blue elliptical disk
+            >>> disk_uuids = context.addDisk(
+            ...     center=vec3(0, 0, 2),
+            ...     size=vec2(1.0, 0.5),
+            ...     ndivs=40,
+            ...     rotation=SphericalCoord(1, 0.5, 0),
+            ...     color=RGBAcolor(0, 0, 1, 0.5)
+            ... )
+            >>>
+            >>> # Create disk with polar/radial subdivisions for finer control
+            >>> disk_uuids = context.addDisk(
+            ...     center=vec3(0, 0, 3),
+            ...     size=vec2(1, 1),
+            ...     ndivs=int2(10, 20),  # 10 radial, 20 azimuthal divisions
+            ...     color=RGBcolor(0, 1, 0)
+            ... )
+        """
+        self._check_context_available()
+
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(size, vec2):
+            raise ValueError(f"Size must be a vec2, got {type(size).__name__}")
+        if not isinstance(ndivs, (int, int2)):
+            raise ValueError(f"Ndivs must be an int or int2, got {type(ndivs).__name__}")
+        if rotation is not None and not isinstance(rotation, SphericalCoord):
+            raise ValueError(f"Rotation must be a SphericalCoord or None, got {type(rotation).__name__}")
+        if color is not None and not isinstance(color, (RGBcolor, RGBAcolor)):
+            raise ValueError(f"Color must be an RGBcolor, RGBAcolor, or None, got {type(color).__name__}")
+
+        # Parameter value validation
+        if any(s <= 0 for s in size.to_list()):
+            raise ValueError("Disk size must be positive")
+
+        # Validate subdivisions based on type
+        if isinstance(ndivs, int):
+            if ndivs < 3:
+                raise ValueError("Number of divisions must be at least 3")
+        else:  # int2
+            if any(n < 1 for n in ndivs.to_list()):
+                raise ValueError("Radial and angular divisions must be at least 1")
+
+        # Default rotation (horizontal disk, normal pointing +z)
+        if rotation is None:
+            rotation = SphericalCoord(1, 0, 0)
+
+        # CRITICAL: Extract only radius, elevation, azimuth for C++ interface
+        # (rotation.to_list() returns 4 values, but C++ expects 3)
+        rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
+
+        # Dispatch based on ndivs and color types
+        if isinstance(ndivs, int2):
+            # Polar subdivisions variant (supports RGB and RGBA color)
+            if color:
+                if isinstance(color, RGBAcolor):
+                    return context_wrapper.addDiskPolarSubdivisionsRGBA(
+                        self.context, ndivs.to_list(), center.to_list(), size.to_list(),
+                        rotation_list, color.to_list()
+                    )
+                else:
+                    # RGB color
+                    return context_wrapper.addDiskPolarSubdivisions(
+                        self.context, ndivs.to_list(), center.to_list(), size.to_list(),
+                        rotation_list, color.to_list()
+                    )
+            else:
+                # No color - use default white
+                color_list = [1.0, 1.0, 1.0]
+                return context_wrapper.addDiskPolarSubdivisions(
+                    self.context, ndivs.to_list(), center.to_list(), size.to_list(),
+                    rotation_list, color_list
+                )
+        else:
+            # Uniform radial subdivisions
+            if color:
+                if isinstance(color, RGBAcolor):
+                    # RGBA color variant
+                    return context_wrapper.addDiskWithRGBAColor(
+                        self.context, ndivs, center.to_list(), size.to_list(),
+                        rotation_list, color.to_list()
+                    )
+                else:
+                    # RGB color variant
+                    return context_wrapper.addDiskWithColor(
+                        self.context, ndivs, center.to_list(), size.to_list(),
+                        rotation_list, color.to_list()
+                    )
+            else:
+                # No color - use rotation variant
+                return context_wrapper.addDiskWithRotation(
+                    self.context, ndivs, center.to_list(), size.to_list(),
+                    rotation_list
+                )
+
+    def addCone(self, node0: vec3, node1: vec3, radius0: float, radius1: float,
+                ndivs: int = 20, color: Optional[RGBcolor] = None) -> List[int]:
+        """
+        Add a cone (or cylinder/frustum) to the context.
+
+        A cone is a 3D shape connecting two circular cross-sections with
+        potentially different radii. When radii are equal, creates a cylinder.
+        When one radius is zero, creates a true cone.
+
+        Args:
+            node0: 3D coordinates of the base center
+            node1: 3D coordinates of the apex center
+            radius0: Radius at base (node0). Use 0 for pointed end.
+            radius1: Radius at apex (node1). Use 0 for pointed end.
+            ndivs: Number of radial divisions for tessellation (default: 20)
+            color: Color of the cone (default: white)
+
+        Returns:
+            List of UUIDs for all triangles created in the cone
+
+        Example:
+            >>> context = Context()
+            >>> # Create a cylinder (equal radii)
+            >>> cylinder_uuids = context.addCone(
+            ...     node0=vec3(0, 0, 0),
+            ...     node1=vec3(0, 0, 2),
+            ...     radius0=0.5,
+            ...     radius1=0.5,
+            ...     ndivs=20
+            ... )
+            >>>
+            >>> # Create a true cone (one radius = 0)
+            >>> cone_uuids = context.addCone(
+            ...     node0=vec3(1, 0, 0),
+            ...     node1=vec3(1, 0, 1.5),
+            ...     radius0=0.5,
+            ...     radius1=0.0,
+            ...     ndivs=24,
+            ...     color=RGBcolor(1, 0, 0)
+            ... )
+            >>>
+            >>> # Create a frustum (different radii)
+            >>> frustum_uuids = context.addCone(
+            ...     node0=vec3(2, 0, 0),
+            ...     node1=vec3(2, 0, 1),
+            ...     radius0=0.8,
+            ...     radius1=0.4,
+            ...     ndivs=16
+            ... )
+        """
+        self._check_context_available()
+
+        # Parameter type validation
+        if not isinstance(node0, vec3):
+            raise ValueError(f"node0 must be a vec3, got {type(node0).__name__}")
+        if not isinstance(node1, vec3):
+            raise ValueError(f"node1 must be a vec3, got {type(node1).__name__}")
+        if not isinstance(ndivs, int):
+            raise ValueError(f"ndivs must be an int, got {type(ndivs).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
+        # Parameter value validation
+        if radius0 < 0 or radius1 < 0:
+            raise ValueError("Radii must be non-negative")
+        if ndivs < 3:
+            raise ValueError("Number of radial divisions must be at least 3")
+
+        # Dispatch based on color
+        if color:
+            return context_wrapper.addConeWithColor(
+                self.context, ndivs, node0.to_list(), node1.to_list(),
+                radius0, radius1, color.to_list()
+            )
+        else:
+            return context_wrapper.addCone(
+                self.context, ndivs, node0.to_list(), node1.to_list(),
+                radius0, radius1
+            )
+
+    def addSphereObject(self, center: vec3 = vec3(0, 0, 0),
+                       radius: Union[float, vec3] = 1.0, ndivs: int = 20,
+                       color: Optional[RGBcolor] = None,
+                       texturefile: Optional[str] = None) -> int:
+        """
+        Add a spherical or ellipsoidal compound object to the context.
+
+        Creates a sphere or ellipsoid as a compound object with a trackable object ID.
+        Primitives within the object are registered as children of the object.
+
+        Args:
+            center: Center position of sphere/ellipsoid (default: origin)
+            radius: Radius as float (sphere) or vec3 (ellipsoid) (default: 1.0)
+            ndivs: Number of tessellation divisions (default: 20)
+            color: Optional RGB color
+            texturefile: Optional texture image file path
+
+        Returns:
+            Object ID of the created compound object
+
+        Raises:
+            ValueError: If parameters are invalid
+            NotImplementedError: If object-returning functions unavailable
+
+        Examples:
+            >>> # Create a basic sphere at origin
+            >>> obj_id = ctx.addSphereObject()
+
+            >>> # Create a colored sphere
+            >>> obj_id = ctx.addSphereObject(
+            ...     center=vec3(0, 0, 5),
+            ...     radius=2.0,
+            ...     color=RGBcolor(1, 0, 0)
+            ... )
+
+            >>> # Create an ellipsoid (stretched sphere)
+            >>> obj_id = ctx.addSphereObject(
+            ...     center=vec3(10, 0, 0),
+            ...     radius=vec3(2, 1, 1),  # Elongated in x-direction
+            ...     ndivs=30
+            ... )
+        """
+        self._check_context_available()
+
+        # Validate parameters
+        if ndivs < 3:
+            raise ValueError("Number of divisions must be at least 3")
+
+        # Check if radius is scalar (sphere) or vector (ellipsoid)
+        is_ellipsoid = isinstance(radius, vec3)
+
+        # Dispatch based on parameters
+        if is_ellipsoid:
+            # Ellipsoid variants
+            if texturefile:
+                return context_wrapper.addSphereObject_ellipsoid_texture(
+                    self.context, ndivs, center.to_list(), radius.to_list(), texturefile
+                )
+            elif color:
+                return context_wrapper.addSphereObject_ellipsoid_color(
+                    self.context, ndivs, center.to_list(), radius.to_list(), color.to_list()
+                )
+            else:
+                return context_wrapper.addSphereObject_ellipsoid(
+                    self.context, ndivs, center.to_list(), radius.to_list()
+                )
+        else:
+            # Sphere variants (radius is float)
+            if texturefile:
+                return context_wrapper.addSphereObject_texture(
+                    self.context, ndivs, center.to_list(), radius, texturefile
+                )
+            elif color:
+                return context_wrapper.addSphereObject_color(
+                    self.context, ndivs, center.to_list(), radius, color.to_list()
+                )
+            else:
+                return context_wrapper.addSphereObject_basic(
+                    self.context, ndivs, center.to_list(), radius
+                )
+
+    def addTileObject(self, center: vec3 = vec3(0, 0, 0), size: vec2 = vec2(1, 1),
+                     rotation: SphericalCoord = SphericalCoord(1, 0, 0),
+                     subdiv: int2 = int2(1, 1),
+                     color: Optional[RGBcolor] = None,
+                     texturefile: Optional[str] = None,
+                     texture_repeat: Optional[int2] = None) -> int:
+        """
+        Add a tiled patch (subdivided patch) as a compound object to the context.
+
+        Creates a rectangular patch subdivided into a grid of smaller patches,
+        registered as a compound object with a trackable object ID.
+
+        Args:
+            center: Center position of tile (default: origin)
+            size: Size in x and y directions (default: 1x1)
+            rotation: Spherical rotation (default: no rotation)
+            subdiv: Number of subdivisions in x and y (default: 1x1)
+            color: Optional RGB color
+            texturefile: Optional texture image file path
+            texture_repeat: Optional texture repetitions in x and y
+
+        Returns:
+            Object ID of the created compound object
+
+        Raises:
+            ValueError: If parameters are invalid
+            NotImplementedError: If object-returning functions unavailable
+
+        Examples:
+            >>> # Create a basic 2x2 tile
+            >>> obj_id = ctx.addTileObject(
+            ...     center=vec3(0, 0, 0),
+            ...     size=vec2(10, 10),
+            ...     subdiv=int2(2, 2)
+            ... )
+
+            >>> # Create a colored tile with rotation
+            >>> obj_id = ctx.addTileObject(
+            ...     center=vec3(5, 0, 0),
+            ...     size=vec2(10, 5),
+            ...     rotation=SphericalCoord(1, 0, 45),
+            ...     subdiv=int2(4, 2),
+            ...     color=RGBcolor(0, 1, 0)
+            ... )
+        """
+        self._check_context_available()
+
+        # Extract rotation as 3 values (radius, elevation, azimuth)
+        rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
+
+        # Dispatch based on parameters
+        if texture_repeat is not None:
+            if texturefile is None:
+                raise ValueError("texture_repeat requires texturefile")
+            return context_wrapper.addTileObject_texture_repeat(
+                self.context, center.to_list(), size.to_list(), rotation_list,
+                subdiv.to_list(), texturefile, texture_repeat.to_list()
+            )
+        elif texturefile:
+            return context_wrapper.addTileObject_texture(
+                self.context, center.to_list(), size.to_list(), rotation_list,
+                subdiv.to_list(), texturefile
+            )
+        elif color:
+            return context_wrapper.addTileObject_color(
+                self.context, center.to_list(), size.to_list(), rotation_list,
+                subdiv.to_list(), color.to_list()
+            )
+        else:
+            return context_wrapper.addTileObject_basic(
+                self.context, center.to_list(), size.to_list(), rotation_list,
+                subdiv.to_list()
+            )
+
+    def addBoxObject(self, center: vec3 = vec3(0, 0, 0), size: vec3 = vec3(1, 1, 1),
+                    subdiv: int3 = int3(1, 1, 1), color: Optional[RGBcolor] = None,
+                    texturefile: Optional[str] = None, reverse_normals: bool = False) -> int:
+        """
+        Add a rectangular box (prism) as a compound object to the context.
+
+        Args:
+            center: Center position (default: origin)
+            size: Size in x, y, z directions (default: 1x1x1)
+            subdiv: Subdivisions in x, y, z (default: 1x1x1)
+            color: Optional RGB color
+            texturefile: Optional texture file path
+            reverse_normals: Reverse normal directions (default: False)
+
+        Returns:
+            Object ID of the created compound object
+        """
+        self._check_context_available()
+
+        if reverse_normals:
+            if texturefile:
+                return context_wrapper.addBoxObject_texture_reverse(self.context, center.to_list(), size.to_list(), subdiv.to_list(), texturefile, reverse_normals)
+            elif color:
+                return context_wrapper.addBoxObject_color_reverse(self.context, center.to_list(), size.to_list(), subdiv.to_list(), color.to_list(), reverse_normals)
+            else:
+                raise ValueError("reverse_normals requires either color or texturefile")
+        elif texturefile:
+            return context_wrapper.addBoxObject_texture(self.context, center.to_list(), size.to_list(), subdiv.to_list(), texturefile)
+        elif color:
+            return context_wrapper.addBoxObject_color(self.context, center.to_list(), size.to_list(), subdiv.to_list(), color.to_list())
+        else:
+            return context_wrapper.addBoxObject_basic(self.context, center.to_list(), size.to_list(), subdiv.to_list())
+
+    def addConeObject(self, node0: vec3, node1: vec3, radius0: float, radius1: float,
+                     ndivs: int = 20, color: Optional[RGBcolor] = None,
+                     texturefile: Optional[str] = None) -> int:
+        """
+        Add a cone/cylinder/frustum as a compound object to the context.
+
+        Args:
+            node0: Base position
+            node1: Top position
+            radius0: Radius at base
+            radius1: Radius at top
+            ndivs: Number of radial divisions (default: 20)
+            color: Optional RGB color
+            texturefile: Optional texture file path
+
+        Returns:
+            Object ID of the created compound object
+        """
+        self._check_context_available()
+
+        if texturefile:
+            return context_wrapper.addConeObject_texture(self.context, ndivs, node0.to_list(), node1.to_list(), radius0, radius1, texturefile)
+        elif color:
+            return context_wrapper.addConeObject_color(self.context, ndivs, node0.to_list(), node1.to_list(), radius0, radius1, color.to_list())
+        else:
+            return context_wrapper.addConeObject_basic(self.context, ndivs, node0.to_list(), node1.to_list(), radius0, radius1)
+
+    def addDiskObject(self, center: vec3 = vec3(0, 0, 0), size: vec2 = vec2(1, 1),
+                     ndivs: Union[int, int2] = 20, rotation: Optional[SphericalCoord] = None,
+                     color: Optional[Union[RGBcolor, RGBAcolor]] = None,
+                     texturefile: Optional[str] = None) -> int:
+        """
+        Add a disk as a compound object to the context.
+
+        Args:
+            center: Center position (default: origin)
+            size: Semi-major and semi-minor radii (default: 1x1)
+            ndivs: int (uniform) or int2 (polar/radial subdivisions) (default: 20)
+            rotation: Optional spherical rotation
+            color: Optional RGB or RGBA color
+            texturefile: Optional texture file path
+
+        Returns:
+            Object ID of the created compound object
+        """
+        self._check_context_available()
+
+        rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth] if rotation else [1, 0, 0]
+        is_polar = isinstance(ndivs, int2)
+
+        if is_polar:
+            if texturefile:
+                return context_wrapper.addDiskObject_polar_texture(self.context, ndivs.to_list(), center.to_list(), size.to_list(), rotation_list, texturefile)
+            elif color:
+                if isinstance(color, RGBAcolor):
+                    return context_wrapper.addDiskObject_polar_rgba(self.context, ndivs.to_list(), center.to_list(), size.to_list(), rotation_list, color.to_list())
+                else:
+                    return context_wrapper.addDiskObject_polar_color(self.context, ndivs.to_list(), center.to_list(), size.to_list(), rotation_list, color.to_list())
+            else:
+                return context_wrapper.addDiskObject_polar_color(self.context, ndivs.to_list(), center.to_list(), size.to_list(), rotation_list, RGBcolor(0.5, 0.5, 0.5).to_list())
+        else:
+            if texturefile:
+                return context_wrapper.addDiskObject_texture(self.context, ndivs, center.to_list(), size.to_list(), rotation_list, texturefile)
+            elif color:
+                if isinstance(color, RGBAcolor):
+                    return context_wrapper.addDiskObject_rgba(self.context, ndivs, center.to_list(), size.to_list(), rotation_list, color.to_list())
+                else:
+                    return context_wrapper.addDiskObject_color(self.context, ndivs, center.to_list(), size.to_list(), rotation_list, color.to_list())
+            elif rotation:
+                return context_wrapper.addDiskObject_rotation(self.context, ndivs, center.to_list(), size.to_list(), rotation_list)
+            else:
+                return context_wrapper.addDiskObject_basic(self.context, ndivs, center.to_list(), size.to_list())
+
+    def addTubeObject(self, ndivs: int, nodes: List[vec3], radii: List[float],
+                     colors: Optional[List[RGBcolor]] = None,
+                     texturefile: Optional[str] = None,
+                     texture_uv: Optional[List[float]] = None) -> int:
+        """
+        Add a tube as a compound object to the context.
+
+        Args:
+            ndivs: Number of radial subdivisions
+            nodes: List of vec3 positions defining tube segments
+            radii: List of radii at each node
+            colors: Optional list of RGB colors for each segment
+            texturefile: Optional texture file path
+            texture_uv: Optional UV coordinates for texture mapping
+
+        Returns:
+            Object ID of the created compound object
+        """
+        self._check_context_available()
+
+        if len(nodes) < 2:
+            raise ValueError("Tube requires at least 2 nodes")
+        if len(radii) != len(nodes):
+            raise ValueError("Number of radii must match number of nodes")
+
+        nodes_flat = [coord for node in nodes for coord in node.to_list()]
+
+        if texture_uv is not None:
+            if texturefile is None:
+                raise ValueError("texture_uv requires texturefile")
+            return context_wrapper.addTubeObject_texture_uv(self.context, ndivs, nodes_flat, radii, texturefile, texture_uv)
+        elif texturefile:
+            return context_wrapper.addTubeObject_texture(self.context, ndivs, nodes_flat, radii, texturefile)
+        elif colors:
+            if len(colors) != len(nodes):
+                raise ValueError("Number of colors must match number of nodes")
+            colors_flat = [c for color in colors for c in color.to_list()]
+            return context_wrapper.addTubeObject_color(self.context, ndivs, nodes_flat, radii, colors_flat)
+        else:
+            return context_wrapper.addTubeObject_basic(self.context, ndivs, nodes_flat, radii)
+
+    def copyPrimitive(self, UUID: Union[int, List[int]]) -> Union[int, List[int]]:
+        """
+        Copy one or more primitives.
+
+        Creates a duplicate of the specified primitive(s) with all associated data.
+        The copy is placed at the same location as the original.
+
+        Args:
+            UUID: Single primitive UUID or list of UUIDs to copy
+
+        Returns:
+            Single UUID of copied primitive (if UUID is int) or
+            List of UUIDs of copied primitives (if UUID is list)
+
+        Example:
+            >>> context = Context()
+            >>> original_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            >>> # Copy single primitive
+            >>> copied_uuid = context.copyPrimitive(original_uuid)
+            >>> # Copy multiple primitives
+            >>> copied_uuids = context.copyPrimitive([uuid1, uuid2, uuid3])
+        """
+        self._check_context_available()
+
+        if isinstance(UUID, int):
+            return context_wrapper.copyPrimitive(self.context, UUID)
+        elif isinstance(UUID, list):
+            return context_wrapper.copyPrimitives(self.context, UUID)
+        else:
+            raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+
+    def copyPrimitiveData(self, sourceUUID: int, destinationUUID: int) -> None:
+        """
+        Copy all primitive data from source to destination primitive.
+
+        Copies all associated data (primitive data fields) from the source
+        primitive to the destination primitive. Both primitives must already exist.
+
+        Args:
+            sourceUUID: UUID of the source primitive
+            destinationUUID: UUID of the destination primitive
+
+        Example:
+            >>> context = Context()
+            >>> source_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            >>> dest_uuid = context.addPatch(center=vec3(1, 0, 0), size=vec2(1, 1))
+            >>> context.setPrimitiveData(source_uuid, "temperature", 25.5)
+            >>> context.copyPrimitiveData(source_uuid, dest_uuid)
+            >>> # dest_uuid now has temperature data
+        """
+        self._check_context_available()
+
+        if not isinstance(sourceUUID, int):
+            raise ValueError(f"sourceUUID must be int, got {type(sourceUUID).__name__}")
+        if not isinstance(destinationUUID, int):
+            raise ValueError(f"destinationUUID must be int, got {type(destinationUUID).__name__}")
+
+        context_wrapper.copyPrimitiveData(self.context, sourceUUID, destinationUUID)
+
+    def copyObject(self, ObjID: Union[int, List[int]]) -> Union[int, List[int]]:
+        """
+        Copy one or more compound objects.
+
+        Creates a duplicate of the specified compound object(s) with all
+        associated primitives and data. The copy is placed at the same location
+        as the original.
+
+        Args:
+            ObjID: Single object ID or list of object IDs to copy
+
+        Returns:
+            Single object ID of copied object (if ObjID is int) or
+            List of object IDs of copied objects (if ObjID is list)
+
+        Example:
+            >>> context = Context()
+            >>> original_obj = context.addTile(center=vec3(0, 0, 0), size=vec2(2, 2))
+            >>> # Copy single object
+            >>> copied_obj = context.copyObject(original_obj)
+            >>> # Copy multiple objects
+            >>> copied_objs = context.copyObject([obj1, obj2, obj3])
+        """
+        self._check_context_available()
+
+        if isinstance(ObjID, int):
+            return context_wrapper.copyObject(self.context, ObjID)
+        elif isinstance(ObjID, list):
+            return context_wrapper.copyObjects(self.context, ObjID)
+        else:
+            raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+
+    def copyObjectData(self, source_objID: int, destination_objID: int) -> None:
+        """
+        Copy all object data from source to destination compound object.
+
+        Copies all associated data (object data fields) from the source
+        compound object to the destination object. Both objects must already exist.
+
+        Args:
+            source_objID: Object ID of the source compound object
+            destination_objID: Object ID of the destination compound object
+
+        Example:
+            >>> context = Context()
+            >>> source_obj = context.addTile(center=vec3(0, 0, 0), size=vec2(2, 2))
+            >>> dest_obj = context.addTile(center=vec3(2, 0, 0), size=vec2(2, 2))
+            >>> context.setObjectData(source_obj, "material", "wood")
+            >>> context.copyObjectData(source_obj, dest_obj)
+            >>> # dest_obj now has material data
+        """
+        self._check_context_available()
+
+        if not isinstance(source_objID, int):
+            raise ValueError(f"source_objID must be int, got {type(source_objID).__name__}")
+        if not isinstance(destination_objID, int):
+            raise ValueError(f"destination_objID must be int, got {type(destination_objID).__name__}")
+
+        context_wrapper.copyObjectData(self.context, source_objID, destination_objID)
+
+    def translatePrimitive(self, UUID: Union[int, List[int]], shift: vec3) -> None:
+        """
+        Translate one or more primitives by a shift vector.
+
+        Moves the specified primitive(s) by the given shift vector without
+        changing their orientation or size.
+
+        Args:
+            UUID: Single primitive UUID or list of UUIDs to translate
+            shift: 3D vector representing the translation [x, y, z]
+
+        Example:
+            >>> context = Context()
+            >>> patch_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            >>> # Translate single primitive
+            >>> context.translatePrimitive(patch_uuid, vec3(1, 0, 0))  # Move 1 unit in x
+            >>> # Translate multiple primitives
+            >>> context.translatePrimitive([uuid1, uuid2, uuid3], vec3(0, 0, 1))  # Move 1 unit in z
+        """
+        self._check_context_available()
+
+        # Type validation
+        if not isinstance(shift, vec3):
+            raise ValueError(f"shift must be a vec3, got {type(shift).__name__}")
+
+        if isinstance(UUID, int):
+            context_wrapper.translatePrimitive(self.context, UUID, shift.to_list())
+        elif isinstance(UUID, list):
+            context_wrapper.translatePrimitives(self.context, UUID, shift.to_list())
+        else:
+            raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+
+    def translateObject(self, ObjID: Union[int, List[int]], shift: vec3) -> None:
+        """
+        Translate one or more compound objects by a shift vector.
+
+        Moves the specified compound object(s) and all their constituent
+        primitives by the given shift vector without changing orientation or size.
+
+        Args:
+            ObjID: Single object ID or list of object IDs to translate
+            shift: 3D vector representing the translation [x, y, z]
+
+        Example:
+            >>> context = Context()
+            >>> tile_uuids = context.addTile(center=vec3(0, 0, 0), size=vec2(2, 2))
+            >>> obj_id = context.getPrimitiveParentObjectID(tile_uuids[0])  # Get object ID
+            >>> # Translate single object
+            >>> context.translateObject(obj_id, vec3(5, 0, 0))  # Move 5 units in x
+            >>> # Translate multiple objects
+            >>> context.translateObject([obj1, obj2, obj3], vec3(0, 2, 0))  # Move 2 units in y
+        """
+        self._check_context_available()
+
+        # Type validation
+        if not isinstance(shift, vec3):
+            raise ValueError(f"shift must be a vec3, got {type(shift).__name__}")
+
+        if isinstance(ObjID, int):
+            context_wrapper.translateObject(self.context, ObjID, shift.to_list())
+        elif isinstance(ObjID, list):
+            context_wrapper.translateObjects(self.context, ObjID, shift.to_list())
+        else:
+            raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+
+    def rotatePrimitive(self, UUID: Union[int, List[int]], angle: float,
+                       axis: Union[str, vec3], origin: Optional[vec3] = None) -> None:
+        """
+        Rotate one or more primitives.
+
+        Args:
+            UUID: Single UUID or list of UUIDs to rotate
+            angle: Rotation angle in radians
+            axis: Rotation axis - either 'x', 'y', 'z' or a vec3 direction vector
+            origin: Optional rotation origin point. If None, rotates about primitive center.
+                   If provided with string axis, raises ValueError.
+
+        Raises:
+            ValueError: If axis is invalid or if origin is provided with string axis
+        """
+        self._check_context_available()
+
+        # Validate axis parameter
+        if isinstance(axis, str):
+            if axis not in ('x', 'y', 'z'):
+                raise ValueError("axis must be 'x', 'y', or 'z'")
+            if origin is not None:
+                raise ValueError("origin parameter cannot be used with string axis")
+
+            # Use string axis variant
+            if isinstance(UUID, int):
+                context_wrapper.rotatePrimitive_axisString(self.context, UUID, angle, axis)
+            elif isinstance(UUID, list):
+                context_wrapper.rotatePrimitives_axisString(self.context, UUID, angle, axis)
+            else:
+                raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+
+        elif isinstance(axis, vec3):
+            axis_list = axis.to_list()
+
+            # Check for zero-length axis
+            if all(abs(v) < 1e-10 for v in axis_list):
+                raise ValueError("axis vector cannot be zero")
+
+            if origin is None:
+                # Rotate about primitive center (axis vector variant)
+                if isinstance(UUID, int):
+                    context_wrapper.rotatePrimitive_axisVector(self.context, UUID, angle, axis_list)
+                elif isinstance(UUID, list):
+                    context_wrapper.rotatePrimitives_axisVector(self.context, UUID, angle, axis_list)
+                else:
+                    raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+            else:
+                # Rotate about specified origin point
+                if not isinstance(origin, vec3):
+                    raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+
+                origin_list = origin.to_list()
+                if isinstance(UUID, int):
+                    context_wrapper.rotatePrimitive_originAxisVector(self.context, UUID, angle, origin_list, axis_list)
+                elif isinstance(UUID, list):
+                    context_wrapper.rotatePrimitives_originAxisVector(self.context, UUID, angle, origin_list, axis_list)
+                else:
+                    raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+        else:
+            raise ValueError(f"axis must be str or vec3, got {type(axis).__name__}")
+
+    def rotateObject(self, ObjID: Union[int, List[int]], angle: float,
+                    axis: Union[str, vec3], origin: Optional[vec3] = None,
+                    about_origin: bool = False) -> None:
+        """
+        Rotate one or more objects.
+
+        Args:
+            ObjID: Single object ID or list of object IDs to rotate
+            angle: Rotation angle in radians
+            axis: Rotation axis - either 'x', 'y', 'z' or a vec3 direction vector
+            origin: Optional rotation origin point. If None, rotates about object center.
+                   If provided with string axis, raises ValueError.
+            about_origin: If True, rotate about global origin (0,0,0). Cannot be used with origin parameter.
+
+        Raises:
+            ValueError: If axis is invalid or if origin and about_origin are both specified
+        """
+        self._check_context_available()
+
+        # Validate parameter combinations
+        if origin is not None and about_origin:
+            raise ValueError("Cannot specify both origin and about_origin")
+
+        # Validate axis parameter
+        if isinstance(axis, str):
+            if axis not in ('x', 'y', 'z'):
+                raise ValueError("axis must be 'x', 'y', or 'z'")
+            if origin is not None:
+                raise ValueError("origin parameter cannot be used with string axis")
+            if about_origin:
+                raise ValueError("about_origin parameter cannot be used with string axis")
+
+            # Use string axis variant
+            if isinstance(ObjID, int):
+                context_wrapper.rotateObject_axisString(self.context, ObjID, angle, axis)
+            elif isinstance(ObjID, list):
+                context_wrapper.rotateObjects_axisString(self.context, ObjID, angle, axis)
+            else:
+                raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+
+        elif isinstance(axis, vec3):
+            axis_list = axis.to_list()
+
+            # Check for zero-length axis
+            if all(abs(v) < 1e-10 for v in axis_list):
+                raise ValueError("axis vector cannot be zero")
+
+            if about_origin:
+                # Rotate about global origin
+                if isinstance(ObjID, int):
+                    context_wrapper.rotateObjectAboutOrigin_axisVector(self.context, ObjID, angle, axis_list)
+                elif isinstance(ObjID, list):
+                    context_wrapper.rotateObjectsAboutOrigin_axisVector(self.context, ObjID, angle, axis_list)
+                else:
+                    raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+            elif origin is None:
+                # Rotate about object center
+                if isinstance(ObjID, int):
+                    context_wrapper.rotateObject_axisVector(self.context, ObjID, angle, axis_list)
+                elif isinstance(ObjID, list):
+                    context_wrapper.rotateObjects_axisVector(self.context, ObjID, angle, axis_list)
+                else:
+                    raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+            else:
+                # Rotate about specified origin point
+                if not isinstance(origin, vec3):
+                    raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+
+                origin_list = origin.to_list()
+                if isinstance(ObjID, int):
+                    context_wrapper.rotateObject_originAxisVector(self.context, ObjID, angle, origin_list, axis_list)
+                elif isinstance(ObjID, list):
+                    context_wrapper.rotateObjects_originAxisVector(self.context, ObjID, angle, origin_list, axis_list)
+                else:
+                    raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+        else:
+            raise ValueError(f"axis must be str or vec3, got {type(axis).__name__}")
+
+    def scalePrimitive(self, UUID: Union[int, List[int]], scale: vec3, point: Optional[vec3] = None) -> None:
+        """
+        Scale one or more primitives.
+
+        Args:
+            UUID: Single UUID or list of UUIDs to scale
+            scale: Scale factors as vec3(x, y, z)
+            point: Optional point to scale about. If None, scales about primitive center.
+
+        Raises:
+            ValueError: If scale or point parameters are invalid
+        """
+        self._check_context_available()
+
+        if not isinstance(scale, vec3):
+            raise ValueError(f"scale must be a vec3, got {type(scale).__name__}")
+
+        scale_list = scale.to_list()
+
+        if point is None:
+            # Scale about primitive center
+            if isinstance(UUID, int):
+                context_wrapper.scalePrimitive(self.context, UUID, scale_list)
+            elif isinstance(UUID, list):
+                context_wrapper.scalePrimitives(self.context, UUID, scale_list)
+            else:
+                raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+        else:
+            # Scale about specified point
+            if not isinstance(point, vec3):
+                raise ValueError(f"point must be a vec3, got {type(point).__name__}")
+
+            point_list = point.to_list()
+            if isinstance(UUID, int):
+                context_wrapper.scalePrimitiveAboutPoint(self.context, UUID, scale_list, point_list)
+            elif isinstance(UUID, list):
+                context_wrapper.scalePrimitivesAboutPoint(self.context, UUID, scale_list, point_list)
+            else:
+                raise ValueError(f"UUID must be int or List[int], got {type(UUID).__name__}")
+
+    def scaleObject(self, ObjID: Union[int, List[int]], scale: vec3,
+                   point: Optional[vec3] = None, about_center: bool = False,
+                   about_origin: bool = False) -> None:
+        """
+        Scale one or more objects.
+
+        Args:
+            ObjID: Single object ID or list of object IDs to scale
+            scale: Scale factors as vec3(x, y, z)
+            point: Optional point to scale about
+            about_center: If True, scale about object center (default behavior)
+            about_origin: If True, scale about global origin (0,0,0)
+
+        Raises:
+            ValueError: If parameters are invalid or conflicting options specified
+        """
+        self._check_context_available()
+
+        # Validate parameter combinations
+        options_count = sum([point is not None, about_center, about_origin])
+        if options_count > 1:
+            raise ValueError("Cannot specify multiple scaling options (point, about_center, about_origin)")
+
+        if not isinstance(scale, vec3):
+            raise ValueError(f"scale must be a vec3, got {type(scale).__name__}")
+
+        scale_list = scale.to_list()
+
+        if about_origin:
+            # Scale about global origin
+            if isinstance(ObjID, int):
+                context_wrapper.scaleObjectAboutOrigin(self.context, ObjID, scale_list)
+            elif isinstance(ObjID, list):
+                context_wrapper.scaleObjectsAboutOrigin(self.context, ObjID, scale_list)
+            else:
+                raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+        elif about_center:
+            # Scale about object center
+            if isinstance(ObjID, int):
+                context_wrapper.scaleObjectAboutCenter(self.context, ObjID, scale_list)
+            elif isinstance(ObjID, list):
+                context_wrapper.scaleObjectsAboutCenter(self.context, ObjID, scale_list)
+            else:
+                raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+        elif point is not None:
+            # Scale about specified point
+            if not isinstance(point, vec3):
+                raise ValueError(f"point must be a vec3, got {type(point).__name__}")
+
+            point_list = point.to_list()
+            if isinstance(ObjID, int):
+                context_wrapper.scaleObjectAboutPoint(self.context, ObjID, scale_list, point_list)
+            elif isinstance(ObjID, list):
+                context_wrapper.scaleObjectsAboutPoint(self.context, ObjID, scale_list, point_list)
+            else:
+                raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
+        else:
+            # Default: scale object (standard behavior)
+            if isinstance(ObjID, int):
+                context_wrapper.scaleObject(self.context, ObjID, scale_list)
+            elif isinstance(ObjID, list):
+                context_wrapper.scaleObjects(self.context, ObjID, scale_list)
+            else:
+                raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
 
     def loadPLY(self, filename: str, origin: Optional[vec3] = None, height: Optional[float] = None, 
                 rotation: Optional[SphericalCoord] = None, color: Optional[RGBcolor] = None, 
@@ -1886,4 +2824,223 @@ class Context:
             List of missing plugin names
         """
         return self._plugin_registry.get_missing_plugins(requested_plugins)
+
+    # =========================================================================
+    # Materials System (v1.3.58+)
+    # =========================================================================
+
+    def addMaterial(self, material_label: str):
+        """
+        Create a new material for sharing visual properties across primitives.
+
+        Materials enable efficient memory usage by allowing multiple primitives to
+        share rendering properties. Changes to a material affect all primitives using it.
+
+        Args:
+            material_label: Unique label for the material
+
+        Raises:
+            RuntimeError: If material label already exists
+
+        Example:
+            >>> context.addMaterial("wood_oak")
+            >>> context.setMaterialColor("wood_oak", (0.6, 0.4, 0.2, 1.0))
+            >>> context.assignMaterialToPrimitive(uuid, "wood_oak")
+        """
+        context_wrapper.addMaterial(self.context, material_label)
+
+    def doesMaterialExist(self, material_label: str) -> bool:
+        """Check if a material with the given label exists."""
+        return context_wrapper.doesMaterialExist(self.context, material_label)
+
+    def listMaterials(self) -> List[str]:
+        """Get list of all material labels in the context."""
+        return context_wrapper.listMaterials(self.context)
+
+    def deleteMaterial(self, material_label: str):
+        """
+        Delete a material from the context.
+
+        Primitives using this material will be reassigned to the default material.
+
+        Args:
+            material_label: Label of the material to delete
+
+        Raises:
+            RuntimeError: If material doesn't exist
+        """
+        context_wrapper.deleteMaterial(self.context, material_label)
+
+    def getMaterialColor(self, material_label: str):
+        """
+        Get the RGBA color of a material.
+
+        Args:
+            material_label: Label of the material
+
+        Returns:
+            RGBAcolor object
+
+        Raises:
+            RuntimeError: If material doesn't exist
+        """
+        from .wrappers.DataTypes import RGBAcolor
+        color_list = context_wrapper.getMaterialColor(self.context, material_label)
+        return RGBAcolor(color_list[0], color_list[1], color_list[2], color_list[3])
+
+    def setMaterialColor(self, material_label: str, color):
+        """
+        Set the RGBA color of a material.
+
+        This affects all primitives that reference this material.
+
+        Args:
+            material_label: Label of the material
+            color: RGBAcolor object or tuple/list of (r, g, b, a) values
+
+        Raises:
+            RuntimeError: If material doesn't exist
+
+        Example:
+            >>> from pyhelios.types import RGBAcolor
+            >>> context.setMaterialColor("wood", RGBAcolor(0.6, 0.4, 0.2, 1.0))
+            >>> context.setMaterialColor("wood", (0.6, 0.4, 0.2, 1.0))
+        """
+        if hasattr(color, 'r'):
+            r, g, b, a = color.r, color.g, color.b, color.a
+        else:
+            r, g, b, a = color[0], color[1], color[2], color[3]
+        context_wrapper.setMaterialColor(self.context, material_label, r, g, b, a)
+
+    def getMaterialTexture(self, material_label: str) -> str:
+        """
+        Get the texture file path for a material.
+
+        Args:
+            material_label: Label of the material
+
+        Returns:
+            Texture file path, or empty string if no texture
+
+        Raises:
+            RuntimeError: If material doesn't exist
+        """
+        return context_wrapper.getMaterialTexture(self.context, material_label)
+
+    def setMaterialTexture(self, material_label: str, texture_file: str):
+        """
+        Set the texture file for a material.
+
+        This affects all primitives that reference this material.
+
+        Args:
+            material_label: Label of the material
+            texture_file: Path to texture image file
+
+        Raises:
+            RuntimeError: If material doesn't exist or texture file not found
+        """
+        context_wrapper.setMaterialTexture(self.context, material_label, texture_file)
+
+    def isMaterialTextureColorOverridden(self, material_label: str) -> bool:
+        """Check if material texture color is overridden by material color."""
+        return context_wrapper.isMaterialTextureColorOverridden(self.context, material_label)
+
+    def setMaterialTextureColorOverride(self, material_label: str, override: bool):
+        """Set whether material color overrides texture color."""
+        context_wrapper.setMaterialTextureColorOverride(self.context, material_label, override)
+
+    def getMaterialTwosidedFlag(self, material_label: str) -> int:
+        """Get the two-sided rendering flag for a material (0 = one-sided, 1 = two-sided)."""
+        return context_wrapper.getMaterialTwosidedFlag(self.context, material_label)
+
+    def setMaterialTwosidedFlag(self, material_label: str, twosided_flag: int):
+        """Set the two-sided rendering flag for a material (0 = one-sided, 1 = two-sided)."""
+        context_wrapper.setMaterialTwosidedFlag(self.context, material_label, twosided_flag)
+
+    def assignMaterialToPrimitive(self, uuid, material_label: str):
+        """
+        Assign a material to primitive(s).
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs (List[int])
+            material_label: Label of the material to assign
+
+        Raises:
+            RuntimeError: If primitive or material doesn't exist
+
+        Example:
+            >>> context.assignMaterialToPrimitive(uuid, "wood_oak")
+            >>> context.assignMaterialToPrimitive([uuid1, uuid2, uuid3], "wood_oak")
+        """
+        if isinstance(uuid, (list, tuple)):
+            context_wrapper.assignMaterialToPrimitives(self.context, uuid, material_label)
+        else:
+            context_wrapper.assignMaterialToPrimitive(self.context, uuid, material_label)
+
+    def assignMaterialToObject(self, objID, material_label: str):
+        """
+        Assign a material to all primitives in compound object(s).
+
+        Args:
+            objID: Single object ID (int) or list of object IDs (List[int])
+            material_label: Label of the material to assign
+
+        Raises:
+            RuntimeError: If object or material doesn't exist
+
+        Example:
+            >>> tree_id = wpt.buildTree(WPTType.LEMON)
+            >>> context.assignMaterialToObject(tree_id, "tree_bark")
+            >>> context.assignMaterialToObject([id1, id2], "grass")
+        """
+        if isinstance(objID, (list, tuple)):
+            context_wrapper.assignMaterialToObjects(self.context, objID, material_label)
+        else:
+            context_wrapper.assignMaterialToObject(self.context, objID, material_label)
+
+    def getPrimitiveMaterialLabel(self, uuid: int) -> str:
+        """
+        Get the material label assigned to a primitive.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            Material label, or empty string if no material assigned
+
+        Raises:
+            RuntimeError: If primitive doesn't exist
+        """
+        return context_wrapper.getPrimitiveMaterialLabel(self.context, uuid)
+
+    def getPrimitiveTwosidedFlag(self, uuid: int, default_value: int = 1) -> int:
+        """
+        Get two-sided rendering flag for a primitive.
+
+        Checks material first, then primitive data if no material assigned.
+
+        Args:
+            uuid: UUID of the primitive
+            default_value: Default value if no material/data (default 1 = two-sided)
+
+        Returns:
+            Two-sided flag (0 = one-sided, 1 = two-sided)
+        """
+        return context_wrapper.getPrimitiveTwosidedFlag(self.context, uuid, default_value)
+
+    def getPrimitivesUsingMaterial(self, material_label: str) -> List[int]:
+        """
+        Get all primitive UUIDs that use a specific material.
+
+        Args:
+            material_label: Label of the material
+
+        Returns:
+            List of primitive UUIDs using the material
+
+        Raises:
+            RuntimeError: If material doesn't exist
+        """
+        return context_wrapper.getPrimitivesUsingMaterial(self.context, material_label)
 

@@ -427,6 +427,31 @@ try:
                                               ctypes.POINTER(ctypes.c_float), ctypes.c_size_t]
     helios_lib.setCameraPixelData.restype = None
 
+    # Camera Library Functions (v1.3.58+)
+    helios_lib.addRadiationCameraFromLibrary.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                          ctypes.c_char_p, ctypes.c_float, ctypes.c_float,
+                                                          ctypes.c_float, ctypes.c_float, ctypes.c_float,
+                                                          ctypes.c_float, ctypes.c_uint]
+    helios_lib.addRadiationCameraFromLibrary.restype = None
+
+    helios_lib.addRadiationCameraFromLibraryWithBands.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                                   ctypes.c_char_p, ctypes.c_float, ctypes.c_float,
+                                                                   ctypes.c_float, ctypes.c_float, ctypes.c_float,
+                                                                   ctypes.c_float, ctypes.c_uint,
+                                                                   ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
+    helios_lib.addRadiationCameraFromLibraryWithBands.restype = None
+
+    helios_lib.updateCameraParameters.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                  ctypes.POINTER(ctypes.c_float)]
+    helios_lib.updateCameraParameters.restype = None
+
+    helios_lib.enableCameraMetadata.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.enableCameraMetadata.restype = None
+
+    helios_lib.enableCameraMetadataMultiple.argtypes = [ctypes.POINTER(URadiationModel),
+                                                         ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
+    helios_lib.enableCameraMetadataMultiple.restype = None
+
     # Add automatic error checking to all RadiationModel functions
     helios_lib.createRadiationModel.errcheck = _check_error
     # Note: destroyRadiationModel doesn't need errcheck as it doesn't fail
@@ -570,6 +595,13 @@ try:
     helios_lib.setCameraSpectralResponseFromLibrary.errcheck = _check_error
     helios_lib.getCameraPixelData.errcheck = _check_error
     helios_lib.setCameraPixelData.errcheck = _check_error
+
+    # Camera Library Functions (v1.3.58+)
+    helios_lib.addRadiationCameraFromLibrary.errcheck = _check_error
+    helios_lib.addRadiationCameraFromLibraryWithBands.errcheck = _check_error
+    helios_lib.updateCameraParameters.errcheck = _check_error
+    helios_lib.enableCameraMetadata.errcheck = _check_error
+    helios_lib.enableCameraMetadataMultiple.errcheck = _check_error
 
     # Mark that RadiationModel functions are available
     _RADIATION_MODEL_FUNCTIONS_AVAILABLE = True
@@ -1538,6 +1570,156 @@ def setCameraPixelData(radiation_model, camera_label: str, band_label: str, pixe
     helios_lib.setCameraPixelData(radiation_model, camera_encoded, band_encoded, pixel_array, len(pixel_data))
 
 #=============================================================================
+# Camera Library Functions (v1.3.58+)
+#=============================================================================
+
+def addRadiationCameraFromLibrary(radiation_model, camera_label: str, library_camera_label: str,
+                                   position, lookat, antialiasing_samples: int, band_labels: List[str] = None):
+    """
+    Add radiation camera loading all properties from camera library.
+
+    Loads camera intrinsic parameters (resolution, FOV, sensor size) and spectral
+    response data from the camera library XML file. If band_labels is provided, uses
+    custom band names; otherwise uses default band names from library.
+
+    Args:
+        radiation_model: RadiationModel instance
+        camera_label: Label for the camera instance
+        library_camera_label: Label of camera in library (e.g., "Canon_20D", "iPhone11", "NikonD700")
+        position: Camera position as vec3 or (x, y, z) tuple
+        lookat: Lookat point as vec3 or (x, y, z) tuple
+        antialiasing_samples: Number of ray samples per pixel (minimum 1)
+        band_labels: Optional custom band labels. If None, uses library defaults.
+
+    Raises:
+        RuntimeError: If RadiationModel functions not available or operation fails
+        ValueError: If parameters are invalid
+
+    Note:
+        Available cameras in plugins/radiation/camera_library/camera_library.xml
+        include: Canon_20D, Nikon_D700, Nikon_D50, iPhone11, iPhone12ProMAX
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_encoded = camera_label.encode('utf-8')
+    library_encoded = library_camera_label.encode('utf-8')
+
+    # Convert position and lookat to floats
+    if hasattr(position, 'x'):
+        pos_x, pos_y, pos_z = position.x, position.y, position.z
+    else:
+        pos_x, pos_y, pos_z = position[0], position[1], position[2]
+
+    if hasattr(lookat, 'x'):
+        look_x, look_y, look_z = lookat.x, lookat.y, lookat.z
+    else:
+        look_x, look_y, look_z = lookat[0], lookat[1], lookat[2]
+
+    if band_labels is None:
+        # Use basic version without custom bands
+        helios_lib.addRadiationCameraFromLibrary(
+            radiation_model, camera_encoded, library_encoded,
+            ctypes.c_float(pos_x), ctypes.c_float(pos_y), ctypes.c_float(pos_z),
+            ctypes.c_float(look_x), ctypes.c_float(look_y), ctypes.c_float(look_z),
+            ctypes.c_uint(antialiasing_samples)
+        )
+    else:
+        # Use version with custom band labels
+        band_array = (ctypes.c_char_p * len(band_labels))()
+        for i, band in enumerate(band_labels):
+            band_array[i] = band.encode('utf-8')
+
+        helios_lib.addRadiationCameraFromLibraryWithBands(
+            radiation_model, camera_encoded, library_encoded,
+            ctypes.c_float(pos_x), ctypes.c_float(pos_y), ctypes.c_float(pos_z),
+            ctypes.c_float(look_x), ctypes.c_float(look_y), ctypes.c_float(look_z),
+            ctypes.c_uint(antialiasing_samples),
+            band_array, len(band_labels)
+        )
+
+def updateCameraParameters(radiation_model, camera_label: str, camera_properties):
+    """
+    Update camera parameters for an existing camera.
+
+    Args:
+        radiation_model: RadiationModel instance
+        camera_label: Label for the camera to update
+        camera_properties: CameraProperties instance or list of 9 floats
+
+    Raises:
+        RuntimeError: If RadiationModel functions not available or operation fails
+        ValueError: If parameters are invalid
+
+    Note:
+        Preserves the camera's position, lookat direction, and spectral band configuration.
+        FOV_aspect_ratio is recalculated from resolution.
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    camera_encoded = camera_label.encode('utf-8')
+
+    # Convert CameraProperties to array if needed
+    if hasattr(camera_properties, 'to_array'):
+        props_array = camera_properties.to_array()
+    else:
+        props_array = camera_properties
+
+    if len(props_array) != 9:
+        raise ValueError(f"Camera properties must have 9 elements, got {len(props_array)}")
+
+    props_c = (ctypes.c_float * 9)(*props_array)
+    helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c)
+
+def enableCameraMetadata(radiation_model, camera_labels):
+    """
+    Enable automatic JSON metadata file writing for camera(s).
+
+    After calling this method, writeCameraImage() will automatically create a JSON
+    metadata file alongside the image containing camera properties, location, acquisition
+    settings, and agronomic data.
+
+    Args:
+        radiation_model: RadiationModel instance
+        camera_labels: Single camera label (str) or list of camera labels (List[str])
+
+    Raises:
+        RuntimeError: If RadiationModel functions not available or operation fails
+        ValueError: If parameters are invalid
+
+    Note:
+        Metadata is automatically populated from camera properties and simulation context.
+        Use getCameraMetadata() and setCameraMetadata() to customize metadata.
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+    # Handle both single camera and multiple cameras
+    if isinstance(camera_labels, str):
+        # Single camera
+        camera_encoded = camera_labels.encode('utf-8')
+        helios_lib.enableCameraMetadata(radiation_model, camera_encoded)
+    elif isinstance(camera_labels, (list, tuple)):
+        # Multiple cameras
+        if not camera_labels:
+            raise ValueError("Camera labels list cannot be empty")
+
+        labels_array = (ctypes.c_char_p * len(camera_labels))()
+        for i, label in enumerate(camera_labels):
+            labels_array[i] = label.encode('utf-8')
+
+        helios_lib.enableCameraMetadataMultiple(radiation_model, labels_array, len(camera_labels))
+    else:
+        raise ValueError("camera_labels must be a string or list of strings")
+
+#=============================================================================
 # Camera and Image Functions (v1.3.47)
 #=============================================================================
 
@@ -1811,8 +1993,8 @@ def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List
 
     if not band_labels:
         raise ValueError("At least one band label is required")
-    if len(camera_properties) != 6:
-        raise ValueError("camera_properties must contain exactly 6 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]")
+    if len(camera_properties) != 9:
+        raise ValueError("camera_properties must contain exactly 9 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed]")
 
     # Encode camera label
     camera_encoded = camera_label.encode('utf-8')
@@ -1842,8 +2024,8 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
 
     if not band_labels:
         raise ValueError("At least one band label is required")
-    if len(camera_properties) != 6:
-        raise ValueError("camera_properties must contain exactly 6 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]")
+    if len(camera_properties) != 9:
+        raise ValueError("camera_properties must contain exactly 9 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed]")
 
     # Encode camera label
     camera_encoded = camera_label.encode('utf-8')

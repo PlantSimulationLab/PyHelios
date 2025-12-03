@@ -540,6 +540,299 @@ try:
     helios_lib.addBoxWithColor.restype = ctypes.POINTER(ctypes.c_uint)
     helios_lib.addBoxWithColor.errcheck = _check_error
 
+    # addDisk functions
+    helios_lib.addDisk.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addDisk.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addDisk.errcheck = _check_error
+
+    helios_lib.addDiskWithRotation.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addDiskWithRotation.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addDiskWithRotation.errcheck = _check_error
+
+    helios_lib.addDiskWithColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addDiskWithColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addDiskWithColor.errcheck = _check_error
+
+    helios_lib.addDiskWithRGBAColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addDiskWithRGBAColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addDiskWithRGBAColor.errcheck = _check_error
+
+    helios_lib.addDiskPolarSubdivisions.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addDiskPolarSubdivisions.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addDiskPolarSubdivisions.errcheck = _check_error
+
+    # addDiskPolarSubdivisionsRGBA function
+    helios_lib.addDiskPolarSubdivisionsRGBA.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addDiskPolarSubdivisionsRGBA.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addDiskPolarSubdivisionsRGBA.errcheck = _check_error
+
+    # addCone functions
+    helios_lib.addCone.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_float, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addCone.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addCone.errcheck = _check_error
+
+    helios_lib.addConeWithColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.addConeWithColor.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.addConeWithColor.errcheck = _check_error
+
+    # Copy operation functions
+    helios_lib.copyPrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.copyPrimitive.restype = ctypes.c_uint
+    helios_lib.copyPrimitive.errcheck = _check_error
+
+    helios_lib.copyPrimitives.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.copyPrimitives.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.copyPrimitives.errcheck = _check_error
+
+    helios_lib.copyPrimitiveData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.copyPrimitiveData.restype = None
+    helios_lib.copyPrimitiveData.errcheck = _check_error
+
+    helios_lib.copyObject.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.copyObject.restype = ctypes.c_uint
+    helios_lib.copyObject.errcheck = _check_error
+
+    helios_lib.copyObjects.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.copyObjects.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.copyObjects.errcheck = _check_error
+
+    helios_lib.copyObjectData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.copyObjectData.restype = None
+    helios_lib.copyObjectData.errcheck = _check_error
+
+    # Translation operation functions
+    helios_lib.translatePrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.translatePrimitive.restype = None
+    helios_lib.translatePrimitive.errcheck = _check_error
+
+    helios_lib.translatePrimitives.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.translatePrimitives.restype = None
+    helios_lib.translatePrimitives.errcheck = _check_error
+
+    helios_lib.translateObject.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.translateObject.restype = None
+    helios_lib.translateObject.errcheck = _check_error
+
+    helios_lib.translateObjects.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.translateObjects.restype = None
+    helios_lib.translateObjects.errcheck = _check_error
+
+    # Rotation function prototypes
+    helios_lib.rotatePrimitive_axisString.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.c_char_p]
+    helios_lib.rotatePrimitive_axisString.restype = None
+    helios_lib.rotatePrimitive_axisString.errcheck = _check_error
+
+    helios_lib.rotatePrimitives_axisString.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.c_char_p]
+    helios_lib.rotatePrimitives_axisString.restype = None
+    helios_lib.rotatePrimitives_axisString.errcheck = _check_error
+
+    helios_lib.rotatePrimitive_axisVector.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotatePrimitive_axisVector.restype = None
+    helios_lib.rotatePrimitive_axisVector.errcheck = _check_error
+
+    helios_lib.rotatePrimitives_axisVector.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotatePrimitives_axisVector.restype = None
+    helios_lib.rotatePrimitives_axisVector.errcheck = _check_error
+
+    helios_lib.rotatePrimitive_originAxisVector.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotatePrimitive_originAxisVector.restype = None
+    helios_lib.rotatePrimitive_originAxisVector.errcheck = _check_error
+
+    helios_lib.rotatePrimitives_originAxisVector.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotatePrimitives_originAxisVector.restype = None
+    helios_lib.rotatePrimitives_originAxisVector.errcheck = _check_error
+
+    helios_lib.rotateObject_axisString.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.c_char_p]
+    helios_lib.rotateObject_axisString.restype = None
+    helios_lib.rotateObject_axisString.errcheck = _check_error
+
+    helios_lib.rotateObjects_axisString.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.c_char_p]
+    helios_lib.rotateObjects_axisString.restype = None
+    helios_lib.rotateObjects_axisString.errcheck = _check_error
+
+    helios_lib.rotateObject_axisVector.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotateObject_axisVector.restype = None
+    helios_lib.rotateObject_axisVector.errcheck = _check_error
+
+    helios_lib.rotateObjects_axisVector.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotateObjects_axisVector.restype = None
+    helios_lib.rotateObjects_axisVector.errcheck = _check_error
+
+    helios_lib.rotateObject_originAxisVector.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotateObject_originAxisVector.restype = None
+    helios_lib.rotateObject_originAxisVector.errcheck = _check_error
+
+    helios_lib.rotateObjects_originAxisVector.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotateObjects_originAxisVector.restype = None
+    helios_lib.rotateObjects_originAxisVector.errcheck = _check_error
+
+    helios_lib.rotateObjectAboutOrigin_axisVector.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotateObjectAboutOrigin_axisVector.restype = None
+    helios_lib.rotateObjectAboutOrigin_axisVector.errcheck = _check_error
+
+    helios_lib.rotateObjectsAboutOrigin_axisVector.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.rotateObjectsAboutOrigin_axisVector.restype = None
+    helios_lib.rotateObjectsAboutOrigin_axisVector.errcheck = _check_error
+
+    # Scaling function prototypes
+    helios_lib.scalePrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scalePrimitive.restype = None
+    helios_lib.scalePrimitive.errcheck = _check_error
+
+    helios_lib.scalePrimitives.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scalePrimitives.restype = None
+    helios_lib.scalePrimitives.errcheck = _check_error
+
+    helios_lib.scalePrimitiveAboutPoint.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scalePrimitiveAboutPoint.restype = None
+    helios_lib.scalePrimitiveAboutPoint.errcheck = _check_error
+
+    helios_lib.scalePrimitivesAboutPoint.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scalePrimitivesAboutPoint.restype = None
+    helios_lib.scalePrimitivesAboutPoint.errcheck = _check_error
+
+    helios_lib.scaleObject.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObject.restype = None
+    helios_lib.scaleObject.errcheck = _check_error
+
+    helios_lib.scaleObjects.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjects.restype = None
+    helios_lib.scaleObjects.errcheck = _check_error
+
+    helios_lib.scaleObjectAboutCenter.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjectAboutCenter.restype = None
+    helios_lib.scaleObjectAboutCenter.errcheck = _check_error
+
+    helios_lib.scaleObjectsAboutCenter.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjectsAboutCenter.restype = None
+    helios_lib.scaleObjectsAboutCenter.errcheck = _check_error
+
+    helios_lib.scaleObjectAboutPoint.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjectAboutPoint.restype = None
+    helios_lib.scaleObjectAboutPoint.errcheck = _check_error
+
+    helios_lib.scaleObjectsAboutPoint.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjectsAboutPoint.restype = None
+    helios_lib.scaleObjectsAboutPoint.errcheck = _check_error
+
+    helios_lib.scaleObjectAboutOrigin.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjectAboutOrigin.restype = None
+    helios_lib.scaleObjectAboutOrigin.errcheck = _check_error
+
+    helios_lib.scaleObjectsAboutOrigin.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.scaleObjectsAboutOrigin.restype = None
+    helios_lib.scaleObjectsAboutOrigin.errcheck = _check_error
+
+    # Object-returning compound geometry prototypes
+    helios_lib.addSphereObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float]
+    helios_lib.addSphereObject_basic.restype = ctypes.c_uint
+    helios_lib.addSphereObject_basic.errcheck = _check_error
+
+    helios_lib.addSphereObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addSphereObject_color.restype = ctypes.c_uint
+    helios_lib.addSphereObject_color.errcheck = _check_error
+
+    helios_lib.addSphereObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_char_p]
+    helios_lib.addSphereObject_texture.restype = ctypes.c_uint
+    helios_lib.addSphereObject_texture.errcheck = _check_error
+
+    helios_lib.addSphereObject_ellipsoid.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addSphereObject_ellipsoid.restype = ctypes.c_uint
+    helios_lib.addSphereObject_ellipsoid.errcheck = _check_error
+
+    helios_lib.addSphereObject_ellipsoid_color.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addSphereObject_ellipsoid_color.restype = ctypes.c_uint
+    helios_lib.addSphereObject_ellipsoid_color.errcheck = _check_error
+
+    helios_lib.addSphereObject_ellipsoid_texture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
+    helios_lib.addSphereObject_ellipsoid_texture.restype = ctypes.c_uint
+    helios_lib.addSphereObject_ellipsoid_texture.errcheck = _check_error
+
+    # addTileObject prototypes
+    helios_lib.addTileObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.addTileObject_basic.restype = ctypes.c_uint
+    helios_lib.addTileObject_basic.errcheck = _check_error
+
+    helios_lib.addTileObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addTileObject_color.restype = ctypes.c_uint
+    helios_lib.addTileObject_color.errcheck = _check_error
+
+    helios_lib.addTileObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.c_char_p]
+    helios_lib.addTileObject_texture.restype = ctypes.c_uint
+    helios_lib.addTileObject_texture.errcheck = _check_error
+
+    helios_lib.addTileObject_texture_repeat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+    helios_lib.addTileObject_texture_repeat.restype = ctypes.c_uint
+    helios_lib.addTileObject_texture_repeat.errcheck = _check_error
+
+    # addBoxObject prototypes
+    helios_lib.addBoxObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.addBoxObject_basic.restype = ctypes.c_uint
+    helios_lib.addBoxObject_basic.errcheck = _check_error
+    helios_lib.addBoxObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addBoxObject_color.restype = ctypes.c_uint
+    helios_lib.addBoxObject_color.errcheck = _check_error
+    helios_lib.addBoxObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.c_char_p]
+    helios_lib.addBoxObject_texture.restype = ctypes.c_uint
+    helios_lib.addBoxObject_texture.errcheck = _check_error
+    helios_lib.addBoxObject_color_reverse.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.c_bool]
+    helios_lib.addBoxObject_color_reverse.restype = ctypes.c_uint
+    helios_lib.addBoxObject_color_reverse.errcheck = _check_error
+    helios_lib.addBoxObject_texture_reverse.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int), ctypes.c_char_p, ctypes.c_bool]
+    helios_lib.addBoxObject_texture_reverse.restype = ctypes.c_uint
+    helios_lib.addBoxObject_texture_reverse.errcheck = _check_error
+
+    # addConeObject prototypes
+    helios_lib.addConeObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_float]
+    helios_lib.addConeObject_basic.restype = ctypes.c_uint
+    helios_lib.addConeObject_basic.errcheck = _check_error
+    helios_lib.addConeObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addConeObject_color.restype = ctypes.c_uint
+    helios_lib.addConeObject_color.errcheck = _check_error
+    helios_lib.addConeObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_float, ctypes.c_char_p]
+    helios_lib.addConeObject_texture.restype = ctypes.c_uint
+    helios_lib.addConeObject_texture.errcheck = _check_error
+
+    # addDiskObject prototypes
+    helios_lib.addDiskObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addDiskObject_basic.restype = ctypes.c_uint
+    helios_lib.addDiskObject_basic.errcheck = _check_error
+    helios_lib.addDiskObject_rotation.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addDiskObject_rotation.restype = ctypes.c_uint
+    helios_lib.addDiskObject_rotation.errcheck = _check_error
+    helios_lib.addDiskObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addDiskObject_color.restype = ctypes.c_uint
+    helios_lib.addDiskObject_color.errcheck = _check_error
+    helios_lib.addDiskObject_rgba.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addDiskObject_rgba.restype = ctypes.c_uint
+    helios_lib.addDiskObject_rgba.errcheck = _check_error
+    helios_lib.addDiskObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
+    helios_lib.addDiskObject_texture.restype = ctypes.c_uint
+    helios_lib.addDiskObject_texture.errcheck = _check_error
+    helios_lib.addDiskObject_polar_color.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addDiskObject_polar_color.restype = ctypes.c_uint
+    helios_lib.addDiskObject_polar_color.errcheck = _check_error
+    helios_lib.addDiskObject_polar_rgba.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addDiskObject_polar_rgba.restype = ctypes.c_uint
+    helios_lib.addDiskObject_polar_rgba.errcheck = _check_error
+    helios_lib.addDiskObject_polar_texture.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
+    helios_lib.addDiskObject_polar_texture.restype = ctypes.c_uint
+    helios_lib.addDiskObject_polar_texture.errcheck = _check_error
+
+    # addTubeObject prototypes
+    helios_lib.addTubeObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+    helios_lib.addTubeObject_basic.restype = ctypes.c_uint
+    helios_lib.addTubeObject_basic.errcheck = _check_error
+    helios_lib.addTubeObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+    helios_lib.addTubeObject_color.restype = ctypes.c_uint
+    helios_lib.addTubeObject_color.errcheck = _check_error
+    helios_lib.addTubeObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.addTubeObject_texture.restype = ctypes.c_uint
+    helios_lib.addTubeObject_texture.errcheck = _check_error
+    helios_lib.addTubeObject_texture_uv.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+    helios_lib.addTubeObject_texture_uv.restype = ctypes.c_uint
+    helios_lib.addTubeObject_texture_uv.errcheck = _check_error
+
     # Mark that compound geometry functions are available
     _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE = True
     
@@ -1318,6 +1611,1368 @@ def addBoxWithColor(context, center: List[float], size: List[float], subdiv: Lis
     else:
         return []
 
+def addDisk(context, ndivs: int, center: List[float], size: List[float]) -> List[int]:
+    """Add a disk to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [semi_major, semi_minor]")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addDisk(context, ndivs, center_ptr, size_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addDiskWithRotation(context, ndivs: int, center: List[float], size: List[float], rotation: List[float]) -> List[int]:
+    """Add a disk with rotation to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [semi_major, semi_minor]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addDiskWithRotation(context, ndivs, center_ptr, size_ptr, rotation_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addDiskWithColor(context, ndivs: int, center: List[float], size: List[float], rotation: List[float], color: List[float]) -> List[int]:
+    """Add a disk with color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [semi_major, semi_minor]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if len(color) != 3:
+        raise ValueError("color must have exactly 3 elements [r, g, b]")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addDiskWithColor(context, ndivs, center_ptr, size_ptr, rotation_ptr, color_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addDiskWithRGBAColor(context, ndivs: int, center: List[float], size: List[float], rotation: List[float], color: List[float]) -> List[int]:
+    """Add a disk with RGBA color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [semi_major, semi_minor]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if len(color) != 4:
+        raise ValueError("color must have exactly 4 elements [r, g, b, a]")
+    if ndivs < 3:
+        raise ValueError("ndivs must be at least 3")
+
+    # Convert to ctypes arrays
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    color_ptr = (ctypes.c_float * 4)(*color)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addDiskWithRGBAColor(context, ndivs, center_ptr, size_ptr, rotation_ptr, color_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addDiskPolarSubdivisions(context, ndivs: List[int], center: List[float], size: List[float], rotation: List[float], color: List[float]) -> List[int]:
+    """Add a disk with polar/radial subdivisions to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(ndivs) != 2:
+        raise ValueError("ndivs must have exactly 2 elements [radial_divisions, azimuthal_divisions]")
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [semi_major, semi_minor]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if len(color) != 3:
+        raise ValueError("color must have exactly 3 elements [r, g, b]")
+    if any(n < 3 for n in ndivs):
+        raise ValueError("All subdivision counts must be at least 3")
+
+    # Convert to ctypes arrays
+    ndivs_ptr = (ctypes.c_int * 2)(*ndivs)
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addDiskPolarSubdivisions(context, ndivs_ptr, center_ptr, size_ptr, rotation_ptr, color_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addDiskPolarSubdivisionsRGBA(context, ndivs: List[int], center: List[float], size: List[float], rotation: List[float], color: List[float]) -> List[int]:
+    """Add a disk with polar/radial subdivisions and RGBA color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(ndivs) != 2:
+        raise ValueError("ndivs must have exactly 2 elements [radial_divisions, azimuthal_divisions]")
+    if len(center) != 3:
+        raise ValueError("center must have exactly 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have exactly 2 elements [semi_major, semi_minor]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have exactly 3 elements [radius, elevation, azimuth]")
+    if len(color) != 4:
+        raise ValueError("color must have exactly 4 elements [r, g, b, a]")
+    if any(n < 3 for n in ndivs):
+        raise ValueError("All subdivision counts must be at least 3")
+
+    # Convert to ctypes arrays
+    ndivs_ptr = (ctypes.c_int * 2)(*ndivs)
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    color_ptr = (ctypes.c_float * 4)(*color)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addDiskPolarSubdivisionsRGBA(context, ndivs_ptr, center_ptr, size_ptr, rotation_ptr, color_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addCone(context, ndivs: int, node0: List[float], node1: List[float], radius0: float, radius1: float) -> List[int]:
+    """Add a cone to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(node0) != 3:
+        raise ValueError("node0 must have exactly 3 elements [x, y, z]")
+    if len(node1) != 3:
+        raise ValueError("node1 must have exactly 3 elements [x, y, z]")
+    if ndivs < 3:
+        raise ValueError("Number of radial divisions must be at least 3")
+    if radius0 < 0 or radius1 < 0:
+        raise ValueError("Radii must be non-negative")
+
+    # Convert to ctypes arrays
+    node0_ptr = (ctypes.c_float * 3)(*node0)
+    node1_ptr = (ctypes.c_float * 3)(*node1)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addCone(context, ndivs, node0_ptr, node1_ptr, radius0, radius1, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+def addConeWithColor(context, ndivs: int, node0: List[float], node1: List[float], radius0: float, radius1: float, color: List[float]) -> List[int]:
+    """Add a cone with color to the context"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(node0) != 3:
+        raise ValueError("node0 must have exactly 3 elements [x, y, z]")
+    if len(node1) != 3:
+        raise ValueError("node1 must have exactly 3 elements [x, y, z]")
+    if len(color) != 3:
+        raise ValueError("color must have exactly 3 elements [r, g, b]")
+    if ndivs < 3:
+        raise ValueError("Number of radial divisions must be at least 3")
+    if radius0 < 0 or radius1 < 0:
+        raise ValueError("Radii must be non-negative")
+
+    # Convert to ctypes arrays
+    node0_ptr = (ctypes.c_float * 3)(*node0)
+    node1_ptr = (ctypes.c_float * 3)(*node1)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    count = ctypes.c_uint()
+
+    # Call C function
+    uuids_ptr = helios_lib.addConeWithColor(context, ndivs, node0_ptr, node1_ptr, radius0, radius1, color_ptr, ctypes.byref(count))
+
+    # Convert result to Python list
+    if uuids_ptr and count.value > 0:
+        return list(uuids_ptr[:count.value])
+    else:
+        return []
+
+# ============================================================================
+# Object-Returning Compound Geometry Wrappers
+# ============================================================================
+
+def addSphereObject_basic(context, ndivs: int, center: List[float], radius: float) -> int:
+    """Add a spherical compound object (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    return helios_lib.addSphereObject_basic(context, ndivs, center_ptr, radius)
+
+def addSphereObject_color(context, ndivs: int, center: List[float], radius: float, color: List[float]) -> int:
+    """Add a spherical compound object with color (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(color) != 3:
+        raise ValueError("color must have 3 elements [r, g, b]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    return helios_lib.addSphereObject_color(context, ndivs, center_ptr, radius, color_ptr)
+
+def addSphereObject_texture(context, ndivs: int, center: List[float], radius: float, texturefile: str) -> int:
+    """Add a spherical compound object with texture (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    texturefile_bytes = texturefile.encode('utf-8')
+    return helios_lib.addSphereObject_texture(context, ndivs, center_ptr, radius, texturefile_bytes)
+
+def addSphereObject_ellipsoid(context, ndivs: int, center: List[float], radius: List[float]) -> int:
+    """Add an ellipsoidal compound object (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(radius) != 3:
+        raise ValueError("radius must have 3 elements [rx, ry, rz]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    radius_ptr = (ctypes.c_float * 3)(*radius)
+    return helios_lib.addSphereObject_ellipsoid(context, ndivs, center_ptr, radius_ptr)
+
+def addSphereObject_ellipsoid_color(context, ndivs: int, center: List[float], radius: List[float], color: List[float]) -> int:
+    """Add an ellipsoidal compound object with color (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(radius) != 3:
+        raise ValueError("radius must have 3 elements [rx, ry, rz]")
+    if len(color) != 3:
+        raise ValueError("color must have 3 elements [r, g, b]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    radius_ptr = (ctypes.c_float * 3)(*radius)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    return helios_lib.addSphereObject_ellipsoid_color(context, ndivs, center_ptr, radius_ptr, color_ptr)
+
+def addSphereObject_ellipsoid_texture(context, ndivs: int, center: List[float], radius: List[float], texturefile: str) -> int:
+    """Add an ellipsoidal compound object with texture (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(radius) != 3:
+        raise ValueError("radius must have 3 elements [rx, ry, rz]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    radius_ptr = (ctypes.c_float * 3)(*radius)
+    texturefile_bytes = texturefile.encode('utf-8')
+    return helios_lib.addSphereObject_ellipsoid_texture(context, ndivs, center_ptr, radius_ptr, texturefile_bytes)
+
+def addTileObject_basic(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int]) -> int:
+    """Add a tiled patch object (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have 2 elements [x, y]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have 3 elements [radius, elevation, azimuth]")
+    if len(subdiv) != 2:
+        raise ValueError("subdiv must have 2 elements [x, y]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    subdiv_ptr = (ctypes.c_int * 2)(*subdiv)
+    return helios_lib.addTileObject_basic(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr)
+
+def addTileObject_color(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int], color: List[float]) -> int:
+    """Add a tiled patch object with color (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have 2 elements [x, y]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have 3 elements [radius, elevation, azimuth]")
+    if len(subdiv) != 2:
+        raise ValueError("subdiv must have 2 elements [x, y]")
+    if len(color) != 3:
+        raise ValueError("color must have 3 elements [r, g, b]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    subdiv_ptr = (ctypes.c_int * 2)(*subdiv)
+    color_ptr = (ctypes.c_float * 3)(*color)
+    return helios_lib.addTileObject_color(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr, color_ptr)
+
+def addTileObject_texture(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int], texturefile: str) -> int:
+    """Add a tiled patch object with texture (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have 2 elements [x, y]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have 3 elements [radius, elevation, azimuth]")
+    if len(subdiv) != 2:
+        raise ValueError("subdiv must have 2 elements [x, y]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    subdiv_ptr = (ctypes.c_int * 2)(*subdiv)
+    texturefile_bytes = texturefile.encode('utf-8')
+    return helios_lib.addTileObject_texture(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr, texturefile_bytes)
+
+def addTileObject_texture_repeat(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int], texturefile: str, texture_repeat: List[int]) -> int:
+    """Add a tiled patch object with texture and repeat (returns object ID)"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have 2 elements [x, y]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have 3 elements [radius, elevation, azimuth]")
+    if len(subdiv) != 2:
+        raise ValueError("subdiv must have 2 elements [x, y]")
+    if len(texture_repeat) != 2:
+        raise ValueError("texture_repeat must have 2 elements [x, y]")
+
+    center_ptr = (ctypes.c_float * 3)(*center)
+    size_ptr = (ctypes.c_float * 2)(*size)
+    rotation_ptr = (ctypes.c_float * 3)(*rotation)
+    subdiv_ptr = (ctypes.c_int * 2)(*subdiv)
+    texture_repeat_ptr = (ctypes.c_int * 2)(*texture_repeat)
+    texturefile_bytes = texturefile.encode('utf-8')
+    return helios_lib.addTileObject_texture_repeat(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr, texturefile_bytes, texture_repeat_ptr)
+
+def addBoxObject_basic(context, center: List[float], size: List[float], subdiv: List[int]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 3 or len(subdiv) != 3:
+        raise ValueError("center, size, and subdiv must have 3 elements")
+    return helios_lib.addBoxObject_basic(context, (ctypes.c_float * 3)(*center), (ctypes.c_float * 3)(*size), (ctypes.c_int * 3)(*subdiv))
+
+def addBoxObject_color(context, center: List[float], size: List[float], subdiv: List[int], color: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 3 or len(subdiv) != 3 or len(color) != 3:
+        raise ValueError("center, size, subdiv, and color must have 3 elements")
+    return helios_lib.addBoxObject_color(context, (ctypes.c_float * 3)(*center), (ctypes.c_float * 3)(*size), (ctypes.c_int * 3)(*subdiv), (ctypes.c_float * 3)(*color))
+
+def addBoxObject_texture(context, center: List[float], size: List[float], subdiv: List[int], texturefile: str) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 3 or len(subdiv) != 3:
+        raise ValueError("center, size, and subdiv must have 3 elements")
+    return helios_lib.addBoxObject_texture(context, (ctypes.c_float * 3)(*center), (ctypes.c_float * 3)(*size), (ctypes.c_int * 3)(*subdiv), texturefile.encode('utf-8'))
+
+def addBoxObject_color_reverse(context, center: List[float], size: List[float], subdiv: List[int], color: List[float], reverse_normals: bool) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 3 or len(subdiv) != 3 or len(color) != 3:
+        raise ValueError("center, size, subdiv, and color must have 3 elements")
+    return helios_lib.addBoxObject_color_reverse(context, (ctypes.c_float * 3)(*center), (ctypes.c_float * 3)(*size), (ctypes.c_int * 3)(*subdiv), (ctypes.c_float * 3)(*color), reverse_normals)
+
+def addBoxObject_texture_reverse(context, center: List[float], size: List[float], subdiv: List[int], texturefile: str, reverse_normals: bool) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 3 or len(subdiv) != 3:
+        raise ValueError("center, size, and subdiv must have 3 elements")
+    return helios_lib.addBoxObject_texture_reverse(context, (ctypes.c_float * 3)(*center), (ctypes.c_float * 3)(*size), (ctypes.c_int * 3)(*subdiv), texturefile.encode('utf-8'), reverse_normals)
+
+def addConeObject_basic(context, ndivs: int, node0: List[float], node1: List[float], radius0: float, radius1: float) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(node0) != 3 or len(node1) != 3:
+        raise ValueError("node0 and node1 must have 3 elements")
+    return helios_lib.addConeObject_basic(context, ndivs, (ctypes.c_float * 3)(*node0), (ctypes.c_float * 3)(*node1), radius0, radius1)
+
+def addConeObject_color(context, ndivs: int, node0: List[float], node1: List[float], radius0: float, radius1: float, color: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(node0) != 3 or len(node1) != 3 or len(color) != 3:
+        raise ValueError("node0, node1, and color must have 3 elements")
+    return helios_lib.addConeObject_color(context, ndivs, (ctypes.c_float * 3)(*node0), (ctypes.c_float * 3)(*node1), radius0, radius1, (ctypes.c_float * 3)(*color))
+
+def addConeObject_texture(context, ndivs: int, node0: List[float], node1: List[float], radius0: float, radius1: float, texturefile: str) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(node0) != 3 or len(node1) != 3:
+        raise ValueError("node0 and node1 must have 3 elements")
+    return helios_lib.addConeObject_texture(context, ndivs, (ctypes.c_float * 3)(*node0), (ctypes.c_float * 3)(*node1), radius0, radius1, texturefile.encode('utf-8'))
+
+def addDiskObject_basic(context, ndivs: int, center: List[float], size: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 2:
+        raise ValueError("center must have 3 elements, size must have 2")
+    return helios_lib.addDiskObject_basic(context, ndivs, (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size))
+
+def addDiskObject_rotation(context, ndivs: int, center: List[float], size: List[float], rotation: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 2 or len(rotation) != 3:
+        raise ValueError("Incorrect parameter dimensions")
+    return helios_lib.addDiskObject_rotation(context, ndivs, (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation))
+
+def addDiskObject_color(context, ndivs: int, center: List[float], size: List[float], rotation: List[float], color: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 2 or len(rotation) != 3 or len(color) != 3:
+        raise ValueError("Incorrect parameter dimensions")
+    return helios_lib.addDiskObject_color(context, ndivs, (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation), (ctypes.c_float * 3)(*color))
+
+def addDiskObject_rgba(context, ndivs: int, center: List[float], size: List[float], rotation: List[float], color: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 2 or len(rotation) != 3 or len(color) != 4:
+        raise ValueError("Incorrect parameter dimensions (color needs 4 for RGBA)")
+    return helios_lib.addDiskObject_rgba(context, ndivs, (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation), (ctypes.c_float * 4)(*color))
+
+def addDiskObject_texture(context, ndivs: int, center: List[float], size: List[float], rotation: List[float], texturefile: str) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(center) != 3 or len(size) != 2 or len(rotation) != 3:
+        raise ValueError("Incorrect parameter dimensions")
+    return helios_lib.addDiskObject_texture(context, ndivs, (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation), texturefile.encode('utf-8'))
+
+def addDiskObject_polar_color(context, ndivs: List[int], center: List[float], size: List[float], rotation: List[float], color: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(ndivs) != 2 or len(center) != 3 or len(size) != 2 or len(rotation) != 3 or len(color) != 3:
+        raise ValueError("Incorrect parameter dimensions")
+    return helios_lib.addDiskObject_polar_color(context, (ctypes.c_int * 2)(*ndivs), (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation), (ctypes.c_float * 3)(*color))
+
+def addDiskObject_polar_rgba(context, ndivs: List[int], center: List[float], size: List[float], rotation: List[float], color: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(ndivs) != 2 or len(center) != 3 or len(size) != 2 or len(rotation) != 3 or len(color) != 4:
+        raise ValueError("Incorrect parameter dimensions (color needs 4 for RGBA)")
+    return helios_lib.addDiskObject_polar_rgba(context, (ctypes.c_int * 2)(*ndivs), (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation), (ctypes.c_float * 4)(*color))
+
+def addDiskObject_polar_texture(context, ndivs: List[int], center: List[float], size: List[float], rotation: List[float], texturefile: str) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(ndivs) != 2 or len(center) != 3 or len(size) != 2 or len(rotation) != 3:
+        raise ValueError("Incorrect parameter dimensions")
+    return helios_lib.addDiskObject_polar_texture(context, (ctypes.c_int * 2)(*ndivs), (ctypes.c_float * 3)(*center), (ctypes.c_float * 2)(*size), (ctypes.c_float * 3)(*rotation), texturefile.encode('utf-8'))
+
+def addTubeObject_basic(context, radial_subdivisions: int, nodes: List[float], radii: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(nodes) % 3 != 0:
+        raise ValueError("nodes must be a multiple of 3 (flattened vec3 array)")
+    node_count = len(nodes) // 3
+    nodes_ptr = (ctypes.c_float * len(nodes))(*nodes)
+    radii_ptr = (ctypes.c_float * len(radii))(*radii)
+    return helios_lib.addTubeObject_basic(context, radial_subdivisions, nodes_ptr, node_count, radii_ptr, len(radii))
+
+def addTubeObject_color(context, radial_subdivisions: int, nodes: List[float], radii: List[float], colors: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(nodes) % 3 != 0 or len(colors) % 3 != 0:
+        raise ValueError("nodes and colors must be multiples of 3")
+    node_count = len(nodes) // 3
+    color_count = len(colors) // 3
+    nodes_ptr = (ctypes.c_float * len(nodes))(*nodes)
+    radii_ptr = (ctypes.c_float * len(radii))(*radii)
+    colors_ptr = (ctypes.c_float * len(colors))(*colors)
+    return helios_lib.addTubeObject_color(context, radial_subdivisions, nodes_ptr, node_count, radii_ptr, len(radii), colors_ptr, color_count)
+
+def addTubeObject_texture(context, radial_subdivisions: int, nodes: List[float], radii: List[float], texturefile: str) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(nodes) % 3 != 0:
+        raise ValueError("nodes must be a multiple of 3")
+    node_count = len(nodes) // 3
+    nodes_ptr = (ctypes.c_float * len(nodes))(*nodes)
+    radii_ptr = (ctypes.c_float * len(radii))(*radii)
+    return helios_lib.addTubeObject_texture(context, radial_subdivisions, nodes_ptr, node_count, radii_ptr, len(radii), texturefile.encode('utf-8'))
+
+def addTubeObject_texture_uv(context, radial_subdivisions: int, nodes: List[float], radii: List[float], texturefile: str, textureuv_ufrac: List[float]) -> int:
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Object-returning compound geometry functions not available.")
+    if len(nodes) % 3 != 0:
+        raise ValueError("nodes must be a multiple of 3")
+    node_count = len(nodes) // 3
+    nodes_ptr = (ctypes.c_float * len(nodes))(*nodes)
+    radii_ptr = (ctypes.c_float * len(radii))(*radii)
+    uv_ptr = (ctypes.c_float * len(textureuv_ufrac))(*textureuv_ufrac)
+    return helios_lib.addTubeObject_texture_uv(context, radial_subdivisions, nodes_ptr, node_count, radii_ptr, len(radii), texturefile.encode('utf-8'), uv_ptr, len(textureuv_ufrac))
+
+def copyPrimitive(context, uuid: int) -> int:
+    """Copy a single primitive"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Copy functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Call C function
+    result = helios_lib.copyPrimitive(context, uuid)
+    return result
+
+def copyPrimitives(context, uuids: List[int]) -> List[int]:
+    """Copy multiple primitives"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Copy functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return []
+
+    # Convert to ctypes array
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    result_count = ctypes.c_uint()
+
+    # Call C function
+    result_ptr = helios_lib.copyPrimitives(context, uuids_array, len(uuids), ctypes.byref(result_count))
+
+    # Convert result to Python list
+    if result_ptr and result_count.value > 0:
+        return list(result_ptr[:result_count.value])
+    else:
+        return []
+
+def copyPrimitiveData(context, sourceUUID: int, destinationUUID: int) -> None:
+    """Copy all primitive data from source to destination"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Copy functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Call C function
+    helios_lib.copyPrimitiveData(context, sourceUUID, destinationUUID)
+
+def copyObject(context, objID: int) -> int:
+    """Copy a single object"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Copy functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Call C function
+    result = helios_lib.copyObject(context, objID)
+    return result
+
+def copyObjects(context, objIDs: List[int]) -> List[int]:
+    """Copy multiple objects"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Copy functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return []
+
+    # Convert to ctypes array
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    result_count = ctypes.c_uint()
+
+    # Call C function
+    result_ptr = helios_lib.copyObjects(context, objIDs_array, len(objIDs), ctypes.byref(result_count))
+
+    # Convert result to Python list
+    if result_ptr and result_count.value > 0:
+        return list(result_ptr[:result_count.value])
+    else:
+        return []
+
+def copyObjectData(context, source_objID: int, destination_objID: int) -> None:
+    """Copy all object data from source to destination"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Copy functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Call C function
+    helios_lib.copyObjectData(context, source_objID, destination_objID)
+
+def translatePrimitive(context, uuid: int, shift: List[float]) -> None:
+    """Translate a single primitive"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Translation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(shift) != 3:
+        raise ValueError("Shift must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    shift_ptr = (ctypes.c_float * 3)(*shift)
+
+    # Call C function
+    helios_lib.translatePrimitive(context, uuid, shift_ptr)
+
+def translatePrimitives(context, uuids: List[int], shift: List[float]) -> None:
+    """Translate multiple primitives"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Translation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return  # Nothing to translate
+
+    # Validate parameters
+    if len(shift) != 3:
+        raise ValueError("Shift must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    shift_ptr = (ctypes.c_float * 3)(*shift)
+
+    # Call C function
+    helios_lib.translatePrimitives(context, uuids_array, len(uuids), shift_ptr)
+
+def translateObject(context, objID: int, shift: List[float]) -> None:
+    """Translate a single object"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Translation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(shift) != 3:
+        raise ValueError("Shift must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    shift_ptr = (ctypes.c_float * 3)(*shift)
+
+    # Call C function
+    helios_lib.translateObject(context, objID, shift_ptr)
+
+def translateObjects(context, objIDs: List[int], shift: List[float]) -> None:
+    """Translate multiple objects"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Translation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to translate
+
+    # Validate parameters
+    if len(shift) != 3:
+        raise ValueError("Shift must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    shift_ptr = (ctypes.c_float * 3)(*shift)
+
+    # Call C function
+    helios_lib.translateObjects(context, objIDs_array, len(objIDs), shift_ptr)
+
+# ==================== Rotation Functions ====================
+
+def rotatePrimitive_axisString(context, uuid: int, rotation_radians: float, axis: str) -> None:
+    """Rotate a single primitive around an axis specified by string"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate axis parameter
+    if axis not in ('x', 'y', 'z'):
+        raise ValueError("Axis must be 'x', 'y', or 'z'")
+
+    # Encode axis string to bytes
+    axis_bytes = axis.encode('utf-8')
+
+    # Call C function
+    helios_lib.rotatePrimitive_axisString(context, uuid, rotation_radians, axis_bytes)
+
+def rotatePrimitives_axisString(context, uuids: List[int], rotation_radians: float, axis: str) -> None:
+    """Rotate multiple primitives around an axis specified by string"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return  # Nothing to rotate
+
+    # Validate axis parameter
+    if axis not in ('x', 'y', 'z'):
+        raise ValueError("Axis must be 'x', 'y', or 'z'")
+
+    # Convert to ctypes array
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    axis_bytes = axis.encode('utf-8')
+
+    # Call C function
+    helios_lib.rotatePrimitives_axisString(context, uuids_array, len(uuids), rotation_radians, axis_bytes)
+
+def rotatePrimitive_axisVector(context, uuid: int, rotation_radians: float, axis: List[float]) -> None:
+    """Rotate a single primitive around an axis specified by vector"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotatePrimitive_axisVector(context, uuid, rotation_radians, axis_ptr)
+
+def rotatePrimitives_axisVector(context, uuids: List[int], rotation_radians: float, axis: List[float]) -> None:
+    """Rotate multiple primitives around an axis specified by vector"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return  # Nothing to rotate
+
+    # Validate parameters
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotatePrimitives_axisVector(context, uuids_array, len(uuids), rotation_radians, axis_ptr)
+
+def rotatePrimitive_originAxisVector(context, uuid: int, rotation_radians: float, origin: List[float], axis: List[float]) -> None:
+    """Rotate a single primitive around an axis through a specified origin point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(origin) != 3:
+        raise ValueError("Origin must have exactly 3 elements [x, y, z]")
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    origin_ptr = (ctypes.c_float * 3)(*origin)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotatePrimitive_originAxisVector(context, uuid, rotation_radians, origin_ptr, axis_ptr)
+
+def rotatePrimitives_originAxisVector(context, uuids: List[int], rotation_radians: float, origin: List[float], axis: List[float]) -> None:
+    """Rotate multiple primitives around an axis through a specified origin point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return  # Nothing to rotate
+
+    # Validate parameters
+    if len(origin) != 3:
+        raise ValueError("Origin must have exactly 3 elements [x, y, z]")
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    origin_ptr = (ctypes.c_float * 3)(*origin)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotatePrimitives_originAxisVector(context, uuids_array, len(uuids), rotation_radians, origin_ptr, axis_ptr)
+
+def rotateObject_axisString(context, objID: int, rotation_radians: float, axis: str) -> None:
+    """Rotate a single object around an axis specified by string"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate axis parameter
+    if axis not in ('x', 'y', 'z'):
+        raise ValueError("Axis must be 'x', 'y', or 'z'")
+
+    # Encode axis string to bytes
+    axis_bytes = axis.encode('utf-8')
+
+    # Call C function
+    helios_lib.rotateObject_axisString(context, objID, rotation_radians, axis_bytes)
+
+def rotateObjects_axisString(context, objIDs: List[int], rotation_radians: float, axis: str) -> None:
+    """Rotate multiple objects around an axis specified by string"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to rotate
+
+    # Validate axis parameter
+    if axis not in ('x', 'y', 'z'):
+        raise ValueError("Axis must be 'x', 'y', or 'z'")
+
+    # Convert to ctypes array
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    axis_bytes = axis.encode('utf-8')
+
+    # Call C function
+    helios_lib.rotateObjects_axisString(context, objIDs_array, len(objIDs), rotation_radians, axis_bytes)
+
+def rotateObject_axisVector(context, objID: int, rotation_radians: float, axis: List[float]) -> None:
+    """Rotate a single object around an axis specified by vector"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotateObject_axisVector(context, objID, rotation_radians, axis_ptr)
+
+def rotateObjects_axisVector(context, objIDs: List[int], rotation_radians: float, axis: List[float]) -> None:
+    """Rotate multiple objects around an axis specified by vector"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to rotate
+
+    # Validate parameters
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotateObjects_axisVector(context, objIDs_array, len(objIDs), rotation_radians, axis_ptr)
+
+def rotateObject_originAxisVector(context, objID: int, rotation_radians: float, origin: List[float], axis: List[float]) -> None:
+    """Rotate a single object around an axis through a specified origin point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(origin) != 3:
+        raise ValueError("Origin must have exactly 3 elements [x, y, z]")
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    origin_ptr = (ctypes.c_float * 3)(*origin)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotateObject_originAxisVector(context, objID, rotation_radians, origin_ptr, axis_ptr)
+
+def rotateObjects_originAxisVector(context, objIDs: List[int], rotation_radians: float, origin: List[float], axis: List[float]) -> None:
+    """Rotate multiple objects around an axis through a specified origin point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to rotate
+
+    # Validate parameters
+    if len(origin) != 3:
+        raise ValueError("Origin must have exactly 3 elements [x, y, z]")
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    origin_ptr = (ctypes.c_float * 3)(*origin)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotateObjects_originAxisVector(context, objIDs_array, len(objIDs), rotation_radians, origin_ptr, axis_ptr)
+
+def rotateObjectAboutOrigin_axisVector(context, objID: int, rotation_radians: float, axis: List[float]) -> None:
+    """Rotate a single object about the global origin around an axis specified by vector"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotateObjectAboutOrigin_axisVector(context, objID, rotation_radians, axis_ptr)
+
+def rotateObjectsAboutOrigin_axisVector(context, objIDs: List[int], rotation_radians: float, axis: List[float]) -> None:
+    """Rotate multiple objects about the global origin around an axis specified by vector"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Rotation functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to rotate
+
+    # Validate parameters
+    if len(axis) != 3:
+        raise ValueError("Axis must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    axis_ptr = (ctypes.c_float * 3)(*axis)
+
+    # Call C function
+    helios_lib.rotateObjectsAboutOrigin_axisVector(context, objIDs_array, len(objIDs), rotation_radians, axis_ptr)
+
+# ==================== Scaling Functions ====================
+
+def scalePrimitive(context, uuid: int, scale: List[float]) -> None:
+    """Scale a single primitive"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scalePrimitive(context, uuid, scale_ptr)
+
+def scalePrimitives(context, uuids: List[int], scale: List[float]) -> None:
+    """Scale multiple primitives"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return  # Nothing to scale
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scalePrimitives(context, uuids_array, len(uuids), scale_ptr)
+
+def scalePrimitiveAboutPoint(context, uuid: int, scale: List[float], point: List[float]) -> None:
+    """Scale a single primitive about a specified point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+    if len(point) != 3:
+        raise ValueError("Point must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+    point_ptr = (ctypes.c_float * 3)(*point)
+
+    # Call C function
+    helios_lib.scalePrimitiveAboutPoint(context, uuid, scale_ptr, point_ptr)
+
+def scalePrimitivesAboutPoint(context, uuids: List[int], scale: List[float], point: List[float]) -> None:
+    """Scale multiple primitives about a specified point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not uuids:
+        return  # Nothing to scale
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+    if len(point) != 3:
+        raise ValueError("Point must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+    point_ptr = (ctypes.c_float * 3)(*point)
+
+    # Call C function
+    helios_lib.scalePrimitivesAboutPoint(context, uuids_array, len(uuids), scale_ptr, point_ptr)
+
+def scaleObject(context, objID: int, scale: List[float]) -> None:
+    """Scale a single object"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scaleObject(context, objID, scale_ptr)
+
+def scaleObjects(context, objIDs: List[int], scale: List[float]) -> None:
+    """Scale multiple objects"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to scale
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scaleObjects(context, objIDs_array, len(objIDs), scale_ptr)
+
+def scaleObjectAboutCenter(context, objID: int, scale: List[float]) -> None:
+    """Scale a single object about its center"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scaleObjectAboutCenter(context, objID, scale_ptr)
+
+def scaleObjectsAboutCenter(context, objIDs: List[int], scale: List[float]) -> None:
+    """Scale multiple objects about their centers"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to scale
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scaleObjectsAboutCenter(context, objIDs_array, len(objIDs), scale_ptr)
+
+def scaleObjectAboutPoint(context, objID: int, scale: List[float], point: List[float]) -> None:
+    """Scale a single object about a specified point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+    if len(point) != 3:
+        raise ValueError("Point must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+    point_ptr = (ctypes.c_float * 3)(*point)
+
+    # Call C function
+    helios_lib.scaleObjectAboutPoint(context, objID, scale_ptr, point_ptr)
+
+def scaleObjectsAboutPoint(context, objIDs: List[int], scale: List[float], point: List[float]) -> None:
+    """Scale multiple objects about a specified point"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to scale
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+    if len(point) != 3:
+        raise ValueError("Point must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+    point_ptr = (ctypes.c_float * 3)(*point)
+
+    # Call C function
+    helios_lib.scaleObjectsAboutPoint(context, objIDs_array, len(objIDs), scale_ptr, point_ptr)
+
+def scaleObjectAboutOrigin(context, objID: int, scale: List[float]) -> None:
+    """Scale a single object about the global origin"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes array
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scaleObjectAboutOrigin(context, objID, scale_ptr)
+
+def scaleObjectsAboutOrigin(context, objIDs: List[int], scale: List[float]) -> None:
+    """Scale multiple objects about the global origin"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if not objIDs:
+        return  # Nothing to scale
+
+    # Validate parameters
+    if len(scale) != 3:
+        raise ValueError("Scale must have exactly 3 elements [x, y, z]")
+
+    # Convert to ctypes arrays
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    scale_ptr = (ctypes.c_float * 3)(*scale)
+
+    # Call C function
+    helios_lib.scaleObjectsAboutOrigin(context, objIDs_array, len(objIDs), scale_ptr)
+
 # Python wrappers for primitive data functions - scalar setters
 def setPrimitiveDataInt(context, uuid:int, label:str, value:int):
     if not _PRIMITIVE_DATA_FUNCTIONS_AVAILABLE:
@@ -1845,6 +3500,96 @@ if _DELETE_FUNCTIONS_AVAILABLE:
     helios_lib.deleteObject.errcheck = _check_error
     helios_lib.deleteObjects.errcheck = _check_error
 
+# ============================================================================
+# Materials System Functions (v1.3.58+)
+# ============================================================================
+
+_MATERIALS_FUNCTIONS_AVAILABLE = False
+
+try:
+    helios_lib.addMaterial.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    helios_lib.addMaterial.restype = None
+
+    helios_lib.doesMaterialExist.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    helios_lib.doesMaterialExist.restype = ctypes.c_bool
+
+    helios_lib.listMaterials.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+    helios_lib.listMaterials.restype = ctypes.POINTER(ctypes.c_char_p)
+
+    helios_lib.deleteMaterial.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    helios_lib.deleteMaterial.restype = None
+
+    helios_lib.getMaterialColor.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getMaterialColor.restype = None
+
+    helios_lib.setMaterialColor.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setMaterialColor.restype = None
+
+    helios_lib.getMaterialTexture.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    helios_lib.getMaterialTexture.restype = ctypes.c_char_p
+
+    helios_lib.setMaterialTexture.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setMaterialTexture.restype = None
+
+    helios_lib.isMaterialTextureColorOverridden.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    helios_lib.isMaterialTextureColorOverridden.restype = ctypes.c_bool
+
+    helios_lib.setMaterialTextureColorOverride.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_bool]
+    helios_lib.setMaterialTextureColorOverride.restype = None
+
+    helios_lib.getMaterialTwosidedFlag.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    helios_lib.getMaterialTwosidedFlag.restype = ctypes.c_uint
+
+    helios_lib.setMaterialTwosidedFlag.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint]
+    helios_lib.setMaterialTwosidedFlag.restype = None
+
+    helios_lib.assignMaterialToPrimitive.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.assignMaterialToPrimitive.restype = None
+
+    helios_lib.assignMaterialToPrimitives.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p]
+    helios_lib.assignMaterialToPrimitives.restype = None
+
+    helios_lib.assignMaterialToObject.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.assignMaterialToObject.restype = None
+
+    helios_lib.assignMaterialToObjects.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p]
+    helios_lib.assignMaterialToObjects.restype = None
+
+    helios_lib.getPrimitiveMaterialLabel.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.getPrimitiveMaterialLabel.restype = ctypes.c_char_p
+
+    helios_lib.getPrimitiveTwosidedFlag.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
+    helios_lib.getPrimitiveTwosidedFlag.restype = ctypes.c_uint
+
+    helios_lib.getPrimitivesUsingMaterial.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)]
+    helios_lib.getPrimitivesUsingMaterial.restype = ctypes.POINTER(ctypes.c_uint)
+
+    # Set up automatic error checking for materials functions
+    helios_lib.addMaterial.errcheck = _check_error
+    helios_lib.doesMaterialExist.errcheck = _check_error
+    helios_lib.listMaterials.errcheck = _check_error
+    helios_lib.deleteMaterial.errcheck = _check_error
+    helios_lib.getMaterialColor.errcheck = _check_error
+    helios_lib.setMaterialColor.errcheck = _check_error
+    helios_lib.getMaterialTexture.errcheck = _check_error
+    helios_lib.setMaterialTexture.errcheck = _check_error
+    helios_lib.isMaterialTextureColorOverridden.errcheck = _check_error
+    helios_lib.setMaterialTextureColorOverride.errcheck = _check_error
+    helios_lib.getMaterialTwosidedFlag.errcheck = _check_error
+    helios_lib.setMaterialTwosidedFlag.errcheck = _check_error
+    helios_lib.assignMaterialToPrimitive.errcheck = _check_error
+    helios_lib.assignMaterialToPrimitives.errcheck = _check_error
+    helios_lib.assignMaterialToObject.errcheck = _check_error
+    helios_lib.assignMaterialToObjects.errcheck = _check_error
+    helios_lib.getPrimitiveMaterialLabel.errcheck = _check_error
+    helios_lib.getPrimitiveTwosidedFlag.errcheck = _check_error
+    helios_lib.getPrimitivesUsingMaterial.errcheck = _check_error
+
+    _MATERIALS_FUNCTIONS_AVAILABLE = True
+
+except AttributeError:
+    _MATERIALS_FUNCTIONS_AVAILABLE = False
+
 # Primitive deletion wrapper functions
 def deletePrimitive(context, uuid: int) -> None:
     """Delete a single primitive by UUID.
@@ -1920,4 +3665,157 @@ def deleteObjects(context, objIDs: List[int]) -> None:
         return  # No-op for empty list
     objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
     helios_lib.deleteObjects(context, objIDs_array, len(objIDs))
+
+# ============================================================================
+# Materials System Wrapper Functions (v1.3.58+)
+# ============================================================================
+
+def addMaterial(context, material_label: str) -> None:
+    """Create a new material with the given label."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.addMaterial(context, material_label_encoded)
+
+def doesMaterialExist(context, material_label: str) -> bool:
+    """Check if a material exists."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    return helios_lib.doesMaterialExist(context, material_label_encoded)
+
+def listMaterials(context) -> List[str]:
+    """Get list of all material labels."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    count = ctypes.c_size_t()
+    materials_ptr = helios_lib.listMaterials(context, ctypes.byref(count))
+    if count.value == 0 or not materials_ptr:
+        return []
+    return [materials_ptr[i].decode('utf-8') for i in range(count.value)]
+
+def deleteMaterial(context, material_label: str) -> None:
+    """Delete a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.deleteMaterial(context, material_label_encoded)
+
+def getMaterialColor(context, material_label: str) -> List[float]:
+    """Get RGBA color of a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    color_array = (ctypes.c_float * 4)()
+    helios_lib.getMaterialColor(context, material_label_encoded, color_array)
+    return list(color_array)
+
+def setMaterialColor(context, material_label: str, r: float, g: float, b: float, a: float = 1.0) -> None:
+    """Set RGBA color of a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.setMaterialColor(context, material_label_encoded, r, g, b, a)
+
+def getMaterialTexture(context, material_label: str) -> str:
+    """Get texture file path for a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    texture_ptr = helios_lib.getMaterialTexture(context, material_label_encoded)
+    return texture_ptr.decode('utf-8') if texture_ptr else ""
+
+def setMaterialTexture(context, material_label: str, texture_file: str) -> None:
+    """Set texture file for a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    texture_file_encoded = texture_file.encode('utf-8')
+    helios_lib.setMaterialTexture(context, material_label_encoded, texture_file_encoded)
+
+def isMaterialTextureColorOverridden(context, material_label: str) -> bool:
+    """Check if material texture color is overridden."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    return helios_lib.isMaterialTextureColorOverridden(context, material_label_encoded)
+
+def setMaterialTextureColorOverride(context, material_label: str, override: bool) -> None:
+    """Set texture color override for a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.setMaterialTextureColorOverride(context, material_label_encoded, override)
+
+def getMaterialTwosidedFlag(context, material_label: str) -> int:
+    """Get two-sided rendering flag for a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    return helios_lib.getMaterialTwosidedFlag(context, material_label_encoded)
+
+def setMaterialTwosidedFlag(context, material_label: str, twosided_flag: int) -> None:
+    """Set two-sided rendering flag for a material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.setMaterialTwosidedFlag(context, material_label_encoded, twosided_flag)
+
+def assignMaterialToPrimitive(context, uuid: int, material_label: str) -> None:
+    """Assign a material to a single primitive."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.assignMaterialToPrimitive(context, ctypes.c_uint(uuid), material_label_encoded)
+
+def assignMaterialToPrimitives(context, uuids: List[int], material_label: str) -> None:
+    """Assign a material to multiple primitives."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    if not uuids:
+        return
+    material_label_encoded = material_label.encode('utf-8')
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.assignMaterialToPrimitives(context, uuids_array, len(uuids), material_label_encoded)
+
+def assignMaterialToObject(context, objID: int, material_label: str) -> None:
+    """Assign a material to all primitives in an object."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    helios_lib.assignMaterialToObject(context, ctypes.c_uint(objID), material_label_encoded)
+
+def assignMaterialToObjects(context, objIDs: List[int], material_label: str) -> None:
+    """Assign a material to all primitives in multiple objects."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    if not objIDs:
+        return
+    material_label_encoded = material_label.encode('utf-8')
+    objIDs_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.assignMaterialToObjects(context, objIDs_array, len(objIDs), material_label_encoded)
+
+def getPrimitiveMaterialLabel(context, uuid: int) -> str:
+    """Get the material label assigned to a primitive."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_ptr = helios_lib.getPrimitiveMaterialLabel(context, ctypes.c_uint(uuid))
+    return material_ptr.decode('utf-8') if material_ptr else ""
+
+def getPrimitiveTwosidedFlag(context, uuid: int, default_value: int = 1) -> int:
+    """Get two-sided flag for a primitive (checks material first, then primitive data)."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    return helios_lib.getPrimitiveTwosidedFlag(context, ctypes.c_uint(uuid), ctypes.c_uint(default_value))
+
+def getPrimitivesUsingMaterial(context, material_label: str) -> List[int]:
+    """Get all primitive UUIDs that use a specific material."""
+    if not _MATERIALS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Materials functions not available. Rebuild with updated C++ wrapper.")
+    material_label_encoded = material_label.encode('utf-8')
+    count = ctypes.c_size_t()
+    uuids_ptr = helios_lib.getPrimitivesUsingMaterial(context, material_label_encoded, ctypes.byref(count))
+    if count.value == 0 or not uuids_ptr:
+        return []
+    return list(uuids_ptr[:count.value])
 

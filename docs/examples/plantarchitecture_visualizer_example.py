@@ -38,7 +38,7 @@ def main():
             # Create a diverse garden layout
             print("\nCreating plant garden...")
 
-            # Define plant positions and species for a small garden
+        # Define plant positions and species for a small garden
             garden_plants = [
                 # Agricultural crops in a row
                 ("bean", vec3(-1, -1, 0), 25.0),

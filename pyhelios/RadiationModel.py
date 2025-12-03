@@ -96,20 +96,33 @@ class CameraProperties:
     Camera properties for radiation model cameras.
 
     This class encapsulates the properties needed to configure a radiation camera,
-    providing sensible defaults and validation for camera parameters.
+    providing sensible defaults and validation for camera parameters. Updated for
+    Helios v1.3.58 with extended camera metadata fields.
     """
 
     def __init__(self, camera_resolution=None, focal_plane_distance=1.0, lens_diameter=0.05,
-                 HFOV=20.0, FOV_aspect_ratio=1.0):
+                 HFOV=20.0, FOV_aspect_ratio=0.0, lens_focal_length=0.05,
+                 sensor_width_mm=35.0, model="generic", lens_make="", lens_model="",
+                 lens_specification="", exposure="auto", shutter_speed=1.0/125.0,
+                 white_balance="auto"):
         """
         Initialize camera properties with defaults matching C++ CameraProperties.
 
         Args:
             camera_resolution: Camera resolution as (width, height) tuple or list. Default: (512, 512)
-            focal_plane_distance: Distance from viewing plane to focal plane. Default: 1.0
+            focal_plane_distance: Distance from viewing plane to focal plane (working distance). Default: 1.0
             lens_diameter: Diameter of camera lens (0 = pinhole camera). Default: 0.05
             HFOV: Horizontal field of view in degrees. Default: 20.0
-            FOV_aspect_ratio: Ratio of horizontal to vertical field of view. Default: 1.0
+            FOV_aspect_ratio: Ratio of horizontal to vertical FOV. Default: 0.0 (auto-calculate from resolution)
+            lens_focal_length: Camera lens optical focal length in meters (physical, not 35mm equiv). Default: 0.05 (50mm)
+            sensor_width_mm: Physical sensor width in mm. Default: 35.0 (full-frame)
+            model: Camera model name (e.g., "Nikon D700", "Canon EOS 5D"). Default: "generic"
+            lens_make: Lens manufacturer (e.g., "Canon", "Nikon"). Default: ""
+            lens_model: Lens model name (e.g., "AF-S NIKKOR 50mm f/1.8G"). Default: ""
+            lens_specification: Lens specification (e.g., "50mm f/1.8"). Default: ""
+            exposure: Exposure mode - "auto", "ISOXXX" (e.g., "ISO100"), or "manual". Default: "auto"
+            shutter_speed: Camera shutter speed in seconds (e.g., 0.008 for 1/125s). Default: 0.008 (1/125s)
+            white_balance: White balance mode - "auto" or "off". Default: "auto"
         """
         # Set camera resolution with validation
         if camera_resolution is None:
@@ -120,27 +133,71 @@ class CameraProperties:
             else:
                 raise ValueError("camera_resolution must be a tuple or list of 2 integers")
 
-        # Validate and set other properties
+        # Validate and set numeric properties
         if focal_plane_distance <= 0:
             raise ValueError("focal_plane_distance must be greater than 0")
         if lens_diameter < 0:
             raise ValueError("lens_diameter must be non-negative")
         if HFOV <= 0 or HFOV > 180:
             raise ValueError("HFOV must be between 0 and 180 degrees")
-        if FOV_aspect_ratio <= 0:
-            raise ValueError("FOV_aspect_ratio must be greater than 0")
+        if FOV_aspect_ratio < 0:
+            raise ValueError("FOV_aspect_ratio must be non-negative (0 = auto-calculate)")
+        if lens_focal_length <= 0:
+            raise ValueError("lens_focal_length must be greater than 0")
+        if sensor_width_mm <= 0:
+            raise ValueError("sensor_width_mm must be greater than 0")
+        if shutter_speed <= 0:
+            raise ValueError("shutter_speed must be greater than 0")
 
         self.focal_plane_distance = float(focal_plane_distance)
         self.lens_diameter = float(lens_diameter)
         self.HFOV = float(HFOV)
         self.FOV_aspect_ratio = float(FOV_aspect_ratio)
+        self.lens_focal_length = float(lens_focal_length)
+        self.sensor_width_mm = float(sensor_width_mm)
+        self.shutter_speed = float(shutter_speed)
+
+        # Validate and set string properties
+        if not isinstance(model, str):
+            raise ValueError("model must be a string")
+        if not isinstance(lens_make, str):
+            raise ValueError("lens_make must be a string")
+        if not isinstance(lens_model, str):
+            raise ValueError("lens_model must be a string")
+        if not isinstance(lens_specification, str):
+            raise ValueError("lens_specification must be a string")
+        if not isinstance(exposure, str):
+            raise ValueError("exposure must be a string")
+        if not isinstance(white_balance, str):
+            raise ValueError("white_balance must be a string")
+
+        # Validate exposure mode
+        if exposure not in ["auto", "manual"] and not exposure.startswith("ISO"):
+            raise ValueError("exposure must be 'auto', 'manual', or 'ISOXXX' (e.g., 'ISO100')")
+
+        # Validate white balance mode
+        if white_balance not in ["auto", "off"]:
+            raise ValueError("white_balance must be 'auto' or 'off'")
+
+        self.model = str(model)
+        self.lens_make = str(lens_make)
+        self.lens_model = str(lens_model)
+        self.lens_specification = str(lens_specification)
+        self.exposure = str(exposure)
+        self.white_balance = str(white_balance)
 
     def to_array(self):
         """
         Convert to array format expected by C++ interface.
 
+        Note: Returns numeric fields only. String fields (model, lens_make, etc.) are
+        currently initialized with defaults in the C++ wrapper and cannot be set via
+        this interface. Use the upcoming camera library methods for full metadata control.
+
         Returns:
-            List of 6 float values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+            List of 9 float values: [resolution_x, resolution_y, focal_distance, lens_diameter,
+                                     HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm,
+                                     shutter_speed]
         """
         return [
             float(self.camera_resolution[0]),  # resolution_x
@@ -148,15 +205,120 @@ class CameraProperties:
             self.focal_plane_distance,
             self.lens_diameter,
             self.HFOV,
-            self.FOV_aspect_ratio
+            self.FOV_aspect_ratio,
+            self.lens_focal_length,
+            self.sensor_width_mm,
+            self.shutter_speed
         ]
 
     def __repr__(self):
-        return (f"CameraProperties(camera_resolution={self.camera_resolution}, "
+        return (f"CameraProperties("
+                f"camera_resolution={self.camera_resolution}, "
                 f"focal_plane_distance={self.focal_plane_distance}, "
                 f"lens_diameter={self.lens_diameter}, "
                 f"HFOV={self.HFOV}, "
-                f"FOV_aspect_ratio={self.FOV_aspect_ratio})")
+                f"FOV_aspect_ratio={self.FOV_aspect_ratio}, "
+                f"lens_focal_length={self.lens_focal_length}, "
+                f"sensor_width_mm={self.sensor_width_mm}, "
+                f"model='{self.model}', "
+                f"lens_make='{self.lens_make}', "
+                f"lens_model='{self.lens_model}', "
+                f"lens_specification='{self.lens_specification}', "
+                f"exposure='{self.exposure}', "
+                f"shutter_speed={self.shutter_speed}, "
+                f"white_balance='{self.white_balance}')")
+
+
+class CameraMetadata:
+    """
+    Metadata for radiation camera image export (Helios v1.3.58+).
+
+    This class encapsulates comprehensive metadata for camera images including
+    camera properties, location, acquisition settings, image processing, and
+    agronomic properties derived from plant architecture data.
+    """
+
+    class CameraPropertiesMetadata:
+        """Camera intrinsic properties for metadata export."""
+        def __init__(self, height=512, width=512, channels=3, type="rgb",
+                     focal_length=50.0, aperture="f/2.8", sensor_width=35.0,
+                     sensor_height=24.0, model="generic", lens_make="",
+                     lens_model="", lens_specification="", exposure="auto",
+                     shutter_speed=0.008, white_balance="auto"):
+            self.height = int(height)
+            self.width = int(width)
+            self.channels = int(channels)
+            self.type = str(type)
+            self.focal_length = float(focal_length)
+            self.aperture = str(aperture)
+            self.sensor_width = float(sensor_width)
+            self.sensor_height = float(sensor_height)
+            self.model = str(model)
+            self.lens_make = str(lens_make)
+            self.lens_model = str(lens_model)
+            self.lens_specification = str(lens_specification)
+            self.exposure = str(exposure)
+            self.shutter_speed = float(shutter_speed)
+            self.white_balance = str(white_balance)
+
+    class LocationProperties:
+        """Geographic location properties."""
+        def __init__(self, latitude=0.0, longitude=0.0):
+            self.latitude = float(latitude)
+            self.longitude = float(longitude)
+
+    class AcquisitionProperties:
+        """Image acquisition properties."""
+        def __init__(self, date="", time="", UTC_offset=0.0, camera_height_m=0.0,
+                     camera_angle_deg=0.0, light_source="sunlight"):
+            self.date = str(date)
+            self.time = str(time)
+            self.UTC_offset = float(UTC_offset)
+            self.camera_height_m = float(camera_height_m)
+            self.camera_angle_deg = float(camera_angle_deg)
+            self.light_source = str(light_source)
+
+    class ImageProcessingProperties:
+        """Image processing corrections applied to the image."""
+        def __init__(self, saturation_adjustment=1.0, brightness_adjustment=1.0,
+                     contrast_adjustment=1.0, color_space="linear"):
+            self.saturation_adjustment = float(saturation_adjustment)
+            self.brightness_adjustment = float(brightness_adjustment)
+            self.contrast_adjustment = float(contrast_adjustment)
+            self.color_space = str(color_space)
+
+    class AgronomicProperties:
+        """Agronomic properties derived from plant architecture data."""
+        def __init__(self, plant_species=None, plant_count=None, plant_height_m=None,
+                     plant_age_days=None, plant_stage=None, leaf_area_m2=None,
+                     weed_pressure=""):
+            self.plant_species = plant_species if plant_species is not None else []
+            self.plant_count = plant_count if plant_count is not None else []
+            self.plant_height_m = plant_height_m if plant_height_m is not None else []
+            self.plant_age_days = plant_age_days if plant_age_days is not None else []
+            self.plant_stage = plant_stage if plant_stage is not None else []
+            self.leaf_area_m2 = leaf_area_m2 if leaf_area_m2 is not None else []
+            self.weed_pressure = str(weed_pressure)
+
+    def __init__(self, path=""):
+        """
+        Initialize CameraMetadata with default values.
+
+        Args:
+            path: Full path to the associated image file. Default: ""
+        """
+        self.path = str(path)
+        self.camera_properties = self.CameraPropertiesMetadata()
+        self.location_properties = self.LocationProperties()
+        self.acquisition_properties = self.AcquisitionProperties()
+        self.image_processing = self.ImageProcessingProperties()
+        self.agronomic_properties = self.AgronomicProperties()
+
+    def __repr__(self):
+        return (f"CameraMetadata(path='{self.path}', "
+                f"camera={self.camera_properties.model}, "
+                f"resolution={self.camera_properties.width}x{self.camera_properties.height}, "
+                f"location=({self.location_properties.latitude},{self.location_properties.longitude}))")
 
 
 class RadiationModel:
@@ -1506,6 +1668,136 @@ class RadiationModel:
 
         radiation_wrapper.setCameraPixelData(self.radiation_model, camera_label, band_label, pixel_data)
         logger.debug(f"Set pixel data for camera '{camera_label}', band '{band_label}': {len(pixel_data)} pixels")
+
+    # =========================================================================
+    # Camera Library Functions (v1.3.58+)
+    # =========================================================================
+
+    @require_plugin('radiation', 'add camera from library')
+    def addRadiationCameraFromLibrary(self, camera_label: str, library_camera_label: str,
+                                       position, lookat, antialiasing_samples: int = 1,
+                                       band_labels: Optional[List[str]] = None):
+        """
+        Add radiation camera loading all properties from camera library.
+
+        Loads camera intrinsic parameters (resolution, FOV, sensor size) and spectral
+        response data from the camera library XML file. This is the recommended way to
+        create realistic cameras with proper spectral responses.
+
+        Args:
+            camera_label: Label for the camera instance
+            library_camera_label: Label of camera in library (e.g., "Canon_20D", "iPhone11", "NikonD700")
+            position: Camera position as vec3 or (x, y, z) tuple
+            lookat: Lookat point as vec3 or (x, y, z) tuple
+            antialiasing_samples: Number of ray samples per pixel. Default: 1
+            band_labels: Optional custom band labels. If None, uses library defaults.
+
+        Raises:
+            RadiationModelError: If operation fails
+            ValueError: If parameters are invalid
+
+        Note:
+            Available cameras in plugins/radiation/camera_library/camera_library.xml include:
+            - Canon_20D, Nikon_D700, Nikon_D50
+            - iPhone11, iPhone12ProMAX
+            - Additional cameras available in library
+
+        Example:
+            >>> radiation.addRadiationCameraFromLibrary(
+            ...     camera_label="cam1",
+            ...     library_camera_label="iPhone11",
+            ...     position=(0, -5, 1),
+            ...     lookat=(0, 0, 0.5),
+            ...     antialiasing_samples=10
+            ... )
+        """
+        validate_band_label(camera_label, "camera_label", "addRadiationCameraFromLibrary")
+
+        try:
+            radiation_wrapper.addRadiationCameraFromLibrary(
+                self.radiation_model, camera_label, library_camera_label,
+                position, lookat, antialiasing_samples, band_labels
+            )
+            logger.info(f"Added camera '{camera_label}' from library '{library_camera_label}'")
+        except Exception as e:
+            raise RadiationModelError(f"Failed to add camera from library: {e}")
+
+    @require_plugin('radiation', 'update camera parameters')
+    def updateCameraParameters(self, camera_label: str, camera_properties: CameraProperties):
+        """
+        Update camera parameters for an existing camera.
+
+        Allows modification of camera properties after creation while preserving
+        position, lookat direction, and spectral band configuration.
+
+        Args:
+            camera_label: Label for the camera to update
+            camera_properties: CameraProperties instance with new parameters
+
+        Raises:
+            RadiationModelError: If operation fails or camera doesn't exist
+            ValueError: If parameters are invalid
+
+        Note:
+            FOV_aspect_ratio is automatically recalculated from camera_resolution.
+            Camera position and lookat are preserved.
+
+        Example:
+            >>> props = CameraProperties(
+            ...     camera_resolution=(1920, 1080),
+            ...     HFOV=35.0,
+            ...     lens_focal_length=0.085  # 85mm lens
+            ... )
+            >>> radiation.updateCameraParameters("cam1", props)
+        """
+        validate_band_label(camera_label, "camera_label", "updateCameraParameters")
+
+        if not isinstance(camera_properties, CameraProperties):
+            raise ValueError("camera_properties must be a CameraProperties instance")
+
+        try:
+            radiation_wrapper.updateCameraParameters(self.radiation_model, camera_label, camera_properties)
+            logger.debug(f"Updated parameters for camera '{camera_label}'")
+        except Exception as e:
+            raise RadiationModelError(f"Failed to update camera parameters: {e}")
+
+    @require_plugin('radiation', 'enable camera metadata')
+    def enableCameraMetadata(self, camera_labels):
+        """
+        Enable automatic JSON metadata file writing for camera(s).
+
+        When enabled, writeCameraImage() automatically creates a JSON metadata file
+        alongside the image containing comprehensive camera and scene information.
+
+        Args:
+            camera_labels: Single camera label (str) or list of camera labels (List[str])
+
+        Raises:
+            RadiationModelError: If operation fails
+            ValueError: If parameters are invalid
+
+        Note:
+            Metadata includes:
+            - Camera properties (model, lens, sensor specs)
+            - Geographic location (latitude, longitude)
+            - Acquisition settings (date, time, exposure, white balance)
+            - Agronomic data (plant species, heights, phenology stages)
+
+        Example:
+            >>> # Enable for single camera
+            >>> radiation.enableCameraMetadata("cam1")
+            >>>
+            >>> # Enable for multiple cameras
+            >>> radiation.enableCameraMetadata(["cam1", "cam2", "cam3"])
+        """
+        try:
+            radiation_wrapper.enableCameraMetadata(self.radiation_model, camera_labels)
+            if isinstance(camera_labels, str):
+                logger.info(f"Enabled metadata for camera '{camera_labels}'")
+            else:
+                logger.info(f"Enabled metadata for {len(camera_labels)} cameras")
+        except Exception as e:
+            raise RadiationModelError(f"Failed to enable camera metadata: {e}")
 
     @require_plugin('radiation', 'write camera images')
     def writeCameraImage(self, camera: str, bands: List[str], imagefile_base: str,

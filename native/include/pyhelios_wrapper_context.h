@@ -250,6 +250,585 @@ PYHELIOS_API unsigned int* addBox(helios::Context* context, float* center, float
 PYHELIOS_API unsigned int* addBoxWithColor(helios::Context* context, float* center, float* size, int* subdiv, float* color, unsigned int* count);
 
 /**
+ * @brief Add a disk to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for disk tessellation
+ * @param center Array of 3 floats [x, y, z] for disk center
+ * @param size Array of 2 floats [semi_major, semi_minor] for disk radii
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addDisk(helios::Context* context, unsigned int ndivs, float* center, float* size, unsigned int* count);
+
+/**
+ * @brief Add a disk with rotation to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for disk tessellation
+ * @param center Array of 3 floats [x, y, z] for disk center
+ * @param size Array of 2 floats [semi_major, semi_minor] for disk radii
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for disk orientation
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addDiskWithRotation(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation, unsigned int* count);
+
+/**
+ * @brief Add a disk with color to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for disk tessellation
+ * @param center Array of 3 floats [x, y, z] for disk center
+ * @param size Array of 2 floats [semi_major, semi_minor] for disk radii
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for disk orientation
+ * @param color Array of 3 floats [r, g, b] for disk color
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addDiskWithColor(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation, float* color, unsigned int* count);
+
+/**
+ * @brief Add a disk with RGBA color to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for disk tessellation
+ * @param center Array of 3 floats [x, y, z] for disk center
+ * @param size Array of 2 floats [semi_major, semi_minor] for disk radii
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for disk orientation
+ * @param color Array of 4 floats [r, g, b, a] for disk color with transparency
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addDiskWithRGBAColor(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation, float* color, unsigned int* count);
+
+/**
+ * @brief Add a disk with polar/radial subdivisions to the context
+ * @param context Pointer to the Context
+ * @param ndivs Array of 2 ints [radial_divisions, azimuthal_divisions] for disk tessellation
+ * @param center Array of 3 floats [x, y, z] for disk center
+ * @param size Array of 2 floats [semi_major, semi_minor] for disk radii
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for disk orientation
+ * @param color Array of 3 floats [r, g, b] for disk color
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addDiskPolarSubdivisions(helios::Context* context, int* ndivs, float* center, float* size, float* rotation, float* color, unsigned int* count);
+
+/**
+ * @brief Add a disk with polar/radial subdivisions and RGBA color to the context
+ * @param context Pointer to the Context
+ * @param ndivs Array of 2 ints [radial_divisions, azimuthal_divisions] for disk tessellation
+ * @param center Array of 3 floats [x, y, z] for disk center
+ * @param size Array of 2 floats [semi_major, semi_minor] for disk radii
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for disk orientation
+ * @param color Array of 4 floats [r, g, b, a] for disk color with transparency
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addDiskPolarSubdivisionsRGBA(helios::Context* context, int* ndivs, float* center, float* size, float* rotation, float* color, unsigned int* count);
+
+/**
+ * @brief Add a cone to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for cone tessellation
+ * @param node0 Array of 3 floats [x, y, z] for cone base center
+ * @param node1 Array of 3 floats [x, y, z] for cone apex center
+ * @param radius0 Radius at base (node0)
+ * @param radius1 Radius at apex (node1)
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addCone(helios::Context* context, unsigned int ndivs, float* node0, float* node1, float radius0, float radius1, unsigned int* count);
+
+/**
+ * @brief Add a cone with color to the context
+ * @param context Pointer to the Context
+ * @param ndivs Number of radial divisions for cone tessellation
+ * @param node0 Array of 3 floats [x, y, z] for cone base center
+ * @param node1 Array of 3 floats [x, y, z] for cone apex center
+ * @param radius0 Radius at base (node0)
+ * @param radius1 Radius at apex (node1)
+ * @param color Array of 3 floats [r, g, b] for cone color
+ * @param count Pointer to store the number of UUIDs returned
+ * @return Pointer to array of UUIDs for the created triangles
+ */
+PYHELIOS_API unsigned int* addConeWithColor(helios::Context* context, unsigned int ndivs, float* node0, float* node1, float radius0, float radius1, float* color, unsigned int* count);
+
+/**
+ * @brief Copy a single primitive
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to copy
+ * @return UUID of the copied primitive
+ */
+PYHELIOS_API unsigned int copyPrimitive(helios::Context* context, unsigned int uuid);
+
+/**
+ * @brief Copy multiple primitives
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to copy
+ * @param count Number of UUIDs in the array
+ * @param result_count Output parameter for number of copied primitives
+ * @return Pointer to array of UUIDs for the copied primitives
+ */
+PYHELIOS_API unsigned int* copyPrimitives(helios::Context* context, unsigned int* uuids, unsigned int count, unsigned int* result_count);
+
+/**
+ * @brief Copy all primitive data from one primitive to another
+ * @param context Pointer to the Context
+ * @param sourceUUID UUID of the source primitive
+ * @param destinationUUID UUID of the destination primitive
+ */
+PYHELIOS_API void copyPrimitiveData(helios::Context* context, unsigned int sourceUUID, unsigned int destinationUUID);
+
+/**
+ * @brief Copy a single object
+ * @param context Pointer to the Context
+ * @param objID Object ID to copy
+ * @return Object ID of the copied object
+ */
+PYHELIOS_API unsigned int copyObject(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Copy multiple objects
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to copy
+ * @param count Number of object IDs in the array
+ * @param result_count Output parameter for number of copied objects
+ * @return Pointer to array of object IDs for the copied objects
+ */
+PYHELIOS_API unsigned int* copyObjects(helios::Context* context, unsigned int* objIDs, unsigned int count, unsigned int* result_count);
+
+/**
+ * @brief Copy all object data from one object to another
+ * @param context Pointer to the Context
+ * @param source_objID Object ID of the source object
+ * @param destination_objID Object ID of the destination object
+ */
+PYHELIOS_API void copyObjectData(helios::Context* context, unsigned int source_objID, unsigned int destination_objID);
+
+/**
+ * @brief Translate a single primitive
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to translate
+ * @param shift Array of 3 floats [x, y, z] representing the translation vector
+ */
+PYHELIOS_API void translatePrimitive(helios::Context* context, unsigned int uuid, float* shift);
+
+/**
+ * @brief Translate multiple primitives
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to translate
+ * @param count Number of UUIDs in the array
+ * @param shift Array of 3 floats [x, y, z] representing the translation vector
+ */
+PYHELIOS_API void translatePrimitives(helios::Context* context, unsigned int* uuids, unsigned int count, float* shift);
+
+/**
+ * @brief Translate a single object
+ * @param context Pointer to the Context
+ * @param objID Object ID to translate
+ * @param shift Array of 3 floats [x, y, z] representing the translation vector
+ */
+PYHELIOS_API void translateObject(helios::Context* context, unsigned int objID, float* shift);
+
+/**
+ * @brief Translate multiple objects
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to translate
+ * @param count Number of object IDs in the array
+ * @param shift Array of 3 floats [x, y, z] representing the translation vector
+ */
+PYHELIOS_API void translateObjects(helios::Context* context, unsigned int* objIDs, unsigned int count, float* shift);
+
+// ==================== Rotation Operations ====================
+
+/**
+ * @brief Rotate a primitive around an axis specified by string ("x", "y", or "z")
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Axis string ("x", "y", or "z")
+ */
+PYHELIOS_API void rotatePrimitive_axisString(helios::Context* context, unsigned int uuid, float rotation_radians, const char* axis);
+
+/**
+ * @brief Rotate multiple primitives around an axis specified by string
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to rotate
+ * @param count Number of UUIDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Axis string ("x", "y", or "z")
+ */
+PYHELIOS_API void rotatePrimitives_axisString(helios::Context* context, unsigned int* uuids, unsigned int count, float rotation_radians, const char* axis);
+
+/**
+ * @brief Rotate a primitive around an axis specified by vector
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotatePrimitive_axisVector(helios::Context* context, unsigned int uuid, float rotation_radians, float* axis);
+
+/**
+ * @brief Rotate multiple primitives around an axis specified by vector
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to rotate
+ * @param count Number of UUIDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotatePrimitives_axisVector(helios::Context* context, unsigned int* uuids, unsigned int count, float rotation_radians, float* axis);
+
+/**
+ * @brief Rotate a primitive around an axis through a specified origin point
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param origin Array of 3 floats [x, y, z] representing the origin point
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotatePrimitive_originAxisVector(helios::Context* context, unsigned int uuid, float rotation_radians, float* origin, float* axis);
+
+/**
+ * @brief Rotate multiple primitives around an axis through a specified origin point
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to rotate
+ * @param count Number of UUIDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param origin Array of 3 floats [x, y, z] representing the origin point
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotatePrimitives_originAxisVector(helios::Context* context, unsigned int* uuids, unsigned int count, float rotation_radians, float* origin, float* axis);
+
+/**
+ * @brief Rotate an object around an axis specified by string ("x", "y", or "z")
+ * @param context Pointer to the Context
+ * @param objID Object ID to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Axis string ("x", "y", or "z")
+ */
+PYHELIOS_API void rotateObject_axisString(helios::Context* context, unsigned int objID, float rotation_radians, const char* axis);
+
+/**
+ * @brief Rotate multiple objects around an axis specified by string
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to rotate
+ * @param count Number of object IDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Axis string ("x", "y", or "z")
+ */
+PYHELIOS_API void rotateObjects_axisString(helios::Context* context, unsigned int* objIDs, unsigned int count, float rotation_radians, const char* axis);
+
+/**
+ * @brief Rotate an object around an axis specified by vector
+ * @param context Pointer to the Context
+ * @param objID Object ID to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotateObject_axisVector(helios::Context* context, unsigned int objID, float rotation_radians, float* axis);
+
+/**
+ * @brief Rotate multiple objects around an axis specified by vector
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to rotate
+ * @param count Number of object IDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotateObjects_axisVector(helios::Context* context, unsigned int* objIDs, unsigned int count, float rotation_radians, float* axis);
+
+/**
+ * @brief Rotate an object around an axis through a specified origin point
+ * @param context Pointer to the Context
+ * @param objID Object ID to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param origin Array of 3 floats [x, y, z] representing the origin point
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotateObject_originAxisVector(helios::Context* context, unsigned int objID, float rotation_radians, float* origin, float* axis);
+
+/**
+ * @brief Rotate multiple objects around an axis through a specified origin point
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to rotate
+ * @param count Number of object IDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param origin Array of 3 floats [x, y, z] representing the origin point
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotateObjects_originAxisVector(helios::Context* context, unsigned int* objIDs, unsigned int count, float rotation_radians, float* origin, float* axis);
+
+/**
+ * @brief Rotate an object about the global origin around an axis specified by vector
+ * @param context Pointer to the Context
+ * @param objID Object ID to rotate
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotateObjectAboutOrigin_axisVector(helios::Context* context, unsigned int objID, float rotation_radians, float* axis);
+
+/**
+ * @brief Rotate multiple objects about the global origin around an axis specified by vector
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to rotate
+ * @param count Number of object IDs in the array
+ * @param rotation_radians Rotation angle in radians
+ * @param axis Array of 3 floats [x, y, z] representing the axis vector
+ */
+PYHELIOS_API void rotateObjectsAboutOrigin_axisVector(helios::Context* context, unsigned int* objIDs, unsigned int count, float rotation_radians, float* axis);
+
+// ==================== Scaling Operations ====================
+
+/**
+ * @brief Scale a primitive
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to scale
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scalePrimitive(helios::Context* context, unsigned int uuid, float* scale);
+
+/**
+ * @brief Scale multiple primitives
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to scale
+ * @param count Number of UUIDs in the array
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scalePrimitives(helios::Context* context, unsigned int* uuids, unsigned int count, float* scale);
+
+/**
+ * @brief Scale a primitive about a specified point
+ * @param context Pointer to the Context
+ * @param uuid UUID of the primitive to scale
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ * @param point Array of 3 floats [x, y, z] representing the point to scale about
+ */
+PYHELIOS_API void scalePrimitiveAboutPoint(helios::Context* context, unsigned int uuid, float* scale, float* point);
+
+/**
+ * @brief Scale multiple primitives about a specified point
+ * @param context Pointer to the Context
+ * @param uuids Pointer to array of UUIDs to scale
+ * @param count Number of UUIDs in the array
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ * @param point Array of 3 floats [x, y, z] representing the point to scale about
+ */
+PYHELIOS_API void scalePrimitivesAboutPoint(helios::Context* context, unsigned int* uuids, unsigned int count, float* scale, float* point);
+
+/**
+ * @brief Scale an object
+ * @param context Pointer to the Context
+ * @param objID Object ID to scale
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scaleObject(helios::Context* context, unsigned int objID, float* scale);
+
+/**
+ * @brief Scale multiple objects
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to scale
+ * @param count Number of object IDs in the array
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scaleObjects(helios::Context* context, unsigned int* objIDs, unsigned int count, float* scale);
+
+/**
+ * @brief Scale an object about its center
+ * @param context Pointer to the Context
+ * @param objID Object ID to scale
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scaleObjectAboutCenter(helios::Context* context, unsigned int objID, float* scale);
+
+/**
+ * @brief Scale multiple objects about their centers
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to scale
+ * @param count Number of object IDs in the array
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scaleObjectsAboutCenter(helios::Context* context, unsigned int* objIDs, unsigned int count, float* scale);
+
+/**
+ * @brief Scale an object about a specified point
+ * @param context Pointer to the Context
+ * @param objID Object ID to scale
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ * @param point Array of 3 floats [x, y, z] representing the point to scale about
+ */
+PYHELIOS_API void scaleObjectAboutPoint(helios::Context* context, unsigned int objID, float* scale, float* point);
+
+/**
+ * @brief Scale multiple objects about a specified point
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to scale
+ * @param count Number of object IDs in the array
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ * @param point Array of 3 floats [x, y, z] representing the point to scale about
+ */
+PYHELIOS_API void scaleObjectsAboutPoint(helios::Context* context, unsigned int* objIDs, unsigned int count, float* scale, float* point);
+
+/**
+ * @brief Scale an object about the global origin
+ * @param context Pointer to the Context
+ * @param objID Object ID to scale
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scaleObjectAboutOrigin(helios::Context* context, unsigned int objID, float* scale);
+
+/**
+ * @brief Scale multiple objects about the global origin
+ * @param context Pointer to the Context
+ * @param objIDs Pointer to array of object IDs to scale
+ * @param count Number of object IDs in the array
+ * @param scale Array of 3 floats [x, y, z] representing the scale factors
+ */
+PYHELIOS_API void scaleObjectsAboutOrigin(helios::Context* context, unsigned int* objIDs, unsigned int count, float* scale);
+
+// ============================================================================
+// Object-Returning Compound Geometry Methods
+// ============================================================================
+
+/**
+ * @brief Add a spherical compound object (basic)
+ * @param context Pointer to the Context
+ * @param ndivs Number of tessellations
+ * @param center Array of 3 floats [x, y, z] for sphere center
+ * @param radius Radius of sphere
+ * @return Object ID of new sphere object
+ */
+PYHELIOS_API unsigned int addSphereObject_basic(helios::Context* context, unsigned int ndivs, float* center, float radius);
+
+/**
+ * @brief Add a spherical compound object with color
+ * @param context Pointer to the Context
+ * @param ndivs Number of tessellations
+ * @param center Array of 3 floats [x, y, z] for sphere center
+ * @param radius Radius of sphere
+ * @param color Array of 3 floats [r, g, b] for color
+ * @return Object ID of new sphere object
+ */
+PYHELIOS_API unsigned int addSphereObject_color(helios::Context* context, unsigned int ndivs, float* center, float radius, float* color);
+
+/**
+ * @brief Add a spherical compound object with texture
+ * @param context Pointer to the Context
+ * @param ndivs Number of tessellations
+ * @param center Array of 3 floats [x, y, z] for sphere center
+ * @param radius Radius of sphere
+ * @param texturefile Path to texture image file
+ * @return Object ID of new sphere object
+ */
+PYHELIOS_API unsigned int addSphereObject_texture(helios::Context* context, unsigned int ndivs, float* center, float radius, const char* texturefile);
+
+/**
+ * @brief Add an ellipsoidal compound object (basic)
+ * @param context Pointer to the Context
+ * @param ndivs Number of tessellations
+ * @param center Array of 3 floats [x, y, z] for ellipsoid center
+ * @param radius Array of 3 floats [rx, ry, rz] for ellipsoid radii
+ * @return Object ID of new sphere object
+ */
+PYHELIOS_API unsigned int addSphereObject_ellipsoid(helios::Context* context, unsigned int ndivs, float* center, float* radius);
+
+/**
+ * @brief Add an ellipsoidal compound object with color
+ * @param context Pointer to the Context
+ * @param ndivs Number of tessellations
+ * @param center Array of 3 floats [x, y, z] for ellipsoid center
+ * @param radius Array of 3 floats [rx, ry, rz] for ellipsoid radii
+ * @param color Array of 3 floats [r, g, b] for color
+ * @return Object ID of new sphere object
+ */
+PYHELIOS_API unsigned int addSphereObject_ellipsoid_color(helios::Context* context, unsigned int ndivs, float* center, float* radius, float* color);
+
+/**
+ * @brief Add an ellipsoidal compound object with texture
+ * @param context Pointer to the Context
+ * @param ndivs Number of tessellations
+ * @param center Array of 3 floats [x, y, z] for ellipsoid center
+ * @param radius Array of 3 floats [rx, ry, rz] for ellipsoid radii
+ * @param texturefile Path to texture image file
+ * @return Object ID of new sphere object
+ */
+PYHELIOS_API unsigned int addSphereObject_ellipsoid_texture(helios::Context* context, unsigned int ndivs, float* center, float* radius, const char* texturefile);
+
+/**
+ * @brief Add a tiled patch object (basic)
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param subdiv Array of 2 ints [x, y] for subdivisions
+ * @return Object ID of new tile object
+ */
+PYHELIOS_API unsigned int addTileObject_basic(helios::Context* context, float* center, float* size, float* rotation, int* subdiv);
+
+/**
+ * @brief Add a tiled patch object with color
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param subdiv Array of 2 ints [x, y] for subdivisions
+ * @param color Array of 3 floats [r, g, b] for color
+ * @return Object ID of new tile object
+ */
+PYHELIOS_API unsigned int addTileObject_color(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, float* color);
+
+/**
+ * @brief Add a tiled patch object with texture
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param subdiv Array of 2 ints [x, y] for subdivisions
+ * @param texturefile Path to texture image file
+ * @return Object ID of new tile object
+ */
+PYHELIOS_API unsigned int addTileObject_texture(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, const char* texturefile);
+
+/**
+ * @brief Add a tiled patch object with texture and repeat
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param subdiv Array of 2 ints [x, y] for subdivisions
+ * @param texturefile Path to texture image file
+ * @param texture_repeat Array of 2 ints [x, y] for texture repetitions
+ * @return Object ID of new tile object
+ */
+PYHELIOS_API unsigned int addTileObject_texture_repeat(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, const char* texturefile, int* texture_repeat);
+
+// addBoxObject
+PYHELIOS_API unsigned int addBoxObject_basic(helios::Context* context, float* center, float* size, int* subdiv);
+PYHELIOS_API unsigned int addBoxObject_color(helios::Context* context, float* center, float* size, int* subdiv, float* color);
+PYHELIOS_API unsigned int addBoxObject_texture(helios::Context* context, float* center, float* size, int* subdiv, const char* texturefile);
+PYHELIOS_API unsigned int addBoxObject_color_reverse(helios::Context* context, float* center, float* size, int* subdiv, float* color, bool reverse_normals);
+PYHELIOS_API unsigned int addBoxObject_texture_reverse(helios::Context* context, float* center, float* size, int* subdiv, const char* texturefile, bool reverse_normals);
+
+// addConeObject
+PYHELIOS_API unsigned int addConeObject_basic(helios::Context* context, unsigned int ndivs, float* node0, float* node1, float radius0, float radius1);
+PYHELIOS_API unsigned int addConeObject_color(helios::Context* context, unsigned int ndivs, float* node0, float* node1, float radius0, float radius1, float* color);
+PYHELIOS_API unsigned int addConeObject_texture(helios::Context* context, unsigned int ndivs, float* node0, float* node1, float radius0, float radius1, const char* texturefile);
+
+// addDiskObject
+PYHELIOS_API unsigned int addDiskObject_basic(helios::Context* context, unsigned int ndivs, float* center, float* size);
+PYHELIOS_API unsigned int addDiskObject_rotation(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation);
+PYHELIOS_API unsigned int addDiskObject_color(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation, float* color);
+PYHELIOS_API unsigned int addDiskObject_rgba(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation, float* color);
+PYHELIOS_API unsigned int addDiskObject_texture(helios::Context* context, unsigned int ndivs, float* center, float* size, float* rotation, const char* texturefile);
+PYHELIOS_API unsigned int addDiskObject_polar_color(helios::Context* context, int* ndivs, float* center, float* size, float* rotation, float* color);
+PYHELIOS_API unsigned int addDiskObject_polar_rgba(helios::Context* context, int* ndivs, float* center, float* size, float* rotation, float* color);
+PYHELIOS_API unsigned int addDiskObject_polar_texture(helios::Context* context, int* ndivs, float* center, float* size, float* rotation, const char* texturefile);
+
+// addTubeObject
+PYHELIOS_API unsigned int addTubeObject_basic(helios::Context* context, unsigned int radial_subdivisions, float* nodes, unsigned int node_count, float* radii, unsigned int radius_count);
+PYHELIOS_API unsigned int addTubeObject_color(helios::Context* context, unsigned int radial_subdivisions, float* nodes, unsigned int node_count, float* radii, unsigned int radius_count, float* colors, unsigned int color_count);
+PYHELIOS_API unsigned int addTubeObject_texture(helios::Context* context, unsigned int radial_subdivisions, float* nodes, unsigned int node_count, float* radii, unsigned int radius_count, const char* texturefile);
+PYHELIOS_API unsigned int addTubeObject_texture_uv(helios::Context* context, unsigned int radial_subdivisions, float* nodes, unsigned int node_count, float* radii, unsigned int radius_count, const char* texturefile, float* textureuv_ufrac, unsigned int uv_count);
+
+/**
  * @brief Get the type of a primitive
  * @param context Pointer to the Context
  * @param uuid UUID of the primitive
@@ -1056,6 +1635,73 @@ PYHELIOS_API void deleteObject(helios::Context* context, unsigned int objID);
  * @note Deleting objects also deletes ALL their child primitives.
  */
 PYHELIOS_API void deleteObjects(helios::Context* context, unsigned int* objIDs, unsigned int count);
+
+//=========================================================================
+// Materials System (v1.3.58+)
+//=========================================================================
+
+// Core Material Management
+
+/** @brief Add a new material with the given label */
+PYHELIOS_API void addMaterial(void* context, const char* material_label);
+
+/** @brief Check if a material with the given label exists */
+PYHELIOS_API bool doesMaterialExist(void* context, const char* material_label);
+
+/** @brief Get list of all material labels */
+PYHELIOS_API const char** listMaterials(void* context, size_t* count);
+
+/** @brief Delete a material by label */
+PYHELIOS_API void deleteMaterial(void* context, const char* material_label);
+
+// Material Properties
+
+/** @brief Get the color of a material */
+PYHELIOS_API void getMaterialColor(void* context, const char* material_label, float* color);
+
+/** @brief Set the color of a material */
+PYHELIOS_API void setMaterialColor(void* context, const char* material_label, float r, float g, float b, float a);
+
+/** @brief Get the texture file path of a material */
+PYHELIOS_API const char* getMaterialTexture(void* context, const char* material_label);
+
+/** @brief Set the texture of a material */
+PYHELIOS_API void setMaterialTexture(void* context, const char* material_label, const char* texture_file);
+
+/** @brief Check if material texture color is overridden */
+PYHELIOS_API bool isMaterialTextureColorOverridden(void* context, const char* material_label);
+
+/** @brief Set whether material should override texture color */
+PYHELIOS_API void setMaterialTextureColorOverride(void* context, const char* material_label, bool override);
+
+/** @brief Get the twosided flag of a material */
+PYHELIOS_API unsigned int getMaterialTwosidedFlag(void* context, const char* material_label);
+
+/** @brief Set the twosided flag of a material */
+PYHELIOS_API void setMaterialTwosidedFlag(void* context, const char* material_label, unsigned int twosided_flag);
+
+// Primitive-Material Assignment
+
+/** @brief Assign a material to a primitive */
+PYHELIOS_API void assignMaterialToPrimitive(void* context, unsigned int UUID, const char* material_label);
+
+/** @brief Assign a material to multiple primitives */
+PYHELIOS_API void assignMaterialToPrimitives(void* context, const unsigned int* UUIDs, size_t count, const char* material_label);
+
+/** @brief Assign a material to all primitives in an object */
+PYHELIOS_API void assignMaterialToObject(void* context, unsigned int ObjID, const char* material_label);
+
+/** @brief Assign a material to all primitives in multiple objects */
+PYHELIOS_API void assignMaterialToObjects(void* context, const unsigned int* ObjIDs, size_t count, const char* material_label);
+
+/** @brief Get the material label assigned to a primitive */
+PYHELIOS_API const char* getPrimitiveMaterialLabel(void* context, unsigned int UUID);
+
+/** @brief Get the twosided flag for a primitive (checks material first, then primitive data) */
+PYHELIOS_API unsigned int getPrimitiveTwosidedFlag(void* context, unsigned int UUID, unsigned int default_value);
+
+/** @brief Get all primitives that use a given material */
+PYHELIOS_API const unsigned int* getPrimitivesUsingMaterial(void* context, const char* material_label, size_t* count);
 
 #ifdef __cplusplus
 }

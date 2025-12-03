@@ -674,7 +674,7 @@ extern "C" {
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrum): ") + e.what());
         } catch (...) {
-            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrum): Unknown error setting diffuse spectrum for multiple bands.");
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setDiffuseSpectrum): Unknown error setting diffuse spectrum.");
         }
     }
 
@@ -2060,13 +2060,33 @@ extern "C" {
             helios::vec3 lookat(lookat_x, lookat_y, lookat_z);
 
             // Convert camera properties array to CameraProperties struct
-            // Expected format: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+            // Format supports both legacy (6 floats) and extended (9 floats) formats
+            // Legacy: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+            // Extended: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio,
+            //            lens_focal_length, sensor_width_mm, shutter_speed]
             CameraProperties props;
             props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
             props.focal_plane_distance = camera_properties[2];
             props.lens_diameter = camera_properties[3];
             props.HFOV = camera_properties[4];
             props.FOV_aspect_ratio = camera_properties[5];
+
+            // Extended properties (v1.3.58+) - use defaults then override if provided
+            props.lens_focal_length = 0.05f;     // 50mm default
+            props.sensor_width_mm = 35.0f;        // Full-frame default
+            props.model = "generic";
+            props.lens_make = "";
+            props.lens_model = "";
+            props.lens_specification = "";
+            props.exposure = "auto";
+            props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
+            props.white_balance = "auto";
+
+            // Override with extended properties if provided
+            // Python's to_array() provides 9 elements
+            props.lens_focal_length = camera_properties[6];
+            props.sensor_width_mm = camera_properties[7];
+            props.shutter_speed = camera_properties[8];
 
             radiation_model->addRadiationCamera(std::string(camera_label), band_vector, position, lookat, props, antialiasing_samples);
 
@@ -2110,13 +2130,33 @@ extern "C" {
             helios::SphericalCoord viewing_direction = helios::make_SphericalCoord(radius, elevation, azimuth);
 
             // Convert camera properties array to CameraProperties struct
-            // Expected format: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+            // Format supports both legacy (6 floats) and extended (9 floats) formats
+            // Legacy: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
+            // Extended: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio,
+            //            lens_focal_length, sensor_width_mm, shutter_speed]
             CameraProperties props;
             props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
             props.focal_plane_distance = camera_properties[2];
             props.lens_diameter = camera_properties[3];
             props.HFOV = camera_properties[4];
             props.FOV_aspect_ratio = camera_properties[5];
+
+            // Extended properties (v1.3.58+) - use defaults then override if provided
+            props.lens_focal_length = 0.05f;     // 50mm default
+            props.sensor_width_mm = 35.0f;        // Full-frame default
+            props.model = "generic";
+            props.lens_make = "";
+            props.lens_model = "";
+            props.lens_specification = "";
+            props.exposure = "auto";
+            props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
+            props.white_balance = "auto";
+
+            // Override with extended properties if provided
+            // Python's to_array() provides 9 elements
+            props.lens_focal_length = camera_properties[6];
+            props.sensor_width_mm = camera_properties[7];
+            props.shutter_speed = camera_properties[8];
 
             radiation_model->addRadiationCamera(std::string(camera_label), band_vector, position, viewing_direction, props, antialiasing_samples);
 
@@ -2460,6 +2500,185 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setCameraPixelData): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::setCameraPixelData): Unknown error setting camera pixel data.");
+        }
+    }
+
+    //=========================================================================
+    // Camera Library Functions (v1.3.58+)
+    //=========================================================================
+
+    PYHELIOS_API void addRadiationCameraFromLibrary(RadiationModel* radiation_model,
+                                                     const char* camera_label,
+                                                     const char* library_camera_label,
+                                                     float position_x, float position_y, float position_z,
+                                                     float lookat_x, float lookat_y, float lookat_z,
+                                                     unsigned int antialiasing_samples) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !library_camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label or library camera label is null");
+                return;
+            }
+
+            helios::vec3 position(position_x, position_y, position_z);
+            helios::vec3 lookat(lookat_x, lookat_y, lookat_z);
+
+            radiation_model->addRadiationCameraFromLibrary(std::string(camera_label),
+                                                          std::string(library_camera_label),
+                                                          position, lookat, antialiasing_samples);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addRadiationCameraFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addRadiationCameraFromLibrary): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void addRadiationCameraFromLibraryWithBands(RadiationModel* radiation_model,
+                                                               const char* camera_label,
+                                                               const char* library_camera_label,
+                                                               float position_x, float position_y, float position_z,
+                                                               float lookat_x, float lookat_y, float lookat_z,
+                                                               unsigned int antialiasing_samples,
+                                                               const char** band_labels, size_t band_count) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !library_camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label or library camera label is null");
+                return;
+            }
+            if (!band_labels && band_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Band labels pointer is null but count is non-zero");
+                return;
+            }
+
+            helios::vec3 position(position_x, position_y, position_z);
+            helios::vec3 lookat(lookat_x, lookat_y, lookat_z);
+
+            // Convert C array to vector
+            std::vector<std::string> band_vector;
+            for (size_t i = 0; i < band_count; i++) {
+                if (band_labels[i]) {
+                    band_vector.push_back(std::string(band_labels[i]));
+                }
+            }
+
+            radiation_model->addRadiationCameraFromLibrary(std::string(camera_label),
+                                                          std::string(library_camera_label),
+                                                          position, lookat, antialiasing_samples,
+                                                          band_vector);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addRadiationCameraFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addRadiationCameraFromLibrary): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
+                                             const char* camera_label,
+                                             const float* camera_properties) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+            if (!camera_properties) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera properties pointer is null");
+                return;
+            }
+
+            // Convert camera properties array to CameraProperties struct
+            // Same format as addRadiationCamera: 9 floats
+            CameraProperties props;
+            props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
+            props.focal_plane_distance = camera_properties[2];
+            props.lens_diameter = camera_properties[3];
+            props.HFOV = camera_properties[4];
+            props.FOV_aspect_ratio = camera_properties[5];
+            props.lens_focal_length = camera_properties[6];
+            props.sensor_width_mm = camera_properties[7];
+            props.shutter_speed = camera_properties[8];
+
+            // String fields use defaults (cannot be updated via this interface)
+            props.model = "generic";
+            props.lens_make = "";
+            props.lens_model = "";
+            props.lens_specification = "";
+            props.exposure = "auto";
+            props.white_balance = "auto";
+
+            radiation_model->updateCameraParameters(std::string(camera_label), props);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::updateCameraParameters): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::updateCameraParameters): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void enableCameraMetadata(RadiationModel* radiation_model,
+                                           const char* camera_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return;
+            }
+
+            radiation_model->enableCameraMetadata(std::string(camera_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableCameraMetadata): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableCameraMetadata): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void enableCameraMetadataMultiple(RadiationModel* radiation_model,
+                                                    const char** camera_labels, size_t count) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_labels && count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera labels pointer is null but count is non-zero");
+                return;
+            }
+
+            // Convert C array to vector
+            std::vector<std::string> labels_vector;
+            for (size_t i = 0; i < count; i++) {
+                if (camera_labels[i]) {
+                    labels_vector.push_back(std::string(camera_labels[i]));
+                }
+            }
+
+            radiation_model->enableCameraMetadata(labels_vector);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableCameraMetadata): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableCameraMetadata): Unknown error.");
         }
     }
 
