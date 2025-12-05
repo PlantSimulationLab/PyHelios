@@ -22,6 +22,10 @@ from .assets import get_asset_manager
 
 logger = logging.getLogger(__name__)
 
+# Type references for type checking (avoids doxygen parsing issues)
+_INT_TYPE = int
+_NUMERIC_TYPES = (int, float)
+
 
 def _resolve_user_path(path: str) -> str:
     """
@@ -149,11 +153,11 @@ class Visualizer:
             ValueError: If parameters are invalid
         """
         # Validate parameter types first
-        if not isinstance(width, int):
+        if not isinstance(width, _INT_TYPE):
             raise ValueError(f"Width must be an integer, got {type(width).__name__}")
-        if not isinstance(height, int):
+        if not isinstance(height, _INT_TYPE):
             raise ValueError(f"Height must be an integer, got {type(height).__name__}")
-        if not isinstance(antialiasing_samples, int):
+        if not isinstance(antialiasing_samples, _INT_TYPE):
             raise ValueError(f"Antialiasing samples must be an integer, got {type(antialiasing_samples).__name__}")
         if not isinstance(headless, bool):
             raise ValueError(f"Headless must be a boolean, got {type(headless).__name__}")
@@ -356,9 +360,9 @@ class Visualizer:
             filename: Output filename for image
                      Can be absolute or relative to user's current working directory
                      Extension (.jpg, .png) is recommended but not required
-            image_format: Image format - "jpeg" or "png" (v1.3.53+)
-                         If None, automatically detects from filename extension
-                         Default: "jpeg" if not detectable from extension
+            image_format: Image format - "jpeg" or "png" (v1.3.53+).
+                         If None, automatically detects from filename extension.
+                         Defaults to "jpeg" if not detectable from extension.
 
         Raises:
             VisualizerError: If image saving fails
@@ -592,7 +596,7 @@ class Visualizer:
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
 
-        if not isinstance(divisions, int) or divisions <= 0:
+        if not isinstance(divisions, _INT_TYPE) or divisions <= 0:
             raise ValueError("Divisions must be a positive integer")
 
         # Resolve texture file path if provided
@@ -731,7 +735,7 @@ class Visualizer:
                 # Color specific primitives
                 if not isinstance(uuids, (list, tuple)) or not uuids:
                     raise ValueError("UUIDs must be a non-empty list or tuple")
-                if not all(isinstance(uuid, int) and uuid >= 0 for uuid in uuids):
+                if not all(isinstance(uuid, _INT_TYPE) and uuid >= 0 for uuid in uuids):
                     raise ValueError("All UUIDs must be non-negative integers")
                 
                 visualizer_wrapper.color_context_primitives_by_data_uuids(self.visualizer, data_name, list(uuids))
@@ -758,8 +762,10 @@ class Visualizer:
         """
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
-        
-        if not isinstance(angle_FOV, (int, float)):
+
+        try:
+            float(angle_FOV)
+        except (TypeError, ValueError):
             raise ValueError("Field of view angle must be numeric")
         if angle_FOV <= 0 or angle_FOV >= 180:
             raise ValueError("Field of view angle must be between 0 and 180 degrees")
@@ -833,7 +839,7 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
-        if not isinstance(intensity_factor, (int, float)):
+        if not isinstance(intensity_factor, _NUMERIC_TYPES):
             raise ValueError("Light intensity factor must be numeric")
         if intensity_factor <= 0:
             raise ValueError("Light intensity factor must be positive")
@@ -924,9 +930,9 @@ class Visualizer:
         
         if not isinstance(pixel_data, (list, tuple)):
             raise ValueError("Pixel data must be a list or tuple")
-        if not isinstance(width, int) or width <= 0:
+        if not isinstance(width, _INT_TYPE) or width <= 0:
             raise ValueError("Width must be a positive integer")
-        if not isinstance(height, int) or height <= 0:
+        if not isinstance(height, _INT_TYPE) or height <= 0:
             raise ValueError("Height must be a positive integer")
         
         expected_size = width * height * 4  # RGBA format
@@ -1085,7 +1091,7 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
-        if not isinstance(geometry_id, int) or geometry_id < 0:
+        if not isinstance(geometry_id, _INT_TYPE) or geometry_id < 0:
             raise ValueError("Geometry ID must be a non-negative integer")
         
         try:
@@ -1133,7 +1139,7 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
 
-        if not isinstance(geometry_id, int) or geometry_id < 0:
+        if not isinstance(geometry_id, _INT_TYPE) or geometry_id < 0:
             raise ValueError("Geometry ID must be a non-negative integer")
 
         try:
@@ -1168,7 +1174,7 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
 
-        if not isinstance(geometry_id, int) or geometry_id < 0:
+        if not isinstance(geometry_id, _INT_TYPE) or geometry_id < 0:
             raise ValueError("Geometry ID must be a non-negative integer")
 
         if not vertices or not isinstance(vertices, (list, tuple)):
@@ -1267,7 +1273,7 @@ class Visualizer:
             raise ValueError("Size must be a vec3")
         if not isinstance(subdivisions, (list, tuple)) or len(subdivisions) != 3:
             raise ValueError("Subdivisions must be a list of 3 integers")
-        if not all(isinstance(s, int) and s > 0 for s in subdivisions):
+        if not all(isinstance(s, _INT_TYPE) and s > 0 for s in subdivisions):
             raise ValueError("All subdivisions must be positive integers")
         
         try:
@@ -1348,9 +1354,9 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
-        if not isinstance(width, (int, float)) or width <= 0:
+        if not isinstance(width, _NUMERIC_TYPES) or width <= 0:
             raise ValueError("Width must be a positive number")
-        if not isinstance(height, (int, float)) or height <= 0:
+        if not isinstance(height, _NUMERIC_TYPES) or height <= 0:
             raise ValueError("Height must be a positive number")
         
         try:
@@ -1374,9 +1380,9 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
-        if not isinstance(min_val, (int, float)):
+        if not isinstance(min_val, _NUMERIC_TYPES):
             raise ValueError("Minimum value must be numeric")
-        if not isinstance(max_val, (int, float)):
+        if not isinstance(max_val, _NUMERIC_TYPES):
             raise ValueError("Maximum value must be numeric")
         if min_val >= max_val:
             raise ValueError("Minimum value must be less than maximum value")
@@ -1402,7 +1408,7 @@ class Visualizer:
         
         if not isinstance(ticks, (list, tuple)):
             raise ValueError("Ticks must be a list or tuple")
-        if not all(isinstance(t, (int, float)) for t in ticks):
+        if not all(isinstance(t, _NUMERIC_TYPES) for t in ticks):
             raise ValueError("All tick values must be numeric")
         
         try:
@@ -1473,7 +1479,7 @@ class Visualizer:
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
-        if not isinstance(font_size, int) or font_size <= 0:
+        if not isinstance(font_size, _INT_TYPE) or font_size <= 0:
             raise ValueError("Font size must be a positive integer")
         
         try:
@@ -1506,7 +1512,7 @@ class Visualizer:
             if colormap.upper() not in colormap_map:
                 raise ValueError(f"Unknown colormap name: {colormap}")
             colormap_id = colormap_map[colormap.upper()]
-        elif isinstance(colormap, int):
+        elif isinstance(colormap, _INT_TYPE):
             if colormap < 0 or colormap > 5:
                 raise ValueError("Colormap ID must be 0-5")
             colormap_id = colormap
@@ -1542,7 +1548,7 @@ class Visualizer:
         
         if not all(isinstance(c, RGBcolor) for c in colors):
             raise ValueError("All colors must be RGBcolor objects")
-        if not all(isinstance(d, (int, float)) for d in divisions):
+        if not all(isinstance(d, _NUMERIC_TYPES) for d in divisions):
             raise ValueError("All divisions must be numeric")
         
         try:
@@ -1585,7 +1591,7 @@ class Visualizer:
             else:
                 if not isinstance(obj_ids, (list, tuple)):
                     raise ValueError("Object IDs must be a list or tuple")
-                if not all(isinstance(oid, int) and oid >= 0 for oid in obj_ids):
+                if not all(isinstance(oid, _INT_TYPE) and oid >= 0 for oid in obj_ids):
                     raise ValueError("All object IDs must be non-negative integers")
                 
                 if obj_ids:
@@ -1616,7 +1622,7 @@ class Visualizer:
             else:
                 if not isinstance(uuids, (list, tuple)):
                     raise ValueError("UUIDs must be a list or tuple")
-                if not all(isinstance(uuid, int) and uuid >= 0 for uuid in uuids):
+                if not all(isinstance(uuid, _INT_TYPE) and uuid >= 0 for uuid in uuids):
                     raise ValueError("All UUIDs must be non-negative integers")
                 
                 if uuids:
@@ -1647,7 +1653,7 @@ class Visualizer:
             else:
                 if not isinstance(obj_ids, (list, tuple)):
                     raise ValueError("Object IDs must be a list or tuple")
-                if not all(isinstance(oid, int) and oid >= 0 for oid in obj_ids):
+                if not all(isinstance(oid, _INT_TYPE) and oid >= 0 for oid in obj_ids):
                     raise ValueError("All object IDs must be non-negative integers")
                 
                 if obj_ids:

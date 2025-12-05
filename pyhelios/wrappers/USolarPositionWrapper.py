@@ -76,6 +76,29 @@ try:
     helios_lib.disableCloudCalibration.argtypes = [ctypes.POINTER(USolarPosition)]
     helios_lib.disableCloudCalibration.restype = None
 
+    # Atmospheric condition management (modern API)
+    helios_lib.setAtmosphericConditions.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setAtmosphericConditions.restype = None
+
+    helios_lib.getAtmosphericConditions.argtypes = [ctypes.POINTER(USolarPosition), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getAtmosphericConditions.restype = None
+
+    # Modern parameter-free flux methods (use atmospheric conditions from Context)
+    helios_lib.getSolarFluxFromState.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getSolarFluxFromState.restype = ctypes.c_float
+
+    helios_lib.getSolarFluxPARFromState.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getSolarFluxPARFromState.restype = ctypes.c_float
+
+    helios_lib.getSolarFluxNIRFromState.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getSolarFluxNIRFromState.restype = ctypes.c_float
+
+    helios_lib.getDiffuseFractionFromState.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getDiffuseFractionFromState.restype = ctypes.c_float
+
+    helios_lib.getAmbientLongwaveFluxFromState.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getAmbientLongwaveFluxFromState.restype = ctypes.c_float
+
     # SSolar-GOA Spectral Solar Model Methods
     helios_lib.calculateDirectSolarSpectrum.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float]
     helios_lib.calculateDirectSolarSpectrum.restype = None
@@ -85,6 +108,19 @@ try:
 
     helios_lib.calculateGlobalSolarSpectrum.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float]
     helios_lib.calculateGlobalSolarSpectrum.restype = None
+
+    # Prague Sky Model Methods (v1.3.59)
+    helios_lib.enablePragueSkyModel.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.enablePragueSkyModel.restype = None
+
+    helios_lib.isPragueSkyModelEnabled.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.isPragueSkyModelEnabled.restype = ctypes.c_bool
+
+    helios_lib.updatePragueSkyModel.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float]
+    helios_lib.updatePragueSkyModel.restype = None
+
+    helios_lib.pragueSkyModelNeedsUpdate.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.pragueSkyModelNeedsUpdate.restype = ctypes.c_bool
 
     # Note: Additional utility functions can be added here as needed
 
@@ -122,6 +158,19 @@ if _SOLARPOSITION_FUNCTIONS_AVAILABLE:
     helios_lib.calculateDirectSolarSpectrum.errcheck = _check_error
     helios_lib.calculateDiffuseSolarSpectrum.errcheck = _check_error
     helios_lib.calculateGlobalSolarSpectrum.errcheck = _check_error
+    # Prague Sky Model error checking (v1.3.59)
+    helios_lib.enablePragueSkyModel.errcheck = _check_error
+    helios_lib.isPragueSkyModelEnabled.errcheck = _check_error
+    helios_lib.updatePragueSkyModel.errcheck = _check_error
+    helios_lib.pragueSkyModelNeedsUpdate.errcheck = _check_error
+    # Modern API error checking
+    helios_lib.setAtmosphericConditions.errcheck = _check_error
+    helios_lib.getAtmosphericConditions.errcheck = _check_error
+    helios_lib.getSolarFluxFromState.errcheck = _check_error
+    helios_lib.getSolarFluxPARFromState.errcheck = _check_error
+    helios_lib.getSolarFluxNIRFromState.errcheck = _check_error
+    helios_lib.getDiffuseFractionFromState.errcheck = _check_error
+    helios_lib.getAmbientLongwaveFluxFromState.errcheck = _check_error
 
 
 # Wrapper functions
@@ -294,6 +343,71 @@ def disableCloudCalibration(solar_pos: ctypes.POINTER(USolarPosition)) -> None:
     helios_lib.disableCloudCalibration(solar_pos)
 
 
+# Atmospheric condition management (modern API)
+def setAtmosphericConditions(solar_pos: ctypes.POINTER(USolarPosition), pressure_Pa: float, temperature_K: float, humidity_rel: float, turbidity: float) -> None:
+    """Set atmospheric conditions in Context global data"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    helios_lib.setAtmosphericConditions(solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
+
+
+def getAtmosphericConditions(solar_pos: ctypes.POINTER(USolarPosition)) -> Tuple[float, float, float, float]:
+    """Get atmospheric conditions from Context global data"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    pressure = ctypes.c_float()
+    temperature = ctypes.c_float()
+    humidity = ctypes.c_float()
+    turbidity = ctypes.c_float()
+
+    helios_lib.getAtmosphericConditions(solar_pos, ctypes.byref(pressure), ctypes.byref(temperature), ctypes.byref(humidity), ctypes.byref(turbidity))
+
+    return (pressure.value, temperature.value, humidity.value, turbidity.value)
+
+
+# Modern parameter-free flux methods (use atmospheric conditions from Context)
+def getSolarFluxFromState(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get total solar flux using atmospheric conditions from Context"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.getSolarFluxFromState(solar_pos)
+
+
+def getSolarFluxPARFromState(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get PAR solar flux using atmospheric conditions from Context"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.getSolarFluxPARFromState(solar_pos)
+
+
+def getSolarFluxNIRFromState(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get NIR solar flux using atmospheric conditions from Context"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.getSolarFluxNIRFromState(solar_pos)
+
+
+def getDiffuseFractionFromState(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get diffuse fraction using atmospheric conditions from Context"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.getDiffuseFractionFromState(solar_pos)
+
+
+def getAmbientLongwaveFluxFromState(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get ambient longwave flux using atmospheric conditions from Context"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.getAmbientLongwaveFluxFromState(solar_pos)
+
+
 # SSolar-GOA Spectral Solar Model Methods
 def calculateDirectSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
     """
@@ -356,6 +470,102 @@ def calculateGlobalSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), labe
 
     label_encoded = label.encode('utf-8')
     helios_lib.calculateGlobalSolarSpectrum(solar_pos, label_encoded, resolution_nm)
+
+
+# Prague Sky Model Methods (v1.3.59)
+def enablePragueSkyModel(solar_pos: ctypes.POINTER(USolarPosition)) -> None:
+    """
+    Enable Prague sky model for atmospheric sky radiance computation.
+
+    The Prague model provides physically-based sky radiance distributions accounting for
+    Rayleigh and Mie scattering across the 360-1480 nm spectral range.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+
+    Note:
+        After enabling, call updatePragueSkyModel() to compute and store spectral-angular
+        parameters in Context global data. Requires 27 MB data file:
+        plugins/solarposition/lib/prague_sky_model/PragueSkyModelReduced.dat
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    helios_lib.enablePragueSkyModel(solar_pos)
+
+
+def isPragueSkyModelEnabled(solar_pos: ctypes.POINTER(USolarPosition)) -> bool:
+    """
+    Check if Prague sky model is enabled.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+
+    Returns:
+        True if Prague model has been enabled, False otherwise
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.isPragueSkyModelEnabled(solar_pos)
+
+
+def updatePragueSkyModel(solar_pos: ctypes.POINTER(USolarPosition), ground_albedo: float = 0.33) -> None:
+    """
+    Update Prague sky model and store spectral-angular parameters in Context.
+
+    This is a computationally intensive operation (~1100 model queries with OpenMP parallelization).
+    Use pragueSkyModelNeedsUpdate() for lazy evaluation to avoid unnecessary updates.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        ground_albedo: Ground albedo value (default: 0.33)
+
+    Stores in Context global data:
+        - "prague_sky_spectral_params": vec<float> size 1350 (225 wavelengths × 6 parameters)
+        - "prague_sky_sun_direction": vec3 sun direction
+        - "prague_sky_visibility_km": float visibility
+        - "prague_sky_ground_albedo": float ground albedo
+        - "prague_sky_valid": int validity flag (1=valid, 0=invalid)
+
+    Note:
+        Reads turbidity from Context atmospheric conditions for sky calculations.
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    helios_lib.updatePragueSkyModel(solar_pos, ground_albedo)
+
+
+def pragueSkyModelNeedsUpdate(solar_pos: ctypes.POINTER(USolarPosition),
+                               ground_albedo: float = 0.33,
+                               sun_tolerance: float = 0.01,
+                               turbidity_tolerance: float = 0.02,
+                               albedo_tolerance: float = 0.05) -> bool:
+    """
+    Check if Prague sky model update is needed based on changed conditions.
+
+    Enables lazy evaluation to avoid expensive Prague updates when conditions haven't
+    changed significantly.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        ground_albedo: Current ground albedo (default: 0.33)
+        sun_tolerance: Threshold for sun direction changes (default: 0.01 ≈ 0.57°)
+        turbidity_tolerance: Relative threshold for turbidity (default: 0.02 = 2%)
+        albedo_tolerance: Threshold for albedo changes (default: 0.05 = 5%)
+
+    Returns:
+        True if updatePragueSkyModel() should be called, False if cached data is still valid
+
+    Note:
+        Reads turbidity from Context atmospheric conditions for comparison.
+    """
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    return helios_lib.pragueSkyModelNeedsUpdate(solar_pos, ground_albedo, sun_tolerance,
+                                                 turbidity_tolerance, albedo_tolerance)
 
 
 # Note: Additional utility functions can be added here as needed

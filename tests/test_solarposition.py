@@ -495,6 +495,233 @@ class TestSolarPositionPerformance:
                     _ = solar.getSunElevation()  # Do one calculation
             
             elapsed = time.time() - start_time
-            
+
             # Should be able to create/destroy instances quickly
             assert elapsed < 1.0, f"Plugin creation too slow: {elapsed:.3f}s for 10 instances"
+
+
+@pytest.mark.native_only
+class TestSolarPositionModernAPI:
+    """Test modern stateful API with setAtmosphericConditions"""
+
+    def test_set_and_get_atmospheric_conditions(self):
+        """Test setAtmosphericConditions and getAtmosphericConditions"""
+        with Context() as context:
+            with SolarPosition(context) as solar:
+                # Set known conditions
+                pressure = 101325.0
+                temperature = 288.15
+                humidity = 0.6
+                turbidity = 0.1
+
+                solar.setAtmosphericConditions(pressure, temperature, humidity, turbidity)
+
+                # Retrieve and verify
+                p, t, h, turb = solar.getAtmosphericConditions()
+
+                assert p == pytest.approx(pressure, abs=0.1)
+                assert t == pytest.approx(temperature, abs=0.1)
+                assert h == pytest.approx(humidity, abs=0.001)
+                assert turb == pytest.approx(turbidity, abs=0.001)
+
+    def test_parameter_free_flux_methods(self):
+        """Test parameter-free flux methods (modern API)"""
+        with Context() as context:
+            context.setDate(2023, 6, 21)  # Summer solstice
+            context.setTime(12, 0)  # Solar noon
+
+            with SolarPosition(context, utc_offset=0, latitude=0, longitude=0) as solar:
+                # Set atmospheric conditions once
+                solar.setAtmosphericConditions(101325, 288.15, 0.6, 0.1)
+
+                # Call parameter-free flux methods
+                total_flux = solar.getSolarFlux()
+                par_flux = solar.getSolarFluxPAR()
+                nir_flux = solar.getSolarFluxNIR()
+                diffuse = solar.getDiffuseFraction()
+
+                # All should return valid values
+                assert isinstance(total_flux, float)
+                assert total_flux > 0
+                assert total_flux < 2000
+
+                assert isinstance(par_flux, float)
+                assert par_flux > 0
+                assert par_flux < total_flux
+
+                assert isinstance(nir_flux, float)
+                assert nir_flux > 0
+                assert nir_flux < total_flux
+
+                assert isinstance(diffuse, float)
+                assert 0.0 <= diffuse <= 1.0
+
+    def test_legacy_and_modern_api_equivalence(self):
+        """Test that legacy and modern APIs produce identical results"""
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+
+            with SolarPosition(context, utc_offset=0, latitude=0, longitude=0) as solar:
+                # Test conditions
+                pressure = 101325.0
+                temperature = 288.15
+                humidity = 0.6
+                turbidity = 0.1
+
+                # Legacy API
+                legacy_flux = solar.getSolarFlux(pressure, temperature, humidity, turbidity)
+                legacy_par = solar.getSolarFluxPAR(pressure, temperature, humidity, turbidity)
+                legacy_nir = solar.getSolarFluxNIR(pressure, temperature, humidity, turbidity)
+                legacy_diffuse = solar.getDiffuseFraction(pressure, temperature, humidity, turbidity)
+
+                # Modern API
+                solar.setAtmosphericConditions(pressure, temperature, humidity, turbidity)
+                modern_flux = solar.getSolarFlux()
+                modern_par = solar.getSolarFluxPAR()
+                modern_nir = solar.getSolarFluxNIR()
+                modern_diffuse = solar.getDiffuseFraction()
+
+                # Should produce identical results
+                assert legacy_flux == pytest.approx(modern_flux, rel=1e-6)
+                assert legacy_par == pytest.approx(modern_par, rel=1e-6)
+                assert legacy_nir == pytest.approx(modern_nir, rel=1e-6)
+                assert legacy_diffuse == pytest.approx(modern_diffuse, rel=1e-6)
+
+    def test_parameter_validation_setAtmosphericConditions(self):
+        """Test parameter validation in setAtmosphericConditions"""
+        with Context() as context:
+            with SolarPosition(context) as solar:
+                # Test invalid pressure
+                with pytest.raises(ValueError, match="pressure must be non-negative"):
+                    solar.setAtmosphericConditions(-1000, 288.15, 0.6, 0.1)
+
+                # Test invalid temperature
+                with pytest.raises(ValueError, match="[Tt]emperature must be non-negative"):
+                    solar.setAtmosphericConditions(101325, -100, 0.6, 0.1)
+
+                # Test invalid humidity
+                with pytest.raises(ValueError, match="humidity must be between"):
+                    solar.setAtmosphericConditions(101325, 288.15, 1.5, 0.1)
+
+                # Test invalid turbidity
+                with pytest.raises(ValueError, match="[Tt]urbidity must be non-negative"):
+                    solar.setAtmosphericConditions(101325, 288.15, 0.6, -0.1)
+
+    def test_partial_parameters_error(self):
+        """Test that providing partial parameters raises ValueError"""
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+
+            with SolarPosition(context) as solar:
+                # Provide only some parameters - should raise ValueError
+                with pytest.raises(ValueError, match="all atmospheric parameters"):
+                    solar.getSolarFlux(pressure_Pa=101325)  # Missing others
+
+                with pytest.raises(ValueError, match="all atmospheric parameters"):
+                    solar.getSolarFlux(pressure_Pa=101325, temperature_K=288.15)  # Still missing humidity, turbidity
+
+                with pytest.raises(ValueError, match="all atmospheric parameters"):
+                    solar.getSolarFluxPAR(humidity_rel=0.6)  # Only one param
+
+                with pytest.raises(ValueError, match="all atmospheric parameters"):
+                    solar.getDiffuseFraction(turbidity=0.1)  # Only one param
+
+    def test_getAmbientLongwaveFlux_legacy_api(self):
+        """Test getAmbientLongwaveFlux with legacy API (2 parameters)"""
+        with Context() as context:
+            with SolarPosition(context) as solar:
+                # Test legacy API (2 parameters)
+                lw_flux_legacy = solar.getAmbientLongwaveFlux(288.15, 0.6)
+                assert isinstance(lw_flux_legacy, float)
+                assert lw_flux_legacy > 0
+                assert lw_flux_legacy < 500  # Reasonable upper bound for longwave flux
+
+    def test_getAmbientLongwaveFlux_modern_api(self):
+        """Test getAmbientLongwaveFlux with modern API (no parameters)"""
+        with Context() as context:
+            with SolarPosition(context) as solar:
+                # Set atmospheric conditions
+                solar.setAtmosphericConditions(101325, 288.15, 0.6, 0.1)
+
+                # Test modern API (no parameters)
+                lw_flux_modern = solar.getAmbientLongwaveFlux()
+                assert isinstance(lw_flux_modern, float)
+                assert lw_flux_modern > 0
+                assert lw_flux_modern < 500
+
+    def test_getAmbientLongwaveFlux_partial_params(self):
+        """Test getAmbientLongwaveFlux rejects partial parameters"""
+        with Context() as context:
+            with SolarPosition(context) as solar:
+                # Only temperature provided
+                with pytest.raises(ValueError, match="both temperature_K and humidity_rel"):
+                    solar.getAmbientLongwaveFlux(temperature_K=288.15)
+
+                # Only humidity provided
+                with pytest.raises(ValueError, match="both temperature_K and humidity_rel"):
+                    solar.getAmbientLongwaveFlux(humidity_rel=0.6)
+
+    def test_modern_api_reuses_conditions(self):
+        """Test that modern API efficiently reuses atmospheric conditions"""
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+
+            with SolarPosition(context, utc_offset=0, latitude=0, longitude=0) as solar:
+                # Set conditions once
+                solar.setAtmosphericConditions(101325, 288.15, 0.6, 0.1)
+
+                # Make multiple calls without repeating parameters
+                flux1 = solar.getSolarFlux()
+                flux2 = solar.getSolarFlux()
+                par = solar.getSolarFluxPAR()
+                nir = solar.getSolarFluxNIR()
+                diffuse = solar.getDiffuseFraction()
+                longwave = solar.getAmbientLongwaveFlux()
+
+                # Flux should be consistent
+                assert flux1 == pytest.approx(flux2)
+
+                # All should return valid values
+                assert flux1 > 0
+                assert par > 0
+                assert nir > 0
+                assert 0.0 <= diffuse <= 1.0
+                assert longwave > 0
+
+    def test_mixed_api_usage(self):
+        """Test that legacy and modern APIs can be mixed in same session"""
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+
+            with SolarPosition(context, utc_offset=0, latitude=0, longitude=0) as solar:
+                # Use modern API
+                solar.setAtmosphericConditions(101325, 288.15, 0.6, 0.1)
+                modern_flux = solar.getSolarFlux()
+
+                # Use legacy API with different conditions
+                legacy_flux = solar.getSolarFlux(101000, 300, 0.5, 0.05)
+
+                # Both should work and return different values (different conditions)
+                assert modern_flux > 0
+                assert legacy_flux > 0
+                assert modern_flux != pytest.approx(legacy_flux)  # Different conditions should give different results
+
+    def test_error_message_quality(self):
+        """Test that error messages provide helpful guidance"""
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+
+            with SolarPosition(context) as solar:
+                # Try to use modern API without setting conditions
+                try:
+                    solar.getSolarFlux()
+                    # If no error, that's OK (C++ uses defaults)
+                except SolarPositionError as e:
+                    # Error should mention atmospheric conditions
+                    error_msg = str(e).lower()
+                    assert "atmospheric" in error_msg or "condition" in error_msg or "setAtmosphericConditions" in str(e)

@@ -52,6 +52,9 @@ try:
     helios_lib.setBranchSegmentResolution.argtypes = [ctypes.POINTER(UWeberPennTree), ctypes.c_uint]
     helios_lib.setLeafSubdivisions.argtypes = [ctypes.POINTER(UWeberPennTree), ctypes.c_uint, ctypes.c_uint]
 
+    helios_lib.loadXMLWeberPennTree.argtypes = [ctypes.POINTER(UWeberPennTree), ctypes.c_char_p, ctypes.c_bool]
+    helios_lib.loadXMLWeberPennTree.restype = None
+
     # Add automatic error checking to all WeberPennTree functions
     helios_lib.createWeberPennTree.errcheck = _check_error_wpt
     helios_lib.createWeberPennTreeWithBuildPluginRootDirectory.errcheck = _check_error_wpt
@@ -65,6 +68,7 @@ try:
     helios_lib.setTrunkSegmentResolution.errcheck = _check_error_wpt
     helios_lib.setBranchSegmentResolution.errcheck = _check_error_wpt
     helios_lib.setLeafSubdivisions.errcheck = _check_error_wpt
+    helios_lib.loadXMLWeberPennTree.errcheck = _check_error_wpt
 
     _WPT_FUNCTIONS_AVAILABLE = True
 except AttributeError:
@@ -150,3 +154,9 @@ def setLeafSubdivisions(uweberPennTree, leaf_segs_x: int, leaf_segs_y: int):
     if not _WPT_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("WeberPennTree functions not available in current Helios library.")
     helios_lib.setLeafSubdivisions(uweberPennTree, leaf_segs_x, leaf_segs_y)
+
+def loadXML(uweberPennTree, filename: str, silent: bool = False):
+    if not _WPT_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("WeberPennTree functions not available in current Helios library.")
+    filename_bytes = filename.encode('utf-8')
+    helios_lib.loadXMLWeberPennTree(uweberPennTree, filename_bytes, silent)

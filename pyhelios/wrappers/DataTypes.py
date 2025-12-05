@@ -156,6 +156,18 @@ class vec2(ctypes.Structure):
     def to_list(self) -> List[float]:
         return [self.x, self.y]
 
+    def magnitude(self) -> float:
+        """Return the magnitude (length) of the vector."""
+        import math
+        return math.sqrt(self.x * self.x + self.y * self.y)
+
+    def normalize(self) -> 'vec2':
+        """Return a normalized copy of this vector (unit length)."""
+        mag = self.magnitude()
+        if mag == 0:
+            return vec2(0, 0)
+        return vec2(self.x / mag, self.y / mag)
+
     @staticmethod
     def _is_finite_numeric(value) -> bool:
         """Check if value is a finite number (not NaN or inf)."""
@@ -204,6 +216,18 @@ class vec3(ctypes.Structure):
 
     def to_tuple(self) -> tuple:
         return (self.x, self.y, self.z)
+
+    def magnitude(self) -> float:
+        """Return the magnitude (length) of the vector."""
+        import math
+        return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
+
+    def normalize(self) -> 'vec3':
+        """Return a normalized copy of this vector (unit length)."""
+        mag = self.magnitude()
+        if mag == 0:
+            return vec3(0, 0, 0)
+        return vec3(self.x / mag, self.y / mag, self.z / mag)
 
     @staticmethod
     def _is_finite_numeric(value) -> bool:
@@ -299,6 +323,14 @@ class RGBcolor(ctypes.Structure):
     def to_list(self) -> List[float]:
         return [self.r, self.g, self.b]
 
+    def scale(self, factor: float) -> 'RGBcolor':
+        """Return a scaled copy of this color, clamped to [0, 1]."""
+        return RGBcolor(
+            min(1.0, max(0.0, self.r * factor)),
+            min(1.0, max(0.0, self.g * factor)),
+            min(1.0, max(0.0, self.b * factor))
+        )
+
     @staticmethod
     def _is_finite_numeric(value) -> bool:
         """Check if value is a finite number (not NaN or inf)."""
@@ -356,6 +388,15 @@ class RGBAcolor(ctypes.Structure):
 
     def to_list(self) -> List[float]:
         return [self.r, self.g, self.b, self.a]
+
+    def scale(self, factor: float) -> 'RGBAcolor':
+        """Return a scaled copy of this color, clamped to [0, 1]. Alpha unchanged."""
+        return RGBAcolor(
+            min(1.0, max(0.0, self.r * factor)),
+            min(1.0, max(0.0, self.g * factor)),
+            min(1.0, max(0.0, self.b * factor)),
+            self.a  # Alpha not scaled
+        )
 
     @staticmethod
     def _is_finite_numeric(value) -> bool:
@@ -703,6 +744,35 @@ class Date(ctypes.Structure):
     def to_list(self) -> List[int]:
         """Convert to list [year, month, day]"""
         return [self.year, self.month, self.day]
+
+    def JulianDay(self) -> int:
+        """Calculate Julian day number for this date."""
+        a = (14 - self.month) // 12
+        y = self.year + 4800 - a
+        m = self.month + 12 * a - 3
+        return self.day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
+
+    def incrementDay(self) -> 'Date':
+        """Return a new Date object incremented by one day."""
+        import calendar
+        days_in_month = calendar.monthrange(self.year, self.month)[1]
+
+        new_day = self.day + 1
+        new_month = self.month
+        new_year = self.year
+
+        if new_day > days_in_month:
+            new_day = 1
+            new_month += 1
+            if new_month > 12:
+                new_month = 1
+                new_year += 1
+
+        return Date(new_year, new_month, new_day)
+
+    def isLeapYear(self) -> bool:
+        """Check if this date's year is a leap year."""
+        return (self.year % 4 == 0 and self.year % 100 != 0) or (self.year % 400 == 0)
 
     def __eq__(self, other) -> bool:
         """Check equality with another Date object"""

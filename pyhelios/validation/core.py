@@ -27,12 +27,13 @@ def validate_input(param_validators: Dict[str, Callable] = None,
         type_coercions: Dict mapping parameter names to coercion functions
     
     Example:
-        @validate_input(
-            param_validators={'center': validate_vec3, 'radius': validate_positive_value},
-            type_coercions={'center': coerce_to_vec3}
-        )
-        def addSphere(self, center, radius, **kwargs):
-            # center is guaranteed to be vec3, radius is positive
+        >>> # Using the validate_input decorator:
+        >>> # validate_input(
+        >>> #     param_validators={'center': validate_vec3, 'radius': validate_positive_value},
+        >>> #     type_coercions={'center': coerce_to_vec3}
+        >>> # )
+        >>> # def addSphere(self, center, radius, **kwargs):
+        >>> #     # center is guaranteed to be vec3, radius is positive
     """
     def decorator(func):
         @functools.wraps(func)

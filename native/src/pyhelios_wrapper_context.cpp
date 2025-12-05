@@ -1932,6 +1932,42 @@ extern "C" {
         }
     }
 
+    // Scale cone object length
+    PYHELIOS_API void scaleConeObjectLength(helios::Context* context, unsigned int objID, float scale_factor) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            context->scaleConeObjectLength(objID, scale_factor);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::scaleConeObjectLength): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::scaleConeObjectLength): Unknown error scaling cone length.");
+        }
+    }
+
+    // Scale cone object girth
+    PYHELIOS_API void scaleConeObjectGirth(helios::Context* context, unsigned int objID, float scale_factor) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            context->scaleConeObjectGirth(objID, scale_factor);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::scaleConeObjectGirth): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::scaleConeObjectGirth): Unknown error scaling cone girth.");
+        }
+    }
+
     // ============================================================================
     // Object-Returning Compound Geometry Methods
     // ============================================================================

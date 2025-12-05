@@ -4,7 +4,7 @@
 
 \note File paths can be given as absolute paths or relative paths. Helios automatically resolves asset file paths (models, textures, spectra, etc.) so executables can be run from any directory. The resolution system searches for assets relative to the build directory. You can set the HELIOS_BUILD environment variable to specify a custom build directory location if needed.
 
-### XML File Structure {#XMLstructure}
+## XML File Structure {#XMLstructure}
 
 File input and output is handled using .xml files.  See the Wikipedia page for xml for more information on xml files: [en.wikipedia.org/wiki/XML](https://en.wikipedia.org/wiki/XML).
 
@@ -24,7 +24,7 @@ Comments are given in xml files by:
 <!-- this is a comment -->
 ```
 
-#### Adding Primitives {#PrimXML}
+### Adding Primitives {#PrimXML}
 
 Primitives are added by giving a tag with the primitive type, followed by elements that specify necessary inputs.  The table below gives examples of adding each primitive type in an .xml file.  Note that the parameters used to specify the primitives are the same as when adding them to the Context via 'add[*]' commands (e.g., addPatch()).
 
@@ -35,7 +35,7 @@ Primitives are added by giving a tag with the primitive type, followed by elemen
 | Disk | <div style="padding:0.5px;line-height:1.2;"><pre><code> &lt;disk&gt;<br>  &lt;center&gt;0 0 0&lt;/center&gt;<br>  &lt;size&gt;1 1&lt;/size&gt;<br>  &lt;rotation&gt;0 0&lt;/rotation&gt;<br>  &lt;color&gt;1 0 0&lt;/color&gt;<br>  &lt;texture&gt;"grass.jpg"&lt;/texture&gt;<br>&lt;/disk&gt;</code></pre></div> |
 | Voxel | <div style="padding:0.5px;line-height:1.2;"><pre><code> &lt;voxel&gt;<br>  &lt;center&gt;0 0 0&lt;/center&gt;<br>  &lt;size&gt;1 1 1&lt;/size&gt;<br>  &lt;color&gt;1 0 0&lt;/color&gt;<br>&lt;/voxel&gt;</code></pre></div> |
 
-#### Adding Timeseries Data {#TimeXML}
+### Adding Timeseries Data {#TimeXML}
 
 Data timeseries are specified by the tag 'timeseries' with the attribute giving the label for the timeseries (e.g., temperature).  The 'datapoint' tag is used to specify data points, with elements specifying the time, date, and value.  The sample below gives an example of creating a timeseries in an xml file.
 
@@ -73,7 +73,7 @@ Note that the date can alternatively be specified as a Julian day of year (1-366
   <dateJulian>2 2000</dateJulian> <!-- 2 Jan. 2000, Julian Day = 2 -->
 ```
 
-### Adding Timeseries (Weather) Data from Tabular Text Files {#ASCIItimeseries}
+## Adding Timeseries (Weather) Data from Tabular Text Files {#ASCIItimeseries}
 
 If timeseries/weather data is available in a tabular ASCII text file, this can be read directly into the Context to create a timeseries using the [loadTabularTimeseriesData()](pyhelios.Context.Context.loadTabularTimeseriesData) method. The general format for these files is that each column should correspond to each variable (e.g., time, date, temperature, wind speed) and each row should be a different time point. There should be an equal number of columns on every line.
 
@@ -120,7 +120,7 @@ T = context.queryTimeseriesData("temperature", date, time)
 
 The above example would read the comma-delimited file "../input/weatherfile.csv". Timeseries data would be added to the Context for values of "temperature", which could be queried based on this label.
 
-### Reading XML Files {#XMLread}
+## Reading XML Files {#XMLread}
 
 XML files can be read by the Context via the function [loadXML()](pyhelios.Context.Context.loadXML).  This function parses the XML file and adds all specified structures (see above) to the Context. Below is an example of how to load an XML file into the Context.
 
@@ -132,9 +132,9 @@ context = Context()
 context.loadXML("file.xml")
 ```
 
-### Reading Standard Polygon File Formats {#Poly}
+## Reading Standard Polygon File Formats {#Poly}
 
-#### Reading PLY (Stanford Polygon) Files {#PLYread}
+### Reading PLY (Stanford Polygon) Files {#PLYread}
 
 The Context can automatically import Stanford .ply files [en.wikipedia.org/wiki/PLY_(file_format)](https://en.wikipedia.org/wiki/PLY_(file_format)).  This is accomplished via the [loadPLY()](pyhelios.Context.Context.loadPLY) command, as illustrated below. There are several overloaded versions of this function, which allow for various modifications to the PLY model.
 
@@ -166,7 +166,7 @@ Different applications may utilize different coordinate axes in .ply files. In c
 
 The Blender software package ([www.blender.org](https://www.blender.org)) can easily modify and convert most polygon file formats to .ply format.
 
-#### Reading OBJ (Wavefront) Files {#OBJread}
+### Reading OBJ (Wavefront) Files {#OBJread}
 
 Helios can read [Wavefront (.obj)](https://en.wikipedia.org/wiki/Wavefront_.obj_file) files and associated material (.mtl) files.  Not all features of .obj files are applicable to Helios, and thus some features are not supported.  Supported features are:
 
@@ -200,7 +200,7 @@ context = Context()
 context.loadOBJ("relative/path/to/someobjfile.obj", vec3(0, 0, 0), 0, SphericalCoord(1, 0, 0), RGBcolorcolor(1, 0, 0))
 ```
 
-#### Writing PLY (Stanford Polygon) Files {#PLYwrite}
+### Writing PLY (Stanford Polygon) Files {#PLYwrite}
 
 The Context has analogous files for writing PLY files based on the geometry currently loaded in the Context. This is accomplished via the [writePLY()](pyhelios.Context.Context.writePLY) command, as illustrated below.
 
@@ -214,7 +214,7 @@ context.addPatch()
 context.writePLY("file.ply")
 ```
 
-#### Writing OBJ (Wavefront) Files {#OBJwrite}
+### Writing OBJ (Wavefront) Files {#OBJwrite}
 
 Writing Wavefront OBJ files is similar to writing a PLY file, except that it will produce both a .obj file containing the geometry, and a .mtl file defining materials (colors, texture masks). For this reason, only the base file name with no extension is provided to the function.
 
@@ -229,7 +229,7 @@ context.addPatch()
 context.writeOBJ("file")
 ```
 
-### Exporting Project to XML File Format {#Export}
+## Exporting Project to XML File Format {#Export}
 
 All geometry and global/primitive data loaded into the Context can be written to an XML file using the [writeXML()](pyhelios.Context.Context.writeXML) function, which can be later read back in using the [loadXML()](pyhelios.Context.Context.loadXML). This functionality can be used to save progress during a simulation run, or to ensure that consistent geometry is always used across simulation runs, among other things.
 

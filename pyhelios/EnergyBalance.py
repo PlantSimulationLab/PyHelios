@@ -319,7 +319,7 @@ class EnergyBalanceModel:
         Args:
             dt_sec: Timestep in seconds for integration
             time_advance_sec: Total time to advance in seconds (must be >= dt_sec)
-            uuids: Optional list of primitive UUIDs. If None, processes all primitives.
+            UUIDs: Optional list of primitive UUIDs. If None, processes all primitives.
             
         Raises:
             ValueError: If parameters are invalid
@@ -386,8 +386,8 @@ class EnergyBalanceModel:
         where additional parameter specification might be needed.
         
         Args:
-            uuids: Optional list of primitive UUIDs to report on. If None,
-                  reports on all primitives.
+            UUIDs: Optional list of primitive UUIDs to report on. If None,
+                   reports on all primitives.
                   
         Raises:
             EnergyBalanceModelError: If operation fails

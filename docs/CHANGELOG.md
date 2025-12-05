@@ -1,5 +1,28 @@
 # Changelog
 
+# [v0.1.11] 2025-12-05
+
+- Updated helios-core to v1.3.59
+
+## Core
+- Added `magnitude()` and `normalize()` methods to vec2 and vec3
+- Added `scale()` method to RGBcolor and RGBAcolor for color intensity adjustment
+- Added `JulianDay()`, `incrementDay()`, and `isLeapYear()` methods to Date
+- Added `scaleConeObjectLength()` and `scaleConeObjectGirth()` methods for cone object manipulation
+
+## Solar Position
+- Added modern state-based API with `setAtmosphericConditions()`, `getAtmosphericConditions()`, and parameter-free flux methods
+- Added `getAmbientLongwaveFlux()` for ambient longwave radiation calculation
+- Added Prague Sky Model support with `enablePragueSkyModel()`, `updatePragueSkyModel()`, `isPragueSkyModelEnabled()`, and `pragueSkyModelNeedsUpdate()`
+
+## Leaf Optics
+- Added `optionalOutputPrimitiveData()` for selective biochemical property output (chlorophyll, carotenoid, water, etc.)
+- CRITICAL BUG: leaf optics was not being built with default build
+
+## WeberPennTree
+- Added `loadXML()` method for loading custom tree species from XML files
+- Extended `buildTree()` to accept custom species names (strings) in addition to `WPTType` enum
+
 # [v0.1.10] 2025-12-02
 
 🚨++ New Plug-in Integrated ++ 🚨

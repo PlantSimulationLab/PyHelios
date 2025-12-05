@@ -506,6 +506,52 @@ class LeafOptics:
         except Exception as e:
             raise LeafOpticsError(f"Failed to enable messages: {e}")
 
+    def optionalOutputPrimitiveData(self, label: str) -> None:
+        """
+        Selectively output specific biochemical properties as primitive data.
+
+        By default, LeafOptics writes all biochemical properties to primitive data.
+        Use this method to specify only the properties you need for improved performance.
+
+        Args:
+            label: Biochemical property to output. Valid values:
+                   - "chlorophyll": Chlorophyll content
+                   - "carotenoid": Carotenoid content
+                   - "anthocyanin": Anthocyanin content
+                   - "brown": Brown pigment content
+                   - "water": Water content
+                   - "drymass": Dry mass content
+                   - "protein": Protein content
+                   - "cellulose": Cellulose content
+
+        Raises:
+            ValueError: If label is empty or invalid
+            LeafOpticsError: If operation fails
+
+        Note:
+            Added in helios-core v1.3.59 for performance optimization when only
+            specific biochemical properties are needed for analysis.
+
+        Example:
+            >>> with LeafOptics(context) as leaf:
+            ...     # Only output chlorophyll and water content
+            ...     leaf.optionalOutputPrimitiveData("chlorophyll")
+            ...     leaf.optionalOutputPrimitiveData("water")
+            ...     leaf.run(uuids, properties, "leaf_spectra")
+        """
+        if not label:
+            raise ValueError("Label cannot be empty")
+
+        valid_labels = ["chlorophyll", "carotenoid", "anthocyanin", "brown",
+                       "water", "drymass", "protein", "cellulose"]
+        if label not in valid_labels:
+            raise ValueError(f"Invalid label '{label}'. Must be one of: {', '.join(valid_labels)}")
+
+        try:
+            leafoptics_wrapper.leafOpticsOptionalOutputPrimitiveData(self._leafoptics_ptr, label)
+        except Exception as e:
+            raise LeafOpticsError(f"Failed to set optional output for '{label}': {e}")
+
     @staticmethod
     def getAvailableSpecies() -> List[str]:
         """

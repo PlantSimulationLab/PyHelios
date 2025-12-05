@@ -147,6 +147,14 @@ PYHELIOS_API void leafOpticsDisableMessages(LeafOptics* leafoptics);
  */
 PYHELIOS_API void leafOpticsEnableMessages(LeafOptics* leafoptics);
 
+/**
+ * @brief Selectively output primitive data for specific biochemical properties
+ * @param leafoptics Pointer to the LeafOptics instance
+ * @param label Property label ("chlorophyll", "carotenoid", "anthocyanin", "brown", "water", "drymass", "protein", "cellulose")
+ * @note By default, all biochemical properties are written. Use this to select only needed properties for better performance.
+ */
+PYHELIOS_API void leafOpticsOptionalOutputPrimitiveData(LeafOptics* leafoptics, const char* label);
+
 #ifdef __cplusplus
 }
 #endif

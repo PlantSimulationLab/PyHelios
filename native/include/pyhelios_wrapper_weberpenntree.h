@@ -130,6 +130,14 @@ PYHELIOS_API void setBranchSegmentResolution(WeberPennTree* wpt, unsigned int br
  */
 PYHELIOS_API void setLeafSubdivisions(WeberPennTree* wpt, unsigned int leaf_segs_x, unsigned int leaf_segs_y);
 
+/**
+ * @brief Load custom tree species from XML file
+ * @param wpt Pointer to the WeberPennTree
+ * @param filename Path to XML file containing tree definitions
+ * @param silent If true, suppress console output during loading
+ */
+PYHELIOS_API void loadXMLWeberPennTree(WeberPennTree* wpt, const char* filename, bool silent);
+
 #ifdef __cplusplus
 }
 #endif

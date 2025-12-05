@@ -1,566 +1,758 @@
-# StomatalConductance Documentation {#StomatalConductanceDoc}
+# Stomatal Conductance Model Plugin Documentation {#StomatalConductanceDoc}
+
+[TOC]
+
+<table>
+<tr><th>Dependencies</th><td>None</td></tr>
+<tr><th>Python Import</th><td>`from pyhelios import StomatalConductanceModel`</td></tr>
+<tr><th>Main Class</th><td>\ref pyhelios.StomatalConductance.StomatalConductanceModel "StomatalConductanceModel"</td></tr>
+</table>
 
 ## Overview
 
-StomatalConductanceModel provides comprehensive stomatal conductance modeling and gas exchange calculations using five validated stomatal response models. This plugin enables accurate simulation of plant-atmosphere interactions and water-carbon coupling in plant physiological studies.
+StomatalConductanceModel provides comprehensive stomatal conductance modeling and gas exchange calculations using validated stomatal response models. This plugin enables accurate simulation of plant-atmosphere interactions and water-carbon coupling in plant physiological studies.
 
-The plugin implements five different stomatal conductance models:
+The plugin implements several different stomatal conductance models. A brief description of the theory behind each model is given below, along with coefficients obtained from several example species.
 
-- **BWB (Ball-Woodrow-Berry, 1987)**: Classic stomatal response model with linear CO₂ and humidity dependence
-- **BBL (Ball-Berry-Leuning, 1990, 1995)**: Enhanced model including vapor pressure deficit (VPD) response
-- **MOPT (Medlyn et al., 2011)**: Optimality-based model derived from water use efficiency principles  
-- **BMF (Buckley-Mott-Farquhar)**: Mechanistic model based on leaf energy balance and transpiration
-- **BB (Bailey)**: Hydraulic-based model incorporating turgor pressure and water transport
+The default model is the Buckley, Mott, Farquhar model (see \ref BMFTheory).
 
 ## System Requirements
 
-- **Platforms**: Windows, Linux, macOS
-- **Dependencies**: None (pure computational plugin)
-- **GPU**: Not required
-- **Memory**: Minimal overhead
-
-## Installation
-
-### Build with StomatalConductanceModel
-
-```bash
-# Using interactive selection
-build_scripts/build_helios --interactive
-
-# Explicit selection
-build_scripts/build_helios --plugins stomatalconductance
-
-# With multiple plugins
-build_scripts/build_helios --plugins stomatalconductance,energybalance,photosynthesis
-
-# Check if available
-python -c "from pyhelios.plugins import print_plugin_status; print_plugin_status()"
-```
+<table>
+  <tr>
+    <th>Dependencies</th>
+    <td>None</td>
+  </tr>
+  <tr>
+    <th>Platforms</th>
+    <td>Windows, Linux, macOS</td>
+  </tr>
+  <tr>
+    <th>GPU</th>
+    <td>Not required</td>
+  </tr>
+</table>
 
 ## Quick Start
+
+```python
+from pyhelios import Context, StomatalConductanceModel
+from pyhelios.types import *
+
+# Create context and add leaf geometry
+with Context() as context:
+    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
+
+    with StomatalConductanceModel(context) as stomatal:
+        # Use species library for quick setup
+        stomatal.setBMFCoefficientsFromLibrary("Almond")
+
+        # Run steady-state calculation
+        stomatal.run()
+```
+
+## Primitive Data {#VarsAndProps}
+
+### Input Primitive Data {#StomatalInputData}
+
+<table>
+  <tr>
+     <th>Primitive Data Label</th>
+     <th>Symbol</th>
+     <th>Units</th>
+     <th>Data Type</th>
+     <th>Description</th>
+     <th>Applicable model(s)</th>
+     <th>Available Plug-ins</th>
+     <th>Default Value</th>
+  </tr>
+  <tr>
+     <td>radiation_flux_PAR</td>
+     <td>\f$Q\f$</td>
+     <td>W/m<sup>2</sup></td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>PAR photon flux density. Note W/m<sup>2</sup> is automatically converted to \f$\mu\f$mol/m<sup>2</sup>/s using a factor of 4.57.</td>
+     <td>BMF</td>
+     <td>Can be computed by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in.</td>
+     <td>0</td>
+  </tr>
+  <tr>
+     <td>temperature</td>
+     <td>\f$T_s\f$</td>
+     <td>Kelvin</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Primitive surface temperature.</td>
+     <td>All</td>
+     <td>Can be computed by \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" plug-in.</td>
+     <td>300 K</td>
+  </tr>
+  <tr>
+     <td>air_pressure</td>
+     <td>\f$p_{atm}\f$</td>
+     <td>Pascals</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Atmospheric pressure.</td>
+     <td>All</td>
+     <td>N/A</td>
+     <td>101,000 Pa</td>
+  </tr>
+  <tr>
+     <td>air_temperature</td>
+     <td>\f$T_a\f$</td>
+     <td>Kelvin</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Temperature of air outside of primitive boundary-layer.</td>
+     <td>All</td>
+     <td>N/A</td>
+     <td>300 K</td>
+  </tr>
+  <tr>
+     <td>air_humidity</td>
+     <td>\f$h\f$</td>
+     <td>Unitless</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Relative humidity of air outside of primitive boundary-layer.</td>
+     <td>All</td>
+     <td>N/A</td>
+     <td>0.5</td>
+  </tr>
+  <tr>
+     <td>boundarylayer_conductance**</td>
+     <td>\f$g_H\f$</td>
+     <td>mol air/m<sup>2</sup>-s</td>
+     <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+     <td>Boundary-layer conductance to heat. (Assumed that b.l. conductance to moisture is 1.08 that of heat.)</td>
+     <td>All</td>
+     <td>Can be computed by \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BLConductanceModel" plug-in, or by \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" plug-in if optional output primitive data "boundarylayer_conductance_out" is enabled.</td>
+     <td>0.1 mol/m<sup>2</sup>-s</td>
+  </tr>
+    <tr>
+        <td>beta_soil</td>
+        <td>\f$\beta\f$</td>
+        <td>unitless</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Soil moisture factor, defined as \f$(\theta-\theta_w)/(\theta_f-\theta_w)\f$, with \f$\theta,\,\theta_f,\,\theta_w\f$ being the effective soil water content, water content at field capacity, and water content at the wilting point.</td>
+        <td>All</td>
+        <td>N/A</td>
+        <td>1.0</td>
+    </tr>
+    <tr>
+        <td>net_photosynthesis</td>
+        <td>\f$A\f$</td>
+        <td>\f$\mu\f$mol/m<sup>2</sup>-s</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Net CO<sub>2</sub> (photosynthetic) flux.</td>
+        <td>BWB, BBL, Mopt</td>
+        <td>Can be computed by \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in.</td>
+        <td>0</td>
+    </tr>
+    <tr>
+        <td>air_CO2</td>
+        <td>\f$C_a\f$</td>
+        <td>\f$\mu\f$mol/mol</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>CO<sub>2</sub> concentration of air outside primitive boundary-layer.</td>
+        <td>BWB, BBL, Mopt</td>
+        <td>N/A</td>
+        <td>400 \f$\mu\f$mol/mol</td>
+    </tr>
+    <tr>
+        <td>Gamma_CO2</td>
+        <td>\f$\Gamma\f$</td>
+        <td>\f$\mu\f$mol/mol</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>CO<sub>2</sub> compensation point of photosynthesis including dark respiration. (Note: only used for Ball-Berry models.)</td>
+        <td>BBL</td>
+        <td>Can be computed by \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in (need to enable optional primitive data output).</td>
+        <td>100 \f$\mu\f$mol/mol</td>
+    </tr>
+
+ </table>
+
+ \*\*The stomatal conductance model will also check for primitive data "boundarylayer_conductance_out" if "boundarylayer_conductance" does not exist. If you are using the energy balance model to calculate the boundary-layer conductance, you should enable optional output primitive data "boundarylayer_conductance_out" so that other plug-ins can use it.
+
+
+### Output Primitive Data {#StomatalOutputData}
+
+<table>
+  <tr>
+    <th>Primitive Data Label</th>
+    <th>Symbol</th>
+    <th>Units</th>
+    <th>Data Type</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>moisture_conductance</td>
+    <td>\f$g_s\f$</td>
+    <td>mol air/m<sup>2</sup>-sec</td>
+    <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+    <td>Conductance of water vapor through stomata.</td>
+  </tr>
+</table>
+
+### Optional Output Primitive Data {#GsOptionalOutputData}
+
+Optional output primitive data can be written to the context by calling \ref pyhelios.StomatalConductance.StomatalConductanceModel::optionalOutputPrimitiveData "optionalOutputPrimitiveData()", with an argument of one of the primitive data labels given in the table below.
+
+```python
+from pyhelios import StomatalConductanceModel
+
+stomatal = StomatalConductanceModel(context)
+stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
+```
+
+<table>
+   <tr><th>Primitive Data Label</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
+   <tr><td>vapor\_pressure\_deficit</td><td>mmol/mol</td><td>\htmlonly<font face="courier" color="green">float</font>\endhtmlonly</td><td>Vapor pressure deficit between the stomatal cavity and leaf surface. Only applicable for BMF model.</td></tr>
+   <tr><td>model\_parameters</td><td>N/A</td><td>\htmlonly<font face="courier" color="green">std::string</font>\endhtmlonly</td><td>Model parameters for each primitive. See table below for the actual primitive data labels that are created.</td></tr>
+</table>
+
+If you enable the optional output primitive data "model_parameters", different primitive data will be created based on the selected model corresponding to each model parameter.
+
+<table>
+   <tr>
+       <th>Model</th><th>Model Parameter</th><th>Output Primitive Data Label</th>
+   </tr>
+   <tr>
+       <td rowspan="2">Ball-Woodrow-Berry</td><td>\f$g_{s,0}\f$</td><td>gs0_BWB</td>
+   </tr>
+   <tr>
+       <td>\f$a_1\f$</td><td>a1_BWB</td>
+   </tr>
+   <tr>
+       <td rowspan="3">Ball-Berry-Leuning</td><td>\f$g_{s,0}\f$</td><td>gs0_BBL</td>
+   </tr>
+   <tr>
+       <td>\f$a_1\f$</td><td>a1_BBL</td>
+   </tr>
+   <tr>
+       <td>\f$D_0\f$</td><td>D0_BBL</td>
+   </tr>
+   <tr>
+       <td rowspan="2">Medlyn Optimality</td><td>\f$g_{s,0}\f$</td><td>gs0_MOPT</td>
+   </tr>
+   <tr>
+       <td>\f$g_1\f$</td><td>g1_MOPT</td>
+   </tr>
+   <tr>
+       <td rowspan="4">Buckley-Mott-Farquhar</td><td>\f$E_m\f$</td><td>Em_BMF</td>
+   </tr>
+   <tr>
+       <td>\f$i_0\f$</td><td>i0_BMF</td>
+   </tr>
+   <tr>
+       <td>\f$k\f$</td><td>k_BMF</td>
+   </tr>
+   <tr>
+       <td>\f$b\f$</td><td>b_BMF</td>
+   </tr>
+</table>
+
+## Introduction {#StomatalIntro}
+
+This plugin implements several different stomatal conductance models. A brief description of the theory behind each model is given below, along with coefficients obtained from several example species.
+
+The default model is the Buckley, Mott, Farquhar model (see \ref BMFTheory).
+
+## Ball, Woodrow, Berry (1987) Model Theory {#BWBTheory}
+
+The <a href="https://link.springer.com/chapter/10.1007/978-94-017-0519-6_48">Ball, Woodrow, and Berry (1987)</a> model is based on the empirical observation that stomatal conductance various roughly linearly with the net photosynthetic flux \f$A\f$ and relative humidity at the leaf surface \f$h_s\f$. They proposed the relationship:
+
+\f[g_s = g_{s,0}+a_1A\beta\frac{h_s}{C_s},\f]
+
+where \f$C_s\f$ is the air CO<sub>2</sub> concentration at the leaf surface, and \f$g_{s,0}\f$ and \f$a_1\f$ are empirical parameters. \f$\beta\f$ is a factor to account for reduction in stomatal conductance with soil drying and is defined as
+
+\f[\beta = \frac{\theta-\theta_w}{\theta_f-\theta_w},\f]
+
+where \f$\theta,\,\theta_f,\,\theta_w\f$ are the effective soil water content, water content at field capacity, and water content at the wilting point. By default, it is assumed that \f$\beta=1\f$.
+
+This model is at odds with several more recent observation of stomatal function, including: 1) stomata have been shown to respond to the intercellular CO<sub>2</sub> concentration \f$C_i\f$ and not the concentration outside of the leaf <a href="https://academic.oup.com/plphys/article/86/1/200/6082897">(Mott 1988)</a>; 2) stomata respond to the rate of evaporation, not humidity itself <a href="https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1365-3040.1991.tb01521.x?casa_token=FVBmxdVmcYgAAAAA:FKEQjeKvXUSfz2fWQRhMmpi-7TiT8WTPz1pAE6U-PV92CaHLPATox31guMa_bd2ecd_EqwC1XYW-AdhE">(Mott and Parkhurst 1991)</a>; 3) the predicted \f$g_s\f$ value could become negative; 4) the predicted value of \f$g_s\f$ approaches infinity as \f$C_s\rightarrow \infty\f$; 5) the predicted value of \f$g_s\f$ does not respond to soil drying. Another more practical limitation is that photosynthesis must also be modeled in order to calculate stomatal conductance. Nonetheless, this model is one of the most commonly used models of stomatal conductance.
+
+The CO<sub>2</sub> concentration at the leaf surface is calculated as
+
+\f[C_s = C_a-\frac{A}{0.75g_{bw}},\f]
+
+where \f$0.75g_{bw}\f$ is the boundary-layer conductance to CO<sub>2</sub> (assuming the diffusivity of CO<sub>2</sub> in air is 0.75 that of water vapor), and \f$C_a\f$ is the air CO<sub>2</sub> concentration outside of the leaf boundary-layer.
+
+The relative humidity at the leaf surface is calculated by setting up a water vapor flux balance at the leaf surface and iteratively solving for the humidity at the leaf surface:
+
+\f[g_s*e_{sat}(T_L)*(1-h_s) = g_{bw}*(e_{sat}(T_L)h_s-e_{sat}(T_a)h_a),\f]
+
+where \f$e_{sat}(T_L)\f$ and \f$e_{sat}(T_a)\f$ are the saturated vapor pressure evaluated respectively at the leaf surface and air temperature (calculated according to the <a href="https://en.wikipedia.org/wiki/Tetens_equation">Tetens equation</a>), and \f$h_a\f$ is the air relative humidity outside the leaf boundary-layer.
+
+Below are example parameter values for several different tree crop species (a description of how calibration data was collected is given in the section below). Note that, as mentioned above, in order to apply the model photosynthesis must also be modeled - coefficients for these species are also given in the photosynthesis model documentation.
+
+<table>
+<tr>
+       <th>Species</th>
+       <th>\f$g_{s,0}\f$ (mol air/m<sup>2</sup>-s)</th>
+       <th>\f$a_1\f$ (unitless)</th>
+       <th>\f$R^2\f$ of fit</th>
+</tr>
+<tr>
+       <td>Almond (default)</td>
+       <td>0.0733</td>
+       <td>9.422</td>
+       <td>0.976</td>
+</tr>
+<tr>
+       <td>Apple</td>
+       <td>0.0444</td>
+       <td>7.681</td>
+       <td>0.809</td>
+</tr>
+<tr>
+       <td>Cherry</td>
+       <td>0.0939</td>
+       <td>5.226</td>
+       <td>0.839</td>
+</tr>
+<tr>
+       <td>Prune</td>
+       <td>0.0425</td>
+       <td>7.120</td>
+       <td>0.917</td>
+</tr>
+<tr>
+       <td>Pear</td>
+       <td>0.0775</td>
+       <td>8.298</td>
+       <td>0.928</td>
+</tr>
+<tr>
+       <td>Pistachio (female)</td>
+       <td>0.0647</td>
+       <td>10.732</td>
+       <td>0.956</td>
+</tr>
+<tr>
+       <td>Pistachio (male)</td>
+       <td>0.0419</td>
+       <td>7.580</td>
+       <td>0.953</td>
+</tr>
+<tr>
+       <td>Walnut</td>
+       <td>0.1253</td>
+       <td>5.527</td>
+       <td>0.962</td>
+</tr>
+</table>
+
+## Ball-Berry-Leuning Model Theory {#BBLTheory}
+
+<a href="https://link.springer.com/chapter/10.1007/978-94-017-0519-6_48">Leuning et al. (1990,1995)</a> revised the original Ball, Woodrow, Berry model to overcome some of it's original limitations, namely the fact that \f$g_s\f$ approaches infinity as \f$C_s\rightarrow \infty\f$ by calculating stomatal conductance as
+
+\f[g_s = g_{s,0}+\frac{a_1A\beta}{\left(C_s-\Gamma\right)\left(1+\frac{D_s}{D_0}\right)},\f]
+
+where \f$D_s\f$ is the vapor pressure deficit between the sub-stomatal cavity and the leaf surface, \f$\Gamma\f$ is the CO<sub>2</sub> compensation point of photosynthesis (including dark respiration), and \f$D_0\f$ (mmol/mol) is an additional empirical parameter.
+
+\f$D_s\f$ is calculated by first determining the surface relative humidity as described above for the Ball, Woodrow, Berry model, then calculating the surface vapor pressure deficit as \f$D_s=\frac{e_{sat}(T_L)(1-h_s)}{p_{atm}}\f$ (\f$p_{atm}\f$ is atmospheric pressure).
+
+Below are example parameter values for several different tree crop species (a description of how calibration data was collected is given in the section below). Note that, as mentioned above, in order to apply the model photosynthesis must also be modeled - coefficients for these species are also given in the photosynthesis model documentation.
+
+<table>
+   <tr>
+       <th>Species</th>
+       <th>\f$g_{s,0}\f$ (mol air/m<sup>2</sup>-s)</th>
+       <th>\f$a_1\f$ (unitless)</th>
+       <th>\f$D_0\f$ (mmol/mol)</th>
+       <th>\f$R^2\f$ of fit</th>
+   </tr>
+   <tr>
+       <td>Almond (default)</td>
+       <td>0.0743</td>
+       <td>4.265</td>
+       <td>14570.0</td>
+       <td>0.984</td>
+   </tr>
+   <tr>
+       <td>Apple</td>
+       <td>0.0405</td>
+       <td>3.511</td>
+       <td>32950.2</td>
+       <td>0.869</td>
+   </tr>
+   <tr>
+       <td>Cherry</td>
+       <td>0.0881</td>
+       <td>2.485</td>
+       <td>1578689.7</td>
+       <td>0.947</td>
+   </tr>
+   <tr>
+       <td>Prune</td>
+       <td>0.0425</td>
+       <td>3.185</td>
+       <td>30488.1</td>
+       <td>0.846</td>
+   </tr>
+   <tr>
+       <td>Pear</td>
+       <td>0.0814</td>
+       <td>3.718</td>
+       <td>61725.6</td>
+       <td>0.894</td>
+   </tr>
+   <tr>
+       <td>Pistachio (female)</td>
+       <td>0.0675</td>
+       <td>4.743</td>
+       <td>1566202.4</td>
+       <td>0.971</td>
+   </tr>
+   <tr>
+       <td>Pistachio (male)</td>
+       <td>0.0465</td>
+       <td>3.370</td>
+       <td>26990.8</td>
+       <td>0.934</td>
+   </tr>
+   <tr>
+       <td>Walnut</td>
+       <td>0.1248</td>
+       <td>4.548</td>
+       <td>   21.4</td>
+       <td>0.977</td>
+   </tr>
+</table>
+
+## Medlyn et al. (2011) Optimality-Based Model {#MoptTheory}
+
+The stomatal conductance mode of <a href="https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1365-2486.2010.02375.x">Medlyn et al. (2011)</a> combines the empirical modeling approach with the hypothesis that stomata should act should act to optimally minimize the amount of water used per unit carbon gained.
+
+\f[g_s = g_{s,0}+1.6\left(1+\frac{g_1\sqrt{\beta}}{\sqrt{D_s P_{atm}}}\right)\frac{A}{C_s},\f]
+
+where \f$D_s\f$ is in units of mol/mol, and \f$P_{atm}\f$ is atmospheric pressure in kPa. Note that there are a couple of deviations of this equation from that presented in <a href="https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1365-2486.2010.02375.x">Medlyn et al. (2011)</a>: 1) The factor of 1.6 is needed for the resulting conductance to be that of water vapor, 2) We express \f$D_s\f$ in units of mol/mol, and thus multiplication by the atmospheric pressure is needed to get units of kPa, 3) We use surface values for VPD and CO<sub>2</sub> concentration, which allows for incorporation of boundary-layer effects.
+
+One issue with this model is that stomatal conductance blows up to infinity as \f$D_s\rightarrow 0\f$. Our implementation imposes an arbitrary minimum \f$D_s\f$ value of 0.00001 mol/mol.
+
+Below are example parameter values for several different tree crop species (a description of how calibration data was collected is given in the section below). Note that, as mentioned above, in order to apply the model photosynthesis must also be modeled - coefficients for these species are also given in the photosynthesis model documentation.
+
+<table>
+   <tr>
+       <th>Species</th>
+       <th>\f$g_{s,0}\f$ (mol air/m<sup>2</sup>-s)</th>
+       <th>\f$g_1\f$ (\f$\sqrt{kPa}\f$)</th>
+       <th>\f$R^2\f$ of fit</th>
+   </tr>
+   <tr>
+       <td>Almond (default)</td>
+       <td>0.0825</td>
+       <td> 2.637</td>
+       <td>0.941</td>
+   </tr>
+   <tr>
+       <td>Apple</td>
+       <td>0.0426</td>
+       <td> 2.160</td>
+       <td>0.864</td>
+   </tr>
+   <tr>
+       <td>Cherry</td>
+       <td>0.0936</td>
+       <td> 1.043</td>
+       <td>0.893</td>
+   </tr>
+   <tr>
+       <td>Prune</td>
+       <td>0.0412</td>
+       <td> 1.863</td>
+       <td>0.949</td>
+   </tr>
+   <tr>
+       <td>Pear</td>
+       <td>0.0775</td>
+       <td> 2.418</td>
+       <td>0.966</td>
+   </tr>
+   <tr>
+       <td>Pistachio (female)</td>
+       <td>0.0756</td>
+       <td> 3.252</td>
+       <td>0.902</td>
+   </tr>
+   <tr>
+       <td>Pistachio (male)</td>
+       <td>0.0434</td>
+       <td> 2.039</td>
+       <td>0.941</td>
+   </tr>
+   <tr>
+       <td>Walnut</td>
+       <td>0.1246</td>
+       <td> 1.167</td>
+       <td>0.973</td>
+   </tr>
+</table>
+
+## Buckley, Mott, Farquhar (2003) Model (simplified version given in Buckley, Turnbull, and Adams 2012) {#BMFTheory}
+
+The stomatal conductance model of <a href="http://onlinelibrary.wiley.com/doi/10.1111/j.1365-3040.2012.02515.x/full">Buckley, Turnbull, and Adams (2012)</a> is a simplification of the hydromechanical/biochemical model orignially proposed by <a href="https://onlinelibrary.wiley.com/doi/abs/10.1046/j.1365-3040.2003.01094.x">Buckley, Mott, and Farquhar (2003)</a>. The original model is highly complex with many parameters, but with the simplifications described by Buckley, Turnbull, and Adams (2003), an explicit expression for stomatal conductance can be written as
+
+\f[g_s = \frac{E_m\beta(Q+i_0)}{k+bQ+(Q+i_0)D_s},\f]
+
+where \f$Q\f$ is the photosynthetic photon flux density, \f$D_s\f$ is defined and calculated as described for other models above, \f$E_m,\,i_0,\,k,\f$ and \f$b\f$ are semi-empirical parameters. Note that the photosynthetic flux that is input to the plug-in is in units of energy flux (W/m<sup>2</sup>), but \f$Q\f$ in this equation is photon flux density (\f$\mu\f$mol/m<sup>2</sup>-s). This is because the primitive data value output from the radiation model is in energy flux. The stomatal conductance plug-in automatically converts energy flux to photon flux density using a factor of <a href="https://www.controlledenvironments.org/wp-content/uploads/sites/6/2017/06/Ch01.pdf">4.57 \f$\mu\f$mol/W</a>.
+
+Below are example parameter values for several different tree crop species (a description of how calibration data was collected is given in the section below).
+
+<table>
+   <tr>
+       <th>Species</th>
+       <th>\f$E_m\f$ (mmol/m<sup>2</sup>-s)</th>
+       <th>\f$i_0\f$ (\f$\mu\f$mol/m<sup>2</sup>-s)</th>
+       <th>\f$k\f$ (\f$\mu\f$mol/m<sup>-2</sup>s<sup>-1</sup> mmol mol<sup>-1</sup>)</th>
+       <th>\f$b\f$ (mmol/mol)</th>
+       <th>\f$R^2\f$ of fit</th>
+   </tr>
+   <tr>
+       <td>Almond (default)</td>
+       <td>865.52</td>
+       <td>38.65</td>
+       <td>780320.1</td>
+       <td>2086.07</td>
+       <td>0.991</td>
+   </tr>
+   <tr>
+       <td>Apple</td>
+       <td>24.82</td>
+       <td>182.86</td>
+       <td>109688.7</td>
+       <td>21.30</td>
+       <td>0.986</td>
+   </tr>
+   <tr>
+       <td>Cherry</td>
+       <td>138.03</td>
+       <td>154.24</td>
+       <td>262462.7</td>
+       <td>545.59</td>
+       <td>0.963</td>
+   </tr>
+   <tr>
+       <td>Prune</td>
+       <td> 5.47</td>
+       <td>115.73</td>
+       <td>12280.2</td>
+       <td> 6.10</td>
+       <td>0.993</td>
+   </tr>
+   <tr>
+       <td>Pear</td>
+       <td>13.06</td>
+       <td>167.89</td>
+       <td>25926.4</td>
+       <td> 9.81</td>
+       <td>0.960</td>
+   </tr>
+   <tr>
+       <td>Pistachio (female)</td>
+       <td>24865.61</td>
+       <td>171.52</td>
+       <td>63444078.5</td>
+       <td>22428.01</td>
+       <td>0.968</td>
+   </tr>
+   <tr>
+       <td>Pistachio (male)</td>
+       <td>236.89</td>
+       <td>272.74</td>
+       <td>1224393.7</td>
+       <td>257.26</td>
+       <td>0.964</td>
+   </tr>
+   <tr>
+       <td>Walnut</td>
+       <td>29.12</td>
+       <td>68.03</td>
+       <td>19778.8</td>
+       <td>75.26</td>
+       <td>0.972</td>
+   </tr>
+</table>
+
+## Using the Stomatal Conductance Model {#StomatalUse}
+
+### Setting the Model Coefficients {#StomatalCoeffs}
+
+Each model has a data structure containing member variables for each of the model parameters. These are listed in the table below.
+
+<table>
+   <tr>
+       <th>Model</th>
+       <th>Parameter Structure</th>
+   </tr>
+   <tr>
+       <td>Ball, Woodrow, Berry</td>
+       <td>\ref pyhelios.StomatalConductance.BWBCoefficients "BWBcoefficients"</td>
+   </tr>
+   <tr>
+       <td>Ball, Berry, Leuning</td>
+       <td>\ref pyhelios.StomatalConductance.BBLCoefficients "BBLcoefficients"</td>
+   </tr>
+   <tr>
+       <td>Medlyn et al. Optimality</td>
+       <td>\ref pyhelios.StomatalConductance.MOPTCoefficients "MOPTcoefficients"</td>
+   </tr>
+   <tr>
+       <td>Buckley, Mott, Farquhar</td>
+       <td>\ref pyhelios.StomatalConductance.BMFCoefficients "BMFcoefficients"</td>
+   </tr>
+</table>
+
+In order to modify model coefficients from the default values, one should 1) declare and instance of the coefficient structure, 2) modify the appropriate data elements of the data structure, and 3) pass the data structure to the model-specific coefficient setting function (e.g., \ref pyhelios.StomatalConductance.StomatalConductanceModel::setBMFCoefficients "setBMFCoefficients()"). Model coefficients can be set to the same value for all primitives, or differently for a subset of primitives based on a vector of UUIDs. Example code is given below
+
+<p> <br> </p>
+
+```python
+from pyhelios import BMFCoefficients
+
+modelcoeffs = BMFCoefficients()
+modelcoeffs.Em = 9.3
+modelcoeffs.i0 = 5.3
+modelcoeffs.k = 672
+modelcoeffs.b = 6.7
+
+# Apply to all primitives
+stomatal.setBMFCoefficients(modelcoeffs)
+
+# Or apply to specific primitives only
+stomatal.setBMFCoefficients(modelcoeffs, uuids=[uuid1, uuid2, uuid3])
+```
+
+#### UUID-Based Coefficient Setting {#MaterialBasedCoeffs}
+
+PyHelios uses a UUID-based approach for setting coefficients to specific primitives. Coefficients can be applied to all primitives or to a subset specified by their UUIDs.
+
+**Setting coefficients for different species:**
+
+```python
+from pyhelios import Context, StomatalConductanceModel, WeberPennTree, WPTType
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    # Create different tree species
+    with WeberPennTree(context) as wpt:
+        almond_tree_id = wpt.buildTree(WPTType.ALMOND, origin=vec3(0, 0, 0))
+
+    # Get UUIDs for almond tree leaves
+    almond_leaf_uuids = context.getAllUUIDs()
+
+    # Create grape leaves separately
+    grape_leaf_uuids = []
+    for i in range(10):
+        uuid = context.addPatch(center=vec3(5, i, 0), size=vec2(0.1, 0.1))
+        grape_leaf_uuids.append(uuid)
+
+    with StomatalConductanceModel(context) as stomatal:
+        # Set coefficients from species library for each group
+        stomatal.setBMFCoefficientsFromLibrary("Almond", uuids=almond_leaf_uuids)
+        stomatal.setBMFCoefficientsFromLibrary("Grape", uuids=grape_leaf_uuids)
+
+        # Run model - coefficients automatically applied based on UUIDs
+        stomatal.run()
+```
+
+You can also set custom coefficients for specific primitives:
+
+```python
+from pyhelios import BMFCoefficients
+
+custom_coeffs = BMFCoefficients()
+custom_coeffs.Em = 500.0
+custom_coeffs.i0 = 100.0
+custom_coeffs.k = 5000.0
+custom_coeffs.b = 1000.0
+
+# Apply to specific primitives only
+stomatal.setBMFCoefficients(custom_coeffs, uuids=[uuid1, uuid2, uuid3])
+
+# Or apply to all primitives
+stomatal.setBMFCoefficients(custom_coeffs)
+```
+
+### Running the Model (steady-state mode) {#StomatalRun}
+
+There are two possible functions to run the model: one to run the model for all primitives in the Context (see \ref pyhelios.StomatalConductance.StomatalConductanceModel::run "run()"), and another to run the model only for a subset of primitives given their UUIDs (see \ref pyhelios.StomatalConductance.StomatalConductanceModel::run "run()").
 
 ```python
 from pyhelios import Context, StomatalConductanceModel, BMFCoefficients
 from pyhelios.types import vec3, vec2
 
-# Create context and add leaf geometry
+# Initialize the Context and add some geometry
 with Context() as context:
-    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
-    
+    context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+
+    # Initialize the stomatal conductance model
     with StomatalConductanceModel(context) as stomatal:
-        # Use species library for quick setup
-        stomatal.setBMFCoefficientsFromLibrary("Almond")
-        
-        # Run steady-state calculation
+        # Initialize model coefficients and modify their values
+        modelcoeffs = BMFCoefficients()  # values are initialized with default values
+        modelcoeffs.Em = 9.3  # we can modify one or more parameters
+        modelcoeffs.i0 = 5.3
+        modelcoeffs.k = 672
+        modelcoeffs.b = 6.7
+
+        stomatal.setBMFCoefficients(modelcoeffs)
+
+        # -- Normally you would initialize and run some other models (e.g., radiation, energybalance) here --
+
+        # Run the stomatal conductance model (for all primitives)
         stomatal.run()
-        
-        # Run dynamic simulation with timestep
-        stomatal.run(dt=60.0)  # 60 second timestep
-        
-        # Set custom coefficients for specific leaves
-        bmf_coeffs = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
-        stomatal.setBMFCoefficients(bmf_coeffs, uuids=[leaf_uuid])
 ```
 
-## API Reference
+### Running the Model in Dynamic Mode {#StomatalRunDyn}
 
-### StomatalConductanceModel Class
+Any of the above steady-state models can be run in dynamic mode by specifying a timestep and response time constants, which will delay stomatal response to environmental stimuli. When environmental conditions are changed, the stomatal conductance will exponentially relax toward the steady-state value, which is calculated according to any of the above models.
 
-#### Constructor
+Let the steady-state stomatal conductance value calculated according to any of the above models be denoted by \f$g_{s,ss}\f$. Then the dynamic stomatal conductance is calculated according to the following equation
 
-```python
-StomatalConductanceModel(context: Context)
-```
+\f[\dfrac{d g_s}{dt} = \dfrac{g_{s,ss} - g_s}{\tau},\f]
 
-Initialize StomatalConductanceModel with a Helios context.
+where
 
-**Parameters:**
-- `context`: Active Helios Context instance
+\f$\tau\f$ is the time constant for stomatal response to a change in environmental conditions, and \f$\tau = \tau_{open}\f$ if stomata are opening, and \f$\tau = \tau_{close}\f$ if stomata are closing.
 
-**Raises:**
-- `TypeError`: If context is not a Context instance
-- `StomatalConductanceModelError`: If plugin not available
-- `RuntimeError`: If initialization fails
+The above equation can be discretized using a forward Euler scheme to update the stomatal conductance after each timestep \f$\Delta t\f$ as
 
-#### Core Execution Methods
+\f[g_s^{new} = g_s^{old} + \dfrac{g_{s,ss} - g_s^{old}}{\tau}\Delta t.\f]
 
-##### run
+The response time constants \f$\tau_{open}\f$ and \f$\tau_{close}\f$ are specified using the \ref pyhelios.StomatalConductance.StomatalConductanceModel::setDynamicTimeConstants "setDynamicTimeConstants()" method. If time constants are not defined, a warning will be issued and the model will run in steady-state mode.
+
+The model also requires an initial stomatal conductance value, which is specified by setting primitive data "moisture_conductance". If this primitive data is not defined, the model will run in steady-state mode for the first timestep, and this steady-state value will become the initial value for running in dynamic mode.
+
+Below is and example of running the model in dynamic mode.
 
 ```python
-run(uuids: Optional[List[int]] = None, dt: Optional[float] = None) -> None
-```
+from pyhelios import Context, StomatalConductanceModel, BMFCoefficients
 
-Execute stomatal conductance calculations with flexible execution modes.
-
-**Execution Modes:**
-- `run()`: Steady state for all primitives
-- `run(dt=60.0)`: Dynamic with timestep for all primitives  
-- `run(uuids=[1, 2, 3])`: Steady state for specific primitives
-- `run(uuids=[1, 2, 3], dt=60.0)`: Dynamic with timestep for specific primitives
-
-**Parameters:**
-- `uuids`: Optional list of primitive UUIDs to process
-- `dt`: Optional timestep in seconds for dynamic simulation
-
-**Raises:**
-- `ValueError`: If parameters are invalid
-- `StomatalConductanceModelError`: If calculation fails
-
-### Model Coefficient Methods
-
-#### Ball-Woodrow-Berry (BWB) Model
-
-```python
-setBWBCoefficients(coeffs: BWBCoefficients, uuids: Optional[List[int]] = None) -> None
-```
-
-Set BWB model coefficients: gs = gs0 + a1 × An × hs / cs
-
-**Parameters:**
-- `coeffs.gs0`: Minimum stomatal conductance (mol/m²/s)
-- `coeffs.a1`: Sensitivity parameter (dimensionless)
-- `uuids`: Optional list of primitive UUIDs
-
-**Example:**
-```python
-from pyhelios import BWBCoefficients
-bwb_coeffs = BWBCoefficients(gs0=0.0733, a1=9.422)
-stomatal.setBWBCoefficients(bwb_coeffs)
-```
-
-#### Ball-Berry-Leuning (BBL) Model
-
-```python
-setBBLCoefficients(coeffs: BBLCoefficients, uuids: Optional[List[int]] = None) -> None
-```
-
-Set BBL model coefficients with VPD response: gs = gs0 + a1 × An × hs / (cs × (1 + Ds/D0))
-
-**Parameters:**
-- `coeffs.gs0`: Minimum stomatal conductance (mol/m²/s)
-- `coeffs.a1`: Sensitivity parameter (dimensionless)
-- `coeffs.D0`: VPD response parameter (mmol/mol)
-- `uuids`: Optional list of primitive UUIDs
-
-**Example:**
-```python
-from pyhelios import BBLCoefficients
-bbl_coeffs = BBLCoefficients(gs0=0.0743, a1=4.265, D0=14570.0)
-stomatal.setBBLCoefficients(bbl_coeffs)
-```
-
-#### Medlyn Optimality (MOPT) Model
-
-```python
-setMOPTCoefficients(coeffs: MOPTCoefficients, uuids: Optional[List[int]] = None) -> None
-```
-
-Set MOPT model coefficients based on marginal water use efficiency: gs = gs0 + (1 + g1/√Ds) × An/cs
-
-**Parameters:**
-- `coeffs.gs0`: Minimum stomatal conductance (mol/m²/s)  
-- `coeffs.g1`: Marginal water use efficiency parameter ((kPa)^0.5)
-- `uuids`: Optional list of primitive UUIDs
-
-**Example:**
-```python
-from pyhelios import MOPTCoefficients
-mopt_coeffs = MOPTCoefficients(gs0=0.0825, g1=2.637)
-stomatal.setMOPTCoefficients(mopt_coeffs)
-```
-
-#### Buckley-Mott-Farquhar (BMF) Model
-
-```python
-setBMFCoefficients(coeffs: BMFCoefficients, uuids: Optional[List[int]] = None) -> None
-```
-
-Set BMF model coefficients based on leaf energy balance and transpiration.
-
-**Parameters:**
-- `coeffs.Em`: Maximum transpiration rate (mmol/m²/s)
-- `coeffs.i0`: Minimum radiation threshold (μmol/m²/s)
-- `coeffs.k`: Light response parameter (μmol/m²/s·mmol/mol)
-- `coeffs.b`: Humidity response parameter (mmol/mol)
-- `uuids`: Optional list of primitive UUIDs
-
-**Example:**
-```python
-from pyhelios import BMFCoefficients  
-bmf_coeffs = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
-stomatal.setBMFCoefficients(bmf_coeffs)
-```
-
-#### Bailey (BB) Model
-
-```python
-setBBCoefficients(coeffs: BBCoefficients, uuids: Optional[List[int]] = None) -> None
-```
-
-Set BB model coefficients based on hydraulic regulation and turgor pressure.
-
-**Parameters:**
-- `coeffs.pi_0`: Turgor pressure at full closure (MPa)
-- `coeffs.pi_m`: Turgor pressure at full opening (MPa) 
-- `coeffs.theta`: Light saturation parameter (μmol/m²/s)
-- `coeffs.sigma`: Shape parameter (dimensionless)
-- `coeffs.chi`: Hydraulic conductance parameter (mol/m²/s/MPa)
-- `uuids`: Optional list of primitive UUIDs
-
-**Example:**
-```python
-from pyhelios import BBCoefficients
-bb_coeffs = BBCoefficients(pi_0=1.0, pi_m=1.67, theta=211.22, sigma=0.4408, chi=2.076)
-stomatal.setBBCoefficients(bb_coeffs)
-```
-
-### Species Library Methods
-
-#### setBMFCoefficientsFromLibrary
-
-```python
-setBMFCoefficientsFromLibrary(species: str, uuids: Optional[List[int]] = None) -> None
-```
-
-Set BMF coefficients using the built-in species library with pre-calibrated values.
-
-**Available Species:**
-- **Tree crops**: Almond, Apple, Cherry, Pear, Prune, Walnut
-- **Nut crops**: PistachioFemale, PistachioMale  
-- **Vine crops**: Grape
-- **Ornamental/Native**: Big_Leaf_Maple, Baylaurel, Elderberry, EasternRedbud, Toyon, Western_Redbud
-- **Other**: Olive
-
-*Note: Species names are case-sensitive and must match exactly as listed above.*
-
-**Parameters:**
-- `species`: Species name from library
-- `uuids`: Optional list of primitive UUIDs
-
-**Example:**
-```python
-# Use species library for common plants
-stomatal.setBMFCoefficientsFromLibrary("Almond")
-
-# Apply to specific leaves only  
-stomatal.setBMFCoefficientsFromLibrary("Grape", uuids=[leaf1_uuid, leaf2_uuid])
-```
-
-### Dynamic Time Constants
-
-#### setDynamicTimeConstants
-
-```python
-setDynamicTimeConstants(tau_open: float, tau_close: float, uuids: Optional[List[int]] = None) -> None
-```
-
-Configure time constants for dynamic stomatal opening and closing responses.
-
-**Parameters:**
-- `tau_open`: Time constant for stomatal opening (seconds)
-- `tau_close`: Time constant for stomatal closing (seconds)  
-- `uuids`: Optional list of primitive UUIDs
-
-**Typical Values:**
-- Fast response: tau_open = 60s, tau_close = 120s
-- Moderate response: tau_open = 120s, tau_close = 240s
-- Slow response: tau_open = 300s, tau_close = 600s
-
-**Example:**
-```python
-# Set time constants for all leaves
-stomatal.setDynamicTimeConstants(tau_open=120.0, tau_close=240.0)
-
-# Faster response for sun leaves
-stomatal.setDynamicTimeConstants(tau_open=60.0, tau_close=120.0, uuids=sun_leaf_uuids)
-```
-
-### Utility Methods
-
-#### optionalOutputPrimitiveData
-
-```python
-optionalOutputPrimitiveData(label: str) -> None
-```
-
-Add optional output primitive data to the Context for result analysis.
-
-**Valid Output Variables:**
-- `"vapor_pressure_deficit"`: Vapor pressure deficit (kPa)
-- `"model_parameters"`: Model parameters and coefficients
-
-**Example:**
-```python
-# Output available stomatal conductance data
-stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
-stomatal.optionalOutputPrimitiveData("model_parameters")
-```
-
-#### printDefaultValueReport
-
-```python
-printDefaultValueReport(uuids: Optional[List[int]] = None) -> None
-```
-
-Print diagnostic report showing usage of default values for model parameters.
-
-**Example:**
-```python
-# Report for all primitives
-stomatal.printDefaultValueReport()
-
-# Report for specific leaves
-stomatal.printDefaultValueReport(uuids=[leaf1_uuid, leaf2_uuid])
-```
-
-## Examples
-
-### Basic Stomatal Conductance Calculation
-
-```python
-from pyhelios import Context, StomatalConductanceModel
-from pyhelios.types import vec3, vec2
-
+# Initialize the Context and add some geometry
 with Context() as context:
-    # Create leaf geometry
-    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
-    
+    UUID = context.addPatch()
+
+    # Initialize the stomatal conductance model
     with StomatalConductanceModel(context) as stomatal:
-        # Use species library for quick setup
-        stomatal.setBMFCoefficientsFromLibrary("Almond")
-        
-        # Add output variables
-        stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
-        stomatal.optionalOutputPrimitiveData("model_parameters")
-        
-        # Run steady-state calculation
-        stomatal.run()
-        
-        # Get results (returns single float value per primitive)
-        vpd_values = context.getPrimitiveData(leaf_uuid, "vapor_pressure_deficit")
-        model_params = context.getPrimitiveData(leaf_uuid, "model_parameters")
-        
-        print(f"Vapor pressure deficit: {vpd_values} kPa")
-        print(f"Model parameters: {model_params}")
+        # Initialize model coefficients with default values
+        modelcoeffs = BMFCoefficients()  # values are initialized with default values
+        stomatal.setBMFCoefficients(modelcoeffs)
+
+        # Set the response time constants (seconds)
+        tau_open = 10
+        tau_close = 10
+        stomatal.setDynamicTimeConstants(tau_open, tau_close)
+
+        # Set the initial stomatal conductance value
+        gs_initial = 0.2
+        context.setPrimitiveData(UUID, "moisture_conductance", gs_initial)
+
+        dt = 1  # timestep (seconds)
+        Nsteps = 50  # number of timesteps to run
+
+        for t in range(Nsteps):
+            # Run the model for each timestep
+            stomatal.run(dt)
+
+            # Get and print the stomatal conductance value
+            gs_dyn = context.getPrimitiveData(UUID, "moisture_conductance")
+            print(f"Timestep {t}: {gs_dyn}")
 ```
-
-### Dynamic Stomatal Response Simulation
-
-```python
-from pyhelios import Context, StomatalConductanceModel
-from pyhelios.types import SphericalCoord, vec3, vec2
-
-with Context() as context:
-    # Create multiple leaves with different orientations
-    leaf_uuids = []
-    for angle in [0, 30, 60, 90]:  # degrees
-        leaf_uuid = context.addPatch(
-            center=vec3(0, 0, 1), 
-            size=vec2(0.1, 0.1),
-            rotation=SphericalCoord(1, 0, angle)  # radius=1, elevation=0, azimuth=angle
-        )
-        leaf_uuids.append(leaf_uuid)
-    
-    with StomatalConductanceModel(context) as stomatal:
-        # Set coefficients using species library
-        stomatal.setBMFCoefficientsFromLibrary("Grape")
-        
-        # Configure dynamic response
-        stomatal.setDynamicTimeConstants(tau_open=120.0, tau_close=300.0)
-        
-        # Add output variables
-        stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
-        stomatal.optionalOutputPrimitiveData("model_parameters")
-        
-        # Simulate timesteps
-        timestep = 60.0  # 60 seconds
-        for t in range(0, 3600, 60):  # 1 hour simulation
-            stomatal.run(dt=timestep)
-            
-            # Get current values
-            for i, leaf_uuid in enumerate(leaf_uuids):
-                vpd = context.getPrimitiveData(leaf_uuid, "vapor_pressure_deficit")
-                print(f"Time {t}s, Leaf {i}: VPD = {vpd} kPa")
-```
-
-### Multi-Model Comparison
-
-```python
-from pyhelios import (Context, StomatalConductanceModel, 
-                     BWBCoefficients, BBLCoefficients, MOPTCoefficients)
-from pyhelios.types import vec3, vec2
-
-with Context() as context:
-    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
-    
-    with StomatalConductanceModel(context) as stomatal:
-        # Add output variable
-        stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
-        
-        models = {
-            "BWB": BWBCoefficients(gs0=0.0733, a1=9.422),
-            "BBL": BBLCoefficients(gs0=0.0743, a1=4.265, D0=14570.0),
-            "MOPT": MOPTCoefficients(gs0=0.0825, g1=2.637)
-        }
-        
-        results = {}
-        
-        # Test each model
-        for model_name, coeffs in models.items():
-            if model_name == "BWB":
-                stomatal.setBWBCoefficients(coeffs)
-            elif model_name == "BBL":
-                stomatal.setBBLCoefficients(coeffs)
-            elif model_name == "MOPT":
-                stomatal.setMOPTCoefficients(coeffs)
-            
-            stomatal.run()
-            vpd = context.getPrimitiveData(leaf_uuid, "vapor_pressure_deficit")
-            results[model_name] = vpd
-            
-        # Compare results
-        for model_name, vpd in results.items():
-            print(f"{model_name} model: VPD = {vpd} kPa")
-```
-
-### Integration with Tree Geometry
-
-```python
-from pyhelios import Context, WeberPennTree, WPTType, StomatalConductanceModel
-from pyhelios.types import *
-
-with Context() as context:
-    # Generate tree geometry
-    with WeberPennTree(context) as wpt:
-        tree_id = wpt.buildTree(WPTType.ALMOND)
-    
-    # Get leaf UUIDs (assumes all UUIDs in context are leaves)
-    leaf_uuids = context.getAllUUIDs()
-    
-    with StomatalConductanceModel(context) as stomatal:
-        # Set species-appropriate coefficients
-        stomatal.setBMFCoefficientsFromLibrary("Almond")
-        
-        # Configure for tree-scale simulation  
-        stomatal.setDynamicTimeConstants(tau_open=180.0, tau_close=360.0)
-        
-        # Add output variables
-        stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
-        stomatal.optionalOutputPrimitiveData("model_parameters")
-        
-        # Run for all leaves
-        stomatal.run()
-        
-        # Analyze results by canopy position
-        avg_vpd = 0
-        for leaf_uuid in leaf_uuids:
-            vpd = context.getPrimitiveData(leaf_uuid, "vapor_pressure_deficit")
-            avg_vpd += vpd
-            
-        avg_vpd = avg_vpd / len(leaf_uuids)
-        print(f"Average tree VPD: {avg_vpd} kPa")
-```
-
-## Error Handling
-
-```python
-from pyhelios import Context, StomatalConductanceModel
-from pyhelios.StomatalConductance import StomatalConductanceModelError
-
-with Context() as context:
-    try:
-        with StomatalConductanceModel(context) as stomatal:
-            # This will show proper error handling
-            stomatal.setBMFCoefficientsFromLibrary("NonexistentSpecies")
-            
-    except StomatalConductanceModelError as e:
-        print(f"Plugin error: {e}")
-        # Error messages include available species and troubleshooting
-        
-    except ValueError as e:
-        print(f"Parameter error: {e}")
-        # Validation errors for invalid coefficients or parameters
-```
-
-## Troubleshooting
-
-### Plugin Not Available
-
-If you see "StomatalConductanceModel not available" errors:
-
-1. Check plugin status:
-   ```bash
-   python -c "from pyhelios.plugins import print_plugin_status; print_plugin_status()"
-   ```
-
-2. Rebuild with plugin:
-   ```bash
-   build_scripts/build_helios --clean --plugins stomatalconductance
-   ```
-
-3. Verify no dependencies required (plugin should work on all platforms)
-
-### Model Parameter Issues
-
-**Invalid coefficients:**
-- All conductance values (gs0) must be non-negative
-- Time constants must be positive
-- VPD parameters (D0) must be positive
-- Check coefficient units and typical ranges
-
-**Species not found:**
-- Use exact species names: "Almond", "Apple", "Cherry", "Grape", "PistachioFemale", etc.
-- Species names are case-sensitive  
-- Only pre-calibrated species in library are available (see Available Species section above)
-- Note: "Avocado", "Lemon", "Orange", "Peach", "Plum" are NOT available in the current library
-
-### Runtime Calculation Errors
-
-**NaN or infinite values:**
-- Check input environmental conditions (temperature, humidity, radiation)
-- Ensure primitive data has required variables (CO2, light, etc.)
-- Validate that Context contains proper environmental setup
-
-**Invalid optionalOutputPrimitiveData variables:**
-- Only "vapor_pressure_deficit" and "model_parameters" are valid
-- Using invalid variables like "gs", "Ci", "E", "A", "WUE" will result in warnings and no data output
-
-**Slow convergence:**
-- Check dynamic time constants are appropriate for timestep
-- Ensure dt << min(tau_open, tau_close) for stability
-- Very stiff equations may need smaller timesteps
-
-## Performance Notes
-
-**Computational Efficiency:**
-- Stomatal conductance calculations are lightweight compared to radiation models
-- Linear scaling with number of primitives
-- Dynamic models have minimal overhead over steady-state
-
-**Memory Usage:**
-- Minimal memory footprint
-- Coefficient storage scales with number of unique primitive coefficient sets
-- No GPU memory requirements
-
-**Recommended Usage:**
-- Use species library when available for validated coefficients
-- Steady-state calculations for instantaneous values
-- Dynamic simulations for transient behavior and diurnal cycles
-- Combine with energy balance models for coupled heat-water-carbon calculations
-
-## Limitations
-
-**Environmental Requirements:**
-- Requires environmental conditions (temperature, humidity, CO₂, radiation) as primitive data
-- Some models need specific micrometeorological variables
-- Limited to C3 photosynthesis (no C4/CAM plant support)
-
-**Model Scope:**
-- Individual leaf/patch scale (not whole-plant hydraulics)
-- Empirical models may not extrapolate beyond calibration conditions  
-- Species library limited to common temperate tree and vine crops
-
-**Integration Constraints:**
-- Works best with energy balance and photosynthesis plugins
-- Some models require coupling with radiation calculations
-- Dynamic simulations need appropriate timestep selection

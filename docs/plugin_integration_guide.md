@@ -99,6 +99,23 @@ print(f'Dependencies: {metadata.system_dependencies}')
 "
 ```
 
+### 1.3 🚨 CRITICAL: test_symbols Must Match Actual Function Names
+
+**FAILURE POINT**: The `test_symbols` list in plugin_metadata.py must EXACTLY match the C++ wrapper function names you will create in Phase 3. Wrong names = silent failure with skipped tests.
+
+**Plan ahead**: Check your C++ plugin's constructor/destructor names:
+```bash
+# Check helios-core plugin for typical function names
+ls helios-core/plugins/yourplugin/include/
+grep "class.*YourPlugin" helios-core/plugins/yourplugin/include/*.h
+
+# Your wrapper functions will typically be:
+# - createYourPlugin  (if constructor is YourPlugin::YourPlugin)
+# - destroyYourPlugin (if destructor is YourPlugin::~YourPlugin)
+```
+
+**DO NOT GUESS**. If unsure, use placeholder symbols and update after Phase 3.
+
 ## Phase 2: Build System Integration
 
 ### 2.1 CMake Integration
@@ -335,6 +352,41 @@ This enables:
 - New functions available to ctypes
 - Exception handling infrastructure
 - Plugin availability detection
+
+### 3.4 🚨 MANDATORY GATE: Verify Functions Exported
+
+**FAILURE POINT**: If functions in test_symbols aren't actually exported, plugin detection silently fails with skipped tests.
+
+```bash
+# Linux/macOS - verify symbols exist
+nm pyhelios_build/build/lib/libhelios.so | grep "createYourPlugin"
+nm pyhelios_build/build/lib/libhelios.so | grep "destroyYourPlugin"
+
+# Should show lines like:
+# 000000000022ef30 T createYourPlugin
+# 000000000022ec20 T destroyYourPlugin
+
+# Windows
+# dumpbin /exports pyhelios_build/build/lib/helios.dll | findstr "createYourPlugin"
+```
+
+**If ANY function from test_symbols is missing**:
+1. Check C++ wrapper implementation (Phase 3.1)
+2. Verify EXPORT macro used
+3. Update test_symbols in plugin_metadata.py if function names differ
+
+**Now update** `plugin_metadata.py` and `pyhelios/plugins/loader.py` with the **exact** function names you verified:
+
+```python
+# pyhelios/config/plugin_metadata.py
+test_symbols=["createYourPlugin", "destroyYourPlugin"]  # Use actual names!
+
+# pyhelios/plugins/loader.py - around line 459
+plugin_checks = {
+    # ... existing plugins ...
+    'yourplugin': ['createYourPlugin', 'destroyYourPlugin'],  # Use actual names!
+}
+```
 
 ## Phase 4: ctypes Wrapper Creation
 
@@ -622,6 +674,43 @@ Add import for your wrapper:
 ```python
 # Existing imports...
 from . import UYourPluginWrapper
+```
+
+### 4.4 🚨 MANDATORY GATE: Verify Plugin Detection Works
+
+**FAILURE POINT**: If function names don't match between loader.py and library, plugin won't be detected and ALL tests will skip.
+
+```bash
+# Test plugin is detected
+python3 -c "
+from pyhelios.plugins.loader import detect_available_plugins
+available = detect_available_plugins()
+print('Available:', available)
+if 'yourplugin' not in available:
+    print('❌ FAILURE: Plugin not detected!')
+    print('Check function names in loader.py match library')
+    exit(1)
+print('✓ Plugin detected')
+"
+
+# Test plugin can be created
+python3 -c "
+from pyhelios import Context, YourPlugin
+with Context() as context:
+    with YourPlugin(context) as plugin:
+        print('✓ Plugin creation successful')
+"
+```
+
+**If plugin NOT detected**, check function name mismatch:
+```bash
+# What's in the library?
+nm pyhelios_build/build/lib/libhelios.so | grep -i "yourplugin" | grep " T "
+
+# What's in loader.py?
+grep "'yourplugin':" pyhelios/plugins/loader.py
+
+# These MUST match exactly
 ```
 
 ## Phase 5: High-Level Python API
@@ -1340,24 +1429,56 @@ grep -A 10 -B 5 "__exit__" tests/test_yourplugin.py
 # Should show context manager exits or proper cleanup calls
 ```
 
-### 7.4 Run Tests
+### 7.4 🚨 MANDATORY GATE: Verify Plugin Tests Pass
+
+**CRITICAL FAILURE CONDITION**: If plugin-specific @pytest.mark.native_only tests are skipped when plugin was supposedly integrated, **integration FAILED**.
 
 ```bash
-# Run all plugin tests (automatically uses pytest-forked for isolation)
+# Run plugin tests
 pytest tests/test_yourplugin.py -v
 
-# Run only cross-platform tests
-pytest tests/test_yourplugin.py -m cross_platform
-
-# Run only native tests (if library available)
-pytest tests/test_yourplugin.py -m native_only
-
-# Run with coverage
-pytest tests/test_yourplugin.py --cov=pyhelios.YourPlugin
-
-# Verify pytest-forked is working (should show "plugins: forked-X.X.X")
-pytest tests/test_yourplugin.py --tb=short
+# Check skip summary
+pytest tests/test_yourplugin.py -rs --tb=no -q
 ```
+
+**Analyze skip reasons**:
+
+✅ **ACCEPTABLE skips** (these are fine):
+- "Mock mode test" / "plugin is available - this test is for mock mode only"
+- "Interactive test" / "may cause crashes"
+- "cannot test unavailable scenario"
+
+❌ **FAILURE skips** (integration is broken):
+- "Plugin not available"
+- "Plugin(s) not available: yourplugin"
+- "Functions not available"
+- "Requires native library"
+- **More than 5 plugin tests skipped**
+
+**If you see FAILURE skips**:
+```bash
+# Debug plugin detection
+python3 -c "
+from pyhelios.plugins.loader import detect_available_plugins
+available = detect_available_plugins()
+print('Available plugins:', available)
+
+if 'yourplugin' not in available:
+    print('❌ INTEGRATION FAILED: Plugin not detected')
+    print('FIX REQUIRED: Function names in loader.py dont match library')
+
+    # Show what to check
+    print('\n1. Check library has functions:')
+    print('   nm pyhelios_build/build/lib/libhelios.so | grep createYourPlugin')
+    print('\n2. Check loader.py has same names:')
+    print('   grep yourplugin pyhelios/plugins/loader.py')
+    exit(1)
+else:
+    print('✓ Plugin detected correctly')
+"
+```
+
+**DO NOT proceed to Phase 8** until plugin tests pass with only acceptable skip reasons.
 
 ## Phase 8: Documentation
 
@@ -2453,6 +2574,8 @@ Based on previous integrations, watch for these frequent issues:
 - Asset paths hardcoded instead of using proper working directories
 
 **Testing Issues**:
+- **🚨 CRITICAL**: Plugin tests skipping with "Plugin not available" (INTEGRATION FAILED)
+- **🚨 CRITICAL**: More than 5 native_only tests skipped (wrong function names in loader.py/metadata.py)
 - Tests that skip instead of actually testing functionality
 - Mock tests that don't validate real behavior
 - Missing edge case coverage

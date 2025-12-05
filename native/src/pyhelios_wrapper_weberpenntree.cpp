@@ -211,7 +211,18 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (WeberPennTree::setLeafSubdivisions): Unknown error setting leaf subdivisions.");
         }
     }
-    
+
+    PYHELIOS_API void loadXMLWeberPennTree(WeberPennTree* wpt, const char* filename, bool silent) {
+        try {
+            clearError();
+            wpt->loadXML(filename, silent);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (WeberPennTree::loadXML): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (WeberPennTree::loadXML): Unknown error loading XML file.");
+        }
+    }
+
 } //extern "C"
 
 #endif //WEBERPENNTREE_PLUGIN_AVAILABLE

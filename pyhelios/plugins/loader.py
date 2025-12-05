@@ -456,7 +456,7 @@ def detect_available_plugins() -> List[str]:
             'radiation': ['createRadiationModel'],
             'energybalance': ['createEnergyBalanceModel'],
             'photosynthesis': ['createPhotosynthesisModel'],
-            'leafoptics': ['createLeafOpticsModel'],
+            'leafoptics': ['createLeafOptics', 'destroyLeafOptics'],
             'stomatalconductance': ['createStomatalConductanceModel'],
             'boundarylayerconductance': ['createBoundaryLayerConductanceModel'],
             'planthydraulics': ['createPlantHydraulicsModel'],

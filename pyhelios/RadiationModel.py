@@ -125,6 +125,7 @@ class CameraProperties:
             white_balance: White balance mode - "auto" or "off". Default: "auto"
         """
         # Set camera resolution with validation
+        ## @cond
         if camera_resolution is None:
             self.camera_resolution = (512, 512)
         else:
@@ -132,6 +133,7 @@ class CameraProperties:
                 self.camera_resolution = (int(camera_resolution[0]), int(camera_resolution[1]))
             else:
                 raise ValueError("camera_resolution must be a tuple or list of 2 integers")
+        ## @endcond
 
         # Validate and set numeric properties
         if focal_plane_distance <= 0:

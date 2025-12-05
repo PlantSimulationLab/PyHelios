@@ -21,7 +21,7 @@ from .validation.core import validate_positive_value
 from .assets import get_asset_manager
 from .validation.plugin_decorators import (
     validate_tree_uuid_params, validate_recursion_params, validate_trunk_segment_params,
-    validate_branch_segment_params, validate_leaf_subdivisions_params
+    validate_branch_segment_params, validate_leaf_subdivisions_params, validate_xml_file_params
 )
 
 
@@ -199,25 +199,44 @@ class WeberPennTree:
         return self.wpt
 
 
-    def buildTree(self, wpt_type:WPTType, origin:vec3=vec3(0, 0, 0), scale:float=1) -> int:
+    def buildTree(self, wpt_type, origin:vec3=vec3(0, 0, 0), scale:float=1) -> int:
+        """
+        Build a tree using either a built-in tree type or custom species name.
+
+        Args:
+            wpt_type: Either WPTType enum for built-in types, or string for custom species loaded via loadXML()
+            origin: Tree origin position (default: vec3(0, 0, 0))
+            scale: Tree scale factor (default: 1.0)
+
+        Returns:
+            Tree ID for querying tree components
+        """
         # Validate inputs
         validate_vec3(origin, "origin", "buildTree")
         validate_positive_value(scale, "scale", "buildTree")
-        
+
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError(
                 f"WeberPennTree is not properly initialized. "
                 f"This may indicate that the weberpenntree plugin is not available. "
                 f"Check plugin status with context.print_plugin_status()"
             )
-        
+
+        # Convert wpt_type to string (handle both WPTType enum and string)
+        if isinstance(wpt_type, WPTType):
+            tree_name = wpt_type.value
+        elif isinstance(wpt_type, str):
+            tree_name = wpt_type
+        else:
+            raise TypeError(f"wpt_type must be WPTType enum or string, got {type(wpt_type).__name__}")
+
         # Use working directory context manager during tree building to access assets
         with _weberpenntree_working_directory():
             # Use scale-aware function if scale is not 1.0, otherwise use regular function
             if scale != 1.0:
-                return wpt_wrapper.buildTreeWithScale(self.wpt, wpt_type.value, origin.to_list(), scale)
+                return wpt_wrapper.buildTreeWithScale(self.wpt, tree_name, origin.to_list(), scale)
             else:
-                return wpt_wrapper.buildTree(self.wpt, wpt_type.value, origin.to_list())
+                return wpt_wrapper.buildTree(self.wpt, tree_name, origin.to_list())
     
     @validate_tree_uuid_params
     def getTrunkUUIDs(self, tree_id:int) -> List[int]:
@@ -267,7 +286,42 @@ class WeberPennTree:
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
         wpt_wrapper.setLeafSubdivisions(self.wpt, leaf_segs_x, leaf_segs_y)
 
-    
+    @validate_xml_file_params
+    def loadXML(self, filename: str, silent: bool = False) -> None:
+        """
+        Load custom tree species from XML file.
 
+        Loads tree species definitions from an XML file into the WeberPennTree library.
+        After loading, trees can be built using buildTree() with the custom species names
+        defined in the XML file.
 
-        
+        Args:
+            filename: Path to XML file containing tree species definitions.
+                     Can be absolute or relative to current working directory.
+            silent: If True, suppress console output during loading. Default False.
+
+        Raises:
+            ValueError: If filename is invalid or empty
+            FileNotFoundError: If XML file does not exist
+            HeliosRuntimeError: If XML file is malformed or cannot be parsed
+
+        Example:
+            >>> wpt = WeberPennTree(context)
+            >>> wpt.loadXML("my_custom_trees.xml")
+            >>> tree_id = wpt.buildTree("CustomOak")  # Use custom species name
+
+        Note:
+            XML file must follow WeberPennTree XML schema. See WeberPennTreeLibrary.xml
+            in helios-core/plugins/weberpenntree/xml/ for format examples.
+        """
+        if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
+            raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+
+        # Convert relative path to absolute BEFORE changing working directory
+        xml_path = Path(filename)
+        if not xml_path.is_absolute():
+            xml_path = xml_path.resolve()
+
+        # Use working directory context manager for C++ asset access
+        with _weberpenntree_working_directory():
+            wpt_wrapper.loadXML(self.wpt, str(xml_path), silent)

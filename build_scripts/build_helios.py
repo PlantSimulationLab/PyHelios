@@ -1638,6 +1638,7 @@ def get_default_plugins() -> List[str]:
     - solarposition: Solar position calculations and sun angle modeling
     - photosynthesis: Photosynthesis modeling and carbon assimilation
     - plantarchitecture: Advanced plant structure and architecture modeling with procedural plant library
+    - leafoptics: Implementation of PROSPECT-PRO leaf optical model
 
     Returns:
         List of default plugins

@@ -1,312 +1,194 @@
-# Boundary Layer Conductance Documentation {#BoundaryLayerConductanceDoc}
+# Boundary-Layer Conductance Model Plugin Documentation {#BoundaryLayerConductanceDoc}
 
-## Overview
+[TOC]
 
-BoundaryLayerConductanceModel provides boundary layer conductance calculations for heat and mass transfer across primitive boundaries. This plugin enables accurate modeling of convective transport in plant-atmosphere interactions and surface energy balance studies.
-
-The plugin implements four different boundary-layer conductance models:
-
-- **Pohlhausen**: Laminar flat plate, forced convection (default)
-- **InclinedPlate**: Mixed free-forced convection for inclined surfaces
-- **Sphere**: Laminar flow around spherical objects
-- **Ground**: Convective transfer over bare ground surfaces
+<table>
+<tr><th>Dependencies</th><td>None</td></tr>
+<tr><th>Python Import</th><td>`from pyhelios import BoundaryLayerConductanceModel`</td></tr>
+<tr><th>Main Class</th><td>\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BoundaryLayerConductanceModel"</td></tr>
+</table>
 
 ## System Requirements
 
-- **Platforms**: Windows, Linux, macOS
-- **Dependencies**: None (pure computational plugin)
-- **GPU**: Not required
-- **Memory**: Minimal overhead
-
-## Input Primitive Data
-
-The boundary layer conductance calculation uses the following primitive data:
-
-| Primitive Data | Units | Type | Description | Default Value |
-|----------------|-------|------|-------------|---------------|
-| wind_speed | m/s | float | Air wind speed outside boundary layer | 1.0 m/s |
-| object_length | m | float | Characteristic dimension of object | sqrt(area) |
-| air_temperature | K | float | Ambient air temperature | 290 K |
-| surface_temperature | K | float | Surface temperature | 300 K |
-| twosided_flag | - | uint | Number of faces (1 or 2) | 2 |
-
-Set input data using:
-```python
-context.setPrimitiveData(uuid, "wind_speed", 2.5)
-context.setPrimitiveData(uuid, "air_temperature", 298.0)
-```
-
-## Output Primitive Data
-
-Results are stored as primitive data:
-
-| Primitive Data | Units | Type | Description |
-|----------------|-------|------|-------------|
-| boundarylayer_conductance | mol air/m²/s | float | Calculated boundary-layer conductance |
-
-Access results using:
-```python
-gH = context.getPrimitiveData(uuid, "boundarylayer_conductance")
-```
+<table>
+  <tr>
+    <th>Dependencies</th>
+    <td>None</td>
+  </tr>
+  <tr>
+    <th>Platforms</th>
+    <td>Windows, Linux, macOS</td>
+  </tr>
+  <tr>
+    <th>GPU</th>
+    <td>Not required</td>
+  </tr>
+</table>
 
 ## Quick Start
 
 ```python
 from pyhelios import Context, BoundaryLayerConductanceModel
-from pyhelios.types import *
+from pyhelios.types import vec3, vec2
 
-# Create context and add leaf geometry
 with Context() as context:
-    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=[0.1, 0.1])
+    # Create leaf geometry
+    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
 
-    with BoundaryLayerConductanceModel(context) as bl_model:
+    # Set environmental conditions (optional - defaults used if not set)
+    context.setPrimitiveData(leaf_uuid, "wind_speed", 2.0)  # m/s
+    context.setPrimitiveData(leaf_uuid, "air_temperature", 298.0)  # K
+
+    # Use boundary-layer conductance model
+    with BoundaryLayerConductanceModel(context) as blc:
         # Set model for all primitives (default is Pohlhausen)
-        bl_model.setBoundaryLayerModel("InclinedPlate")
+        blc.setBoundaryLayerModel("InclinedPlate")
 
         # Run calculation
-        bl_model.run()
+        blc.run()
 
-        # Results stored in primitive data "boundarylayer_conductance"
-        # Units: mol air/m²/s
+        # Get results
+        gH = context.getPrimitiveData(leaf_uuid, "boundarylayer_conductance")
+        print(f"Boundary-layer conductance: {gH[0]:.3f} mol air/m²-s")
 ```
 
-## Boundary Layer Models
+## Known Issues {#BLCissues}
 
-### 1. Pohlhausen (Laminar Flat Plate)
+None.
 
-Classical solution for laminar forced convection over a flat plate parallel to flow direction.
+## Introduction {#BLCIntro}
 
-**Use Cases:**
-- Flat leaves in steady wind
-- Laminar boundary layers
-- Forced convection dominant
+The boundary-layer conductance to heat describes the rate of energy transfer across the primitive boundary-layer for a given driving temperature difference. Currently, four different boundary-layer conductance models are available as part of this plug-in.
 
-**Formula:**
-```
-gH = 0.135 * ns * sqrt(U / L)
-```
+## BLConductanceModel Class Constructor {#BLCConstructor}
 
-where:
-- `gH` = boundary-layer conductance (mol air/m²/s)
-- `ns` = number of primitive sides (1 or 2)
-- `U` = wind speed (m/s)
-- `L` = characteristic length (m)
+<table>
+<tr><th>Constructors</th></tr>
+<tr><td>\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BoundaryLayerConductanceModel"</td></tr>
+</table>
 
-**Example:**
-```python
-bl_model.setBoundaryLayerModel("Pohlhausen")
-bl_model.run()
-```
+The \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BoundaryLayerConductanceModel" class is initialized by passing the Helios context as an argument to the constructor.
 
-### 2. InclinedPlate (Mixed Convection)
+## Input/Output Primitive Data {#BLCData}
+ 
+### Input Primitive Data {#BLCInputData}
 
-Correlation for plates inclined to flow direction, accounting for both forced and free convection.
+<table>
+<tr><th>Primitive Data</th><th>Units</th><th>Data Type</th><th>Description</th><th>Available Plug-ins</th><th>Default Value</th></tr>
+<tr><td>wind\_speed</td><td>m/s</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Air wind speed just outside of primitive boundary-layer.</td><td>N/A</td><td>1 m/s</td></tr>
+<tr><td>object\_length</td><td>m</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Characteristic dimension of object formed by primitive.</td><td>N/A</td><td>Square root of primitive surface area</td></tr>
+<tr><td>air\_temperature</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Ambient air temperature outside of surface boundary layer.</td><td>N/A</td><td>290 K</td></tr>
+<tr><td>surface\_temperature</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Object surface temperature.</td><td>\ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel"</td><td>300 K</td></tr>
+<tr><td>twosided\_flag</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly</td><td>Number of primitive faces with energy transfer (must be 1 or 2).</td><td>N/A</td><td>2</td></tr>
+</table>
 
-**Use Cases:**
-- Angled leaves
-- Mixed convection scenarios
-- Temperature-dependent buoyancy effects
+### Default Output Primitive Data {#BLOutputData}
 
-**Formula (simplified):**
-```
-gH = f(Re, Gr, θ)
-```
+<table>
+<tr><th>Primitive Data</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
+<tr><td>boundarylayer\_conductance</td><td>mol air/m<sup>2</sup>-s</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Primitive boundary-layer conductance calculated by this plug-in.</td></tr>
+</table>
 
-Based on Chen et al. (1986) correlation incorporating:
-- Reynolds number (Re)
-- Grashof number (Gr)
-- Plate inclination angle (θ)
+## Using the Boundary Layer Conductance Model Plug-in {#BLUse}
 
-**Example:**
-```python
-# Ideal for angled leaves
-bl_model.setBoundaryLayerModel("InclinedPlate", uuids=leaf_uuids)
-bl_model.run()
-```
+### Input Variables {#BLPrimData}
 
-### 3. Sphere (Laminar Sphere)
+Inputs to the model are set by creating primitive variable data in the usual way. If a variable needed for a model input has not been create in the Context, the default value is assumed.
 
-Correlation for forced convection around a sphere.
+### Boundary-layer Conductance Models {#BLCModels}
 
-**Use Cases:**
-- Fruits (apples, oranges, grapes)
-- Spherical objects
-- Low Reynolds number flow
+There are four different built-in models for the boundary-layer conductance. The boundary-layer conductance model is set using the \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel::setBoundaryLayerModel "setBoundaryLayerModel()" function, which takes as arguments the UUID(s) of primitives for which the model is to be set, and a string referencing the chosen model. Possible models are summarized in the table below and described in further detail below. If the \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel::setBoundaryLayerModel "setBoundaryLayerModel()" is called for some UUIDs but not others, the plug-in will assume the default model (Pohlhausen) for any primitives for which no model was explicitly set.
 
-**Formula:**
-```
-gH = 0.00164/D + 0.110*sqrt(U/D)
-```
+It is also important to note that, by default, the length scale used to calculate the boundary-layer conductance is taken to be the square root of the primitive surface area. If the size of the object is different from the size of the primitive, then it is important to manually set the length scale to be the size of the object, as this is the relevant scale for boundary-layer development. This is usually necesary when using the boundary-layer conductance model for a sphere, for example.
 
-where:
-- `D` = sphere diameter (m)
-- `U` = wind speed (m/s)
+The four available models are described in detail below:
 
-**Example:**
-```python
-# Ideal for fruit modeling
-bl_model.setBoundaryLayerModel("Sphere", uuids=fruit_uuids)
-bl_model.run()
-```
+<table>
+<tr><th>Model</th><th>string argument</th></tr>
+<tr><td>1. Pohlhausen Equation (default)</td><td>"Pohlhausen"</td></tr>
+<tr><td>2. Inclined Plate</td><td>"InclinedPlate"</td></tr>
+<tr><td>3. Laminar Sphere</td><td>"Sphere"</td></tr>
+<tr><td>4. Ground Surface</td><td>"Ground"</td></tr>
+</table>
 
-### 4. Ground (Bare Soil Surface)
+#### 1. The Pohlhausen Equation (Laminar Flat Plate, Forced Convection) {#BLC1}
 
-Simplified relationship for convective transfer over flat, bare ground.
+ The Pohlhausen equation is a classical similarity solution describing the boundary-layer conductance to heat for a flat plate parallel with the flow direction that is infinitely wide in the spanwise direction, and has finite length of \f$L\f$ in the streamwise direction. This model also assumes that the plate/primitive boundary-layer is laminar, and that convection is entirely forced (i.e., momentum forces dominate buoyancy forces). The boundary-layer conductance is calculated as
 
-**Use Cases:**
-- Soil surfaces
-- Ground patches
-- Horizontal surfaces
+ \f$g_H = 0.135 n_s\sqrt{\frac{U}{L}}\f$,
 
-**Formula:**
-```
-gH = 0.166 + 0.5*U
-```
+ where \f$U\f$ is the wind speed just outside of the primitive boundary-layer, and \f$L\f$ is the characteristic length/dimension in the streamwise direction of the object that the primitive belongs to. For a leaf consisting of a single primitive, \f$L\f$ could be assumed to be the length of the primitive. If the primitive belongs to a Tile Compound Object, the plug-in will automatically use the dimension of the entire tile object and not that of a single patch/tile. Note that \f$g_H\f$ describes transfer from both sides of the plate/primitive, but transfer from each side of the plate/primitive is asymmetric because of buoyancy forces. \f$n_s\f$ is the number of primitive faces, which is determined by the value of primitive data "twosided_flag" (twosided\_flag=0 is single-sided and \f$n_s=1\f$, twosided\_flag=1 is two-sided and \f$n_s=2\f$).
 
-where:
-- `U` = wind speed at reference height (m/s)
+#### 2. Laminar Inclined Plate, Mixed Free-Forced Convection {#BLC2}
 
-**Example:**
-```python
-# Ideal for ground/soil patches
-bl_model.setBoundaryLayerModel("Ground", uuids=ground_uuids)
-bl_model.run()
-```
+ <a href="https://doi.org/10.1115/1.3247020">Chen et al. (1986)</a> provide a correlation for the boundary-layer conductance of a flat plate that is inclined with respect to the mean ambient flow direction. The correlation assumes that the plate is infinite in the spanwise direction, and has length \f$L\f$ in the other direction.
 
-## Examples
+ The boundary-layer conductance for a plate inclined at \f$\theta_L\leq 75^\circ\f$ is given by
 
-### Basic Usage
+ \f$g_H(\theta_L)=\frac{\rho_a \nu}{Pr\,D_L}2F_1Re^{1/2}\left\{1\pm\left[\frac{2F_2\left(Gr\,\mathrm{cos}\,\theta_L/Re^2\right)^{1/4}}{3F_1}\right]^3\right\}^{1/3},\f$
 
-```python
-from pyhelios import Context, BoundaryLayerConductanceModel
-from pyhelios.types import *
+and for \f$\theta_L>75^\circ\f$ as
 
-with Context() as context:
-    # Add a leaf patch
-    leaf = context.addPatch(center=vec3(0, 0, 1), size=[0.1, 0.1])
+\f$g_H(\theta_L)=\frac{\rho_a \nu}{Pr\,D_L}2F_1Re^{1/2}\left\{1\pm\left[\frac{F_3\left(Gr/Re^{5/2}\right)^{1/5}Gr^{C(\theta_L)}}{6\left[0.2+C(\theta_L)\right]F_1}\right]^3\right\}^{1/3},\f$
 
-    with BoundaryLayerConductanceModel(context) as bl_model:
-        # Use default Pohlhausen model
-        bl_model.run()
+where \f$\rho_a\f$, \f$\nu\f$, and \f$Pr\f$ are respectively the molar density, kinematic viscosity, and Prandtl number of air, \f$L\f$ is the effective leaf dimension (<a href="https://doi.org/10.1115/1.3597463">Parkhurst 1968</a>), \f$Re\f$ is the Reynolds number based on \f$L\f$ and the local free-stream air velocity, and \f$Gr\f$ is the Grashof number which is defined here as
 
-        # Access results
-        # Results are stored in primitive data "boundarylayer_conductance"
-```
+\f$Gr=\frac{g\beta\left(T_L-T_a\right)D_L^3}{\nu^2},\f$
 
-### Setting Different Models
+where \f$g\f$ is the acceleration due to gravity, and \f$\beta\f$ is the volumetric thermal expansion coefficient which we approximate as the inverse of absolute ambient air temperature \f$1/T_a\f$ with \f$T_a\f$ in units of Kelvin. The plus and minus signs corresponds to buoyancy assisting flow and opposing flow cases, respectively. In the present model, the mean wind vector is always orthogonal to the gravity vector (transverse flow), and thus we always take the positive or buoyancy assisting flow case. The constants in the correlations are defined as
+
+\f$F_1=0.399Pr^{1/3}\left[1+\left(0.0468/Pr\right)^{2/3}\right]^{-1/4},\f$
+
+\f$F_2=0.75Pr^{1/2}\left[2.5\left(1+2Pr^{1/2}+2Pr\right)\right]^{-1/4},\f$
+
+\f$F_3=Pr^{1/2}\left[0.25+1.6Pr^{1/2}\right]^{-1}\left(Pr/5\right)^{0.2+C(\theta_L)},\f$
+
+\f$C(\theta_L)=0.070\left(\mathrm{cos}\,\theta_L\right)^{1/2}.\f$
+
+Chen et al. (1986) mention that the equation for \f$\theta_L\leq 75^\circ\f$ is valid for \f$10^3\leq Re \leq 10^5\f$, and the equation for \f$\theta_L>75^\circ\f$ is valid for \f$10^3\leq GrPr \leq 10^9\f$.  We expect leaf Reynolds numbers somewhere between \f$5\times 10^3\f$ and \f$5\times 10^4\f$. Average \f$Gr Pr\f$ values are usually on the order of \f$10^6\f$. When \f$T_L \approx T_a\f$, it is possible for \f$Gr Pr\f$ to drop below \f$10^3\f$, however in these cases the net radiation is usually nearly zero and convective heat fluxes are low anyway.
+
+#### 3. Laminar flow around a sphere {#BLC3}
+
+ <a href="https://books.google.com/books?id=L5FnNlIaGfcC&dq=bird+lightfoot+Transport+Phenomena&lr=&source=gbs_navlinks_s">Bird et al. (1960)</a> provides correlation for forced convection heat transfer in laminar flow around a sphere
+
+ \f$g_H = \frac{0.00164}{D} + 0.110\sqrt{\frac{U}{D}}\f$,
+
+ where \f$D\f$ is the sphere diameter, and \f$U\f$ is the wind speed outside of the sphere boundary-layer.
+
+#### 4. Flow over bare ground {#BLC4}
+
+ <a href="https://doi.org/10.1016/S0168-1923(99)00005-2">Kustas and Norman (1999)</a> suggest a simple relationship for the convective heat conductance over flat, bare ground:
+
+ \f$g_H = 0.166+0.5U,\f$
+
+ where \f$U\f$ is the wind speed at a height above the soil surface where the effect of the soil surface roughness is minimal; typically 0.05 to 0.2 m.
+
+### Setting the Boundary-layer Conductance Model To Be Used {#BLCSet}
 
 ```python
 from pyhelios import Context, BoundaryLayerConductanceModel
-from pyhelios.types import *
 
+# Declare the Context and add two primitives
 with Context() as context:
-    # Add various geometry
-    leaves = []
-    for i in range(5):
-        uuid = context.addPatch(center=vec3(i*0.2, 0, 1), size=[0.05, 0.05])
-        leaves.append(uuid)
+    UUID0 = context.addPatch()
+    UUID1 = context.addPatch()
 
-    with BoundaryLayerConductanceModel(context) as bl_model:
-        # Test all four models
-        bl_model.setBoundaryLayerModel("Pohlhausen", uuids=[leaves[0]])
-        bl_model.setBoundaryLayerModel("InclinedPlate", uuids=[leaves[1]])
-        bl_model.setBoundaryLayerModel("Sphere", uuids=[leaves[2]])
-        bl_model.setBoundaryLayerModel("Ground", uuids=[leaves[3]])
+    # Initialize the boundary-layer conductance Model
+    with BoundaryLayerConductanceModel(context) as boundarylayerconductance:
+        # This changes the boundary-layer conductance model for all (both) primitives
+        boundarylayerconductance.setBoundaryLayerModel("InclinedPlate")
 
-        # Run for all
-        bl_model.run()
+        # This changes the boundary-layer conductance model for the second primitive (while the first will keep the model set above)
+        boundarylayerconductance.setBoundaryLayerModel("Ground", uuids=[UUID1])
 ```
 
-### Application-Specific Models
+### Running the Model {#BLCRun}
 
-```python
-from pyhelios import Context, BoundaryLayerConductanceModel
-from pyhelios.types import *
+The model can be run to calculate the boundary-layer conductance for all primitives or a sub-set of primitives using the appropriate run function below.
 
-with Context() as context:
-    # Create different surface types
-
-    # Leaves (inclined plates)
-    leaf_uuids = []
-    for i in range(10):
-        uuid = context.addPatch(center=vec3(i*0.1, 0, 1.5), size=[0.05, 0.05])
-        leaf_uuids.append(uuid)
-
-    # Fruits (spheres)
-    fruit_uuids = []
-    for i in range(3):
-        uuid = context.addPatch(center=vec3(i*0.3, 0.5, 1.5), size=[0.08, 0.08])
-        fruit_uuids.append(uuid)
-
-    # Soil surface (ground)
-    ground_uuids = []
-    for i in range(5):
-        uuid = context.addPatch(center=vec3(i*0.5, 0, 0), size=[0.5, 0.5])
-        ground_uuids.append(uuid)
-
-    with BoundaryLayerConductanceModel(context) as bl_model:
-        # Apply appropriate models
-        bl_model.setBoundaryLayerModel("InclinedPlate", uuids=leaf_uuids)
-        bl_model.setBoundaryLayerModel("Sphere", uuids=fruit_uuids)
-        bl_model.setBoundaryLayerModel("Ground", uuids=ground_uuids)
-
-        # Calculate for all surfaces
-        bl_model.run()
-```
-
-### Selective Calculation
-
-```python
-from pyhelios import Context, BoundaryLayerConductanceModel
-from pyhelios.types import *
-
-with Context() as context:
-    # Add many patches
-    all_uuids = []
-    for i in range(20):
-        uuid = context.addPatch(center=vec3(i*0.1, 0, 1), size=[0.05, 0.05])
-        all_uuids.append(uuid)
-
-    with BoundaryLayerConductanceModel(context) as bl_model:
-        bl_model.setBoundaryLayerModel("InclinedPlate")
-
-        # Only calculate for subset of primitives
-        subset = all_uuids[5:15]
-        bl_model.run(uuids=subset)
-```
-
-### Error Handling
-
-```python
-from pyhelios import Context, BoundaryLayerConductanceModel, BoundaryLayerConductanceModelError
-
-with Context() as context:
-    leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=[0.1, 0.1])
-
-    try:
-        with BoundaryLayerConductanceModel(context) as bl_model:
-            # This will raise ValueError (invalid model name)
-            bl_model.setBoundaryLayerModel("InvalidModel")
-
-    except ValueError as e:
-        print(f"Invalid model name: {e}")
-
-    except BoundaryLayerConductanceModelError as e:
-        print(f"Plugin error: {e}")
-        # Error messages include rebuild instructions
-```
-
-## Message Control
-
-Control console output:
-
-```python
-with BoundaryLayerConductanceModel(context) as bl_model:
-    # Enable detailed output
-    bl_model.enableMessages()
-
-    # ... perform calculations ...
-
-    # Disable output
-    bl_model.disableMessages()
-```
+<table>
+<caption>Functions to perform boundary-layer conductance model calculations.</caption>
+<tr><th>Model Run Function</th><th>Description</th></tr>
+<tr><td>\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel::run "run()"</td><td>Run model calculations for all primitives in the Context.</td></tr>
+<tr><td>\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel::run "run(uuids)"</td><td>Run model calculations for a select set of primitives in the Context, which are specified by a list of their UUIDs.</td></tr>
+</table>

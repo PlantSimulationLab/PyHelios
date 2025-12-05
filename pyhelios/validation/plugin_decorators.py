@@ -217,6 +217,45 @@ def validate_leaf_subdivisions_params(func: Callable) -> Callable:
     return wrapper
 
 
+def validate_xml_file_params(func: Callable) -> Callable:
+    """Validate XML file path parameters for WeberPennTree."""
+    @wraps(func)
+    def wrapper(self, filename: str, silent: bool = False, *args, **kwargs):
+        from pathlib import Path
+        from .exceptions import create_validation_error
+
+        # Validate filename parameter
+        validate_filename(filename, "filename", func.__name__, allowed_extensions=['.xml'])
+
+        # Convert to Path for existence checking
+        xml_path = Path(filename)
+
+        # Check if file exists
+        if not xml_path.exists():
+            raise create_validation_error(
+                f"XML file not found: {filename}",
+                param_name="filename",
+                function_name=func.__name__,
+                expected_type="path to existing .xml file",
+                actual_value=filename,
+                suggestion=f"Ensure the file exists at: {xml_path.resolve()}"
+            )
+
+        # Validate silent parameter
+        if not isinstance(silent, bool):
+            raise create_validation_error(
+                f"Parameter must be a boolean, got {type(silent).__name__}",
+                param_name="silent",
+                function_name=func.__name__,
+                expected_type="bool",
+                actual_value=silent,
+                suggestion="Use True or False for silent parameter."
+            )
+
+        return func(self, filename, silent, *args, **kwargs)
+    return wrapper
+
+
 # EnergyBalance decorators
 def validate_energy_run_params(func: Callable) -> Callable:
     """Validate parameters for energy balance run method."""

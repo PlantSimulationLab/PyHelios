@@ -684,6 +684,22 @@ PYHELIOS_API void scaleObjectAboutOrigin(helios::Context* context, unsigned int 
  */
 PYHELIOS_API void scaleObjectsAboutOrigin(helios::Context* context, unsigned int* objIDs, unsigned int count, float* scale);
 
+/**
+ * @brief Scale the length of a Cone object by scaling the distance between the two nodes
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Cone to scale
+ * @param scale_factor Factor by which to scale the cone length
+ */
+PYHELIOS_API void scaleConeObjectLength(helios::Context* context, unsigned int objID, float scale_factor);
+
+/**
+ * @brief Scale the girth of a Cone object by scaling the radii at both nodes
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Cone to scale
+ * @param scale_factor Factor by which to scale the cone girth
+ */
+PYHELIOS_API void scaleConeObjectGirth(helios::Context* context, unsigned int objID, float scale_factor);
+
 // ============================================================================
 // Object-Returning Compound Geometry Methods
 // ============================================================================

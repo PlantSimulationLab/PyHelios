@@ -57,7 +57,7 @@ cd PyHelios/
 # Build native libraries (optional - pre-built binaries included)
 ./build_scripts/build_helios
 
-# Install PyHelios
+# Install PyHelios dependencies
 pip install -e .
 ```
 
@@ -75,11 +75,11 @@ xcode-select --install
 git clone --recursive https://github.com/PlantSimulationLab/PyHelios.git
 cd PyHelios/
 
-# Install dependencies and build native libraries
+# Install c++ dependencies and build native libraries
 source helios-core/utilities/dependencies.sh
 ./build_scripts/build_helios
 
-# Install PyHelios
+# Install PyHelios dependencies
 pip install -e .
 ```
 
@@ -95,11 +95,11 @@ pip install -e .
 git clone --recursive https://github.com/PlantSimulationLab/PyHelios.git
 cd PyHelios/
 
-# Install dependencies and build native libraries
+# Install c++ dependencies and build native libraries
 source helios-core/utilities/dependencies.sh
 ./build_scripts/build_helios
 
-# Install PyHelios
+# Install PyHelios dependencies
 pip install -e .
 ```
 

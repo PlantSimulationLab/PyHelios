@@ -378,6 +378,27 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void leafOpticsOptionalOutputPrimitiveData(LeafOptics* leafoptics, const char* label) {
+        try {
+            clearError();
+            if (!leafoptics) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LeafOptics pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            leafoptics->optionalOutputPrimitiveData(label);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (LeafOptics::optionalOutputPrimitiveData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (LeafOptics::optionalOutputPrimitiveData): Unknown error setting optional output.");
+        }
+    }
+
 } // extern "C"
 
 #endif // LEAFOPTICS_PLUGIN_AVAILABLE

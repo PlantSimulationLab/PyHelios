@@ -632,12 +632,14 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
                 return;
             }
-            if (!band_label || !spectrum_label) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+            if (!spectrum_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum label is null");
                 return;
             }
 
-            radiation_model->setDiffuseSpectrum(std::string(band_label), std::string(spectrum_label));
+            // Note: band_label parameter is kept for API compatibility but ignored.
+            // The C++ API applies the spectrum to ALL bands, not specific bands.
+            radiation_model->setDiffuseSpectrum(std::string(spectrum_label));
 
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrum): ") + e.what());
@@ -655,21 +657,14 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
                 return;
             }
-            if (!band_labels || !spectrum_label) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+            if (!spectrum_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Spectrum label is null");
                 return;
             }
 
-            // Convert array to vector
-            std::vector<std::string> band_vec;
-            band_vec.reserve(band_count);
-            for (size_t i = 0; i < band_count; i++) {
-                if (band_labels[i]) {
-                    band_vec.push_back(std::string(band_labels[i]));
-                }
-            }
-
-            radiation_model->setDiffuseSpectrum(band_vec, std::string(spectrum_label));
+            // Note: band_labels parameter is kept for API compatibility but ignored.
+            // The C++ API applies the spectrum to ALL bands, not specific bands.
+            radiation_model->setDiffuseSpectrum(std::string(spectrum_label));
 
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::setDiffuseSpectrum): ") + e.what());

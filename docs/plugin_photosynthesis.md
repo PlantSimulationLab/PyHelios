@@ -1,450 +1,450 @@
-# Photosynthesis Plugin Documentation {#PhotosynthesisDoc}
+# Photosynthesis Model Plugin Documentation {#PhotosynthesisDoc}
 
-The Photosynthesis plugin provides comprehensive photosynthesis modeling capabilities for PyHelios, enabling simulation of plant carbon assimilation using both empirical and mechanistic models.
+[TOC]
 
-## Overview
+<table>
+<tr><th>Dependencies</th><td>None</td></tr>
+<tr><th>Python Import</th><td>`from pyhelios import PhotosynthesisModel`</td></tr>
+<tr><th>Main Class</th><td>\ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel"</td></tr>
+</table>
 
-The Photosynthesis plugin implements:
-- **Empirical photosynthesis models** based on light response curves
-- **Farquhar-von Caemmerer-Berry (FvCB) model** for mechanistic C3 photosynthesis simulation
-- **Built-in species library** with parameters for 21+ plant species
-- **Temperature response modeling** for photosynthetic parameters
-- **Environmental factor integration** including CO₂, temperature, PAR, and conductance effects
+## System Requirements
 
-## Key Features
+<table>
+  <tr>
+    <th>Dependencies</th>
+    <td>None</td>
+  </tr>
+  <tr>
+    <th>Platforms</th>
+    <td>Windows, Linux, macOS</td>
+  </tr>
+  <tr>
+    <th>GPU</th>
+    <td>Not required</td>
+  </tr>
+</table>
 
-### Multi-Model Support
-- **Empirical Model**: Simple light response curve with saturation kinetics
-- **FvCB Model**: Mechanistic model accounting for biochemical limitations of photosynthesis
-
-### Species Library
-The plugin includes a comprehensive species library with validated parameters:
-
-**Tree Species**: ALMOND, APPLE, AVOCADO, CITRUS, LEMON, OLIVE, PEACH, WALNUT
-**Crops**: BEAN, CORN, COTTON, SOYBEAN, TOMATO, WHEAT
-**Other Plants**: GRAPE, LETTUCE, ROSE, STRAWBERRY, SUNFLOWER, CANOLA
-
-Species names are case-insensitive and support aliases (e.g., "apple" → "APPLE").
-
-### Environmental Integration
-- Air temperature effects with Q10 temperature response
-- CO₂ concentration effects (50-2000 ppm range)
-- O₂ concentration effects (5-50% range)
-- PAR (Photosynthetically Active Radiation) integration
-- Stomatal conductance coupling
-
-## Installation and Setup
-
-### Building with Photosynthesis Plugin
-
-```bash
-# Build PyHelios with photosynthesis plugin
-build_scripts/build_helios --plugins photosynthesis
-
-# Or build with multiple plugins
-build_scripts/build_helios --plugins radiation,photosynthesis,visualizer
-
-# Check plugin availability
-python -c "from pyhelios.plugins import get_plugin_info; print(get_plugin_info())"
-```
-
-### Import and Basic Usage
+## Quick Start
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
-from pyhelios.types import PhotosyntheticTemperatureResponseParameters
+from pyhelios.types import vec3, vec2
 
-# Create context and photosynthesis model
-context = Context()
-with PhotosynthesisModel(context) as photosynthesis:
-    # Configure species
-    photosynthesis.setSpecies("APPLE")
-    
-    # Set environmental conditions
-    photosynthesis.setTemperature(25.0)      # °C
-    photosynthesis.setCO2Concentration(400.0) # ppm
-    photosynthesis.setPARFlux(1000.0)        # μmol m⁻² s⁻¹
-    
-    # Calculate photosynthesis
-    rate = photosynthesis.calculatePhotosynthesis()
-    print(f"Photosynthetic rate: {rate:.2f} μmol m⁻² s⁻¹")
+with Context() as context:
+    # Create a simple patch
+    patch_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(0.1, 0.1))
+
+    # Set required primitive data
+    context.setPrimitiveData(patch_uuid, "radiation_flux_PAR", 500.0)  # W/m²
+    context.setPrimitiveData(patch_uuid, "temperature", 298.15)  # K
+    context.setPrimitiveData(patch_uuid, "air_CO2", 400.0)  # µmol/mol
+    context.setPrimitiveData(patch_uuid, "moisture_conductance", 0.3)  # mol/m²-s
+    context.setPrimitiveData(patch_uuid, "boundarylayer_conductance", 1.0)  # mol/m²-s
+
+    # Create photosynthesis model
+    with PhotosynthesisModel(context) as photo:
+        # Use species from library
+        photo.setFarquharCoefficientsFromLibrary("Almond")
+
+        # Run model
+        photo.run()
+
+        # Get results
+        A = context.getPrimitiveData(patch_uuid, "net_photosynthesis")
+        print(f"Net photosynthesis: {A[0]:.2f} µmol CO₂/m²-s")
 ```
 
-## Usage Examples
+## Class Constructor {#PhotoConstructor}
 
-### Example 1: Empirical Model
+<table>
+<tr><th>Constructors</th></tr>
+<tr><td>\ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel"</td></tr>
+</table>
+
+## Primitive Data {#PhotoVarsAndProps}
+
+### Input Primitive Data {#PhotoInputData}
+
+ <table>
+ <tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th><th>Available Plug-ins</th><th>Default Value</th></tr>
+ <tr><td>radiation\_flux\_PAR</td><td>\f$Q\f$</td><td>W/m<sup>2</sup></td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Radiative flux in PAR band. NOTE: this is automatically converted to units of photon flux density, which are the units used in the photosynthesis model.</td><td>Can be computed by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in.</td><td>0</td></tr>
+ <tr><td>temperature</td><td>\f$T_s\f$</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Primitive surface temperature.</td><td>Can be computed by \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" plug-in.</td><td>300 K</td></tr>
+ <tr><td>air\_CO2</td><td>\f$C_a\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol air</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>CO<sub>2</sub> concentration of air outside of primitive boundary-layer.</td><td>N/A</td><td>390 \f$\mu\f$mol/mol</td></tr>
+ <tr><td>moisture\_conductance</td><td>\f$g_S\f$</td><td>mol air/m<sup>2</sup>-s</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Conductance to moisture between sub-stomatal cells and leaf surface (i.e., stomatal conductance).</td><td>Can be computed by \ref pyhelios.StomatalConductance.StomatalConductanceModel "StomatalConductanceModel" plug-in.</td><td>0.25 mol/m<sup>2</sup>-s</td></tr>
+ <tr><td>boundarylayer\_conductance**</td><td>\f$g_H\f$</td><td>mol air/m<sup>2</sup>-s</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Conductance to heat between leaf surface and outside of the boundary-layer (i.e., boundary-layer conductance).</td><td>Can be computed by \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BLConductanceModel" plug-in, or by \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" plug-in if optional output primitive data "boundarylayer_conductance_out" is enabled.</td><td>1.0 mol/m<sup>2</sup>-s</td></tr>
+ <tr><td>twosided\_flag <td>N/A <td>N/A <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly <td>Flag indicating the number of primitive faces with heat transfer (twosided\_flag = 0 for one-sided heat transfer; twosided\_flag = 1 for two-sided heat transfer). This value is retrieved from the primitive's assigned material when available (see Context::getMaterialTwosidedFlag()), with fallback to primitive data if no user-assigned material exists. <td>N/A <td>1 </tr>
+ <tr><td>stomatal\_sidedness <td>\f$\zeta\f$ <td>unitless <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Ratio of stomatal density on the upper leaf surface to the sum of the stomatal density on upper and lower leaf surfaces. Note: if "twosided_flag" is equal to 0, stomatal\_sidedness will be automatically set to 0.<td>N/A <td>0  </tr>
+ </table>
+
+ \*\*The photosynthesis model will also check for primitive data "boundarylayer_conductance_out" if "boundarylayer_conductance" does not exist. If you are using the energy balance model to calculate the boundary-layer conductance, you should enable optional output primitive data "boundarylayer_conductance_out" so that other plug-ins can use it.
+ 
+### Default Output Primitive Data {#PhotoOutputData}
+
+ <table>
+ <tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th></tr><tr><td>net_photosynthesis</td><td>\f$A\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/m<sup>2</sup>-sec</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Net rate of carbon transfer per unit one-sided area.</td></tr>
+ </table>
+
+### Optional Output Primitive Data {#PhotoOptionalOutputData}
+
+**Note**: Optional output primitive data functionality is not yet implemented in PyHelios. In native Helios C++, this is done by calling `PhotosynthesisModel::optionalOutputPrimitiveData()`.
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
-from pyhelios.types import EmpiricalModelCoefficients
 
-context = Context()
-with PhotosynthesisModel(context) as photosynthesis:
-    # Configure empirical model
-    coefficients = EmpiricalModelCoefficients(
-        light_saturation_point=1000.0,    # μmol m⁻² s⁻¹
-        light_compensation_point=50.0,    # μmol m⁻² s⁻¹
-        quantum_efficiency=0.08,          # dimensionless
-        maximum_rate=25.0                 # μmol m⁻² s⁻¹
-    )
-    
-    photosynthesis.setEmpiricalModelCoefficients(coefficients)
-    photosynthesis.setSpecies("APPLE")
-    photosynthesis.setTemperature(25.0)
-    photosynthesis.setCO2Concentration(400.0)
-    photosynthesis.setPARFlux(800.0)
-    
-    # Calculate photosynthesis
-    rate = photosynthesis.calculatePhotosynthesis()
-    print(f"Empirical model rate: {rate:.2f} μmol m⁻² s⁻¹")
+with Context() as context:
+    with PhotosynthesisModel(context) as photo:
+        photo.optionalOutputPrimitiveData("Ci")
 ```
 
-### Example 2: Farquhar Model
+ <table>
+ <tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
+ <tr><td>Ci</td><td>\f$C_i\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Intercellular CO<sub>2</sub> concentration.</td></tr>
+  <tr><td>Gamma\_CO2</td><td>\f$\Gamma\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Photosynthetic CO<sub>2</sub> compensation point (including "dark respiration").</td></tr>
+ <tr><td>limitation\_state</td><td>N/A</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Photosynthesis limitation state. limitation_state=0 if photosynthesis is Rubisco-limited, limitation_state=1 if photosynthesis is electron transport limited.</td></tr>
+ </table>
+
+## Introduction {#PhotoDescription}
+
+The \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in implements two types of models: the biochemical model of <a href="https://link.springer.com/article/10.1007/BF00386231">Farquhar, von Caemmerer, and Berry (1980)</a>, and an empirical model similar to that of <a href="../../plugins/photosynthesis/doc/Johnson_2010_PlantMod.pdf">Johnson (2010)</a>, which are described separately below.
+
+By default, the plug-in uses the biochemical model. The model can either be set explicitly, as illustrated in the code below, or the model type will be inferred based on the model coefficients that are set (see descriptions below).
+
+```python
+from pyhelios import Context, PhotosynthesisModel
+
+with Context() as context:
+    with PhotosynthesisModel(context) as photo:
+        # Use the Farquhar-von Caemmerer-Berry model
+        photo.setModelTypeFarquhar()
+
+        photo.run()
+
+        # Switch back to the empirical model
+        photo.setModelTypeEmpirical()
+```
+
+## Farquhar, von Caemmerer, Berry Model Description {#FarquharDescription}
+
+The \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" implements the biochemical model of <a href="https://link.springer.com/article/10.1007/BF00386231">Farquhar, von Caemmerer, and Berry (1980)</a>. The form used here predicts photosynthetic production as a function of photoshynthetically active radiation flux, ambient CO<sub>2</sub> concentration, and stomatal conductance, which may itself provide responses to a number of additional environmental variables.
+
+ The implementation used here calculates the net rate of CO<sub>2</sub> exchange as
+
+ \f[A=\left(1-\frac{\Gamma^*}{C_i}\right)\mathrm{min}\left\{W_c,W_j,W_p\right\}-R_d,\f]
+
+ where
+
+ \f[W_c=\frac{V_{cmax}C_i}{C_i+K_{co}}\f]
+
+ is the rate limited by Rubisco, with
+
+ \f[K_{co}=K_c\left(1+\frac{O}{K_O}\right),\f]
+
+ where \f$O\f$ is oxygen concentration.
+
+ \f[W_j=\dfrac{J C_i}{4C_i+8\Gamma^*}\f]
+
+ is the rate limited by RuBP regeneration.
+
+ The light response of \f$J\f$, the potential electron transport rate, can be described as a rectangular hyperbola with 1 shape parameter, or non-rectangular hyperbola with 2 shape parameters.
+ The rectangular hyperbola takes the form
+
+ \f[ J(Q) = \dfrac{J_{max} \alpha Q}{\alpha Q + J_{max}} \f]
+
+ where \f$Q\f$ is the photosynthetically active absorbed radiation flux (\f$\mu mol\,m^{-2}\,s^{-1}\f$), \f$J_{max}\f$ is the temperature-dependent maximum potential electron transport rate (\f$\mu mol\,m^{-2}\,s^{-1}\f$), and \f$\alpha\f$ is the intrinsic quantum efficiency of electron transport (\f$electron\,photon^{-1}\f$) which defines the initial slope of the light response, determines its resulting shape in the rectangular hyperbolic form, and is thought to be relatively conserved around 0.5.
+ The non-rectangular hyperbola takes the form
+
+ \f[J(Q) = \dfrac{\alpha Q + J_{max} - \sqrt{(\alpha Q + J_{max})^2 - 4 \theta \alpha Q J_{max}}}{2 \theta}\f]
+
+ where \f$\theta\f$ is an additional parameter (unitless) that shapes the light response curve beyond its initial slope. When \f$\theta\f$ approaches zero, the two forms become equivalent. In Photosynthesis Plugin, the rectangular form will be assumed unless \f$\theta\f$ is specified by the user.
+
+ \f[W_p=\dfrac{3\,TPU\,C_i}{C_i-\Gamma^*}\f]
+
+ is the rate limited by triose phosphate utilization. Note that if the TPU parameter is not set by the user, this state is ignored.
+
+ The intercellular CO<sub>2</sub> concentration \f$C_i\f$ is determined from the relation
+
+ \f$A=0.75g_M\left(C_{a}-C_i\right)\f$
+
+ which is solved numerically using the Secant method, since \f$A\f$ is a complex nonlinear function of \f$C_i\f$ which prevents an analytical solution for \f$C_i\f$. The 0.75 factor comes from the fact that diffusion of CO<sub>2</sub> in air is slower than that of water vapor (see Eq. 7.33 of <a href="http://www.springer.com/us/book/9780387949376#otherversion=9781461216261">Campbell and Norman</a>).
+
+ \f$g_M\f$ is the conductance to moisture transfer between the leaf interior and just outside of the leaf boundary-layer, and is calculated as
+
+ \f$g_M = 1.08g_Hg_S\left[\dfrac{\zeta}{1.08g_H+g_S\zeta}+\dfrac{(1-\zeta)}{1.08g_H+g_S(1-\zeta)}\right]\f$,
+
+ where \f$g_H\f$ is the boundary-layer conductance to heat, and \f$1.08g_H\f$ gives the boundary-layer conductance to moisture considering the differences in diffusivity between water vapor and heat. \f$n_s\f$ is the number of primitive faces, which is determined by the value of "twosided_flag" retrieved from the primitive's assigned material when available (see Context::getMaterialTwosidedFlag()), with fallback to primitive data if no user-assigned material exists (twosided\_flag=0 is single-sided and \f$n_s=1\f$, twosided\_flag=1 is two-sided and \f$n_s=2\f$).
+
+ \f$\zeta=\dfrac{D_{upper}}{D_{lower}+D_{upper}}\f$
+
+ is the stomatal sidedness, which is the ratio of the stomatal density of the upper leaf surface to the sum of the upper and lower leaf surface densities, which is set by the primitive data value "stomatal_sidedness". For leaves, \f$\zeta=0\f$ corresponds to hypostomatous leaves (stomata on one side), and \f$\zeta=0.5\f$ to amphistomatous leaves (stomata equally on both sides). It is important to note that if \f$n_s=1\f$, then the value of \f$\zeta\f$ will be overridden and set to 0.
+
+
+### Temperature response of model parameters {#FvCBtemperature}
+
+Two different temperature response functions are commonly used in photosynthetic modeling and supported in the Photosynthesis Plugin. One is an Arrhenius equation, which is exponentially increasing with no decline in the region of use. The other is a modified Arrhenius equation with a peak or temperature optimum, beyond which there is a decline in the value of the function, representing a denaturing of an enzyme and subsequent reduction of its activity.
+
+ \f[
+ \begin{aligned}
+ k &= k_{25} \cdot \exp \left[\frac{\Delta H_a}{R} \left(\frac{1}{298}-\frac{1}{T_{leaf}} \right) \right] \frac{f(298)}{f(T_{leaf})}, \\
+ f(T_{leaf}) &= 1+\exp \left[\frac{\Delta H_d}{R} \left(\frac{1}{T_{opt}} - \frac{1}{T_{leaf}} \right) - \ln \left(\frac{\Delta H_d}{\Delta H_a}-1 \right) \right]
+ \end{aligned}
+ \f]
+
+In this form, the model is conveniently parameterized by the commonly used standard reference rate at 25\f$^\circ\f$C, \f$k_{25}\f$, as well as the energy of activation, \f$A = \Delta H_a = dH_a\f$ of the Arrhenius equation, but also by the observable temperature optimum, \f$T_{opt}\f$ and one additional fitted parameter, the energy of deactivation, \f$D = \Delta H _d = dH_d\f$, related to the rate of decline from the optimum.
+
+As \f$T_{opt}\f$ \f$\to \infty\f$, then the peaked form approaches the standard, unpeaked Arrhenius equation, allowing for mathematical backwards compatibility for parameters obtained from fitting to the standard unpeaked form.
+
+In the Photosynthesis Plugin, the Arrhenius form will be assumed as it requires fewer parameters, unless the additional parameters \f$dH_d\f$ and \f$T_{opt}\f$ are specified by the user.
+
+| Parameter | Description                            | Units                     |
+| --------- | -------------------------------------- | ------------------------- |
+| \f$k_{25}\f$  | reference rate at 25\f$^\circ\f$C     | \f$\mu mol\,m^{-2}\,s^{-1}\f$ |
+| \f$dH_a\f$    | activation energy (rate of increase)   | \f$kJ\,mol^{-1}\f$            |
+| \f$dH_d\f$    | deactivation energy (rate of decrease) | \f$kJ\,mol^{-1}\f$            |
+| \f$T_{opt}\f$ | optimum temperature in Kelvin          | \f$K\f$                       |
+| \f$T_{leaf}\f$| leaf surface temperature in Kelvin     | \f$K\f$                       |
+| \f$R\f$       | ideal gas constant, 0.008314           | \f$kJ\,mol^{-1}\,K^{-1}\f$    |
+
+ Additional temperature parameters that are not typically fit to use the standard Arrhenius form with the parameters obtained by <a href="https://onlinelibrary.wiley.com/doi/full/10.1111/j.1365-3040.2001.00668.x">Bernacchi et al. (2001)</a>, and are given by the following equations
+
+ \f[
+ \begin{aligned}
+ \Gamma^* &= 42.60 \cdot \exp \left[ \frac{37.83}{R} \left(\frac{1}{298} - \frac{1}{T_{leaf}} \right) \right] \\
+ K_c &= 400.3 \cdot \exp \left[ \frac{79.43}{R} \left(\frac{1}{298} - \frac{1}{T_{leaf}} \right) \right] \\
+ K_o &= 275.1 \cdot \exp \left[ \frac{36.38}{R} \left(\frac{1}{298} - \frac{1}{T_{leaf}} \right) \right] \\
+ R_d &= R_{d,25} \cdot \exp \left[ \frac{46.39}{R} \left(\frac{1}{298} - \frac{1}{T_{leaf}} \right) \right]
+ \end{aligned}
+ \f]
+
+#### Summary of FvCB Model Independent Variables {#FvCBPhotoVars}
+
+<table>
+ <tr><th>Variable</th><th>Units</th><th>Description</th></tr>
+ <tr><td>\f$Q\f$</td><td>\f$\mu\f$mol/m<sup>2</sup>-sec.</td><td>Photosynthetic radiation energy flux.</td></tr>
+ <tr><td>\f$T_s\f$</td><td>Kelvin</td><td>Surface temperature.</td></tr>
+ <tr><td>\f$C_{a}\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol air</td><td>Ambient CO<sub>2</sub> concentration outside of boundary-layer.</td></tr>
+ <tr><td>\f$g_M\f$</td><td>mol air/m<sup>2</sup>-s</td><td>Conductance to moisture transfer between inside the leaf and leaf surface (i.e., stomatal conductance).</td></tr>
+ <tr><td>\f$g_H\f$</td><td>mol air/m<sup>2</sup>-s</td><td>Conductance to heat transfer between the leaf surface and outside the boundary-layer (i.e., boundary-layer conductance).</td></tr>
+ </table>
+ 
+#### Summary of FvCB Model Parameters {#FvCBPhotoParams}
+
+The table below gives example model parameters obtained for several different species. These parameters were fit from leaf-level gas exchange data using the <a href="https://github.com/GEMINI-Breeding/photorch">PhoTorch</a> Python package. Note that the parameter sets are based on different temperature response functions depending on the data that was available.
+
+| Species            | \f$V_{cmax25}\f$ | \f$J_{max25}\f$ | \f$TPU_{25}\f$ | \f$R_{d25}\f$ | \f$\alpha\f$ | \f$\theta\f$ | \f$\Delta H_{a,Vcmax}\f$ | \f$T _{opt,Vcmax}\f$ | \f$\Delta H_{d,Vcmax}\f$ | \f$\Delta H_{a,Jmax}\f$ | \f$T _{opt,Jmax}\f$ | \f$\Delta H_{d,Jmax}\f$ | \f$\Delta H_{a,TPU}\f$ | \f$T _{opt,TPU}\f$ | \f$\Delta H_{d,TPU}\f$ |
+| ----------         | ------------ | ----------- | ---------- | --------- | -------- | -------- | -------------------- | ---------------- | -------------------- | ------------------- | --------------- | ------------------- | ------------------ | -------------- | ------------------ |
+| Almond             | 72.6         | 144.2       | 6.4        | 0.2       | 0.094    | 0        | 27.3                 | 315.3            | 478.4                | 64.1                | 314.9           | 508.4               | 37.1               | 311.3          | 477.9              |
+| California Bay     | 97.5         | 193         | 3.3        | 0.1       | 0.037    | 0        | 49.1                 | 308.6            | 505.8                | 34                  | 308.5           | 456.7               | 0.1                | 309.4          | 477.5              |
+| Elderberry         | 37.7         | 149.7       | 7.3        | 1.3       | 0.202    | 0.472    | 66                   | 319.4            | 496                  | 24.5                | 314.8           | 492.9               | 33.6               | 314.5          | 497.5              |
+| Grape              | 74.5         | 180.2       | 7.7        | 1.3       | 0.304    | 0        | 76.1                 | 318.8            | 499.8                | 23                  | 313.8           | 502.3               | 24                 | 314.6          | 496.4              |
+| Maple              | 96.4         | 168         | 2.7        | 0.1       | 0.077    | 0        | 48.9                 | 307.1            | 505                  | 8.5                 | 304.7           | 476.7               | 32.1               | 308.3          | 471.6              |
+| Olive              | 75.9         | 170.4       | 8.3        | 1.9       | 0.398    | 0        | 55.4                 | 315.2            | 497                  | 32.2                | 312.5           | 493.4               | 37.2               | 311.7          | 498.9              |
+| Pistachio          | 101.8        | 223         | 9.8        | 1.5       | 0.216    | 0.65     | 56.5                 | 316.6            | 483.1                | 27.7                | 314.6           | 458.5               | 39.9               | 315.4          | 494.3              |
+| Toyon              | 52.8         | 142.4       | 6.6        | 0.8       | 0.29     | 0.532    | 42.1                 | 315.1            | 483                  | 9                   | 313             | 486.2               | 14                 | 314.8          | 493.8              |
+| Walnut             | 81.6         | 201.9       | 10.2       | 0.9       | 0.362    | 0        | 85.3                 | 316.5            | 500.6                | 41.4                | 308.6           | 308.2               | 21.9               | 310.4          | 434.9              |
+| Redbud             | 68.5         | 132.4       | 6.6        | 0.8       | 0.41     | 0        | 66.6                 | 315.1            | 496                  | 41.2                | 313.1           | 474                 | 34.3               | 312.8          | 463.2              |
+| Apple              | 101.08       | 167.03      | --         | 3.00      | 0.432    | 0        | 65.33                | --               | --                   | 47.62               | --              | --                  | --                 | --             | --                 |
+| Cherry             | 75.65        | 129.06      | --         | 2.12      | 0.404    | 0        | 65.33                | --               | --                   | 48.49               | --              | --                  | --                 | --             | --                 |
+| Pear               | 107.69       | 176.71      | --         | 1.51      | 0.274    | 0        | 65.33                | --               | --                   | 46.04               | --              | --                  | --                 | --             | --                 |
+| Prune              | 75.88        | 129.41      | --         | 1.65      | 0.402    | 0        | 65.33                | --               | --                   | 48.58               | --              | --                  | --                 | --             | --                 |
+
+#### Setting FvCB Model Parameters {#FvCBSettingPhotoParams}
+
+The model coefficients can be set manually or by using the library of coefficients provided in the table above.
+
+To load the FvCB parameters from the library, call the function \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharCoefficientsFromLibrary "setFarquharCoefficientsFromLibrary()" with the species name as an argument. This will automatically set the parameters for all primitives. Alternatively, a list of UUIDs can be passed to this function to set the parameters for a subset of primitives.
+
+To set the parameters manually, first create an instance of the \ref pyhelios.types.photosynthesis.FarquharModelCoefficients "FarquharModelCoefficients" class, and then set the parameters using the setter methods. Finally, call the \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharModelCoefficients "setFarquharModelCoefficients()" method with the coefficients object as an argument.
+
+Each parameter has a setter function, which is the means by which the underlying response function to be used is specified.
+
+<u>Parameter Temperature Response</u>
+1. No temperature response: Call the setter function (e.g., \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setVcmax "setVcmax()") with a single argument. This will make the parameter constant with temperature.
+2. Standard Arrhenius temperature response: Call the setter function (e.g., \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setVcmax "setVcmax()") with two arguments - the first parameter being the value at 25<sup>o</sup>C, and the second being the \f$dH_a\f$ of the parameter temperature response.
+3. Arrhenius temperature response with an optimum: Call the setter function (e.g., \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setVcmax "setVcmax()") with four arguments - the first parameter being the value at 25<sup>o</sup>C, the second being the \f$dH_a\f$ of the parameter temperature response, the third being the \f$T_{opt}\f$ of the parameter temperature response, and the fourth being the \f$dH_d\f$ of the parameter temperature response.
+
+<u>Light Response</u>
+1. Rectangular hyperbola: Call the setter function \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setQuantumEfficiency_alpha "setQuantumEfficiency_alpha()" to set only the alpha parameter. This will enable the rectangular hyperbola light response. Note also the \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setQuantumEfficiency_alpha "setQuantumEfficiency_alpha()" function can be called with multiple arguments in order to specify a temperature response as described above.
+2. Non-rectangular hyperbola: Call both setter functions \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setQuantumEfficiency_alpha "setQuantumEfficiency_alpha()" and \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setLightResponseCurvature_theta "setLightResponseCurvature_theta()". This will enable the non-rectangular hyperbola light response. Each of these can also be called with multiple arguments to specify a temperature response as described above.
+
+Note that the parameter sets in the library vary in terms of which response functions are used based on the data available for parameter fitting.
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
 from pyhelios.types import FarquharModelCoefficients
 
-context = Context()
-with PhotosynthesisModel(context) as photosynthesis:
-    # Configure Farquhar-von Caemmerer-Berry model
-    coefficients = FarquharModelCoefficients(
-        vcmax=100.0,                # μmol m⁻² s⁻¹
-        jmax=180.0,                 # μmol m⁻² s⁻¹  
-        tpu=10.0,                   # μmol m⁻² s⁻¹
-        quantum_efficiency_II=0.85,  # dimensionless
-        dark_respiration=2.0        # μmol m⁻² s⁻¹
-    )
-    
-    photosynthesis.setFarquharModelCoefficients(coefficients)
-    photosynthesis.setSpecies("SOYBEAN")
-    photosynthesis.setTemperature(25.0)
-    photosynthesis.setCO2Concentration(400.0)
-    photosynthesis.setO2Concentration(21.0)
-    photosynthesis.setPARFlux(1200.0)
-    
-    # Calculate photosynthesis
-    rate = photosynthesis.calculatePhotosynthesis()
-    conductance = photosynthesis.calculateStomatalConductance()
-    transpiration = photosynthesis.calculateTranspiration()
-    
-    print(f"FvCB model rate: {rate:.2f} μmol m⁻² s⁻¹")
-    print(f"Stomatal conductance: {conductance:.3f} mol m⁻² s⁻¹")
-    print(f"Transpiration: {transpiration:.3f} mol m⁻² s⁻¹")
+with Context() as context:
+    with PhotosynthesisModel(context) as photo:
+        # Use the Farquhar-von Caemmerer-Berry model
+        photo.setModelTypeFarquhar()
+
+        # Use a species from the library
+        photo.setFarquharCoefficientsFromLibrary("almond")
+
+        # Or set parameters manually:
+        fmc = FarquharModelCoefficients()
+        fmc.setVcmax(74.5, 76.1)                    # standard Arrhenius
+        fmc.setJmax(180.2, 23.0, 40.65, 502.3)      # Arrhenius with optimum
+        fmc.setRd(1.3)                              # No temperature response
+        # Note: TPU is set via fmc.TPU_flag = 1 in PyHelios
+        # Setting both alpha and theta, so will use non-rectangular hyperbola light response
+        fmc.setQuantumEfficiency_alpha(0.304)       # No temperature response
+        fmc.setLightResponseCurvature_theta(0.601)  # No temperature response
+
+        photo.setFarquharModelCoefficients(fmc)  # setting the parameters manually for all primitives
+
+        photo.run()
 ```
 
-### Example 3: Temperature Response
+### Material-Based Coefficients (C++ Helios) {#PhotoMaterialBasedCoeffs}
+
+The native Helios C++ library uses a material-based approach for setting photosynthesis model coefficients:
+
+**C++ Approach (Native Helios):**
+```cpp
+Context context;
+PhotosynthesisModel photo_model(&context);
+
+// 1. Create materials for different species
+context.addMaterial("almond_leaf");
+context.addMaterial("grape_leaf");
+
+// 2. Set coefficients from species library
+photo_model.setFarquharCoefficientsFromLibrary("Almond", "almond_leaf");
+photo_model.setFarquharCoefficientsFromLibrary("Grape", "grape_leaf");
+
+// 3. Create primitives and assign materials
+std::vector<uint> almond_leaves = context.addPatch(...);
+context.assignMaterialToPrimitive(almond_leaves, "almond_leaf");
+
+// 4. Run model - coefficients automatically applied based on material
+photo_model.run();
+```
+
+**Advantages of material-based approach (C++):**
+- Memory efficient: Coefficients stored once per material
+- Automatic XML serialization with Context
+- Simplified canopy management: Update one material to change entire plant/organ
+- Performance: Caching minimizes Context lookups
+
+**PyHelios Implementation Note:**
+
+PyHelios currently uses a **UUID-based approach** rather than the material-based system. Pass a list of primitive UUIDs to set coefficients for specific primitives:
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
-from pyhelios.types import PhotosyntheticTemperatureResponseParameters
 
-context = Context()
-with PhotosynthesisModel(context) as photosynthesis:
-    # Configure temperature response
-    temp_params = PhotosyntheticTemperatureResponseParameters(
-        optimal_temperature=25.0,         # °C
-        maximum_temperature=45.0,         # °C
-        minimum_temperature=5.0,          # °C
-        temperature_coefficient_q10=2.0   # dimensionless
-    )
-    
-    photosynthesis.setTemperatureResponseParameters(temp_params)
-    photosynthesis.setSpecies("WHEAT")
-    photosynthesis.setCO2Concentration(400.0)
-    photosynthesis.setPARFlux(1000.0)
-    
-    # Test temperature response
-    temperatures = [15.0, 20.0, 25.0, 30.0, 35.0]
-    for temp in temperatures:
-        photosynthesis.setTemperature(temp)
-        rate = photosynthesis.calculatePhotosynthesis()
-        print(f"Temperature {temp:4.1f}°C: {rate:6.2f} μmol m⁻² s⁻¹")
+with Context() as context:
+    with PhotosynthesisModel(context) as photo:
+        # Create primitives for different species
+        almond_uuids = [context.addPatch(...) for _ in range(10)]
+        grape_uuids = [context.addPatch(...) for _ in range(10)]
+
+        # Set coefficients from species library for specific UUIDs
+        photo.setFarquharCoefficientsFromLibrary("Almond", almond_uuids)
+        photo.setFarquharCoefficientsFromLibrary("Grape", grape_uuids)
+
+        # Run model - coefficients applied to specified primitives
+        photo.run()
 ```
 
-### Example 4: Primitive-Specific Calculations
+The UUID-based approach provides similar functionality, allowing you to group primitives logically and set parameters per group.
 
-```python
-from pyhelios import Context, PhotosynthesisModel
-from pyhelios.types import vec3, vec2, RGBcolor
+## Empirical Model Description {#EmpiricalDescription}
 
-# Create geometry
-context = Context()
-center = vec3(0, 0, 0)
-size = vec2(1, 1)
-color = RGBcolor(0.5, 0.8, 0.3)
+The \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" also implements an empirical photosynthesis model using \ref pyhelios.types.photosynthesis.EmpiricalModelCoefficients "EmpiricalModelCoefficients". The net photosynthetic rate is described by the equation:
 
-# Add leaves as patches
-leaf1_id = context.addPatch(center=center, size=size, color=color)
-leaf2_id = context.addPatch(center=vec3(1, 1, 1), size=size, color=color)
+   \f$A = A_{sat} f_L f_T f_C - R_d\f$
 
-with PhotosynthesisModel(context) as photosynthesis:
-    # Configure model
-    photosynthesis.setSpecies("APPLE")
-    photosynthesis.setTemperature(25.0)
-    photosynthesis.setCO2Concentration(400.0)
-    photosynthesis.setPARFlux(1000.0)
-    photosynthesis.setStomatalConductance(0.5)
-    
-    # Calculate for specific primitives
-    rate1 = photosynthesis.calculatePhotosynthesisForPrimitives(leaf1_id)
-    rates_multiple = photosynthesis.calculatePhotosynthesisForPrimitives([leaf1_id, leaf2_id])
-    
-    print(f"Leaf 1 rate: {rate1:.2f} μmol m⁻² s⁻¹")
-    print(f"Multiple rates: {rates_multiple}")
-    
-    # Get stored rates
-    stored_rate = photosynthesis.getPhotosynthesisRateForPrimitive(leaf1_id)
-    stored_rates = photosynthesis.getPhotosynthesisRateForPrimitives([leaf1_id, leaf2_id])
-    
-    print(f"Stored rate: {stored_rate:.2f} μmol m⁻² s⁻¹")
-    print(f"Stored rates: {stored_rates}")
-```
+   \f$A_{sat}\,({\mu}mol/m^2-s)\f$ is the photosynthesis assimilation rate at saturating irradiance and reference temperature (\f$T_{ref}\f$) and intercellular CO<sub>2</sub> concentration (\f$C_{i,ref}\f$).
 
-### Parameter Structures
+### Light Response Function {#LightResponse}
 
-#### PhotosyntheticTemperatureResponseParameters
-```python
-@dataclass
-class PhotosyntheticTemperatureResponseParameters:
-    optimal_temperature: float      # °C, temperature for optimal photosynthesis
-    maximum_temperature: float      # °C, upper temperature limit
-    minimum_temperature: float      # °C, lower temperature limit 
-    temperature_coefficient_q10: float  # Q10 temperature coefficient
-```
+The response of photosynthesis to light is given by a simple exponential function, which is defined by only one parameter:
 
-#### EmpiricalModelCoefficients
-```python
-@dataclass
-class EmpiricalModelCoefficients:
-    light_saturation_point: float      # μmol m⁻² s⁻¹, PAR at saturation
-    light_compensation_point: float    # μmol m⁻² s⁻¹, PAR at zero net photosynthesis
-    quantum_efficiency: float          # dimensionless (0-1), initial slope
-    maximum_rate: float                # μmol m⁻² s⁻¹, maximum photosynthetic rate
-```
+   \f$f_L(i) = \dfrac{i}{\theta+i}\f$,
 
-#### FarquharModelCoefficients  
-```python
-@dataclass
-class FarquharModelCoefficients:
-    vcmax: float                    # μmol m⁻² s⁻¹, maximum carboxylation rate
-    jmax: float                     # μmol m⁻² s⁻¹, maximum electron transport rate
-    tpu: float                      # μmol m⁻² s⁻¹, triose phosphate utilization
-    quantum_efficiency_II: float    # dimensionless (0-1), PSII quantum efficiency
-    dark_respiration: float         # μmol m⁻² s⁻¹, dark respiration rate
-```
+   where \f$\theta\f$ is the light response curvature.
 
-## Parameter Validation
+### Temperature Response {#TempResponse}
 
-The plugin includes comprehensive parameter validation:
+It is assumed that the maximum CO<sub>2</sub> assimilation rate \f$A_{max}\f$ decreases exponentially about some optimum temperature \f$T_{opt}\f$. The temperature response function is given by:
 
-### Temperature Validation
-- **Range**: -50°C to +70°C
-- **Rationale**: Covers physiological temperature range for plant life
+   \f$f_T(T_s) = \left(\dfrac{T_s-T_{min}}{T_{ref}-T_{min}}\right)^q\left(\dfrac{(1+q)T_{opt}-T_{min}-qT_s}{(1+q)T_{opt}-T_{min}-qT_{ref}}\right)\f$,
 
-### CO₂ Concentration Validation
-- **Range**: 50-2000 ppm
-- **Rationale**: From very low to extremely elevated atmospheric CO₂
+   where \f$T_{min}\f$ is the minimum temperature at which assimilation occurs, \f$T_{opt}\f$ is the temperature at which the maximum assimilation rate occurs, \f$T_{ref}\f$ is the reference temperature chosen to define \f$A_{ref}\f$, and \f$q\f$ is a shape parameter.
 
-### PAR Flux Validation
-- **Range**: 0-3000 μmol m⁻² s⁻¹
-- **Rationale**: From darkness to extreme high light conditions
+   The "dark" respiration rate \f$R_d\f$ is assumed to increase exponentially with temperature following the Arrhenius equation (and assumed not to vary with ambient CO<sub>2</sub> concentration).  Thus, the dark respiration rate is calculated simply as
 
-### Conductance Validation
-- **Range**: 0-2 mol m⁻² s⁻¹
-- **Rationale**: From closed stomata to maximum conductance values
+   \f$R_d = R\sqrt{T_s}\mathrm{exp}\left(-E_R/(T_s+273)\right)\f$,
 
-### Model Coefficient Validation
-- **Vcmax**: 1-500 μmol m⁻² s⁻¹
-- **Jmax**: Must be ≥ 1.2 × Vcmax (biochemical constraint)
-- **Quantum Efficiency**: 0-1 (physical constraint)
-- **Respiration**: 0-50 μmol m⁻² s⁻¹
+   where \f$R\f$ and \f$E_R\f$ are parameters, and temperature is in Kelvin.
 
-## Error Handling
+### CO2 Response Function {#CO2Response}
 
-### Common Exceptions
+We assume that the maximum assimilation rate varies linearly with intercellular CO<sub>2</sub> concentration over the range of expected concentrations, and is zero at zero CO<sub>2</sub>.  Thus, the response function is simply
 
-```python
-from pyhelios import PhotosynthesisModel, PhotosynthesisModelError
-from pyhelios.validation.exceptions import ValidationError
+   \f$f_C(C_i) = k_C\dfrac{C_i}{C_{i,ref}}\f$,
 
-try:
-    photosynthesis = PhotosynthesisModel(context)
-except PhotosynthesisModelError as e:
-    if "plugin is not available" in str(e):
-        print("Rebuild PyHelios with: build_scripts/build_helios --plugins photosynthesis")
-    elif "mock mode" in str(e):
-        print("Native libraries required - currently in mock mode")
+   where \f$C_i\f$ is intercellular CO<sub>2</sub> concentration (\f$\mu\f$mol CO<sub>2</sub>/mol air).
 
-try:
-    photosynthesis.setSpecies("INVALID_SPECIES")
-except ValidationError as e:
-    print(f"Invalid species: {e}")
-    available = photosynthesis.getAvailableSpecies()
-    print(f"Available: {available}")
-```
+### Intercellular CO2 Concentration {#Ci}
 
-### Plugin Availability Check
+The intercellular CO<sub>2</sub> concentration is estimated as a function of the boundary-layer conductance, stomatal conductance, and ambient CO<sub>2</sub> concentration outside of the primitive boundary-layer.  The rate of transport of CO<sub>2</sub> to the leaf (i.e., assimilation rate) is given by
 
-```python
-from pyhelios import PhotosynthesisModel
+   \f$A = 0.75g_M\left(C_{amb}-C_i\right)\f$,
 
-# Check if photosynthesis plugin is available
-if PhotosynthesisModel is None:
-    print("Photosynthesis plugin not available")
-    print("Build with: build_scripts/build_helios --plugins photosynthesis")
-else:
-    print("Photosynthesis plugin available")
-    print("Available species:", PhotosynthesisModel.get_available_species())
-```
+   where \f$g_M\f$ is the conductance to moisture from the sub-stomatal cells to outside of the boundary-layer. The 0.75 factor comes from the fact that diffusion of CO<sub>2</sub> in air is slower than that of water vapor (see Eq. 7.33 of <a href="http://www.springer.com/us/book/9780387949376#otherversion=9781461216261">Campbell and Norman</a>).
 
-## Integration with Other Plugins
+   Since \f$A\f$ is dependent on \f$C_i\f$ and vice-versa, an iterative solution is required for \f$A\f$.
 
-### With RadiationModel
-```python
-from pyhelios import Context, RadiationModel, PhotosynthesisModel
+### Empirical Model Calibration Procedure {#PhotoCalib}
 
-context = Context()
-# Add geometry...
+#### Summary of Empirical Model Independent Variables {#PhotoVars}
 
-with RadiationModel(context) as radiation:
-    # Configure radiation simulation
-    radiation.add_radiation_band("PAR")
-    radiation.add_collimated_radiation_source()
-    radiation.run_band("PAR")
-    
-    # Get PAR flux results
-    par_flux = radiation.get_flux_data("PAR")
+   <table>
+   <tr><th>Variable</th><th>Units</th><th>Description</th></tr>
+   <tr><td>\f$i\f$</td><td>W/m<sup>2</sup></td><td>Photosynthetic radiation energy flux.</td></tr>
+   <tr><td>\f$T_s\f$</td><td>Kelvin</td><td>Surface temperature.</td></tr>
+   <tr><td>\f$C_{amb}\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol air</td><td>Ambient CO<sub>2</sub> concentration outside of boundary-layer.</td></tr>
+   <tr><td>\f$g_{bl}\f$</td><td>mol air/m<sup>2</sup>-s</td><td>Boundary-layer conductance.</td></tr>
+   <tr><td>\f$g_s\f$</td><td>mol air/m<sup>2</sup>-s</td><td>Stomatal conductance.</td></tr>
+   </table>
 
-with PhotosynthesisModel(context) as photosynthesis:
-    # Use radiation results for photosynthesis
-    for i, flux in enumerate(par_flux):
-        photosynthesis.setPARFlux(flux)
-        rate = photosynthesis.calculatePhotosynthesis()
-        print(f"Primitive {i}: PAR={flux:.1f}, Rate={rate:.2f}")
-```
+#### Summary of Empirical Model Parameters {#PhotoParams}
 
-### With EnergyBalanceModel
-```python
-from pyhelios import Context, EnergyBalanceModel, PhotosynthesisModel
+<table>
+   <tr><th>Parameter</th><th>Units</th><th>Description</th></tr>
+   <tr><td>\f$A_{sat}\f$</td><td>mol CO<sub>2</sub>/m<sup>2</sup>-sec</td><td>Assimilation rate at saturating irradiance and reference temperature and intercellular CO<sub>2</sub> concentration.</td></tr>
+   <tr><td>\f$\theta\f$</td><td>W/m<sup>2</sup></td><td>Shape parameter for response to light.</td></tr>
+   <tr><td>\f$T_{min}\f$</td><td>Kelvin</td><td>Minimum temperature at which assimilation occurs.</td></tr>
+   <tr><td>\f$T_{opt}\f$</td><td>Kelvin</td><td>Temperature at which maximum assimilation rate occurs.</td></tr>
+   <tr><td>\f$q\f$</td><td>unitless</td><td>Temperature response shape function.</td></tr>
+   <tr><td>\f$R\f$</td><td>\f${\mu}\f$mol K<sup>1/2</sup>/m<sup>2</sup>-s</td><td>Pre-exponential factor for respiration temperature response.</td></tr>
+   <tr><td>\f$E_R\f$</td><td>1/Kelvin</td><td>Respiration temperature response rate.</td></tr>
+   <tr><td>\f$k_C\f$</td><td>unitless</td><td>CO<sub>2</sub> response rate.</td></tr>
+   </table>
 
-context = Context()
-# Add geometry...
+#### Response of Assimilation Rate to Light {#PhotoLightParam}
 
-with EnergyBalanceModel(context) as energy:
-    energy.enableAirEnergyBalance()
-    # Configure energy balance...
+The response of the assimilation rate to light is obtained from gas exchange measurements at reference temperature (\f$T_{ref}\f$) and CO<sub>2</sub> (\f$C_{i,ref}\f$) in which the irradiance is varied across some range.  However, one important detail is that the dark respiration rate should be removed such that \f$A=0\f$ in the dark (see plot below).  This can be done by measuring the net CO<sub>2</sub> flux starting in the dark, then subtracting the dark flux from the total flux for each subsequent light level.
 
-with PhotosynthesisModel(context) as photosynthesis:
-    # Use temperature from energy balance
-    leaf_temperature = energy.getLeafTemperature()
-    photosynthesis.setTemperature(leaf_temperature)
-    
-    # Calculate photosynthesis with realistic leaf temperature
-    rate = photosynthesis.calculatePhotosynthesis()
-```
+![Light Response Curve](images/LightResponse.png)
 
-## Performance Considerations
+#### Response of Assimilation Rate to Temperature {#PhotoTempParam}
 
-### Batch Calculations
-For multiple primitives, use batch methods:
-```python
-# Efficient for multiple primitives
-rates = photosynthesis.calculatePhotosynthesisForPrimitives([uuid1, uuid2, uuid3])
+The response of the assimilation rate to temperature is obtained using gas exchange measurements at saturating light levels and the reference CO<sub>2</sub> concentration.  The temperature is varied across some range, and the assimilation rate is measured.  It is assumed that the optimum temperature \f$T_{opt}\f$ is the temperature corresponding to the maximum measured assimilation rate.  The model is fit to the data to determine \f$T_{min}\f$ and \f$q\f$.
 
-# Less efficient
-rate1 = photosynthesis.calculatePhotosynthesisForPrimitives(uuid1)
-rate2 = photosynthesis.calculatePhotosynthesisForPrimitives(uuid2)  
-rate3 = photosynthesis.calculatePhotosynthesisForPrimitives(uuid3)
-```
+![Temperature Response Curve](images/TempResponse.png)
 
-### Model Configuration
-Configure model parameters once when possible:
-```python
-# Configure once
-photosynthesis.setSpecies("APPLE")
-photosynthesis.setCO2Concentration(400.0)
+#### Response of Respiration Rate to Temperature {#PhotoRespParam}
 
-# Then vary conditions efficiently
-for temperature in temperature_range:
-    photosynthesis.setTemperature(temperature)
-    rate = photosynthesis.calculatePhotosynthesis()
-```
+The response of the dark respiration to temperature is obtained using gas exchange measurements in the dark.  The leaf is first acclimated to the dark chamber, then leaf temperature is varied across some range.  The model is then fit to the data to determine parameters.
 
-## Troubleshooting
+![Respiration Response Curve](images/RespResponse.png)
 
-### Plugin Not Available
-**Error**: "Photosynthesis plugin is not available"
-**Solution**: 
-```bash
-build_scripts/build_helios --clean --plugins photosynthesis
-```
+#### Response of Assimilation Rate to CO2 {#PhotoCO2Param}
 
-### Mock Mode Operation
-**Error**: "Currently running in mock mode"
-**Solution**: Native libraries required. Build with:
-```bash
-build_scripts/build_helios --plugins photosynthesis
-```
+The response of the assimilation rate is obtained using gas exchange measurements at saturating light levels and the reference temperature \f$T_{ref}\f$, but with varying external CO<sub>2</sub> concentration (which produces varying intercellular CO<sub>2</sub>).
 
-### Invalid Species
-**Error**: ValidationError with species name
-**Solution**: Check available species:
-```python
-available = PhotosynthesisModel.get_available_species()
-aliases = PhotosynthesisModel.get_species_aliases()
-```
-
-### Parameter Out of Range
-**Error**: ValidationError with parameter value
-**Solution**: Check parameter ranges in API reference above
-
-### Model Not Ready
-**Error**: "Model is not ready for calculations"
-**Solution**: Ensure required parameters are set:
-```python
-# Minimum required for calculations
-photosynthesis.setSpecies("APPLE")
-photosynthesis.setTemperature(25.0)
-photosynthesis.setCO2Concentration(400.0)
-
-# Check readiness
-if photosynthesis.isModelReady():
-    rate = photosynthesis.calculatePhotosynthesis()
-```
-
-## Scientific Background
-
-### Empirical Model
-The empirical model uses a rectangular hyperbola:
-```
-A = (α × I × Amax) / (α × I + Amax) - Rd
-```
-Where:
-- A = Net photosynthesis
-- α = Quantum efficiency (initial slope)
-- I = Incident PAR
-- Amax = Maximum photosynthetic rate
-- Rd = Dark respiration
-
-### Farquhar-von Caemmerer-Berry Model
-The FvCB model calculates photosynthesis as the minimum of three rates:
-- **Rubisco-limited**: Ac = (Vcmax × (Ci - Γ*)) / (Ci + Kc(1 + Oi/Ko))
-- **RuBP-limited**: Aj = (J × (Ci - Γ*)) / (4Ci + 8Γ*)
-- **TPU-limited**: Ap = 3 × TPU
-
-Where Ci is intercellular CO₂, Γ* is CO₂ compensation point, and Kc, Ko are kinetic parameters.
-
-### Temperature Response
-Parameters follow Q10 temperature dependence:
-```
-Parameter(T) = Parameter(T_ref) × Q10^((T - T_ref)/10)
-```
-
-## References
-
-1. Farquhar, G.D., von Caemmerer, S., Berry, J.A. (1980). A biochemical model of photosynthetic CO₂ assimilation in leaves of C3 species. Planta 149: 78-90.
-
-2. von Caemmerer, S. (2000). Biochemical Models of Leaf Photosynthesis. CSIRO Publishing.
-
-3. Medlyn, B.E., et al. (2002). Temperature response of parameters of a biochemically based model of photosynthesis. Plant, Cell & Environment 25: 1205-1216.
+![CO2 Response Curve](images/CO2Response.png)

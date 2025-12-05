@@ -115,6 +115,11 @@ try:
     helios_lib.leafOpticsEnableMessages.restype = None
     helios_lib.leafOpticsEnableMessages.errcheck = _check_error
 
+    # Optional output primitive data (v1.3.59)
+    helios_lib.leafOpticsOptionalOutputPrimitiveData.argtypes = [ctypes.POINTER(ULeafOptics), ctypes.c_char_p]
+    helios_lib.leafOpticsOptionalOutputPrimitiveData.restype = None
+    helios_lib.leafOpticsOptionalOutputPrimitiveData.errcheck = _check_error
+
     _LEAFOPTICS_FUNCTIONS_AVAILABLE = True
 
 except AttributeError:
@@ -374,6 +379,31 @@ def leafOpticsEnableMessages(leafoptics: ctypes.POINTER(ULeafOptics)) -> None:
         raise ValueError("LeafOptics instance is None.")
 
     helios_lib.leafOpticsEnableMessages(leafoptics)
+
+
+def leafOpticsOptionalOutputPrimitiveData(leafoptics: ctypes.POINTER(ULeafOptics), label: str) -> None:
+    """Selectively output primitive data for specific biochemical properties
+
+    By default, all biochemical properties are written as primitive data. Use this method
+    to select only needed properties for better performance.
+
+    Args:
+        leafoptics: LeafOptics instance pointer
+        label: Property label - one of: "chlorophyll", "carotenoid", "anthocyanin",
+               "brown", "water", "drymass", "protein", "cellulose"
+
+    Note:
+        Added in helios-core v1.3.59
+    """
+    if not _LEAFOPTICS_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LeafOptics functions not available. Rebuild with leafoptics enabled.")
+    if not leafoptics:
+        raise ValueError("LeafOptics instance is None.")
+    if not label:
+        raise ValueError("Label cannot be empty.")
+
+    label_encoded = label.encode('utf-8')
+    helios_lib.leafOpticsOptionalOutputPrimitiveData(leafoptics, label_encoded)
 
 
 def is_leafoptics_available() -> bool:

@@ -456,16 +456,30 @@ def validate_filename(filename: Any, param_name: str = "filename", function_name
             suggestion="Provide a non-empty filename."
         )
     
-    # Check for potentially problematic characters
+    # Check for potentially problematic characters in the basename only
+    # (full paths may contain valid characters like ':' in Windows drive letters C:\)
     import os
-    if any(char in filename for char in ['<', '>', ':', '"', '|', '?', '*']):
+    import ntpath
+    # Handle both Windows and Unix paths correctly regardless of current platform
+    # Use ntpath for Windows-style paths (backslash or drive letter pattern)
+    if '\\' in filename or (len(filename) >= 2 and filename[1] == ':'):
+        basename = ntpath.basename(filename)
+    else:
+        basename = os.path.basename(filename)
+    # On Windows, colons are only valid after drive letters, not in filenames
+    # On all platforms, these characters are problematic in filenames
+    invalid_chars = ['<', '>', '"', '|', '?', '*']
+    # Add colon check for the basename (not allowed in filenames on any platform)
+    if ':' in basename:
+        invalid_chars.append(':')
+    if any(char in basename for char in invalid_chars):
         raise create_validation_error(
-            f"Filename contains invalid characters: {filename}",
+            f"Filename contains invalid characters: {basename}",
             param_name=param_name,
             function_name=function_name,
             expected_type="valid filename",
             actual_value=filename,
-            suggestion="Avoid characters: < > : \" | ? *"
+            suggestion="Avoid characters: < > : \" | ? * in filename"
         )
     
     # Validate file extension if specified

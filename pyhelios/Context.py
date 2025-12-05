@@ -1689,6 +1689,64 @@ class Context:
             else:
                 raise ValueError(f"ObjID must be int or List[int], got {type(ObjID).__name__}")
 
+    def scaleConeObjectLength(self, ObjID: int, scale_factor: float) -> None:
+        """
+        Scale the length of a Cone object by scaling the distance between its two nodes.
+
+        Args:
+            ObjID: Object ID of the Cone to scale
+            scale_factor: Factor by which to scale the cone length (e.g., 2.0 doubles length)
+
+        Raises:
+            ValueError: If ObjID is not an integer or scale_factor is invalid
+            HeliosRuntimeError: If operation fails (e.g., ObjID is not a Cone object)
+
+        Note:
+            Added in helios-core v1.3.59 as a replacement for the removed getConeObjectPointer()
+            method, enforcing better encapsulation.
+
+        Example:
+            >>> cone_id = context.addConeObject(10, [0,0,0], [0,0,1], 0.1, 0.05)
+            >>> context.scaleConeObjectLength(cone_id, 1.5)  # Make cone 50% longer
+        """
+        if not isinstance(ObjID, int):
+            raise ValueError(f"ObjID must be an integer, got {type(ObjID).__name__}")
+        if not isinstance(scale_factor, (int, float)):
+            raise ValueError(f"scale_factor must be numeric, got {type(scale_factor).__name__}")
+        if scale_factor <= 0:
+            raise ValueError(f"scale_factor must be positive, got {scale_factor}")
+
+        context_wrapper.scaleConeObjectLength(self.context, ObjID, float(scale_factor))
+
+    def scaleConeObjectGirth(self, ObjID: int, scale_factor: float) -> None:
+        """
+        Scale the girth of a Cone object by scaling the radii at both nodes.
+
+        Args:
+            ObjID: Object ID of the Cone to scale
+            scale_factor: Factor by which to scale the cone girth (e.g., 2.0 doubles girth)
+
+        Raises:
+            ValueError: If ObjID is not an integer or scale_factor is invalid
+            HeliosRuntimeError: If operation fails (e.g., ObjID is not a Cone object)
+
+        Note:
+            Added in helios-core v1.3.59 as a replacement for the removed getConeObjectPointer()
+            method, enforcing better encapsulation.
+
+        Example:
+            >>> cone_id = context.addConeObject(10, [0,0,0], [0,0,1], 0.1, 0.05)
+            >>> context.scaleConeObjectGirth(cone_id, 2.0)  # Double the cone girth
+        """
+        if not isinstance(ObjID, int):
+            raise ValueError(f"ObjID must be an integer, got {type(ObjID).__name__}")
+        if not isinstance(scale_factor, (int, float)):
+            raise ValueError(f"scale_factor must be numeric, got {type(scale_factor).__name__}")
+        if scale_factor <= 0:
+            raise ValueError(f"scale_factor must be positive, got {scale_factor}")
+
+        context_wrapper.scaleConeObjectGirth(self.context, ObjID, float(scale_factor))
+
     def loadPLY(self, filename: str, origin: Optional[vec3] = None, height: Optional[float] = None, 
                 rotation: Optional[SphericalCoord] = None, color: Optional[RGBcolor] = None, 
                 upaxis: str = "YUP", silent: bool = False) -> List[int]:

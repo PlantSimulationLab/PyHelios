@@ -1,275 +1,312 @@
-# Weber-Penn Tree Plugin {#WeberPennTreeDoc}
+# Weber-Penn Tree Plugin Documentation {#WeberPennTreeDoc}
 
-The Weber-Penn Tree plugin provides procedural tree generation using the Weber-Penn modeling algorithms. This documentation is based on the actual implementation.
+![](images/weberpenntree/AlmondOrchard.png)
 
-## Overview
+[TOC]
 
-The WeberPennTree class generates realistic tree structures for various fruit and nut tree species using scientifically-based algorithms.
+<p> <br><br> </p>
 
-## Basic Usage
+<table>
+<tr><th>Dependencies</th><td>None</td></tr>
+<tr><th>Python Import</th><td>`from pyhelios import WeberPennTree`</td></tr>
+<tr><th>Main Class</th><td>\ref pyhelios.WeberPennTree.WeberPennTree "WeberPennTree"</td></tr>
+</table>
+
+## System Requirements
+
+<table>
+  <tr><th>Dependencies</th><td>None</td></tr>
+  <tr><th>Platforms</th><td>Windows, Linux, macOS</td></tr>
+  <tr><th>GPU</th><td>Not required</td></tr>
+</table>
+
+## Quick Start
 
 ```python
 from pyhelios import Context, WeberPennTree, WPTType
-from pyhelios.types import *
+from pyhelios.types import vec3
 
-# Create context and tree generator
-context = Context()
-wpt = WeberPennTree(context)
+with Context() as context:
+    with WeberPennTree(context) as wpt:
+        # Build a lemon tree
+        tree_id = wpt.buildTree(WPTType.LEMON, origin=vec3(0, 0, 0))
 
-# Generate a tree with default parameters
-tree_id = wpt.buildTree(WPTType.LEMON)
+        # Query tree components
+        trunk_uuids = wpt.getTrunkUUIDs(tree_id)
+        leaf_uuids = wpt.getLeafUUIDs(tree_id)
 
-# Generate tree with custom position and scale
-tree_id = wpt.buildTree(
-    wpt_type=WPTType.APPLE,
-    origin=vec3(5, 10, 0),
-    scale=1.5
-)
-
-print(f"Generated tree with ID: {tree_id}")
+        print(f"Tree has {len(trunk_uuids)} trunk segments and {len(leaf_uuids)} leaves")
 ```
 
-## Available Tree Types
+## Known Issues {#WPTissues}
 
-The actual tree types available in PyHelios (from WPTType enum):
+- The following parameters described in Weber and Penn (1995) are not implemented: nCurveBack, Flare.
 
-```python
-# Verified tree types from WPTType enum
-available_types = [
-    WPTType.ALMOND,     # Almond tree
-    WPTType.APPLE,      # Apple tree  
-    WPTType.AVOCADO,    # Avocado tree
-    WPTType.LEMON,      # Lemon tree
-    WPTType.OLIVE,      # Olive tree
-    WPTType.ORANGE,     # Orange tree
-    WPTType.PEACH,      # Peach tree
-    WPTType.PISTACHIO,  # Pistachio tree
-    WPTType.WALNUT      # Walnut tree
-]
+## Introduction {#WPTreeIntro}
+ 
+ This plugin implements the Weber-Penn 3D procedural tree generation model, which generates a 3D leaf- and branch-resolved model of a tree.  Click <a href="http://dl.acm.org/citation.cfm?id=218427">here</a> for the publication describing the model.  The method has many different parameters that can be adjusted to create arbitrary tree architectures.  The plugin adds geometric primitives to the Helios context that defines the geometry of the generated tree.
 
-# Generate different tree types
-for tree_type in available_types:
-    tree_id = wpt.buildTree(tree_type)
-    print(f"Generated {tree_type.value} tree: ID {tree_id}")
-```
+## WeberPennTree Class Constructor {#WPTConstructor}
 
-## Tree Component Queries
+<table>
+ <tr><th>Constructors</th></tr>
+ <tr><td>\ref pyhelios.WeberPennTree.WeberPennTree::__init__ "WeberPennTree(context)"</td></tr>
+</table>
 
-Get UUIDs for different parts of generated trees:
+The \ref pyhelios.WeberPennTree.WeberPennTree "WeberPennTree" class is initialized by passing the Helios context as an argument to the constructor. This gives the class the ability to automatically add geometry to the context.
 
-```python
-# Build a tree first
-tree_id = wpt.buildTree(WPTType.OLIVE)
+## Using the Weber-Penn Tree Plug-in {#WPTreeUse}
 
-# Get UUIDs for different tree components (verified methods)
-trunk_uuids = wpt.getTrunkUUIDs(tree_id)
-branch_uuids = wpt.getBranchUUIDs(tree_id)
-leaf_uuids = wpt.getLeafUUIDs(tree_id)
-all_tree_uuids = wpt.getAllUUIDs(tree_id)
+### The XML Tree Library File {#WPTLibrary}
 
-print(f"Tree {tree_id} components:")
-print(f"  Trunk primitives: {len(trunk_uuids)}")
-print(f"  Branch primitives: {len(branch_uuids)}")
-print(f"  Leaf primitives: {len(leaf_uuids)}")
-print(f"  Total primitives: {len(all_tree_uuids)}")
-```
+ The parameters that define various tree geometries are specified in an XML file, which is loaded by the plug-in. When the WeberPennTree constructor is called, the defalut tree library is loaded. A list of trees in the default library is listed in the table below. Default tree parameters can be modified by the user, or custom tree libraries can be added, which is detailed in Section \ref WPTCustom. An example tree definition is given below. The tree definition is encapsulated by the \<WeberPennTree label="..."\>...\</WeberPennTree\> tag, where label gives a handle used to reference that specific tree geometry. Other tags define various parameters that determine the structure of the tree, which are detailed in the sections below.
 
-## Tree Customization
+ <!-- convert Pistachio.jpeg -crop 320x360+290+225 foo.jpeg -->
+ 
+<table>
+ <tr><th>Tree type</th><th>Sample Image</th></tr>
+ <tr><td>Almond</td><td>![](images/weberpenntree/Almond.jpeg)</td></tr>
+ <tr><td>Apple</td><td>![](images/weberpenntree/Apple.jpeg)</td></tr>
+ <tr><td>Avocado</td><td>![](images/weberpenntree/Avocado.jpeg)</td></tr>
+ <tr><td>Lemon</td><td>![](images/weberpenntree/Lemon.jpeg)</td></tr>
+ <tr><td>Olive</td><td>![](images/weberpenntree/Olive.jpeg)</td></tr>
+ <tr><td>Orange</td><td>![](images/weberpenntree/Orange.jpeg)</td></tr>
+ <tr><td>Peach</td><td>![](images/weberpenntree/Peach.jpeg)</td></tr>
+ <tr><td>Pistachio</td><td>![](images/weberpenntree/Pistachio.jpeg)</td></tr>
+ <tr><td>Walnut</td><td>![](images/weberpenntree/Walnut.jpeg)</td></tr>
+</table>
 
-Control the generation parameters before building trees:
+ <p><p><p>
+ 
+ ```
+  <?xml version=1.0?>
 
-```python
-# Set generation parameters (verified methods)
-wpt.setBranchRecursionLevel(4)      # Number of branching levels
-wpt.setTrunkSegmentResolution(8)    # Trunk smoothness (segments)
-wpt.setBranchSegmentResolution(6)   # Branch smoothness (segments)
-wpt.setLeafSubdivisions(3, 3)       # Leaf detail (x, y subdivisions)
+  <helios>
 
-# Generate tree with custom parameters
-tree_id = wpt.buildTree(WPTType.LEMON)
-```
+    <WeberPennTree label="Almond">
+      <Shape> 3 </Shape>
+      <BaseSize> 0.2 </BaseSize>
+      <BaseSplits> 2 </BaseSplits>
+      <BaseSplitSize> 0.2 </BaseSplitSize>
+      <Scale> 6 </Scale>
+      <ScaleV> 1 </ScaleV>
+      <ZScale> 1 </ZScale>
+      <ZScaleV> 0 </ZScaleV>
+      <Ratio> 0.02 </Ratio>
+      <RatioPower> 1.3 </RatioPower>
+      <Lobes> 5 </Lobes>
+      <LobeDepth> 0.1 </LobeDepth>
+      <Flare> 0.25 </Flare>
+      <Levels> 3 </Levels>
+      <nSegSplits> 0 0 0 0 </nSegSplits>
+      <nSplitAngle> 40 10 10 0 </nSplitAngle>
+      <nSplitAngleV> 0 0 0 0 </nSplitAngleV>
+      <nCurveRes> 8 5 3 1 </nCurveRes>
+      <nCurve> -60 -40 10 </nCurve>
+      <nCurveV> 0 0 0 0 </nCurveV>
+      <nCurveBack> 0 -70 0 0 </nCurveBack>
+      <nLength> 1 0.6 0.4 0.3 </nLength>
+      <nLengthV> 0 0 0 0 </nLengthV>
+      <nTaper> 1 1 1 1 </nTaper>
+      <nDownAngle> 0 50 30 0 </nDownAngle>
+      <nDownAngleV> 0 0 0 0 </nDownAngleV>
+      <nRotate> 95 95 95 95 </nRotate>
+      <nRotateV> 0 10 10 0 </nRotateV>
+      <nBranches> 0 50 30 20 </nBranches>
+      <Leaves> 16 </Leaves>
+      <LeafFile> plugins/weberpenntree/leaves/AlmondLeaf.png </LeafFile>
+      <LeafScale> 0.2 </LeafScale>
+      <LeafScaleX> 0.3 </LeafScaleX>
+      <WoodFile> plugins/visualizer/textures/wood2.jpg </WoodFile>
+    </WeberPennTree>
 
-### Parameter Effects
+  </helios>
+ ```
 
-- **Branch Recursion Level**: Controls tree complexity
-  - Level 1: Trunk only
-  - Level 2: Trunk + primary branches
-  - Level 3: Trunk + primary + secondary branches
-  - Level 4+: Additional levels of smaller branches
+### Adding Trees from the Tree Library {#WPTadd}
 
-- **Segment Resolution**: Controls geometric smoothness
-  - Lower values (3-4): Coarse, angular geometry
-  - Higher values (8-12): Smooth, detailed geometry
+The WeberPennTree member function \ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree()" is used to add and instance of a tree from the library. This function takes two required arguments in addition to one optional argument. The user must specify 1) the label for the tree as defined in the tree library XML file (see above), and 2) the (x,y,z) position to place the tree (note that this position is with respect to the base of the trunk). A third optional argument specifies a scaling factor to apply to the tree, where scale<1 makes the tree smaller, and scale>1 makes the tree bigger. The \ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree()" function returns a uint that gives an identifier for the particular instance of the tree. This can be used later to reference the tree.
 
-- **Leaf Subdivisions**: Controls leaf detail
-  - (1,1): Simple rectangular leaves
-  - (3,3): More detailed leaf geometry with 9 patches per leaf
-  - (5,5): High detail leaves with 25 patches per leaf
+The tree building process involves adding primitives to the Helios context that comprise a particular tree geometry. The UUIDs for the primitives that comprise trees can be queried via the functions \ref pyhelios.WeberPennTree.WeberPennTree::getTrunkUUIDs "getTrunkUUIDs()", \ref pyhelios.WeberPennTree.WeberPennTree::getBranchUUIDs "getBranchUUIDs()", and \ref pyhelios.WeberPennTree.WeberPennTree::getLeafUUIDs "getLeafUUIDs()" along with the identifier of the tree.
 
-## Context Manager Usage
-
-For proper resource cleanup:
-
-```python
-# Recommended: use context manager
-with WeberPennTree(context) as wpt:
-    wpt.setBranchRecursionLevel(4)
-    tree_id = wpt.buildTree(WPTType.APPLE)
-    leaf_uuids = wpt.getLeafUUIDs(tree_id)
-    # Automatic cleanup when done
-```
-
-## Multiple Tree Scenes
-
-Generate multiple trees efficiently:
-
-```python
-# Generate an orchard
-orchard_trees = []
-tree_spacing = 4.0  # meters
-
-for i in range(3):
-    for j in range(3):
-        # Position trees in a grid
-        x = i * tree_spacing
-        y = j * tree_spacing
-        position = vec3(x, y, 0)
-        
-        # Alternate tree types
-        tree_types = [WPTType.APPLE, WPTType.LEMON, WPTType.OLIVE]
-        tree_type = tree_types[(i + j) % 3]
-        
-        # Random scale variation
-        import random
-        scale = 0.8 + 0.4 * random.random()
-        
-        tree_id = wpt.buildTree(tree_type, position, scale)
-        orchard_trees.append(tree_id)
-
-print(f"Generated orchard with {len(orchard_trees)} trees")
-```
-
-## Tree Analysis
-
-Analyze generated tree properties:
+<table>
+ <tr><th>Tree Building Functions</th></tr>
+ <tr><td>\ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree(treename, origin)"</td></tr>
+ <tr><td>\ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree(treename, origin, scale)"</td></tr>
+</table>
 
 ```python
-# Generate tree
-tree_id = wpt.buildTree(WPTType.OLIVE)
+from pyhelios import Context, WeberPennTree
+from pyhelios.types import vec3
 
-# Get all tree components
-trunk_uuids = wpt.getTrunkUUIDs(tree_id)
-branch_uuids = wpt.getBranchUUIDs(tree_id)
-leaf_uuids = wpt.getLeafUUIDs(tree_id)
-
-# Calculate tree properties using Context methods
-total_leaf_area = 0
-for uuid in leaf_uuids:
-    area = context.getPrimitiveArea(uuid)
-    total_leaf_area += area
-
-# Calculate total branch volume (if branches are cylinders)
-total_branch_volume = 0
-for uuid in branch_uuids:
-    # Branch volume calculation would depend on primitive type
-    pass
-
-print(f"Tree {tree_id} analysis:")
-print(f"  Total leaf area: {total_leaf_area:.2f} m²")
-print(f"  Number of leaves: {len(leaf_uuids)}")
-print(f"  Number of branches: {len(branch_uuids)}")
-```
-
-## Integration with Other PyHelios Components
-
-### With Context Data Association
-
-```python
-# Generate tree
-tree_id = wpt.buildTree(WPTType.LEMON)
-leaf_uuids = wpt.getLeafUUIDs(tree_id)
-
-# Add data to tree components
-for uuid in leaf_uuids:
-    context.setPrimitiveDataFloat(uuid, "temperature", 25.0)
-    context.setPrimitiveDataString(uuid, "tree_species", "lemon")
-    context.setPrimitiveDataInt(uuid, "tree_id", tree_id)
-```
-
-### With Visualization
-
-```python
-# Generate tree and apply colors based on data
-tree_id = wpt.buildTree(WPTType.OLIVE)
-leaf_uuids = wpt.getLeafUUIDs(tree_id)
-
-# Color leaves based on height
-for uuid in leaf_uuids:
-    center = context.getPrimitiveCenter(uuid)  # This would need actual implementation
-    height = center.z  # Assuming z is height
-    
-    # Green gradient based on height
-    green_intensity = min(1.0, height / 5.0)  # Normalize to 5m max height
-    color = RGBcolor(0.2, green_intensity, 0.2)
-    
-    # Set primitive color (this would need actual Context method)
-    # context.setPrimitiveColor(uuid, color)  # Method may not exist
-
-# Use pseudocolor mapping instead
-all_tree_uuids = wpt.getAllUUIDs(tree_id)
-context.colorPrimitiveByDataPseudocolor(
-    all_tree_uuids, "height", "viridis", 256
-)
-```
-
-## Error Handling
-
-```python
-try:
+with Context() as context:
+    # Create an instance of the WeberPennTree class
     wpt = WeberPennTree(context)
-    tree_id = wpt.buildTree(WPTType.LEMON)
-    
-except Exception as e:
-    print(f"Tree generation failed: {e}")
-    
-    # Check if WeberPennTree plugin is available
-    if not context.is_plugin_available('weberpenntree'):
-        print("WeberPennTree plugin not available")
-        print("Build with: build_scripts/build_helios --plugins weberpenntree")
+
+    # Create an almond tree at the point (0,0,0)
+    ID_almond = wpt.buildTree("Almond", vec3(0, 0, 0))
+
+    # Create an orange tree at the point (10,0,0)
+    ID_orange = wpt.buildTree("Orange", vec3(10, 0, 0))
+
+    # Retrieve UUIDs for context primitives making up the almond tree's leaves
+    leafUUIDs_almond = wpt.getLeafUUIDs(ID_almond)
+```
+ 
+### Custom Tree Library Files {#WPTCustom}
+
+User-specified XML tree library files can be utilized via the \ref pyhelios.WeberPennTree.WeberPennTree::loadXML "loadXML()" function. The argument to this function is an absolute or relative path to the XML file to be loaded. Note that relative file paths are relative to the current working directory.
+
+## Creating Custom XML Files {#WPTreeXML}
+
+### General Overview {#WPTOverview}
+
+![](images/weberpenntree/Sketch_RLevels.jpeg)
+
+ The general idea behind the tree geometries is by specifying parameters that define the growth pattern of recursive branching levels (see figure above).  The base structure of the tree is the trunk, which is the 0th recursive level.  Braches are considered "children" of their "parent", which in this case is the trunk.  The first branching level is dependent on the size and orientation of the trunk.  Further levels of recursion are created by generating branches that are children of the previous branching level.  Each branching level follows the same set of rules but has different parameters that define the way they grow.  The number of recursion levels is given by the parameter <b>Levels</b>.  Importantly, the last level of recursion always corresponds to leaves, which follows the same general rules as branches.  So setting Levels = 3 would give a trunk, two branching levels, plus leaves.
+
+ Many parameter names are prepended with the letter "n", which indicates that these parameters vary with recursion level.  For example, the parameter <b>Scale</b> is a scaling factor applied to the whole tree, and thus it does not depend on the recursion level.  The parameter <b>nBraches</b> gives the maximum number of branches <b>for each recursion level</b> (note the "n" in the name), and therefore can have a different value for each recursion level.  Below, each recursion level will be referred to by replacing "n" by the level number (e.g., 0Branches, 1Branches, 2Branches, etc.).
+
+ Many parameter names are appended with the letter "V", which indicates that the parameter indicates a random range over which a value varies.  For example, if Scale = 10 and ScaleV = 1, the scale factor would randomly vary between 9 and 11.  Setting ScaleV to 0 would mean that there is no variation and the scale factor is always 10.
+
+### Trunk and general tree shape {#WPTreeShape}
+
+![](images/weberpenntree/Sketch_0Trunk.jpeg)
+
+ <table>
+ <caption>Parameters related to the trunk and overall tree shape.</caption>
+ <tr><th>Parameter</th><th>Description</th></tr>
+ <tr><td>Scale</td><td>Scaling factor to specify overall tree size.  Scale is generally the height of the tree.</td></tr>
+ <tr><td>0Length</td><td>Length of the tree trunk as a fraction of scale.  Usually, 0Length is set to 1 (i.e., 100%).</td></tr>
+ <tr><td>BaseSize</td><td>Percentage of the tree height before vegetation/branches start (0<BaseSize<1). For a tree with no trunk, BaseSize=0. For a tree where vegetation is only present in the upper half of the tree, BaseSize=0.5. </td></tr>
+ <tr><td>Ratio</td><td>Specifies the trunk radius at the base as a fraction of the length of the trunk.  So Ratio=0.01 would have a trunk with radius at base of 1% of the trunk length.</td></tr>
+ <tr><td>0Taper</td><td>Reduction factor for trunk radius moving away from base (0<=0Taper<=1).  Setting 0Taper to 0 results in a cylindrical trunk, setting 0Taper to 1 results in a conical trunk, and setting 0Taper between 0 and 1 gives a combination of the two.</td></tr>
+ <tr><td>Flare</td><td>Expansion of the trunk radius at the base by a factor of 1+Flare.</td></tr>
+ <tr><td>Shape</td><td>Flag corresponding to desired tree crown shape.  See table below for available tree crown shapes.</td></tr>
+ <tr><td>BaseSplits</td><td>Number of trunk splits.  For example, BaseSplits=1 gives on split and two distinct "scaffolds" or secondary trunks.  BaseSplits=2 gives three distinct secondary trunk branches.</td></tr>
+ <tr><td>BaseSplitSize</td><td>If BaseSplits>0, BaseSplitSize is the distance from the base of the tree to the split as a fraction of the height of the tree (0<=BaseSplitSize<=1).</td></tr>
+ <tr><td>0SplitAngle</td><td>Angle from vertical (degrees) of the split branch with respect to vertical.</td></tr>
+ </table>
+
+ Creating new tree geometries typically starts by considering the overall size and shape of the tree.  The above image shows a schematic sketch of the relevant parameters used to define these features.
+
+ The height of the tree in meters is given by the `Scale/ScaleV'.  The height of the trunk portion with no branches is given by `BaseSize', which is a fraction of the whole tree height.  For example, if Scale=10 and BaseSize=0.4, the first 4 meters of the tree trunk would have no branches.
+
+ The trunk radius at the base is given as a fraction (Ratio) of the total height of the tree.  For example, Ratio = 0.05 gives a trunk radius that is 5% of the total height of the tree.  The trunk radius can taper along its lenght according to the parameter `0Taper', with 0<=0Taper<=1. 0Taper=0 gives no tapering, and 0Taper=1 tapers the trunk to a point (i.e., radius=0).
+
+ The shape of the tree is given by the ID parameter 'Shape'.  There are 8 supported tree shapes, which are given in the table below.  One important caveat is when <b>BaseSplits</b> is greater than 0, in which case the shape applies to each individual split branch and not necessarily to the tree as a whole.  So BaseSplits=0 and Shape=1 (spherical) would result in one split and two spherical crown sub-shapes.
+
+ <table>
+ <caption>Available tree crown shapes</caption>
+ <tr><th>Shape</th><th>Description</th><th>Sketch</th></tr>
+ <tr><td>0</td><td>Conical</td><td>![](images/weberpenntree/ShapeConical.png)</td></tr>
+ <tr><td>1</td><td>Spherical/Ellipsoidal</td><td>![](images/weberpenntree/ShapeSpherical.png)</td></tr>
+ <tr><td>2</td><td>Hemispherical</td><td>![](images/weberpenntree/ShapeHemispherical.png)</td></tr>
+ <tr><td>3</td><td>Cylindrical</td><td>![](images/weberpenntree/ShapeCylindrical.png)</td></tr>
+ <tr><td>4</td><td>Tapered Cylindrical</td><td>![](images/weberpenntree/ShapeTaperedCylindrical.png)</td></tr>
+ <tr><td>5</td><td>Flame</td><td>![](images/weberpenntree/ShapeFlame.png)</td></tr>
+ <tr><td>6</td><td>Inverse Conical</td><td>![](images/weberpenntree/ShapeInverseConical.png)</td></tr>
+ <tr><td>7</td><td>Tend Flame</td><td>![](images/weberpenntree/ShapeTendFlame.png)</td></tr>
+ </table>
+
+### Recursive Branches {#WPTreeR1}
+
+![](images/weberpenntree/Sketch_1Level.jpeg)
+
+### Leaves {#WPTreeLeaves}
+
+![](images/weberpenntree/Sketch_Leaves.jpeg)
+	
+#### Leaf mask {#WPTreeMask}
+
+ The tree model uses a PNG texture mask to visualize leaves.  This is a PNG image of the leaf with a transparent background.  An example leaf mask is given in the image below.  New leaf masks can be created using Gimp fairly easily.  Simply find an image of the leaf, open in Gimp, add an alpha channel to the image, use the `Fuzzy Select Tool' to select the background, then go to Edit->Clear, and export in .png format.  There are many tutorials online describing how to do this in more detail.  Note that the leaf should be oriented as shown in the image below for consistency: petiole pointing to the left.  Also note that the petiole is typically cropped out of the image.
+
+### User-Defined Leaf Angle Distribution Functions {#WPTgL}
+
+  By default, the Weber-Penn tree model will create a semi-random leaf angle distribution by rotating leaves around its parent branch according to the parameters set for that particular tree. However, this is typically not realistic for how leaves arrange themselves in nature, and it is often desirable to specify a leaf angle distribution based on actual data. A custom leaf angle (inclination) distribution function can be specified for a given tree type in the tree library XML file using the tag '\<LeafAngleDist\> ... \</LeafAngleDist\>'. The elements within the tag should be probability densities of leaf inclination for discrete angle classes ranging from \f$\theta_L=0\f$ to \f$\theta_L=\pi\f$ rad.
+
+  Here is an example: Imagine that we wanted to have N=18 discrete leaf angle bins in our leaf angle PDF \f$g_L\f$. The width of one discrete bin would be \f$\Delta \theta_L=\pi/18\approx 0.1795\f$ rad. Each of the 18 bins of our PDF \f$g_L\f$ should give the probability density that we have a leaf inclination angle that falls within that bin. By definition, the following should hold for our PDF:
+
+  <center>\f$\sum\limits_{i=1}^N\,g_{L,i}\Delta \theta_L=1\f$</center>
+
+  If this condition is not met by the PDF input by the user, the program will ignore it and revert to the default behavior.
+
+As a simple example, imagine we had only one leaf with an inclination of \f$\theta_L=0.1\f$ rad. This leaf would fall in the first discrete bin of \f$g_L\f$, which would have a value of \f$1/\Delta \theta_L\f$ and all other bins would be zero.
+
+For a typical almond tree, the PDF for N=18 is tabulated below. Note that we have the capability to have leaves pointing upward from their base (\f$\theta_L<\pi/2\f$) or leaves pointiing downward from their base (\f$\theta_L>\pi/2\f$). For simplicity, the distribution below considers only upward-facing normals.
+
+  <center>
+  <table>
+  <caption>Typical leaf angle distribution for almond</caption>
+  <tr><th>\f$\theta_L\f$ bin (degrees)</th><th>\f$g_L(\theta_L)\f$</th></tr>
+  <tr><td>0-10</td><td>0.229</td></tr>
+  <tr><td>10-20</td><td>0.665</td></tr>
+  <tr><td>20-30</td><td>0.917</td></tr>
+  <tr><td>30-40</td><td>0.945</td></tr>
+  <tr><td>40-50</td><td>0.865</td></tr>
+  <tr><td>50-60</td><td>0.745</td></tr>
+  <tr><td>60-70</td><td>0.619</td></tr>
+  <tr><td>70-80</td><td>0.424</td></tr>
+  <tr><td>80-90</td><td>0.315</td></tr>
+  <tr><td>90-100</td><td>0</td></tr>
+  <tr><td>100-110</td><td>0</td></tr>
+  <tr><td>110-120</td><td>0</td></tr>
+  <tr><td>120-130</td><td>0</td></tr>
+  <tr><td>130-140</td><td>0</td></tr>
+  <tr><td>140-150</td><td>0</td></tr>
+  <tr><td>150-160</td><td>0</td></tr>
+  <tr><td>160-170</td><td>0</td></tr>
+  <tr><td>180-180</td><td>0</td></tr>
+  </table>
+  </center>
+
+  This data would be input into the tree library XML file as follows:
+
+  ```
+  <?xml version=1.0?>
+  <helios>
+
+    <WeberPennTree label="Almond">
+      <!--
+      Many other parameters here
+      -->
+      <LeafAngleDist>0.2290 0.6650 0.9170 0.9450 0.8650 0.7450 0.6190 0.4240 0.3100 0 0 0 0 0 0 0 0 0</LeafAngleDist>
+    </WeberPennTree>
+
+  </helios>
 ```
 
-## Build Requirements
+## Troubleshooting
 
-The WeberPennTree plugin is included in most PyHelios builds:
+### Plugin Not Available
+
+If you see "WeberPennTree not available" errors:
 
 ```bash
-# Build with WeberPennTree plugin
-build_scripts/build_helios --plugins weberpenntree
+# Check plugin status
+python -c "from pyhelios.plugins import print_plugin_status; print_plugin_status()"
 
-# Or use a profile that includes it
-build_scripts/build_helios --plugins weberpenntree           # WeberPennTree only
-build_scripts/build_helios                                  # Default build includes WeberPennTree
+# Rebuild with plugin
+build_scripts/build_helios --clean --plugins weberpenntree
 ```
 
-## Performance Considerations
+### Asset Loading Errors
 
-```python
-# For large numbers of trees, consider:
-# 1. Lower recursion levels for distant trees
-wpt.setBranchRecursionLevel(2)  # Simpler trees
+WeberPennTree requires asset files (leaf textures, wood textures, XML definitions). If you encounter asset errors, verify assets are present:
 
-# 2. Lower segment resolution for distant trees  
-wpt.setTrunkSegmentResolution(4)
-wpt.setBranchSegmentResolution(3)
-
-# 3. Lower leaf subdivisions for dense forests
-wpt.setLeafSubdivisions(1, 1)  # Simple rectangular leaves
-
-# Generate many simple trees
-simple_trees = []
-for i in range(100):
-    tree_id = wpt.buildTree(WPTType.OLIVE)
-    simple_trees.append(tree_id)
+```bash
+# Check asset location
+ls pyhelios_build/build/plugins/weberpenntree/
 ```
 
-This documentation covers the actual WeberPennTree implementation in PyHelios, verified against the wrapper code and example usage.
+### Custom XML Loading Issues
+
+If `loadXML()` fails, verify:
+- XML file exists and has `.xml` extension
+- XML follows WeberPennTree schema (see examples above)
+- All required parameters are specified for each tree definition
+
+## References
+
+Weber, J., and Penn, J. (1995). "Creation and rendering of realistic trees." In *Proceedings of the 22nd annual conference on Computer graphics and interactive techniques (SIGGRAPH '95)*. Association for Computing Machinery, New York, NY, USA, 119–128. DOI: https://doi.org/10.1145/218380.218427
+

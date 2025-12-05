@@ -723,6 +723,15 @@ try:
     helios_lib.scaleObjectsAboutOrigin.restype = None
     helios_lib.scaleObjectsAboutOrigin.errcheck = _check_error
 
+    # Cone object scaling methods (v1.3.59)
+    helios_lib.scaleConeObjectLength.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float]
+    helios_lib.scaleConeObjectLength.restype = None
+    helios_lib.scaleConeObjectLength.errcheck = _check_error
+
+    helios_lib.scaleConeObjectGirth.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float]
+    helios_lib.scaleConeObjectGirth.restype = None
+    helios_lib.scaleConeObjectGirth.errcheck = _check_error
+
     # Object-returning compound geometry prototypes
     helios_lib.addSphereObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float]
     helios_lib.addSphereObject_basic.restype = ctypes.c_uint
@@ -2972,6 +2981,44 @@ def scaleObjectsAboutOrigin(context, objIDs: List[int], scale: List[float]) -> N
 
     # Call C function
     helios_lib.scaleObjectsAboutOrigin(context, objIDs_array, len(objIDs), scale_ptr)
+
+def scaleConeObjectLength(context, objID: int, scale_factor: float) -> None:
+    """Scale the length of a Cone object by scaling the distance between the two nodes
+
+    Args:
+        context: Helios Context pointer
+        objID: Object ID of the Cone to scale
+        scale_factor: Factor by which to scale the cone length
+
+    Note:
+        Added in helios-core v1.3.59 as replacement for removed getConeObjectPointer()
+    """
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Cone scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with helios-core v1.3.59 or later."
+        )
+
+    helios_lib.scaleConeObjectLength(context, objID, scale_factor)
+
+def scaleConeObjectGirth(context, objID: int, scale_factor: float) -> None:
+    """Scale the girth of a Cone object by scaling the radii at both nodes
+
+    Args:
+        context: Helios Context pointer
+        objID: Object ID of the Cone to scale
+        scale_factor: Factor by which to scale the cone girth
+
+    Note:
+        Added in helios-core v1.3.59 as replacement for removed getConeObjectPointer()
+    """
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Cone scaling functions not available in current Helios library. "
+            "Rebuild PyHelios with helios-core v1.3.59 or later."
+        )
+
+    helios_lib.scaleConeObjectGirth(context, objID, scale_factor)
 
 # Python wrappers for primitive data functions - scalar setters
 def setPrimitiveDataInt(context, uuid:int, label:str, value:int):
