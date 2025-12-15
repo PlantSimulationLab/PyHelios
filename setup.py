@@ -291,6 +291,7 @@ setup(
             'pytest-mock>=3.10.0',
             'pytest-xdist>=3.0.0',
             'pytest-timeout>=2.1.0',
+            'pytest-forked>=1.6.0',  # required for --forked flag in pytest config
         ],
         'build': [
             'cmake',

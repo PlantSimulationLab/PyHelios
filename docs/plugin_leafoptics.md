@@ -1,257 +1,343 @@
-# LeafOptics Documentation {#LeafOpticsDoc}
+# Leaf Optics Plugin Documentation {#LeafOpticsDoc}
 
-## Overview
+[TOC]
 
-The LeafOptics plugin provides a Python interface to the PROSPECT leaf optical model for computing spectral reflectance and transmittance of plant leaves based on their biochemical properties.
-
-**Key Features:**
-- Computes spectral reflectance and transmittance from 400-2500 nm at 1 nm resolution (2101 data points)
-- Supports both PROSPECT-D and PROSPECT-PRO model modes
-- Built-in species library with 12 pre-fitted plant species from LOPEX93 dataset
-- Integrates with Helios Context for geometry-based spectral assignment
+<table>
+<tr><th>Dependencies</th><td>None</td></tr>
+<tr><th>Python Import</th><td>`from pyhelios import LeafOptics`</td></tr>
+<tr><th>Main Class</th><td>\ref pyhelios.LeafOptics.LeafOptics "LeafOptics"</td></tr>
+</table>
 
 ## System Requirements
 
-- **Platforms**: Windows, Linux, macOS
-- **GPU**: Not required
-- **Dependencies**: None (spectral data included)
-- **Runtime Assets**: ~475KB XML spectral library file
-
-## Installation
-
-### Build with LeafOptics
-
-```bash
-# Build with LeafOptics plugin
-build_scripts/build_helios --plugins leafoptics
-
-# Build with related radiation plugins
-build_scripts/build_helios --plugins leafoptics,radiation
-
-# Interactive selection
-build_scripts/build_helios --interactive
-
-# Check if available
-python -c "from pyhelios import LeafOptics; print('Available:', LeafOptics.isAvailable())"
-```
+<table>
+  <tr>
+    <th>Dependencies</th>
+    <td>None</td>
+  </tr>
+  <tr>
+    <th>Platforms</th>
+    <td>Windows, Linux, macOS</td>
+  </tr>
+  <tr>
+    <th>GPU</th>
+    <td>Not required</td>
+  </tr>
+</table>
 
 ## Quick Start
 
 ```python
-from pyhelios import Context, LeafOptics, LeafOpticsProperties
-
-# Create context and LeafOptics instance
-with Context() as context:
-    with LeafOptics(context) as leafoptics:
-        # Get properties for a known species
-        props = leafoptics.getPropertiesFromLibrary("sunflower")
-        print(f"Sunflower chlorophyll: {props.chlorophyllcontent} ug/cm^2")
-
-        # Compute spectral reflectance and transmittance
-        wavelengths, reflectance, transmittance = leafoptics.getLeafSpectra(props)
-        print(f"Spectral range: {wavelengths[0]}-{wavelengths[-1]} nm ({len(wavelengths)} points)")
-
-        # Apply to geometry
-        leaf_uuid = context.addPatch(center=[0, 0, 1], size=[0.1, 0.1])
-        leafoptics.run([leaf_uuid], props, "sunflower_leaf")
-```
-
-## LeafOpticsProperties
-
-The `LeafOpticsProperties` dataclass holds PROSPECT model parameters:
-
-| Property | Default | Units | Description |
-|----------|---------|-------|-------------|
-| `numberlayers` | 1.5 | - | Number of mesophyll layers |
-| `brownpigments` | 0.0 | - | Brown pigment content |
-| `chlorophyllcontent` | 30.0 | ug/cm² | Chlorophyll a+b content |
-| `carotenoidcontent` | 7.0 | ug/cm² | Carotenoid content |
-| `anthocyancontent` | 1.0 | ug/cm² | Anthocyanin content |
-| `watermass` | 0.015 | g/cm² | Equivalent water thickness |
-| `drymass` | 0.09 | g/cm² | Dry matter content |
-| `protein` | 0.0 | g/cm² | Protein content (PROSPECT-PRO) |
-| `carbonconstituents` | 0.0 | g/cm² | Carbon constituents (PROSPECT-PRO) |
-
-**Model Mode Selection:**
-- If `protein > 0` OR `carbonconstituents > 0`: Uses PROSPECT-PRO mode
-- Otherwise: Uses PROSPECT-D mode (default)
-
-## Species Library
-
-The plugin includes pre-fitted PROSPECT-D parameters for 12 plant species from the LOPEX93 dataset:
-
-| Species Name | Common Name |
-|--------------|-------------|
-| `default` | Generic default values |
-| `garden_lettuce` | Lettuce (Lactuca sativa) |
-| `alfalfa` | Alfalfa (Medicago sativa) |
-| `corn` | Corn/Maize (Zea mays) |
-| `sunflower` | Sunflower (Helianthus annuus) |
-| `english_walnut` | Walnut (Juglans regia) |
-| `rice` | Rice (Oryza sativa) |
-| `soybean` | Soybean (Glycine max) |
-| `wine_grape` | Grape (Vitis vinifera) |
-| `tomato` | Tomato (Lycopersicum esculentum) |
-| `common_bean` | Bean (Phaseolus vulgaris) |
-| `cowpea` | Cowpea (Vigna unguiculata) |
-
-Species names are case-insensitive.
-
-## Examples
-
-### Using Species Library
-
-```python
 from pyhelios import Context, LeafOptics
-
-with Context() as context:
-    with LeafOptics(context) as leafoptics:
-        # Get all available species
-        species_list = LeafOptics.getAvailableSpecies()
-        print(f"Available species: {species_list}")
-
-        # Get properties for corn
-        corn_props = leafoptics.getPropertiesFromLibrary("corn")
-        print(f"Corn chlorophyll: {corn_props.chlorophyllcontent} ug/cm^2")
-        print(f"Corn water mass: {corn_props.watermass} g/cm^2")
-```
-
-### Custom Leaf Properties
-
-```python
-from pyhelios import Context, LeafOptics, LeafOpticsProperties
-
-with Context() as context:
-    with LeafOptics(context) as leafoptics:
-        # Create custom properties (e.g., stressed leaf)
-        stressed_leaf = LeafOpticsProperties(
-            numberlayers=2.0,
-            chlorophyllcontent=15.0,  # Lower chlorophyll (stress)
-            carotenoidcontent=12.0,   # Higher carotenoids
-            anthocyancontent=8.0,     # Higher anthocyanin (stress indicator)
-            watermass=0.008,          # Lower water (drought stress)
-            drymass=0.10
-        )
-
-        # Compute spectra
-        wavelengths, refl, trans = leafoptics.getLeafSpectra(stressed_leaf)
-
-        # Find reflectance at key wavelengths
-        idx_red = int(680 - 400)   # Red absorption by chlorophyll
-        idx_nir = int(800 - 400)   # NIR plateau
-        print(f"Red reflectance: {refl[idx_red]:.3f}")
-        print(f"NIR reflectance: {refl[idx_nir]:.3f}")
-```
-
-### Assigning Spectra to Geometry
-
-```python
-from pyhelios import Context, LeafOptics
+from pyhelios.types import vec3, vec2
 
 with Context() as context:
     # Create leaf geometry
-    sunflower_leaves = [
-        context.addPatch(center=[0, 0, 1 + i * 0.2], size=[0.15, 0.15])
-        for i in range(5)
-    ]
+    uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
 
+    # Use LeafOptics plugin
     with LeafOptics(context) as leafoptics:
-        # Get sunflower properties
+        # Get properties from species library
         props = leafoptics.getPropertiesFromLibrary("sunflower")
 
-        # Assign spectra to all leaves
-        leafoptics.run(sunflower_leaves, props, "sunflower")
+        # Compute spectra and assign to geometry
+        leafoptics.run([uuid], props, "sunflower")
 
-        # This creates global data:
-        # - "leaf_reflectivity_sunflower"
-        # - "leaf_transmissivity_sunflower"
+        # Retrieve computed spectra
+        wavelengths, reflectance, transmittance = leafoptics.getLeafSpectra(props)
+        print(f"Spectral range: {wavelengths[0]}-{wavelengths[-1]} nm ({len(wavelengths)} points)")
 ```
 
-### Comparing Species Spectra
+## Introduction {#LOIntro}
+
+This plug-in computes leaf spectral reflectance and transmittance using the
+PROSPECT family of models.  The implementation follows the <a href="https://doi.org/10.1016/j.rse.2017.08.004">PROSPECT--PRO</a>
+formulation with eight absorbing constituents and a structural parameter
+\f$N\f$ that represents the number of elementary layers in the leaf.  Output
+spectra cover the range 400--2500&nbsp;nm in 1&nbsp;nm steps.
+
+For each wavelength \f$\lambda\f$ the absorption coefficient of a single layer
+is calculated as
+\f[ k(\lambda)=\frac{C_{ab}a_{ab}(\lambda)+C_{ar}a_{ar}(\lambda)+C_{an}a_{an}(\lambda)+C_{br}a_{br}(\lambda)
++C_{w}a_{w}(\lambda)+C_{m}a_{m}(\lambda)+C_{p}a_{p}(\lambda)+C_{c}a_{c}(\lambda)}{N}, \f]
+where the \f$C\f$ variables are the constituent masses per area and the
+\f$a(\lambda)\f$ terms are the specific absorption coefficients loaded from the
+internal spectral library.  Fresnel equations are used to compute surface
+reflectance and a radiative transfer solution gives the total leaf
+reflectance and transmittance.
+
+## LeafOptics Class Constructor {#LOConstructor}
+
+<table>
+<tr><th>Constructors</th></tr>
+<tr><td>\ref pyhelios.LeafOptics.LeafOptics "LeafOptics"</td></tr>
+</table>
+
+The constructor simply stores a pointer to the Helios context and loads the
+spectral library data required by the model.
+
+## LeafOpticsProperties Structure {#LOProps}
+
+The \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsProperties" structure stores the biochemical inputs to the
+model.
+
+<table>
+ <tr><th>Member</th><th>Units</th><th>Description</th><th>Default Value</th></tr>
+ <tr><td>numberlayers</td><td>unitless</td><td>Leaf structure parameter \f$N\f$</td><td>1.5</td></tr>
+ <tr><td>brownpigments</td><td>unitless</td><td>Mass of brown pigments</td><td>0</td></tr>
+ <tr><td>chlorophyllcontent</td><td>\f$\mu\f$g&nbsp;cm\f$^{-2}\f$</td><td>Total chlorophyll</td><td>30</td></tr>
+ <tr><td>carotenoidcontent</td><td>\f$\mu\f$g&nbsp;cm\f$^{-2}\f$</td><td>Total carotenoids</td><td>7</td></tr>
+ <tr><td>anthocyancontent</td><td>\f$\mu\f$g&nbsp;cm\f$^{-2}\f$</td><td>Anthocyanins</td><td>1</td></tr>
+ <tr><td>watermass</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Equivalent water thickness</td><td>0.015</td></tr>
+ <tr><td>drymass</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Dry matter mass</td><td>0.09</td></tr>
+ <tr><td>protein</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Protein mass</td><td>0</td></tr>
+ <tr><td>carbonconstituents</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Cellulose and other carbon compounds</td><td>0</td></tr>
+</table>
+
+## Using the LeafOptics Plug-in {#LOUse}
+
+The model can be run to produce global spectra and, optionally, assign those
+spectra and optical properties to a set of primitives.
 
 ```python
 from pyhelios import Context, LeafOptics
-import matplotlib.pyplot as plt  # Optional for visualization
+from pyhelios.LeafOptics import LeafOpticsProperties
+from pyhelios.types import vec3, vec2
 
 with Context() as context:
     with LeafOptics(context) as leafoptics:
-        species_to_compare = ["corn", "soybean", "sunflower"]
-        spectra = {}
+        # Set custom properties
+        props = LeafOpticsProperties()
+        props.chlorophyllcontent = 40.0
+        props.watermass = 0.02
 
-        for species in species_to_compare:
-            props = leafoptics.getPropertiesFromLibrary(species)
-            wavelengths, refl, trans = leafoptics.getLeafSpectra(props)
-            spectra[species] = (wavelengths, refl, trans)
+        # Create leaf geometry
+        leafIDs = [context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))]
 
-        # Compare reflectance at 550 nm (green peak)
-        idx_550 = int(550 - 400)
-        for species, (wl, refl, trans) in spectra.items():
-            print(f"{species}: R={refl[idx_550]:.3f}, T={trans[idx_550]:.3f}")
+        # Run the model
+        leafoptics.run(leafIDs, props, "example")
 ```
 
-## Spectral Characteristics
+This command creates global data labeled
+"leaf_reflectivity_example" and "leaf_transmissivity_example" containing the
+computed spectra.  The spectra labels are also stored as primitive data for the
+specified UUIDs together with the biochemical property values.
 
-The PROSPECT model produces realistic leaf spectra with these characteristic features:
+## Using the Built-in Species Library {#LOLibrary}
 
-- **Blue absorption** (400-500 nm): High absorption by chlorophyll and carotenoids
-- **Green peak** (~550 nm): Reduced absorption creates "green" appearance
-- **Red absorption** (600-700 nm): Strong chlorophyll absorption
-- **Red edge** (680-750 nm): Rapid increase in reflectance at chlorophyll absorption edge
-- **NIR plateau** (750-1300 nm): High reflectance/transmittance, low absorption
-- **Water absorption bands**: Absorption features at 970, 1200, 1450, 1940 nm
+The LeafOptics class includes a built-in species library that provides pre-configured optical properties for common plant species. This simplifies model usage by eliminating the need to manually specify biochemical parameters.
 
-## Troubleshooting
+### Basic Usage {#LOLibraryBasic}
 
-### Plugin Not Available
+Use the \ref pyhelios.LeafOptics.LeafOptics::getPropertiesFromLibrary "getPropertiesFromLibrary()" method to return a \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsProperties" structure with species-specific values:
 
-If you see "LeafOptics not available" errors:
+```python
+from pyhelios import Context, LeafOptics
+from pyhelios.types import vec3, vec2
 
-1. Check plugin status:
-   ```bash
-   python -c "from pyhelios import LeafOptics; print('Available:', LeafOptics.isAvailable())"
-   ```
+with Context() as context:
+    with LeafOptics(context) as leafoptics:
+        # Get properties from library
+        props = leafoptics.getPropertiesFromLibrary("default")
 
-2. Rebuild with plugin:
-   ```bash
-   build_scripts/build_helios --clean --plugins leafoptics
-   ```
+        # Create leaf geometry
+        leafIDs = [context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))]
 
-### Spectral Data Not Found
+        # Run the model
+        leafoptics.run(leafIDs, props, "example")
+```
 
-If you see errors about missing spectral data:
+The method returns a \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsProperties" structure with all nine parameters populated (numberlayers, chlorophyllcontent, carotenoidcontent, anthocyancontent, brownpigments, watermass, drymass, protein, carbonconstituents).
 
-1. Verify assets were copied during build:
-   ```bash
-   ls -la pyhelios_build/build/plugins/leafoptics/spectral_data/
-   ```
+### Available Species {#LOLibrarySpecies}
 
-2. Rebuild with clean flag:
-   ```bash
-   build_scripts/build_helios --clean --plugins leafoptics
-   ```
+The library contains PROSPECT-D parameters fitted to LOPEX93 spectral library samples using the `fit_prospect_visrobust.py` script with robust optimization. All species use PROSPECT-D mode (drymass > 0, protein = 0, carbonconstituents = 0).
 
-### Invalid Spectral Values
+<table>
+ <tr><th>Species Label</th><th>Scientific Name</th><th>N</th><th>Cab<br>(µg/cm²)</th><th>Car<br>(µg/cm²)</th><th>Ant<br>(µg/cm²)</th><th>Cbrown</th><th>Cw<br>(g/cm²)</th><th>Cm<br>(g/cm²)</th><th>R²</th><th>Source</th></tr>
+ <tr><td>"default"</td><td>-</td><td>1.50</td><td>30.0</td><td>7.00</td><td>1.00</td><td>0.000</td><td>0.0150</td><td>0.0900</td><td>-</td><td>Original Helios defaults</td></tr>
+ <tr><td>"garden_lettuce"</td><td><i>Lactuca sativa</i> L.</td><td>2.01</td><td>30.3</td><td>6.99</td><td>1.36</td><td>0.107</td><td>0.0282</td><td>0.0053</td><td>0.993</td><td>LOPEX93 sample 0021</td></tr>
+ <tr><td>"alfalfa"</td><td><i>Medicago sativa</i> L.</td><td>2.01</td><td>43.6</td><td>10.3</td><td>1.34</td><td>0.000</td><td>0.0190</td><td>0.0047</td><td>0.994</td><td>LOPEX93 sample 0036</td></tr>
+ <tr><td>"corn"</td><td><i>Zea mays</i> L.</td><td>1.59</td><td>22.9</td><td>3.97</td><td>0.00</td><td>0.727</td><td>0.0150</td><td>0.0044</td><td>0.975</td><td>LOPEX93 sample 0041</td></tr>
+ <tr><td>"sunflower"</td><td><i>Helianthus annuus</i> L.</td><td>1.76</td><td>54.1</td><td>12.9</td><td>1.75</td><td>0.011</td><td>0.0186</td><td>0.0064</td><td>0.995</td><td>LOPEX93 sample 0081</td></tr>
+ <tr><td>"english_walnut"</td><td><i>Juglans regia</i> L.</td><td>1.56</td><td>55.9</td><td>12.5</td><td>1.74</td><td>0.000</td><td>0.0128</td><td>0.0058</td><td>0.994</td><td>LOPEX93 sample 0091</td></tr>
+ <tr><td>"rice"</td><td><i>Oryza sativa</i> L.</td><td>1.67</td><td>37.2</td><td>10.0</td><td>0.00</td><td>0.028</td><td>0.0101</td><td>0.0048</td><td>0.998</td><td>LOPEX93 sample 0106</td></tr>
+ <tr><td>"soybean"</td><td><i>Glycine max</i> L.</td><td>1.54</td><td>46.4</td><td>12.1</td><td>0.65</td><td>0.000</td><td>0.0101</td><td>0.0029</td><td>0.997</td><td>LOPEX93 sample 0116</td></tr>
+ <tr><td>"wine_grape"</td><td><i>Vitis vinifera</i> L.</td><td>1.43</td><td>50.9</td><td>12.5</td><td>1.44</td><td>0.080</td><td>0.0109</td><td>0.0060</td><td>0.997</td><td>LOPEX93 sample 0276</td></tr>
+ <tr><td>"tomato"</td><td><i>Lycopersicum esculentum</i></td><td>1.40</td><td>48.3</td><td>11.6</td><td>1.45</td><td>0.000</td><td>0.0156</td><td>0.0026</td><td>0.997</td><td>LOPEX93 sample 0316</td></tr>
+</table>
 
-If computed spectra have unexpected values:
+**Notes:**
+- Species names are case-insensitive (e.g., "corn" and "CORN" are equivalent).
+- R² values computed as 1 - (RMSE² / variance), indicating goodness-of-fit to measured spectra.
+- All parameters were fitted without affine calibration using visible-robust optimization.
+- LOPEX93 dataset: Hosgood B. et al. (1994), Leaf Optical Properties Experiment 93 (LOPEX93), EUR 16095 EN.
 
-1. Check input property ranges - use values from species library as reference
-2. Verify properties are physically realistic (positive values, reasonable ranges)
-3. Check model mode - PROSPECT-PRO requires protein or carbonconstituents > 0
+### Error Handling {#LOLibraryError}
 
-## Scientific Background
+If an unknown species name is provided, the method:
+1. Issues a warning message (if messages are enabled)
+2. Populates the properties structure with default values
+3. Does not throw an error
 
-The LeafOptics plugin implements the PROSPECT model family:
+This ensures that code continues to run even if a species name is misspelled or not yet in the library.
 
-- **PROSPECT-D** (Féret et al., 2017): Uses dry matter content for absorption
-- **PROSPECT-PRO** (Féret et al., 2021): Separates protein and carbon constituents
+### Extending the Species Library {#LOLibraryExtend}
 
-The model computes bidirectional leaf reflectance and transmittance using:
-1. Specific absorption coefficients for each biochemical constituent
-2. Radiative transfer through layered leaf mesophyll structure
-3. Fresnel reflectance at air-leaf interfaces
+To add new species to the library, edit the species library data in the Helios C++ source code at `plugins/leafoptics/src/LeafOptics.cpp`. The library supports both PROSPECT-D mode (using drymass) and PROSPECT-PRO mode (using protein and carbonconstituents). Contact the PyHelios developers to request new species additions.
 
-## References
+## Retrieving PROSPECT Parameters from Spectra {#LORetrieve}
 
-- Jacquemoud, S., & Baret, F. (1990). PROSPECT: A model of leaf optical properties spectra. Remote sensing of environment, 34(2), 75-91.
-- Féret, J. B., et al. (2017). PROSPECT-D: Towards modeling leaf optical properties through a complete lifecycle. Remote Sensing of Environment, 193, 204-215.
-- Hosgood, B., et al. (1994). LOPEX93: Leaf Optical Properties EXperiment. EUR 16095 EN. JRC Report.
+The LeafOptics class maintains an internal mapping between spectrum labels and the PROSPECT parameters used to generate them. This allows users to retrieve the original model parameters from primitives that have been assigned LeafOptics-generated spectra.
+
+### Basic Usage {#LORetrieveBasic}
+
+The \ref pyhelios.LeafOptics.LeafOptics::getPropertiesFromSpectrum "getPropertiesFromSpectrum()" method queries primitives for their "reflectivity_spectrum" primitive data and, if it matches a spectrum generated by the LeafOptics instance, assigns the corresponding PROSPECT parameters as primitive data:
+
+```python
+from pyhelios import Context, LeafOptics
+from pyhelios.LeafOptics import LeafOpticsProperties
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    with LeafOptics(context) as leafoptics:
+        # Generate spectra for different leaf types
+        healthy_leaf = LeafOpticsProperties()
+        healthy_leaf.chlorophyllcontent = 45.0
+        healthy_leaf.carotenoidcontent = 12.0
+
+        stressed_leaf = LeafOpticsProperties()
+        stressed_leaf.chlorophyllcontent = 20.0
+        stressed_leaf.brownpigments = 0.3
+
+        # Create primitives
+        healthy_IDs = [context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))]
+        stressed_IDs = [context.addPatch(center=vec3(0, 0, 2), size=vec2(0.1, 0.1))]
+
+        # Run model for each leaf type
+        leafoptics.run(healthy_IDs, healthy_leaf, "healthy")
+        leafoptics.run(stressed_IDs, stressed_leaf, "stressed")
+
+        # Later, retrieve parameters from primitives based on their assigned spectra
+        all_leaves = healthy_IDs + stressed_IDs
+        leafoptics.getPropertiesFromSpectrum(all_leaves)
+
+        # Each primitive now has parameter data matching its assigned spectrum
+        chl = context.getPrimitiveData(healthy_IDs[0], "chlorophyll")
+        # chl[0] = 45.0 (from healthy_leaf parameters)
+
+        chl = context.getPrimitiveData(stressed_IDs[0], "chlorophyll")
+        # chl[0] = 20.0 (from stressed_leaf parameters)
+```
+
+### Method Behavior {#LORetrieveBehavior}
+
+For each UUID passed to \ref pyhelios.LeafOptics.LeafOptics::getPropertiesFromSpectrum "getPropertiesFromSpectrum()":
+
+1. The method queries the primitive data "reflectivity_spectrum"
+2. If the spectrum label starts with "leaf_reflectivity_", it extracts the user-provided label
+3. If that label matches a spectrum generated by this LeafOptics instance, the corresponding parameters are assigned as primitive data
+4. Primitives without matching spectra are silently skipped (no error is thrown)
+
+### Assigned Primitive Data Labels {#LORetrieveLabels}
+
+The method assigns primitive data using the same labels as \ref pyhelios.LeafOptics.LeafOptics::setProperties "setProperties()":
+
+<table>
+ <tr><th>Primitive Data Label</th><th>Parameter</th><th>Condition</th></tr>
+ <tr><td>"chlorophyll"</td><td>chlorophyllcontent</td><td>Always</td></tr>
+ <tr><td>"carotenoid"</td><td>carotenoidcontent</td><td>Always</td></tr>
+ <tr><td>"anthocyanin"</td><td>anthocyancontent</td><td>Always</td></tr>
+ <tr><td>"brown"</td><td>brownpigments</td><td>If brownpigments > 0</td></tr>
+ <tr><td>"water"</td><td>watermass</td><td>Always</td></tr>
+ <tr><td>"drymass"</td><td>drymass</td><td>If drymass > 0 (PROSPECT-D mode)</td></tr>
+ <tr><td>"protein"</td><td>protein</td><td>If drymass = 0 (PROSPECT-PRO mode)</td></tr>
+ <tr><td>"cellulose"</td><td>carbonconstituents</td><td>If drymass = 0 (PROSPECT-PRO mode)</td></tr>
+</table>
+
+### Important Notes {#LORetrieveNotes}
+
+- The parameter mapping is stored per LeafOptics instance. If you create a new LeafOptics object, it will not have access to spectra generated by a previous instance.
+- Only spectra generated using the \ref pyhelios.LeafOptics.LeafOptics::run "run()" methods are tracked. Manually created global data with "leaf_reflectivity_" prefixes will not match.
+- The method always overwrites existing primitive data for the parameters listed above.
+- Both overloads are available: pass a list of UUIDs for multiple primitives or a single UUID for one primitive.
+
+## Optional Output Primitive Data {#LOOptionalOutput}
+
+By default, the LeafOptics plug-in writes all leaf constituent concentrations to primitive data. To selectively output only specific properties for improved performance, call \ref pyhelios.LeafOptics.LeafOptics::optionalOutputPrimitiveData "optionalOutputPrimitiveData()" with the desired labels before calling run().
+
+```python
+from pyhelios import Context, LeafOptics
+from pyhelios.LeafOptics import LeafOpticsProperties
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    with LeafOptics(context) as leafoptics:
+        # Enable selective output for better performance
+        leafoptics.optionalOutputPrimitiveData("chlorophyll")
+        leafoptics.optionalOutputPrimitiveData("carotenoid")
+
+        # Run model
+        props = LeafOpticsProperties()
+        leafIDs = [context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))]
+        leafoptics.run(leafIDs, props, "example")
+```
+
+<table>
+ <tr>
+    <th>Primitive Data Label</th>
+    <th>Units</th>
+    <th>Data Type</th>
+    <th>Description</th>
+ </tr>
+ <tr>
+    <td>chlorophyll</td>
+    <td>\f$\mu\f$g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Total chlorophyll content</td>
+ </tr>
+ <tr>
+    <td>carotenoid</td>
+    <td>\f$\mu\f$g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Total carotenoid content</td>
+ </tr>
+ <tr>
+    <td>anthocyanin</td>
+    <td>\f$\mu\f$g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Anthocyanin content</td>
+ </tr>
+ <tr>
+    <td>brown</td>
+    <td>unitless</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Brown pigment content (only written if value > 0)</td>
+ </tr>
+ <tr>
+    <td>water</td>
+    <td>g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Equivalent water thickness</td>
+ </tr>
+ <tr>
+    <td>drymass</td>
+    <td>g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Dry matter mass (PROSPECT-D mode only, when drymass > 0)</td>
+ </tr>
+ <tr>
+    <td>protein</td>
+    <td>g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Protein mass (PROSPECT-PRO mode only, when drymass = 0)</td>
+ </tr>
+ <tr>
+    <td>cellulose</td>
+    <td>g cm\f$^{-2}\f$</td>
+    <td><span style="font-family: Courier, monospace; color: green;">float</span></td>
+    <td>Cellulose and carbon compounds (PROSPECT-PRO mode only, when drymass = 0)</td>
+ </tr>
+</table>
+
+*/

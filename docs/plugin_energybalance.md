@@ -55,20 +55,32 @@ with Context() as context:
         print(f"Surface temperature: {temperature[0]:.2f} K")
 ```
 
-## Additional Dependencies {#EBDepends}
+## Dependencies {#EBDepends}
 
 <table>
  <tr>
-  <th>Package</th>
+  <th>Installation Method</th>
+  <th>Dependency</th>
   <td>\image html apple-logo.png</td>
   <td>\image html unix-logo.png</td>
   <td>\image html windows-logo.png</td>
  </tr>
  <tr>
-  <td>NVIDIA CUDA 9.0+</td>
-  <td>Mac OSX: Not available</td>
-  <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
-  <td>Use <a href="https://developer.nvidia.com/cuda-downloads">CUDA installer</a></td>
+  <td rowspan="2">**Runtime**<br>(pip install)</td>
+  <td>NVIDIA GPU</td>
+  <td>Not supported</td>
+  <td colspan="2">Required - CUDA-capable (compute capability 3.5+)</td>
+ </tr>
+ <tr>
+  <td>CUDA Runtime</td>
+  <td>Not supported</td>
+  <td colspan="2">Version 9.0+<br>Typically installed with NVIDIA drivers<br>Or install <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a></td>
+ </tr>
+ <tr style="border-top: 3px double #888">
+  <td>**Build from Source**<br>(additional deps)</td>
+  <td>CUDA Toolkit</td>
+  <td>Not supported</td>
+  <td colspan="2">Version 9.0+ with nvcc compiler<br><a href="https://developer.nvidia.com/cuda-downloads">Download CUDA Toolkit</a></td>
  </tr>
 </table>
 

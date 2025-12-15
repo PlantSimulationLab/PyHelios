@@ -259,6 +259,27 @@ try:
     helios_lib.printWindowWithFormat.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_char_p, ctypes.c_char_p]
     helios_lib.printWindowWithFormat.restype = None
 
+    # v1.3.54 Point Culling and LOD Functions
+    helios_lib.setPointCullingEnabled.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_bool]
+    helios_lib.setPointCullingEnabled.restype = None
+
+    helios_lib.setPointCullingThreshold.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_size_t]
+    helios_lib.setPointCullingThreshold.restype = None
+
+    helios_lib.setPointMaxRenderDistance.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_float]
+    helios_lib.setPointMaxRenderDistance.restype = None
+
+    helios_lib.setPointLODFactor.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_float]
+    helios_lib.setPointLODFactor.restype = None
+
+    helios_lib.getPointRenderingMetrics.argtypes = [
+        ctypes.POINTER(UVisualizer),
+        ctypes.POINTER(ctypes.c_size_t),
+        ctypes.POINTER(ctypes.c_size_t),
+        ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.getPointRenderingMetrics.restype = None
+
     # Error management functions availability check
     try:
         helios_lib.getLastErrorCode.restype = ctypes.c_int
@@ -1015,6 +1036,158 @@ def print_window_with_format(visualizer: ctypes.POINTER(UVisualizer), filename: 
 
     helios_lib.printWindowWithFormat(visualizer, filename_bytes, format_bytes)
     _check_for_helios_error()
+
+def set_point_culling_enabled(visualizer: ctypes.POINTER(UVisualizer), enabled: bool) -> None:
+    """
+    Enable or disable point cloud culling optimization.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+        enabled: True to enable culling, false to disable
+
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If visualizer pointer is null
+        RuntimeError: If operation fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+    helios_lib.setPointCullingEnabled(visualizer, ctypes.c_bool(enabled))
+    _check_for_helios_error()
+
+def set_point_culling_threshold(visualizer: ctypes.POINTER(UVisualizer), threshold: int) -> None:
+    """
+    Set the minimum number of points required to trigger culling.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+        threshold: Point count threshold for enabling culling
+
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If visualizer pointer is null or threshold is invalid
+        RuntimeError: If operation fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    if threshold < 0:
+        raise ValueError("Point culling threshold must be non-negative")
+
+    helios_lib.setPointCullingThreshold(visualizer, ctypes.c_size_t(threshold))
+    _check_for_helios_error()
+
+def set_point_max_render_distance(visualizer: ctypes.POINTER(UVisualizer), distance: float) -> None:
+    """
+    Set the maximum rendering distance for points.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+        distance: Maximum distance in world units (0 = auto-calculate based on scene size)
+
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If visualizer pointer is null or distance is invalid
+        RuntimeError: If operation fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    if distance < 0.0:
+        raise ValueError("Point max render distance cannot be negative")
+
+    helios_lib.setPointMaxRenderDistance(visualizer, ctypes.c_float(distance))
+    _check_for_helios_error()
+
+def set_point_lod_factor(visualizer: ctypes.POINTER(UVisualizer), factor: float) -> None:
+    """
+    Set the level-of-detail factor for distance-based culling.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+        factor: LOD factor (higher values = more aggressive culling)
+
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If visualizer pointer is null or factor is invalid
+        RuntimeError: If operation fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    if factor <= 0.0:
+        raise ValueError("Point LOD factor must be positive")
+
+    helios_lib.setPointLODFactor(visualizer, ctypes.c_float(factor))
+    _check_for_helios_error()
+
+def get_point_rendering_metrics(visualizer: ctypes.POINTER(UVisualizer)) -> dict:
+    """
+    Get point cloud rendering performance metrics.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+
+    Returns:
+        Dictionary with keys:
+            - 'total_points': Total point count in scene
+            - 'rendered_points': Number of points actually rendered after culling
+            - 'culling_time_ms': Time spent on culling in milliseconds
+
+    Raises:
+        NotImplementedError: If visualizer functions not available
+        ValueError: If visualizer pointer is null
+        RuntimeError: If operation fails
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+    # Prepare output parameters
+    total_points = ctypes.c_size_t()
+    rendered_points = ctypes.c_size_t()
+    culling_time_ms = ctypes.c_float()
+
+    helios_lib.getPointRenderingMetrics(
+        visualizer,
+        ctypes.byref(total_points),
+        ctypes.byref(rendered_points),
+        ctypes.byref(culling_time_ms)
+    )
+    _check_for_helios_error()
+
+    return {
+        'total_points': total_points.value,
+        'rendered_points': rendered_points.value,
+        'culling_time_ms': culling_time_ms.value
+    }
 
 # Mock implementations when visualizer is not available
 if not _VISUALIZER_FUNCTIONS_AVAILABLE:

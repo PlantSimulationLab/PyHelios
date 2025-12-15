@@ -1,5 +1,14 @@
 # Changelog
 
+# [v0.1.12] 2025-12-15
+
+- Many updates to documentation, transitioning toward consistency with c++ docs
+- `pytest-forked` was missing from standard pyhelios dependencies
+- Updated helios-core to v1.3.60
+
+## Radiation Model
+- Added camera zoom parameter
+
 # [v0.1.11] 2025-12-05
 
 - Updated helios-core to v1.3.59

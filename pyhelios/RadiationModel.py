@@ -97,14 +97,14 @@ class CameraProperties:
 
     This class encapsulates the properties needed to configure a radiation camera,
     providing sensible defaults and validation for camera parameters. Updated for
-    Helios v1.3.58 with extended camera metadata fields.
+    Helios v1.3.60 with camera_zoom support.
     """
 
     def __init__(self, camera_resolution=None, focal_plane_distance=1.0, lens_diameter=0.05,
                  HFOV=20.0, FOV_aspect_ratio=0.0, lens_focal_length=0.05,
                  sensor_width_mm=35.0, model="generic", lens_make="", lens_model="",
                  lens_specification="", exposure="auto", shutter_speed=1.0/125.0,
-                 white_balance="auto"):
+                 white_balance="auto", camera_zoom=1.0):
         """
         Initialize camera properties with defaults matching C++ CameraProperties.
 
@@ -123,6 +123,8 @@ class CameraProperties:
             exposure: Exposure mode - "auto", "ISOXXX" (e.g., "ISO100"), or "manual". Default: "auto"
             shutter_speed: Camera shutter speed in seconds (e.g., 0.008 for 1/125s). Default: 0.008 (1/125s)
             white_balance: White balance mode - "auto" or "off". Default: "auto"
+            camera_zoom: Camera optical zoom multiplier. 1.0 = no zoom, 2.0 = 2x zoom.
+                        Scales effective HFOV: effective_HFOV = HFOV / camera_zoom. Default: 1.0
         """
         # Set camera resolution with validation
         ## @cond
@@ -150,6 +152,8 @@ class CameraProperties:
             raise ValueError("sensor_width_mm must be greater than 0")
         if shutter_speed <= 0:
             raise ValueError("shutter_speed must be greater than 0")
+        if camera_zoom <= 0:
+            raise ValueError("camera_zoom must be greater than 0")
 
         self.focal_plane_distance = float(focal_plane_distance)
         self.lens_diameter = float(lens_diameter)
@@ -158,6 +162,7 @@ class CameraProperties:
         self.lens_focal_length = float(lens_focal_length)
         self.sensor_width_mm = float(sensor_width_mm)
         self.shutter_speed = float(shutter_speed)
+        self.camera_zoom = float(camera_zoom)
 
         # Validate and set string properties
         if not isinstance(model, str):
@@ -197,9 +202,9 @@ class CameraProperties:
         this interface. Use the upcoming camera library methods for full metadata control.
 
         Returns:
-            List of 9 float values: [resolution_x, resolution_y, focal_distance, lens_diameter,
-                                     HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm,
-                                     shutter_speed]
+            List of 10 float values: [resolution_x, resolution_y, focal_distance, lens_diameter,
+                                      HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm,
+                                      shutter_speed, camera_zoom]
         """
         return [
             float(self.camera_resolution[0]),  # resolution_x
@@ -210,7 +215,8 @@ class CameraProperties:
             self.FOV_aspect_ratio,
             self.lens_focal_length,
             self.sensor_width_mm,
-            self.shutter_speed
+            self.shutter_speed,
+            self.camera_zoom
         ]
 
     def __repr__(self):
@@ -228,7 +234,8 @@ class CameraProperties:
                 f"lens_specification='{self.lens_specification}', "
                 f"exposure='{self.exposure}', "
                 f"shutter_speed={self.shutter_speed}, "
-                f"white_balance='{self.white_balance}')")
+                f"white_balance='{self.white_balance}', "
+                f"camera_zoom={self.camera_zoom})")
 
 
 class CameraMetadata:

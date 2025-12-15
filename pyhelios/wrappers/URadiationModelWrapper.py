@@ -1670,8 +1670,8 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     else:
         props_array = camera_properties
 
-    if len(props_array) != 9:
-        raise ValueError(f"Camera properties must have 9 elements, got {len(props_array)}")
+    if len(props_array) != 10:
+        raise ValueError(f"Camera properties must have 10 elements, got {len(props_array)}")
 
     props_c = (ctypes.c_float * 9)(*props_array)
     helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c)
@@ -1993,8 +1993,8 @@ def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List
 
     if not band_labels:
         raise ValueError("At least one band label is required")
-    if len(camera_properties) != 9:
-        raise ValueError("camera_properties must contain exactly 9 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed]")
+    if len(camera_properties) != 10:
+        raise ValueError("camera_properties must contain exactly 10 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]")
 
     # Encode camera label
     camera_encoded = camera_label.encode('utf-8')

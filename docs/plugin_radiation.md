@@ -8,10 +8,49 @@ The \ref pyhelios.RadiationModel.RadiationModel "RadiationModel class" provides 
 
 ## Requirements
 
-The radiation plugin requires:
-- NVIDIA GPU with CUDA support
-- CUDA Toolkit installed
-- OptiX runtime (bundled with PyHelios)
+<table>
+  <tr>
+     <th>Installation Method</th>
+     <th>Requirement</th>
+     <td>\image html apple-logo.png</td>
+     <td>\image html unix-logo.png</td>
+     <td>\image html windows-logo.png</td>
+  </tr>
+  <tr>
+     <td rowspan="3">**Runtime**<br>(pip install)</td>
+     <td>NVIDIA GPU</td>
+     <td>Not supported</td>
+     <td colspan="2">CUDA-capable (compute capability 3.5+)</td>
+  </tr>
+  <tr>
+     <td>CUDA Runtime</td>
+     <td>Not supported</td>
+     <td colspan="2">Version 9.0+<br>Typically with NVIDIA drivers<br>Or install <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a></td>
+  </tr>
+  <tr>
+     <td>OptiX Runtime</td>
+     <td>Not supported</td>
+     <td colspan="2">Bundled with wheels<br>**WSL**: See \ref OptiXSetup "OptiX Setup"</td>
+  </tr>
+  <tr style="border-top: 3px double #888">
+     <td rowspan="2">**Build from Source**<br>(additional deps)</td>
+     <td>CUDA Toolkit</td>
+     <td>Not supported</td>
+     <td colspan="2">Version 9.0+ with nvcc compiler<br><a href="https://developer.nvidia.com/cuda-toolkit">Download</a></td>
+  </tr>
+  <tr>
+     <td>OptiX SDK</td>
+     <td>Not supported</td>
+     <td colspan="2">Headers bundled in repository</td>
+  </tr>
+</table>
+
+**For detailed CUDA installation instructions**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
+- Choosing the correct CUDA toolkit version: \ref ChoosingCUDA
+- Platform-specific installation steps (Windows, Linux)
+- GPU timeout settings for Windows: \ref PCGPUTimeout
+- OptiX requirements: \ref OptiXSetup
+- Troubleshooting common issues
 
 ## Basic Usage
 

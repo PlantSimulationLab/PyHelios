@@ -12,7 +12,7 @@
       <tab type="user" visible="yes" url="@ref API" title="User/API Guide"/>
       <tab type="user" visible="yes" url="@ref IO" title="File I/O"/>
     </tab>
-    
+
     <!-- Plugin Documentation Section -->
     <tab type="usergroup" visible="yes" url="@ref PluginSystem" title="Plugins" intro="">
       <!-- Currently Implemented Plugins (Alphabetized) -->
@@ -27,7 +27,10 @@
       <tab type="user" visible="yes" url="@ref VisualizerDoc" title="Visualizer"/>
       <tab type="user" visible="yes" url="@ref WeberPennTreeDoc" title="Weber-Penn Tree"/>
     </tab>
-    
+
+    <!-- Verification & Validation -->
+    <tab type="user" visible="yes" url="@ref Validation" title="Verification &amp; Validation"/>
+
     <!-- Changelog -->
     <tab type="user" visible="yes" url="md_docs_2CHANGELOG.html" title="Changelog"/>
     

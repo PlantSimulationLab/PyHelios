@@ -1836,7 +1836,195 @@ class Visualizer:
                 helios_lib.plotUpdateWithVisibility(self.visualizer, hide_window)
         except Exception as e:
             raise VisualizerError(f"Failed to update plot with visibility control: {e}")
-    
+
+    # Point Culling and LOD Methods (v1.3.54+)
+
+    def setPointCullingEnabled(self, enabled: bool) -> None:
+        """
+        Enable or disable point cloud culling optimization.
+
+        Point culling improves rendering performance for large point clouds by
+        selectively rendering only points that are visible based on distance
+        and density criteria.
+
+        Args:
+            enabled: True to enable culling, False to disable (default: True)
+
+        Raises:
+            ValueError: If enabled is not a boolean
+            VisualizerError: If operation fails
+
+        Example:
+            >>> with Visualizer(800, 600) as vis:
+            ...     vis.setPointCullingEnabled(False)  # Disable for highest quality
+            ...     vis.setPointCullingEnabled(True)   # Enable for better performance
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(enabled, bool):
+            raise ValueError(f"Enabled must be a boolean, got {type(enabled).__name__}")
+
+        try:
+            visualizer_wrapper.set_point_culling_enabled(self.visualizer, enabled)
+            logger.debug(f"Point culling {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            raise VisualizerError(f"Failed to set point culling enabled: {e}")
+
+    def setPointCullingThreshold(self, threshold: int) -> None:
+        """
+        Set the minimum number of points required to trigger culling.
+
+        Culling is only activated when the total point count exceeds this threshold.
+        This prevents unnecessary culling overhead for small point clouds.
+
+        Args:
+            threshold: Point count threshold (default: 10000). Set to 0 to always enable.
+
+        Raises:
+            ValueError: If threshold is not a non-negative integer
+            VisualizerError: If operation fails
+
+        Example:
+            >>> vis.setPointCullingThreshold(50000)  # Only cull for >50k points
+            >>> vis.setPointCullingThreshold(0)      # Always enable culling
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(threshold, int):
+            raise ValueError(f"Threshold must be an integer, got {type(threshold).__name__}")
+        if threshold < 0:
+            raise ValueError("Point culling threshold must be non-negative")
+
+        try:
+            visualizer_wrapper.set_point_culling_threshold(self.visualizer, threshold)
+            logger.debug(f"Point culling threshold set to {threshold}")
+        except Exception as e:
+            raise VisualizerError(f"Failed to set point culling threshold: {e}")
+
+    def setPointMaxRenderDistance(self, distance: float) -> None:
+        """
+        Set the maximum rendering distance for points.
+
+        Points beyond this distance from the camera are not rendered, improving
+        performance for large scenes. The distance is measured in world units.
+
+        Args:
+            distance: Maximum distance in world units. Use 0 for auto mode (scene_size * 5.0)
+
+        Raises:
+            ValueError: If distance is negative
+            VisualizerError: If operation fails
+
+        Example:
+            >>> vis.setPointMaxRenderDistance(0.0)    # Auto mode
+            >>> vis.setPointMaxRenderDistance(100.0)  # Fixed distance
+
+        Note:
+            Setting distance to 0 enables automatic mode, which calculates the
+            render distance based on the scene bounding box dimensions.
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(distance, (int, float)):
+            raise ValueError(f"Distance must be numeric, got {type(distance).__name__}")
+        if distance < 0.0:
+            raise ValueError("Point max render distance cannot be negative")
+
+        try:
+            visualizer_wrapper.set_point_max_render_distance(self.visualizer, float(distance))
+            if distance == 0.0:
+                logger.debug("Point max render distance set to auto mode")
+            else:
+                logger.debug(f"Point max render distance set to {distance}")
+        except Exception as e:
+            raise VisualizerError(f"Failed to set point max render distance: {e}")
+
+    def setPointLODFactor(self, factor: float) -> None:
+        """
+        Set the level-of-detail factor for distance-based culling.
+
+        Controls how aggressively points are culled based on distance from camera.
+        Higher values result in more aggressive culling (better performance, lower quality).
+        Lower values preserve more points (higher quality, lower performance).
+
+        Args:
+            factor: LOD factor (default: 10.0, typical range: 1.0-50.0). Must be positive.
+
+        Raises:
+            ValueError: If factor is not positive
+            VisualizerError: If operation fails
+
+        Example:
+            >>> vis.setPointLODFactor(5.0)   # Conservative culling
+            >>> vis.setPointLODFactor(10.0)  # Default culling
+            >>> vis.setPointLODFactor(25.0)  # Aggressive culling
+
+        Note:
+            The LOD factor determines the rate at which point density decreases
+            with distance. Higher factors mean points are culled more quickly
+            as distance increases.
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(factor, (int, float)):
+            raise ValueError(f"LOD factor must be numeric, got {type(factor).__name__}")
+        if factor <= 0.0:
+            raise ValueError("Point LOD factor must be positive")
+
+        # Warn about extreme values
+        if factor < 1.0:
+            logger.warning(f"Point LOD factor {factor} is very low (< 1.0), may cause performance issues")
+        elif factor > 100.0:
+            logger.warning(f"Point LOD factor {factor} is very high (> 100.0), may over-cull points")
+
+        try:
+            visualizer_wrapper.set_point_lod_factor(self.visualizer, float(factor))
+            logger.debug(f"Point LOD factor set to {factor}")
+        except Exception as e:
+            raise VisualizerError(f"Failed to set point LOD factor: {e}")
+
+    def getPointRenderingMetrics(self) -> dict:
+        """
+        Get point cloud rendering performance metrics.
+
+        Provides detailed statistics about point cloud culling and rendering
+        performance, useful for optimizing visualization settings.
+
+        Returns:
+            Dictionary with keys:
+                - 'total_points' (int): Total number of points in the scene
+                - 'rendered_points' (int): Number of points actually rendered after culling
+                - 'culling_time_ms' (float): Time spent on culling in milliseconds
+
+        Raises:
+            VisualizerError: If operation fails
+
+        Example:
+            >>> metrics = vis.getPointRenderingMetrics()
+            >>> print(f"Total: {metrics['total_points']}")
+            >>> print(f"Rendered: {metrics['rendered_points']}")
+            >>> cull_rate = (1 - metrics['rendered_points']/metrics['total_points']) * 100
+            >>> print(f"Culling rate: {cull_rate:.1f}%")
+
+        Note:
+            Metrics are only meaningful after calling plotUpdate() or plotInteractive().
+            The culling_time_ms represents CPU time spent on culling calculations,
+            not total frame time.
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+
+        try:
+            metrics = visualizer_wrapper.get_point_rendering_metrics(self.visualizer)
+            logger.debug(
+                f"Point rendering metrics: {metrics['total_points']} total, "
+                f"{metrics['rendered_points']} rendered, "
+                f"{metrics['culling_time_ms']:.2f} ms culling time"
+            )
+            return metrics
+        except Exception as e:
+            raise VisualizerError(f"Failed to get point rendering metrics: {e}")
+
     def __del__(self):
         """Destructor to ensure proper cleanup."""
         if hasattr(self, 'visualizer') and self.visualizer is not None:

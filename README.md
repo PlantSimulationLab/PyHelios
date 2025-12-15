@@ -154,8 +154,8 @@ print(f"Created patch: {patch_uuid}")
 
 | Section                                                                                  | Description |
 |------------------------------------------------------------------------------------------|-------------|
-| **[Getting Started](https://plantsimulationlab.github.io/PyHelios/GettingStarted.html)** | Installation, setup, and first steps |
-| **[User Guide](https://plantsimulationlab.github.io/PyHelios/UserGuide.html)**           | Core concepts, API reference, and examples |
+| **[Getting Started](https://plantsimulationlab.github.io/PyHelios/Introduction.html)** | Installation, setup, and first steps |
+| **[User Guide](https://plantsimulationlab.github.io/PyHelios/API.html)**           | Core concepts, API reference, and examples |
 | **[Cross-Platform](https://plantsimulationlab.github.io/PyHelios/CrossPlatform.html)**   | Platform-specific usage and deployment |
 | **[Plugin System](https://plantsimulationlab.github.io/PyHelios/PluginSystem.html)**     | Available plugins and configuration |
 

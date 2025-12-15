@@ -928,6 +928,219 @@ class TestVisualizerV1353API:
         assert format_param.default is None
 
 
+@pytest.mark.native_only
+@pytest.mark.skipif(is_headless_environment(), reason="Skipping visualizer tests in headless environment")
+class TestVisualizerPointCullingLOD:
+    """Test point culling and LOD methods"""
+
+    def test_set_point_culling_enabled(self, basic_context):
+        """Test enabling/disabling point culling"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test enabling
+            visualizer.setPointCullingEnabled(True)
+
+            # Test disabling
+            visualizer.setPointCullingEnabled(False)
+
+            # Test toggle multiple times
+            visualizer.setPointCullingEnabled(True)
+            visualizer.setPointCullingEnabled(False)
+            visualizer.setPointCullingEnabled(True)
+
+    def test_set_point_culling_enabled_validation(self, basic_context):
+        """Test parameter validation for setPointCullingEnabled"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test invalid type
+            with pytest.raises(ValueError, match="must be a boolean"):
+                visualizer.setPointCullingEnabled(1)
+
+            with pytest.raises(ValueError, match="must be a boolean"):
+                visualizer.setPointCullingEnabled("true")
+
+    def test_set_point_culling_threshold(self, basic_context):
+        """Test setting point culling threshold"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test various valid thresholds
+            visualizer.setPointCullingThreshold(0)       # Always enable
+            visualizer.setPointCullingThreshold(1000)    # Small scenes
+            visualizer.setPointCullingThreshold(10000)   # Default
+            visualizer.setPointCullingThreshold(100000)  # Large scenes
+
+    def test_set_point_culling_threshold_validation(self, basic_context):
+        """Test parameter validation for setPointCullingThreshold"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test negative threshold
+            with pytest.raises(ValueError, match="must be non-negative"):
+                visualizer.setPointCullingThreshold(-1)
+
+            # Test invalid type
+            with pytest.raises(ValueError, match="must be an integer"):
+                visualizer.setPointCullingThreshold(10.5)
+
+            with pytest.raises(ValueError, match="must be an integer"):
+                visualizer.setPointCullingThreshold("1000")
+
+    def test_set_point_max_render_distance(self, basic_context):
+        """Test setting point max render distance"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test auto mode
+            visualizer.setPointMaxRenderDistance(0.0)
+
+            # Test various distances
+            visualizer.setPointMaxRenderDistance(10.0)
+            visualizer.setPointMaxRenderDistance(100.0)
+            visualizer.setPointMaxRenderDistance(1000.0)
+
+    def test_set_point_max_render_distance_validation(self, basic_context):
+        """Test parameter validation for setPointMaxRenderDistance"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test negative distance
+            with pytest.raises(ValueError, match="cannot be negative"):
+                visualizer.setPointMaxRenderDistance(-10.0)
+
+            # Test invalid type
+            with pytest.raises(ValueError, match="must be numeric"):
+                visualizer.setPointMaxRenderDistance("100")
+
+    def test_set_point_lod_factor(self, basic_context):
+        """Test setting point LOD factor"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test various factors
+            visualizer.setPointLODFactor(1.0)    # Minimal culling
+            visualizer.setPointLODFactor(10.0)   # Default
+            visualizer.setPointLODFactor(25.0)   # Aggressive
+            visualizer.setPointLODFactor(50.0)   # Very aggressive
+
+    def test_set_point_lod_factor_validation(self, basic_context):
+        """Test parameter validation for setPointLODFactor"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Test zero factor
+            with pytest.raises(ValueError, match="must be positive"):
+                visualizer.setPointLODFactor(0.0)
+
+            # Test negative factor
+            with pytest.raises(ValueError, match="must be positive"):
+                visualizer.setPointLODFactor(-5.0)
+
+            # Test invalid type
+            with pytest.raises(ValueError, match="must be numeric"):
+                visualizer.setPointLODFactor("10")
+
+    def test_set_point_lod_factor_warnings(self, basic_context, caplog):
+        """Test that extreme LOD factors generate warnings"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            import logging
+
+            # Test very low factor (< 1.0)
+            with caplog.at_level(logging.WARNING):
+                visualizer.setPointLODFactor(0.5)
+                assert any("very low" in record.message.lower() for record in caplog.records)
+
+            caplog.clear()
+
+            # Test very high factor (> 100.0)
+            with caplog.at_level(logging.WARNING):
+                visualizer.setPointLODFactor(150.0)
+                assert any("very high" in record.message.lower() for record in caplog.records)
+
+    def test_get_point_rendering_metrics(self, basic_context):
+        """Test getting point rendering metrics"""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            # Get metrics (should work even without point cloud)
+            metrics = visualizer.getPointRenderingMetrics()
+
+            # Verify return type and keys
+            assert isinstance(metrics, dict)
+            assert 'total_points' in metrics
+            assert 'rendered_points' in metrics
+            assert 'culling_time_ms' in metrics
+
+            # Verify value types
+            assert isinstance(metrics['total_points'], int)
+            assert isinstance(metrics['rendered_points'], int)
+            assert isinstance(metrics['culling_time_ms'], float)
+
+            # Verify logical constraints
+            assert metrics['total_points'] >= 0
+            assert metrics['rendered_points'] >= 0
+            assert metrics['rendered_points'] <= metrics['total_points']
+            assert metrics['culling_time_ms'] >= 0.0
+
+    def test_point_culling_methods_uninitialized(self):
+        """Test error handling with uninitialized visualizer"""
+        visualizer = Visualizer.__new__(Visualizer)
+        visualizer.visualizer = None  # Simulate uninitialized state
+
+        # All methods should raise VisualizerError
+        with pytest.raises(VisualizerError, match="not initialized"):
+            visualizer.setPointCullingEnabled(True)
+
+        with pytest.raises(VisualizerError, match="not initialized"):
+            visualizer.setPointCullingThreshold(1000)
+
+        with pytest.raises(VisualizerError, match="not initialized"):
+            visualizer.setPointMaxRenderDistance(100.0)
+
+        with pytest.raises(VisualizerError, match="not initialized"):
+            visualizer.setPointLODFactor(10.0)
+
+        with pytest.raises(VisualizerError, match="not initialized"):
+            visualizer.getPointRenderingMetrics()
+
+
+@pytest.mark.cross_platform
+class TestVisualizerPointCullingAPI:
+    """Test point culling API exists and has correct signatures"""
+
+    def test_point_culling_methods_exist(self):
+        """Test that all point culling methods exist"""
+        expected_methods = [
+            'setPointCullingEnabled',
+            'setPointCullingThreshold',
+            'setPointMaxRenderDistance',
+            'setPointLODFactor',
+            'getPointRenderingMetrics',
+        ]
+
+        for method_name in expected_methods:
+            assert hasattr(Visualizer, method_name), f"Missing method: {method_name}"
+            method = getattr(Visualizer, method_name)
+            assert callable(method), f"Method {method_name} is not callable"
+
+    def test_point_culling_method_signatures(self):
+        """Test that methods have correct signatures"""
+        import inspect
+
+        # Test setPointCullingEnabled
+        sig = inspect.signature(Visualizer.setPointCullingEnabled)
+        params = list(sig.parameters.keys())
+        assert 'self' in params
+        assert 'enabled' in params
+
+        # Test setPointCullingThreshold
+        sig = inspect.signature(Visualizer.setPointCullingThreshold)
+        params = list(sig.parameters.keys())
+        assert 'self' in params
+        assert 'threshold' in params
+
+        # Test setPointMaxRenderDistance
+        sig = inspect.signature(Visualizer.setPointMaxRenderDistance)
+        params = list(sig.parameters.keys())
+        assert 'self' in params
+        assert 'distance' in params
+
+        # Test setPointLODFactor
+        sig = inspect.signature(Visualizer.setPointLODFactor)
+        params = list(sig.parameters.keys())
+        assert 'self' in params
+        assert 'factor' in params
+
+        # Test getPointRenderingMetrics
+        sig = inspect.signature(Visualizer.getPointRenderingMetrics)
+        params = list(sig.parameters.keys())
+        assert 'self' in params
+
+
 if __name__ == "__main__":
     # Run tests when executed directly
     pytest.main([__file__, "-v"])

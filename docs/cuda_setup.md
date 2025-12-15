@@ -257,32 +257,43 @@ nvidia-smi --query-gpu=compute_cap --format=csv
 
 ## OptiX Requirements (Radiation Plugin Only) {#OptiXSetup}
 
-The \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plugin requires NVIDIA OptiX in addition to CUDA.
+The \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plugin requires NVIDIA OptiX for GPU-accelerated ray tracing.
 
-### OptiX Installation
+### For Pip-Installed PyHelios (Most Users)
 
-1. **Download OptiX SDK**:
-   - Visit [NVIDIA OptiX Downloads](https://developer.nvidia.com/optix/downloads)
-   - Requires NVIDIA Developer Program membership (free)
-   - Download OptiX 7.3 or newer
+**You do NOT need to install OptiX yourself** - it is already bundled:
 
-2. **Install OptiX**:
-   - **Windows**: Run installer, typically installs to `C:\ProgramData\NVIDIA Corporation\OptiX SDK 7.x.x`
-   - **Linux**: Extract archive, move to `/opt/optix/` or preferred location
+- **Windows**: OptiX runtime is bundled with PyHelios wheels
+- **Linux (native)**: OptiX runtime is bundled with PyHelios wheels
+- **WSL (Windows Subsystem for Linux)**: See special instructions below
 
-3. **Set Environment Variable**:
+### For WSL (Windows Subsystem for Linux) Users
+
+If you're using WSL2 with GPU passthrough:
+
+1. **Verify GPU Access**:
    ```bash
-   # Linux (add to ~/.bashrc)
-   export OptiX_INSTALL_DIR=/opt/optix
-
-   # Windows (System Environment Variables)
-   # Set OptiX_INSTALL_DIR=C:\ProgramData\NVIDIA Corporation\OptiX SDK 7.x.x
+   nvidia-smi  # Should show your GPU
    ```
 
-4. **Rebuild PyHelios** with OptiX support:
-   ```bash
-   build_scripts/build_helios --clean --plugins radiation
-   ```
+2. **Install CUDA for WSL**:
+   - Follow [NVIDIA's WSL-CUDA guide](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
+   - Use the WSL-specific CUDA installer (NOT the Linux installer)
+
+3. **OptiX on WSL**:
+   - OptiX may require manual installation in WSL environments
+   - Download from [NVIDIA OptiX Downloads](https://developer.nvidia.com/optix/downloads)
+   - Follow WSL-specific GPU library installation procedures
+
+### For Building PyHelios from Source
+
+**You do NOT need to download OptiX SDK** - headers are bundled in the repository:
+
+- OptiX SDK headers are included in `helios-core/plugins/radiation/lib/OptiX/`
+- Simply build with the radiation plugin enabled:
+  ```bash
+  build_scripts/build_helios --clean --plugins radiation
+  ```
 
 ## Troubleshooting
 

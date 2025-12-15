@@ -140,6 +140,7 @@ INPUT                  = pyhelios \
                          docs/plugin_stomatalconductance.md \
                          docs/plugin_visualizer.md \
                          docs/plugin_weberpenntree.md \
+                         docs/Validation.md \
                          docs/CHANGELOG.md \
                          README.md
 INPUT_ENCODING         = UTF-8
@@ -216,7 +217,7 @@ IGNORE_PREFIX          =
 GENERATE_HTML          = YES
 HTML_OUTPUT            = html
 HTML_FILE_EXTENSION    = .html
-# HTML_HEADER            = docs/header.html
+HTML_HEADER            = docs/header.html
 HTML_FOOTER            = 
 HTML_STYLESHEET        = 
 HTML_EXTRA_STYLESHEET  = docs/assets/doxygen-awesome.css \

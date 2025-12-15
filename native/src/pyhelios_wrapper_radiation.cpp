@@ -2055,10 +2055,10 @@ extern "C" {
             helios::vec3 lookat(lookat_x, lookat_y, lookat_z);
 
             // Convert camera properties array to CameraProperties struct
-            // Format supports both legacy (6 floats) and extended (9 floats) formats
+            // Format supports both legacy (6 floats) and extended (10 floats) formats
             // Legacy: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
-            // Extended: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio,
-            //            lens_focal_length, sensor_width_mm, shutter_speed]
+            // Extended v1.3.58: [+ lens_focal_length, sensor_width_mm, shutter_speed]
+            // Extended v1.3.60: [+ camera_zoom] - 10 total elements
             CameraProperties props;
             props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
             props.focal_plane_distance = camera_properties[2];
@@ -2076,12 +2076,14 @@ extern "C" {
             props.exposure = "auto";
             props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
             props.white_balance = "auto";
+            props.camera_zoom = 1.0f;             // No zoom default (v1.3.60+)
 
             // Override with extended properties if provided
-            // Python's to_array() provides 9 elements
+            // Python's to_array() provides 10 elements
             props.lens_focal_length = camera_properties[6];
             props.sensor_width_mm = camera_properties[7];
             props.shutter_speed = camera_properties[8];
+            props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
 
             radiation_model->addRadiationCamera(std::string(camera_label), band_vector, position, lookat, props, antialiasing_samples);
 
@@ -2125,10 +2127,10 @@ extern "C" {
             helios::SphericalCoord viewing_direction = helios::make_SphericalCoord(radius, elevation, azimuth);
 
             // Convert camera properties array to CameraProperties struct
-            // Format supports both legacy (6 floats) and extended (9 floats) formats
+            // Format supports both legacy (6 floats) and extended (10 floats) formats
             // Legacy: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
-            // Extended: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio,
-            //            lens_focal_length, sensor_width_mm, shutter_speed]
+            // Extended v1.3.58: [+ lens_focal_length, sensor_width_mm, shutter_speed]
+            // Extended v1.3.60: [+ camera_zoom] - 10 total elements
             CameraProperties props;
             props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
             props.focal_plane_distance = camera_properties[2];
@@ -2146,12 +2148,14 @@ extern "C" {
             props.exposure = "auto";
             props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
             props.white_balance = "auto";
+            props.camera_zoom = 1.0f;             // No zoom default (v1.3.60+)
 
             // Override with extended properties if provided
-            // Python's to_array() provides 9 elements
+            // Python's to_array() provides 10 elements
             props.lens_focal_length = camera_properties[6];
             props.sensor_width_mm = camera_properties[7];
             props.shutter_speed = camera_properties[8];
+            props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
 
             radiation_model->addRadiationCamera(std::string(camera_label), band_vector, position, viewing_direction, props, antialiasing_samples);
 
@@ -2597,7 +2601,7 @@ extern "C" {
             }
 
             // Convert camera properties array to CameraProperties struct
-            // Same format as addRadiationCamera: 9 floats
+            // Same format as addRadiationCamera: 10 floats (v1.3.60+)
             CameraProperties props;
             props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
             props.focal_plane_distance = camera_properties[2];
@@ -2607,6 +2611,7 @@ extern "C" {
             props.lens_focal_length = camera_properties[6];
             props.sensor_width_mm = camera_properties[7];
             props.shutter_speed = camera_properties[8];
+            props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
 
             // String fields use defaults (cannot be updated via this interface)
             props.model = "generic";

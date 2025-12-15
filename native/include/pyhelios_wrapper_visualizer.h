@@ -576,6 +576,50 @@ PYHELIOS_API void setGeometryVertices(Visualizer* visualizer, size_t geometry_id
  */
 PYHELIOS_API void printWindowWithFormat(Visualizer* visualizer, const char* filename, const char* format);
 
+//=============================================================================
+// v1.3.54 Point Culling and LOD Functions
+//=============================================================================
+
+/**
+ * @brief Enable or disable point cloud culling optimization (v1.3.54+)
+ * @param visualizer Pointer to the Visualizer
+ * @param enabled True to enable culling, false to disable
+ */
+PYHELIOS_API void setPointCullingEnabled(Visualizer* visualizer, bool enabled);
+
+/**
+ * @brief Set the minimum number of points required to trigger culling (v1.3.54+)
+ * @param visualizer Pointer to the Visualizer
+ * @param threshold Point count threshold for enabling culling (default: 10000)
+ */
+PYHELIOS_API void setPointCullingThreshold(Visualizer* visualizer, size_t threshold);
+
+/**
+ * @brief Set the maximum rendering distance for points (v1.3.54+)
+ * @param visualizer Pointer to the Visualizer
+ * @param distance Maximum distance in world units (0 = auto-calculate based on scene size)
+ */
+PYHELIOS_API void setPointMaxRenderDistance(Visualizer* visualizer, float distance);
+
+/**
+ * @brief Set the level-of-detail factor for distance-based culling (v1.3.54+)
+ * @param visualizer Pointer to the Visualizer
+ * @param factor LOD factor (higher values = more aggressive culling, typical range: 1.0-50.0)
+ */
+PYHELIOS_API void setPointLODFactor(Visualizer* visualizer, float factor);
+
+/**
+ * @brief Get point cloud rendering performance metrics (v1.3.54+)
+ * @param visualizer Pointer to the Visualizer
+ * @param total_points Output parameter for total point count in scene
+ * @param rendered_points Output parameter for number of points actually rendered after culling
+ * @param culling_time_ms Output parameter for time spent on culling in milliseconds
+ */
+PYHELIOS_API void getPointRenderingMetrics(const Visualizer* visualizer,
+                                            size_t* total_points,
+                                            size_t* rendered_points,
+                                            float* culling_time_ms);
+
 #ifdef __cplusplus
 }
 #endif

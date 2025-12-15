@@ -1216,6 +1216,123 @@ extern "C" {
         }
     }
 
+    //=============================================================================
+    // v1.3.54 Point Culling and LOD Functions
+    //=============================================================================
+
+    PYHELIOS_API void setPointCullingEnabled(Visualizer* visualizer, bool enabled) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+
+            visualizer->setPointCullingEnabled(enabled);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setPointCullingEnabled): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setPointCullingEnabled): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setPointCullingThreshold(Visualizer* visualizer, size_t threshold) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+
+            visualizer->setPointCullingThreshold(threshold);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setPointCullingThreshold): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setPointCullingThreshold): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setPointMaxRenderDistance(Visualizer* visualizer, float distance) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (distance < 0.0f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Point max render distance cannot be negative");
+                return;
+            }
+
+            visualizer->setPointMaxRenderDistance(distance);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setPointMaxRenderDistance): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setPointMaxRenderDistance): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setPointLODFactor(Visualizer* visualizer, float factor) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (factor <= 0.0f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Point LOD factor must be positive");
+                return;
+            }
+
+            visualizer->setPointLODFactor(factor);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setPointLODFactor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setPointLODFactor): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getPointRenderingMetrics(const Visualizer* visualizer,
+                                                size_t* total_points,
+                                                size_t* rendered_points,
+                                                float* culling_time_ms) {
+        try {
+            clearError();
+
+            // Nullify output parameters first
+            if (total_points) *total_points = 0;
+            if (rendered_points) *rendered_points = 0;
+            if (culling_time_ms) *culling_time_ms = 0.0f;
+
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!total_points || !rendered_points || !culling_time_ms) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output parameter pointers cannot be null");
+                return;
+            }
+
+            visualizer->getPointRenderingMetrics(*total_points, *rendered_points, *culling_time_ms);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getPointRenderingMetrics): ") + e.what());
+            // Re-nullify on error
+            if (total_points) *total_points = 0;
+            if (rendered_points) *rendered_points = 0;
+            if (culling_time_ms) *culling_time_ms = 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getPointRenderingMetrics): Unknown error");
+            if (total_points) *total_points = 0;
+            if (rendered_points) *rendered_points = 0;
+            if (culling_time_ms) *culling_time_ms = 0.0f;
+        }
+    }
+
 } //extern "C"
 
 #endif //VISUALIZER_PLUGIN_AVAILABLE
