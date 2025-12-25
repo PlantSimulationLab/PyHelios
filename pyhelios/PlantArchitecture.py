@@ -9,7 +9,7 @@ import logging
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 
 from .Context import Context
 from .plugins.registry import get_plugin_registry, require_plugin
@@ -46,6 +46,174 @@ from .validation.core import validate_positive_value
 from .assets import get_asset_manager
 
 logger = logging.getLogger(__name__)
+
+
+class RandomParameter:
+    """
+    Helper class for creating RandomParameter specifications for float parameters.
+
+    Provides convenient static methods to create parameter dictionaries with
+    statistical distributions for plant architecture modeling.
+    """
+
+    @staticmethod
+    def constant(value: float) -> Dict[str, Any]:
+        """
+        Create a constant (non-random) parameter.
+
+        Args:
+            value: The constant value
+
+        Returns:
+            Dict with constant distribution specification
+
+        Example:
+            >>> param = RandomParameter.constant(45.0)
+            >>> # Returns: {'distribution': 'constant', 'parameters': [45.0]}
+        """
+        return {'distribution': 'constant', 'parameters': [float(value)]}
+
+    @staticmethod
+    def uniform(min_val: float, max_val: float) -> Dict[str, Any]:
+        """
+        Create a uniform distribution parameter.
+
+        Args:
+            min_val: Minimum value
+            max_val: Maximum value
+
+        Returns:
+            Dict with uniform distribution specification
+
+        Raises:
+            ValueError: If min_val > max_val
+
+        Example:
+            >>> param = RandomParameter.uniform(40.0, 50.0)
+            >>> # Returns: {'distribution': 'uniform', 'parameters': [40.0, 50.0]}
+        """
+        if min_val > max_val:
+            raise ValueError(f"min_val ({min_val}) must be <= max_val ({max_val})")
+        return {'distribution': 'uniform', 'parameters': [float(min_val), float(max_val)]}
+
+    @staticmethod
+    def normal(mean: float, std_dev: float) -> Dict[str, Any]:
+        """
+        Create a normal (Gaussian) distribution parameter.
+
+        Args:
+            mean: Mean value
+            std_dev: Standard deviation
+
+        Returns:
+            Dict with normal distribution specification
+
+        Raises:
+            ValueError: If std_dev < 0
+
+        Example:
+            >>> param = RandomParameter.normal(45.0, 5.0)
+            >>> # Returns: {'distribution': 'normal', 'parameters': [45.0, 5.0]}
+        """
+        if std_dev < 0:
+            raise ValueError(f"std_dev ({std_dev}) must be >= 0")
+        return {'distribution': 'normal', 'parameters': [float(mean), float(std_dev)]}
+
+    @staticmethod
+    def weibull(shape: float, scale: float) -> Dict[str, Any]:
+        """
+        Create a Weibull distribution parameter.
+
+        Args:
+            shape: Shape parameter (k)
+            scale: Scale parameter (λ)
+
+        Returns:
+            Dict with Weibull distribution specification
+
+        Raises:
+            ValueError: If shape or scale <= 0
+
+        Example:
+            >>> param = RandomParameter.weibull(2.0, 50.0)
+            >>> # Returns: {'distribution': 'weibull', 'parameters': [2.0, 50.0]}
+        """
+        if shape <= 0:
+            raise ValueError(f"shape ({shape}) must be > 0")
+        if scale <= 0:
+            raise ValueError(f"scale ({scale}) must be > 0")
+        return {'distribution': 'weibull', 'parameters': [float(shape), float(scale)]}
+
+
+class RandomParameterInt:
+    """
+    Helper class for creating RandomParameter specifications for integer parameters.
+
+    Provides convenient static methods to create parameter dictionaries with
+    statistical distributions for integer-valued plant parameters.
+    """
+
+    @staticmethod
+    def constant(value: int) -> Dict[str, Any]:
+        """
+        Create a constant (non-random) integer parameter.
+
+        Args:
+            value: The constant integer value
+
+        Returns:
+            Dict with constant distribution specification
+
+        Example:
+            >>> param = RandomParameterInt.constant(15)
+            >>> # Returns: {'distribution': 'constant', 'parameters': [15.0]}
+        """
+        return {'distribution': 'constant', 'parameters': [float(value)]}
+
+    @staticmethod
+    def uniform(min_val: int, max_val: int) -> Dict[str, Any]:
+        """
+        Create a uniform distribution for integer parameter.
+
+        Args:
+            min_val: Minimum value (inclusive)
+            max_val: Maximum value (inclusive)
+
+        Returns:
+            Dict with uniform distribution specification
+
+        Raises:
+            ValueError: If min_val > max_val
+
+        Example:
+            >>> param = RandomParameterInt.uniform(10, 20)
+            >>> # Returns: {'distribution': 'uniform', 'parameters': [10.0, 20.0]}
+        """
+        if min_val > max_val:
+            raise ValueError(f"min_val ({min_val}) must be <= max_val ({max_val})")
+        return {'distribution': 'uniform', 'parameters': [float(min_val), float(max_val)]}
+
+    @staticmethod
+    def discrete(values: List[int]) -> Dict[str, Any]:
+        """
+        Create a discrete value distribution (random choice from list).
+
+        Args:
+            values: List of possible integer values (equal probability)
+
+        Returns:
+            Dict with discrete distribution specification
+
+        Raises:
+            ValueError: If values list is empty
+
+        Example:
+            >>> param = RandomParameterInt.discrete([1, 2, 3, 5])
+            >>> # Returns: {'distribution': 'discretevalues', 'parameters': [1.0, 2.0, 3.0, 5.0]}
+        """
+        if not values:
+            raise ValueError("values list cannot be empty")
+        return {'distribution': 'discretevalues', 'parameters': [float(v) for v in values]}
 
 
 def _resolve_user_path(filepath: Union[str, Path]) -> str:
@@ -278,25 +446,36 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to load plant model '{plant_label}': {e}")
 
-    def buildPlantInstanceFromLibrary(self, base_position: vec3, age: float) -> int:
+    def buildPlantInstanceFromLibrary(self, base_position: vec3, age: float,
+                                     build_parameters: Optional[dict] = None) -> int:
         """
         Build a plant instance from the currently loaded library model.
 
         Args:
             base_position: Cartesian (x,y,z) coordinates of plant base as vec3
             age: Age of the plant in days (must be >= 0)
+            build_parameters: Optional dict of parameter overrides for training system parameters.
+                            Examples:
+                            - {'trunk_height': 2.5} - for tomato trellis height
+                            - {'cordon_height': 1.8, 'cordon_radius': 1.2} - for apple training
+                            - {'row_spacing': 0.75} - for grapevine VSP trellis
 
         Returns:
             Plant ID for the created plant instance
 
         Raises:
-            ValueError: If age is negative
+            ValueError: If age is negative or build_parameters is invalid
             PlantArchitectureError: If plant building fails
             RuntimeError: If no model has been loaded
 
         Example:
             >>> plant_id = plantarch.buildPlantInstanceFromLibrary(base_position=vec3(2.0, 3.0, 0.0), age=45.0)
-            >>> plant_id = plantarch.buildPlantInstanceFromLibrary(base_position=vec3(0, 0, 0), age=30.0)
+            >>> # With custom parameters
+            >>> plant_id = plantarch.buildPlantInstanceFromLibrary(
+            ...     base_position=vec3(0, 0, 0),
+            ...     age=30.0,
+            ...     build_parameters={'trunk_height': 2.0}
+            ... )
         """
         # Convert position to list for C++ interface
         position_list = [base_position.x, base_position.y, base_position.z]
@@ -305,17 +484,28 @@ class PlantArchitecture:
         if age < 0:
             raise ValueError(f"Age must be non-negative, got {age}")
 
+        # Validate build_parameters
+        if build_parameters is not None:
+            if not isinstance(build_parameters, dict):
+                raise ValueError("build_parameters must be a dict or None")
+            for key, value in build_parameters.items():
+                if not isinstance(key, str):
+                    raise ValueError("build_parameters keys must be strings")
+                if not isinstance(value, (int, float)):
+                    raise ValueError("build_parameters values must be numeric (int or float)")
+
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.buildPlantInstanceFromLibrary(
-                    self._plantarch_ptr, position_list, age
+                    self._plantarch_ptr, position_list, age, build_parameters
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant instance: {e}")
 
     def buildPlantCanopyFromLibrary(self, canopy_center: vec3,
                                   plant_spacing: vec2,
-                                  plant_count: int2, age: float) -> List[int]:
+                                  plant_count: int2, age: float,
+                                  build_parameters: Optional[dict] = None) -> List[int]:
         """
         Build a canopy of regularly spaced plants from the currently loaded library model.
 
@@ -324,12 +514,17 @@ class PlantArchitecture:
             plant_spacing: Spacing between plants in x- and y-directions (meters) as vec2
             plant_count: Number of plants in x- and y-directions as int2
             age: Age of all plants in days (must be >= 0)
+            build_parameters: Optional dict of parameter overrides for training system parameters.
+                            Parameters are applied to all plants in the canopy.
+                            Examples:
+                            - {'cordon_height': 1.8} - for grapevine trellis height
+                            - {'trunk_height': 2.5} - for tomato trellis systems
 
         Returns:
             List of plant IDs for the created plant instances
 
         Raises:
-            ValueError: If age is negative or plant count values are not positive
+            ValueError: If age is negative, plant count values are not positive, or build_parameters is invalid
             PlantArchitectureError: If canopy building fails
 
         Example:
@@ -340,6 +535,14 @@ class PlantArchitecture:
             ...     plant_count=int2(3, 3),
             ...     age=30.0
             ... )
+            >>> # With custom parameters
+            >>> plant_ids = plantarch.buildPlantCanopyFromLibrary(
+            ...     canopy_center=vec3(0, 0, 0),
+            ...     plant_spacing=vec2(1.5, 2.0),
+            ...     plant_count=int2(5, 3),
+            ...     age=45.0,
+            ...     build_parameters={'cordon_height': 1.8}
+            ... )
         """
         # Validate age (allow zero)
         if age < 0:
@@ -349,6 +552,16 @@ class PlantArchitecture:
         if plant_count.x <= 0 or plant_count.y <= 0:
             raise ValueError("Plant count values must be positive integers")
 
+        # Validate build_parameters
+        if build_parameters is not None:
+            if not isinstance(build_parameters, dict):
+                raise ValueError("build_parameters must be a dict or None")
+            for key, value in build_parameters.items():
+                if not isinstance(key, str):
+                    raise ValueError("build_parameters keys must be strings")
+                if not isinstance(value, (int, float)):
+                    raise ValueError("build_parameters values must be numeric (int or float)")
+
         # Convert to lists for C++ interface
         center_list = [canopy_center.x, canopy_center.y, canopy_center.z]
         spacing_list = [plant_spacing.x, plant_spacing.y]
@@ -357,7 +570,7 @@ class PlantArchitecture:
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.buildPlantCanopyFromLibrary(
-                    self._plantarch_ptr, center_list, spacing_list, count_list, age
+                    self._plantarch_ptr, center_list, spacing_list, count_list, age, build_parameters
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant canopy: {e}")
@@ -394,6 +607,93 @@ class PlantArchitecture:
                 plantarch_wrapper.advanceTime(self._plantarch_ptr, dt)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to advance time by {dt} days: {e}")
+
+    def getCurrentShootParameters(self, shoot_type_label: str) -> dict:
+        """
+        Get current shoot parameters for a shoot type.
+
+        Returns a nested dictionary containing all shoot and phytomer parameters
+        including RandomParameter specifications with distribution types.
+
+        Args:
+            shoot_type_label: Label for the shoot type (e.g., "stem", "branch")
+
+        Returns:
+            Dictionary with shoot parameters including:
+            - Geometric parameters (max_nodes, insertion_angle_tip, etc.)
+            - Growth parameters (phyllochron_min, elongation_rate_max, etc.)
+            - Boolean flags (flowers_require_dormancy, etc.)
+            - RandomParameter fields include 'distribution' and 'parameters' keys
+
+        Raises:
+            ValueError: If shoot_type_label is empty
+            PlantArchitectureError: If parameter retrieval fails
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("bean")
+            >>> params = plantarch.getCurrentShootParameters("stem")
+            >>> print(params['max_nodes'])
+            {'distribution': 'constant', 'parameters': [15.0]}
+        """
+        if not shoot_type_label:
+            raise ValueError("Shoot type label cannot be empty")
+
+        if not shoot_type_label.strip():
+            raise ValueError("Shoot type label cannot be only whitespace")
+
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getCurrentShootParameters(
+                    self._plantarch_ptr, shoot_type_label.strip()
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get shoot parameters for '{shoot_type_label}': {e}")
+
+    def defineShootType(self, shoot_type_label: str, parameters: dict) -> None:
+        """
+        Define a custom shoot type with specified parameters.
+
+        Allows creating new shoot types or modifying existing ones by providing
+        a parameter dictionary. Use getCurrentShootParameters() to get a template
+        that can be modified.
+
+        Args:
+            shoot_type_label: Unique name for this shoot type
+            parameters: Dictionary matching ShootParameters structure.
+                       Use getCurrentShootParameters() to get proper structure.
+
+        Raises:
+            ValueError: If shoot_type_label is empty or parameters is not a dict
+            PlantArchitectureError: If shoot type definition fails
+
+        Example:
+            >>> # Get existing parameters as template
+            >>> plantarch.loadPlantModelFromLibrary("bean")
+            >>> params = plantarch.getCurrentShootParameters("stem")
+            >>>
+            >>> # Modify parameters
+            >>> params['max_nodes'] = {'distribution': 'constant', 'parameters': [20.0]}
+            >>> params['insertion_angle_tip'] = {'distribution': 'uniform', 'parameters': [40.0, 50.0]}
+            >>>
+            >>> # Define new shoot type
+            >>> plantarch.defineShootType("TallStem", params)
+        """
+        if not shoot_type_label:
+            raise ValueError("Shoot type label cannot be empty")
+
+        if not shoot_type_label.strip():
+            raise ValueError("Shoot type label cannot be only whitespace")
+
+        if not isinstance(parameters, dict):
+            raise ValueError("Parameters must be a dict")
+
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.defineShootType(
+                    self._plantarch_ptr, self.context.context, shoot_type_label.strip(), parameters
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to define shoot type '{shoot_type_label}': {e}")
 
     def getAvailablePlantModels(self) -> List[str]:
         """
@@ -467,6 +767,150 @@ class PlantArchitecture:
             return plantarch_wrapper.getAllPlantUUIDs(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get UUIDs for plant {plant_id}: {e}")
+
+    def getPlantAge(self, plant_id: int) -> float:
+        """
+        Get the current age of a plant in days.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Plant age in days
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> age = plantarch.getPlantAge(plant_id)
+            >>> print(f"Plant is {age} days old")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getPlantAge(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get age for plant {plant_id}: {e}")
+
+    def getPlantHeight(self, plant_id: int) -> float:
+        """
+        Get the height of a plant in meters.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Plant height in meters (vertical extent)
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> height = plantarch.getPlantHeight(plant_id)
+            >>> print(f"Plant is {height:.2f}m tall")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getPlantHeight(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get height for plant {plant_id}: {e}")
+
+    def getPlantLeafArea(self, plant_id: int) -> float:
+        """
+        Get the total leaf area of a plant in m².
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Total leaf area in square meters
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> leaf_area = plantarch.getPlantLeafArea(plant_id)
+            >>> print(f"Total leaf area: {leaf_area:.3f} m²")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.sumPlantLeafArea(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get leaf area for plant {plant_id}: {e}")
+
+    def setPlantPhenologicalThresholds(
+        self,
+        plant_id: int,
+        time_to_dormancy_break: float,
+        time_to_flower_initiation: float,
+        time_to_flower_opening: float,
+        time_to_fruit_set: float,
+        time_to_fruit_maturity: float,
+        time_to_dormancy: float,
+        max_leaf_lifespan: float = 1e6
+    ) -> None:
+        """
+        Set phenological timing thresholds for plant developmental stages.
+
+        Controls the timing of key phenological events based on thermal time
+        or calendar time depending on the plant model.
+
+        Args:
+            plant_id: ID of the plant instance
+            time_to_dormancy_break: Degree-days or days until dormancy ends
+            time_to_flower_initiation: Time until flower buds are initiated
+            time_to_flower_opening: Time until flowers open
+            time_to_fruit_set: Time until fruit begins developing
+            time_to_fruit_maturity: Time until fruit reaches maturity
+            time_to_dormancy: Time until plant enters dormancy
+            max_leaf_lifespan: Maximum leaf lifespan in days (default: 1e6)
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If phenology setting fails
+
+        Example:
+            >>> # Set phenology for perennial fruit tree
+            >>> plantarch.setPlantPhenologicalThresholds(
+            ...     plant_id=plant_id,
+            ...     time_to_dormancy_break=60,    # Spring: 60 degree-days
+            ...     time_to_flower_initiation=90,  # Early spring flowering
+            ...     time_to_flower_opening=105,    # Bloom period
+            ...     time_to_fruit_set=120,         # Fruit set after pollination
+            ...     time_to_fruit_maturity=200,    # Summer fruit maturation
+            ...     time_to_dormancy=280,          # Fall dormancy
+            ...     max_leaf_lifespan=180          # Deciduous - 6 month leaf life
+            ... )
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPlantPhenologicalThresholds(
+                    self._plantarch_ptr,
+                    plant_id,
+                    time_to_dormancy_break,
+                    time_to_flower_initiation,
+                    time_to_flower_opening,
+                    time_to_fruit_set,
+                    time_to_fruit_maturity,
+                    time_to_dormancy,
+                    max_leaf_lifespan
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set phenological thresholds for plant {plant_id}: {e}")
 
     # Collision detection methods
     def enableSoftCollisionAvoidance(self,

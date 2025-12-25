@@ -46,8 +46,8 @@ class TestEnergyBalanceMetadata:
         assert metadata.test_symbols
         assert isinstance(metadata.platforms, list)
         assert len(metadata.platforms) > 0
-        assert metadata.gpu_required == True  # Energy balance requires CUDA
-        assert "cuda" in metadata.system_dependencies
+        assert metadata.gpu_required == False  # GPU acceleration is now optional (v1.3.61+)
+        assert "macos" in metadata.platforms  # Now supports macOS with CPU mode
 
 
 
@@ -101,6 +101,11 @@ class TestEnergyBalanceInterface:
         assert hasattr(EnergyBalanceModel, 'enableMessages')
         assert hasattr(EnergyBalanceModel, 'disableMessages')
         assert hasattr(EnergyBalanceModel, 'is_available')
+        # New GPU acceleration methods (v1.3.61+)
+        assert hasattr(EnergyBalanceModel, 'enableGPUAcceleration')
+        assert hasattr(EnergyBalanceModel, 'disableGPUAcceleration')
+        assert hasattr(EnergyBalanceModel, 'isGPUAccelerationEnabled')
+        assert hasattr(EnergyBalanceModel, 'isGPUAccelerationAvailable')
     
     @pytest.mark.cross_platform
     def test_error_types_available(self):
@@ -114,6 +119,123 @@ class TestEnergyBalanceInterface:
         """Test energy balance model creation with invalid context"""
         with pytest.raises(TypeError):
             EnergyBalanceModel("invalid_context")
+
+
+class TestEnergyBalanceGPUAcceleration:
+    """Test GPU acceleration control methods (v1.3.61+)"""
+
+    @pytest.mark.cross_platform
+    def test_gpu_acceleration_methods_exist(self):
+        """Test that GPU acceleration methods are present in API"""
+        assert hasattr(EnergyBalanceModel, 'enableGPUAcceleration')
+        assert hasattr(EnergyBalanceModel, 'disableGPUAcceleration')
+        assert hasattr(EnergyBalanceModel, 'isGPUAccelerationEnabled')
+        assert hasattr(EnergyBalanceModel, 'isGPUAccelerationAvailable')
+
+    @pytest.mark.cross_platform
+    def test_gpu_acceleration_available_static_method(self):
+        """Test static method for checking GPU acceleration availability"""
+        # This should work without creating an instance
+        available = EnergyBalanceModel.isGPUAccelerationAvailable()
+        assert isinstance(available, bool)
+        # On systems without CUDA, this should return False
+        # On systems with CUDA, this should return True
+
+    @pytest.mark.cross_platform
+    def test_gpu_acceleration_availability_check(self):
+        """Test GPU acceleration availability through wrapper"""
+        from pyhelios.wrappers import UEnergyBalanceWrapper as energy_wrapper
+
+        # Test wrapper-level availability check
+        available = energy_wrapper.isGPUAccelerationAvailable()
+        assert isinstance(available, bool)
+
+    @pytest.mark.native_only
+    def test_gpu_acceleration_when_plugin_available(self):
+        """Test GPU acceleration control when energy balance plugin is available"""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        with Context() as context:
+            with EnergyBalanceModel(context) as energy_balance:
+                # Try to enable GPU acceleration
+                # Three scenarios:
+                # 1. CUDA compiled + GPU hardware → enable succeeds, state = True
+                # 2. CUDA compiled + NO GPU hardware → enable succeeds, state = False (runtime unavailable)
+                # 3. CUDA not compiled → enable raises error
+                try:
+                    energy_balance.enableGPUAcceleration()
+                    # No exception - CUDA is compiled in
+
+                    # Check if GPU is actually available at runtime
+                    gpu_enabled = energy_balance.isGPUAccelerationEnabled()
+
+                    if gpu_enabled:
+                        # Scenario 1: GPU hardware available
+                        assert energy_balance.isGPUAccelerationEnabled() == True
+
+                        # Test disable
+                        energy_balance.disableGPUAcceleration()
+                        assert energy_balance.isGPUAccelerationEnabled() == False
+
+                        # Test re-enable
+                        energy_balance.enableGPUAcceleration()
+                        assert energy_balance.isGPUAccelerationEnabled() == True
+                    else:
+                        # Scenario 2: CUDA compiled but no GPU hardware at runtime
+                        # This is common in CI containers with CUDA toolkit but no GPU
+                        assert energy_balance.isGPUAccelerationEnabled() == False
+
+                        # Disable should be safe no-op
+                        energy_balance.disableGPUAcceleration()
+                        assert energy_balance.isGPUAccelerationEnabled() == False
+
+                except EnergyBalanceModelError as e:
+                    # Scenario 3: CUDA not compiled
+                    error_msg = str(e).lower()
+                    assert "cuda" in error_msg or "gpu" in error_msg
+                    assert "not compiled" in error_msg or "not available" in error_msg
+
+                    # Verify state checks work correctly
+                    assert energy_balance.isGPUAccelerationEnabled() == False
+
+                    # disableGPUAcceleration should be safe no-op
+                    energy_balance.disableGPUAcceleration()  # Should not raise
+
+    @pytest.mark.cross_platform
+    def test_gpu_acceleration_mock_mode(self):
+        """Test GPU acceleration methods behavior in mock mode"""
+        registry = get_plugin_registry()
+        if registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin is available - this test is for mock mode")
+
+        # In mock mode, static availability check should still work
+        available = EnergyBalanceModel.isGPUAccelerationAvailable()
+        assert available == False  # Mock mode never has GPU acceleration
+
+    @pytest.mark.native_only
+    def test_gpu_acceleration_error_messages(self):
+        """Test that GPU acceleration error messages are clear and actionable"""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        with Context() as context:
+            with EnergyBalanceModel(context) as energy_balance:
+                gpu_available = energy_balance.isGPUAccelerationAvailable()
+
+                if not gpu_available:
+                    # Verify error message provides clear guidance
+                    try:
+                        energy_balance.enableGPUAcceleration()
+                        assert False, "Should have raised EnergyBalanceModelError"
+                    except EnergyBalanceModelError as e:
+                        error_msg = str(e).lower()
+                        # Should mention CUDA
+                        assert "cuda" in error_msg or "gpu" in error_msg
+                        # Should mention compilation/availability
+                        assert "not compiled" in error_msg or "not available" in error_msg
 
 
 @pytest.mark.native_only

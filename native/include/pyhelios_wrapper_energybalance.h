@@ -148,6 +148,32 @@ PYHELIOS_API void printDefaultValueReport(EnergyBalanceModel* energy_model);
  */
 PYHELIOS_API void printDefaultValueReportForUUIDs(EnergyBalanceModel* energy_model, const unsigned int* uuids, unsigned int uuid_count);
 
+//=============================================================================
+// GPU Acceleration Control (Only available when compiled with CUDA)
+//=============================================================================
+
+/**
+ * @brief Enable GPU acceleration for energy balance calculations
+ * @param energy_model Pointer to the EnergyBalanceModel
+ * @note Only available when compiled with CUDA support
+ */
+PYHELIOS_API void enableGPUAcceleration(EnergyBalanceModel* energy_model);
+
+/**
+ * @brief Disable GPU acceleration and force CPU mode
+ * @param energy_model Pointer to the EnergyBalanceModel
+ * @note Only available when compiled with CUDA support
+ */
+PYHELIOS_API void disableGPUAcceleration(EnergyBalanceModel* energy_model);
+
+/**
+ * @brief Check if GPU acceleration is currently enabled
+ * @param energy_model Pointer to the EnergyBalanceModel
+ * @return 1 if GPU acceleration is enabled, 0 if not, -1 on error
+ * @note Only available when compiled with CUDA support
+ */
+PYHELIOS_API int isGPUAccelerationEnabled(EnergyBalanceModel* energy_model);
+
 #ifdef __cplusplus
 }
 #endif

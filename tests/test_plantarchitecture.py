@@ -106,15 +106,15 @@ class TestPlantArchitectureNative:
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture initialization failed: {e}")
 
-    def test_plantarchitecture_context_manager(self, context):
+    def test_plantarchitecture_context_manager(self, basic_context):
         """Test PlantArchitecture context manager protocol"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 assert plantarch._plantarch_ptr is not None
-                assert plantarch.context is context
+                assert plantarch.context is basic_context
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
 
@@ -378,13 +378,13 @@ class TestPlantArchitectureIntegration:
         # CRITICAL: Proper cleanup to prevent state contamination
         context.__exit__(None, None, None)
 
-    def test_plantarchitecture_with_context(self, context):
+    def test_plantarchitecture_with_context(self, basic_context):
         """Test PlantArchitecture integration with Context"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 # Test basic functionality
                 models = plantarch.getAvailablePlantModels()
                 assert isinstance(models, list)
@@ -394,13 +394,13 @@ class TestPlantArchitectureIntegration:
                     plantarch.loadPlantModelFromLibrary(models[0])
 
                     # Build plant and check it creates geometry in context
-                    initial_primitive_count = context.getPrimitiveCount()
+                    initial_primitive_count = basic_context.getPrimitiveCount()
 
                     plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 20.0)
                     assert plant_id >= 0  # Plant IDs can be 0 or positive
 
                     # Should have added primitives to context
-                    final_primitive_count = context.getPrimitiveCount()
+                    final_primitive_count = basic_context.getPrimitiveCount()
                     assert final_primitive_count >= initial_primitive_count
 
         except PlantArchitectureError as e:
@@ -652,13 +652,13 @@ class TestPlantArchitectureCollisionIntegration:
         # CRITICAL: Proper cleanup to prevent state contamination
         context.__exit__(None, None, None)
 
-    def test_collision_detection_workflow(self, context):
+    def test_collision_detection_workflow(self, basic_context):
         """Test complete collision detection workflow"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 # Get available models
                 models = plantarch.getAvailablePlantModels()
                 if not models:
@@ -669,7 +669,7 @@ class TestPlantArchitectureCollisionIntegration:
                 plantarch.loadPlantModelFromLibrary(model_name)
 
                 # Create obstacle geometry
-                obstacle_uuid = context.addPatch(center=vec3(2, 2, 1), size=(1, 1))
+                obstacle_uuid = basic_context.addPatch(center=vec3(2, 2, 1), size=(1, 1))
 
                 # Mark as static obstacle for optimization
                 plantarch.setStaticObstacles([obstacle_uuid])
@@ -710,13 +710,13 @@ class TestPlantArchitectureCollisionIntegration:
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
 
-    def test_solid_obstacle_workflow(self, context):
+    def test_solid_obstacle_workflow(self, basic_context):
         """Test solid obstacle avoidance workflow"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 # Get available models
                 models = plantarch.getAvailablePlantModels()
                 if not models:
@@ -727,7 +727,7 @@ class TestPlantArchitectureCollisionIntegration:
                 plantarch.loadPlantModelFromLibrary(model_name)
 
                 # Create solid obstacle (e.g., wall)
-                wall_uuid = context.addPatch(center=vec3(1, 1, 0), size=(2, 2))
+                wall_uuid = basic_context.addPatch(center=vec3(1, 1, 0), size=(2, 2))
 
                 # Enable solid obstacle avoidance
                 plantarch.enableSolidObstacleAvoidance(
@@ -1396,13 +1396,13 @@ class TestPlantArchitectureCustomBuildingIntegration:
         yield context
         context.__exit__(None, None, None)
 
-    def test_custom_plant_building_workflow(self, context):
+    def test_custom_plant_building_workflow(self, basic_context):
         """Test complete custom plant building workflow"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 # Load model for shoot types
                 models = plantarch.getAvailablePlantModels()
                 if not models:
@@ -1415,7 +1415,7 @@ class TestPlantArchitectureCustomBuildingIntegration:
                 plantarch.loadPlantModelFromLibrary('bean')
 
                 # Check initial primitive count
-                initial_count = context.getPrimitiveCount()
+                initial_count = basic_context.getPrimitiveCount()
 
                 # Create empty plant instance
                 plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
@@ -1450,13 +1450,13 @@ class TestPlantArchitectureCustomBuildingIntegration:
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
 
-    def test_custom_vs_library_plant_building(self, context):
+    def test_custom_vs_library_plant_building(self, basic_context):
         """Test that custom building and library building can coexist"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 # Get available models
                 models = plantarch.getAvailablePlantModels()
                 if not models:
@@ -1498,13 +1498,13 @@ class TestPlantArchitectureCustomBuildingIntegration:
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
 
-    def test_complex_branching_structure(self, context):
+    def test_complex_branching_structure(self, basic_context):
         """Test building complex branching structure"""
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
         try:
-            with PlantArchitecture(context) as plantarch:
+            with PlantArchitecture(basic_context) as plantarch:
                 # Load model for shoot types
                 models = plantarch.getAvailablePlantModels()
                 if not models:
@@ -1544,5 +1544,738 @@ class TestPlantArchitectureCustomBuildingIntegration:
                 plant_uuids = plantarch.getAllPlantUUIDs(plant_id)
                 assert isinstance(plant_uuids, list)
 
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+@pytest.mark.native_only
+class TestBuildParameters:
+    """Test build_parameters functionality for customizing library plants"""
+
+    def test_build_instance_with_parameters_single(self, basic_context):
+        """Test building single plant with one parameter override"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                
+                # Build plant with custom trunk_height
+                plant_id = plantarch.buildPlantInstanceFromLibrary(
+                    base_position=vec3(0, 0, 0),
+                    age=30.0,
+                    build_parameters={'trunk_height': 2.5}
+                )
+                
+                assert plant_id >= 0
+                
+                # Verify plant was created
+                obj_ids = plantarch.getAllPlantObjectIDs(plant_id)
+                assert isinstance(obj_ids, list)
+                assert len(obj_ids) > 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_instance_with_parameters_multiple(self, basic_context):
+        """Test building plant with multiple parameter overrides"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("grapevine_VSP")
+                
+                # Build with multiple custom parameters
+                plant_id = plantarch.buildPlantInstanceFromLibrary(
+                    base_position=vec3(0, 0, 0),
+                    age=45.0,
+                    build_parameters={
+                        'cordon_height': 1.8,
+                        'cordon_radius': 1.2
+                    }
+                )
+                
+                assert plant_id >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_instance_without_parameters(self, basic_context):
+        """Test backward compatibility - building without parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Build without parameters (old behavior)
+                plant_id = plantarch.buildPlantInstanceFromLibrary(
+                    base_position=vec3(0, 0, 0),
+                    age=25.0
+                )
+                
+                assert plant_id >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_instance_with_empty_parameters(self, basic_context):
+        """Test building with empty parameter dict"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("soybean")
+                
+                # Build with empty parameters dict
+                plant_id = plantarch.buildPlantInstanceFromLibrary(
+                    base_position=vec3(0, 0, 0),
+                    age=20.0,
+                    build_parameters={}
+                )
+                
+                assert plant_id >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_canopy_with_parameters_single(self, basic_context):
+        """Test building canopy with parameter override"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                
+                # Build canopy with custom parameter
+                plant_ids = plantarch.buildPlantCanopyFromLibrary(
+                    canopy_center=vec3(0, 0, 0),
+                    plant_spacing=vec2(1.0, 1.0),
+                    plant_count=int2(3, 2),
+                    age=30.0,
+                    build_parameters={'trunk_height': 2.0}
+                )
+                
+                assert isinstance(plant_ids, list)
+                assert len(plant_ids) == 6  # 3x2
+                assert all(pid >= 0 for pid in plant_ids)
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_canopy_with_parameters_multiple(self, basic_context):
+        """Test building canopy with multiple parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("grapevine_VSP")
+                
+                # Build canopy with multiple custom parameters
+                plant_ids = plantarch.buildPlantCanopyFromLibrary(
+                    canopy_center=vec3(0, 0, 0),
+                    plant_spacing=vec2(1.5, 2.0),
+                    plant_count=int2(2, 2),
+                    age=45.0,
+                    build_parameters={
+                        'cordon_height': 1.8,
+                        'cordon_radius': 1.5
+                    }
+                )
+                
+                assert isinstance(plant_ids, list)
+                assert len(plant_ids) == 4  # 2x2
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_canopy_without_parameters(self, basic_context):
+        """Test backward compatibility - building canopy without parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Build without parameters (old behavior)
+                plant_ids = plantarch.buildPlantCanopyFromLibrary(
+                    canopy_center=vec3(0, 0, 0),
+                    plant_spacing=vec2(0.5, 0.5),
+                    plant_count=int2(2, 2),
+                    age=20.0
+                )
+                
+                assert isinstance(plant_ids, list)
+                assert len(plant_ids) == 4
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_parameters_validation_not_dict(self, basic_context):
+        """Test validation rejects non-dict build_parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Should raise ValueError for non-dict
+                with pytest.raises(ValueError, match="build_parameters must be a dict"):
+                    plantarch.buildPlantInstanceFromLibrary(
+                        base_position=vec3(0, 0, 0),
+                        age=20.0,
+                        build_parameters="invalid"
+                    )
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_parameters_validation_non_string_keys(self, basic_context):
+        """Test validation rejects non-string keys"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Should raise ValueError for non-string keys
+                with pytest.raises(ValueError, match="keys must be strings"):
+                    plantarch.buildPlantInstanceFromLibrary(
+                        base_position=vec3(0, 0, 0),
+                        age=20.0,
+                        build_parameters={123: 2.5}
+                    )
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_parameters_validation_non_numeric_values(self, basic_context):
+        """Test validation rejects non-numeric values"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Should raise ValueError for non-numeric values
+                with pytest.raises(ValueError, match="values must be numeric"):
+                    plantarch.buildPlantInstanceFromLibrary(
+                        base_position=vec3(0, 0, 0),
+                        age=20.0,
+                        build_parameters={'trunk_height': "not_a_number"}
+                    )
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_parameters_with_int_values(self, basic_context):
+        """Test that integer parameter values are accepted"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                
+                # Integer values should be accepted
+                plant_id = plantarch.buildPlantInstanceFromLibrary(
+                    base_position=vec3(0, 0, 0),
+                    age=30.0,
+                    build_parameters={'trunk_height': 2}  # int instead of float
+                )
+                
+                assert plant_id >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_build_parameters_with_float_values(self, basic_context):
+        """Test that float parameter values are accepted"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                
+                # Float values should be accepted
+                plant_id = plantarch.buildPlantInstanceFromLibrary(
+                    base_position=vec3(0, 0, 0),
+                    age=30.0,
+                    build_parameters={'trunk_height': 2.5}  # float
+                )
+                
+                assert plant_id >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_canopy_build_parameters_validation(self, basic_context):
+        """Test validation for canopy building with invalid parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Should raise ValueError for non-dict
+                with pytest.raises(ValueError, match="build_parameters must be a dict"):
+                    plantarch.buildPlantCanopyFromLibrary(
+                        canopy_center=vec3(0, 0, 0),
+                        plant_spacing=vec2(0.5, 0.5),
+                        plant_count=int2(2, 2),
+                        age=20.0,
+                        build_parameters=[1, 2, 3]  # list instead of dict
+                    )
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+
+
+@pytest.mark.native_only  
+class TestShootParameters:
+    """Test shoot parameter query and modification functionality"""
+
+    def test_get_shoot_parameters(self, basic_context):
+        """Test querying shoot parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+
+                # Get parameters for bean shoot type
+                params = plantarch.getCurrentShootParameters("unifoliate")
+
+                assert isinstance(params, dict)
+                # Check for key parameters
+                assert 'max_nodes' in params
+                assert 'insertion_angle_tip' in params
+                assert 'phyllochron_min' in params
+
+                # Check RandomParameter structure
+                assert isinstance(params['max_nodes'], dict)
+                assert 'distribution' in params['max_nodes']
+                assert 'parameters' in params['max_nodes']
+
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_roundtrip_modification(self, basic_context):
+        """Test query -> modify -> define -> query cycle"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+
+                # Get original parameters
+                orig_params = plantarch.getCurrentShootParameters("unifoliate")
+                
+                # Modify a parameter
+                modified_params = orig_params.copy()
+                modified_params['max_nodes'] = {
+                    'distribution': 'constant',
+                    'parameters': [20.0]
+                }
+                
+                # Define new shoot type
+                plantarch.defineShootType("CustomStem", modified_params)
+                
+                # Query back and verify
+                custom_params = plantarch.getCurrentShootParameters("CustomStem")
+                assert custom_params['max_nodes']['parameters'][0] == 20.0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_modify_multiple_parameters(self, basic_context):
+        """Test modifying multiple shoot parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+
+                params = plantarch.getCurrentShootParameters("unifoliate")
+                
+                # Modify multiple parameters
+                params['max_nodes'] = {'distribution': 'constant', 'parameters': [25.0]}
+                params['insertion_angle_tip'] = {'distribution': 'uniform', 'parameters': [40.0, 50.0]}
+                params['gravitropic_curvature'] = {'distribution': 'normal', 'parameters': [0.5, 0.1]}
+                
+                # Define new type
+                plantarch.defineShootType("ModifiedStem", params)
+                
+                # Verify
+                verified = plantarch.getCurrentShootParameters("ModifiedStem")
+                assert verified['max_nodes']['parameters'][0] == 25.0
+                assert verified['insertion_angle_tip']['distribution'] == 'uniform'
+                assert len(verified['insertion_angle_tip']['parameters']) == 2
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_get_parameters_invalid_shoot_type(self, basic_context):
+        """Test error handling for invalid shoot type"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Should raise error for non-existent shoot type
+                with pytest.raises(PlantArchitectureError):
+                    plantarch.getCurrentShootParameters("NonExistentShootType")
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_define_shoot_type_validation(self, basic_context):
+        """Test parameter validation for defineShootType"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Empty label
+                with pytest.raises(ValueError, match="cannot be empty"):
+                    plantarch.defineShootType("", {})
+                
+                # Non-dict parameters  
+                with pytest.raises(ValueError, match="must be a dict"):
+                    plantarch.defineShootType("Test", "not_a_dict")
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_boolean_parameters(self, basic_context):
+        """Test modifying boolean shoot parameters"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+
+                params = plantarch.getCurrentShootParameters("mainstem")
+                
+                # Modify boolean flags
+                params['determinate_shoot_growth'] = True
+                params['flowers_require_dormancy'] = False
+                
+                plantarch.defineShootType("DeterminateStem", params)
+                
+                # Verify
+                verified = plantarch.getCurrentShootParameters("DeterminateStem")
+                assert verified['determinate_shoot_growth'] == True
+                assert verified['flowers_require_dormancy'] == False
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+
+@pytest.mark.unit
+class TestRandomParameterHelpers:
+    """Test RandomParameter and RandomParameterInt helper classes"""
+
+    def test_random_parameter_constant(self):
+        """Test RandomParameter.constant()"""
+        from pyhelios import RandomParameter
+        
+        param = RandomParameter.constant(45.0)
+        assert param == {'distribution': 'constant', 'parameters': [45.0]}
+
+    def test_random_parameter_uniform(self):
+        """Test RandomParameter.uniform()"""
+        from pyhelios import RandomParameter
+        
+        param = RandomParameter.uniform(40.0, 50.0)
+        assert param['distribution'] == 'uniform'
+        assert param['parameters'] == [40.0, 50.0]
+
+    def test_random_parameter_uniform_validation(self):
+        """Test uniform distribution validation"""
+        from pyhelios import RandomParameter
+        
+        with pytest.raises(ValueError, match="min_val.*must be.*max_val"):
+            RandomParameter.uniform(50.0, 40.0)
+
+    def test_random_parameter_normal(self):
+        """Test RandomParameter.normal()"""
+        from pyhelios import RandomParameter
+        
+        param = RandomParameter.normal(45.0, 5.0)
+        assert param['distribution'] == 'normal'
+        assert param['parameters'] == [45.0, 5.0]
+
+    def test_random_parameter_normal_validation(self):
+        """Test normal distribution validation"""
+        from pyhelios import RandomParameter
+        
+        with pytest.raises(ValueError, match="std_dev.*must be"):
+            RandomParameter.normal(45.0, -1.0)
+
+    def test_random_parameter_weibull(self):
+        """Test RandomParameter.weibull()"""
+        from pyhelios import RandomParameter
+        
+        param = RandomParameter.weibull(2.0, 50.0)
+        assert param['distribution'] == 'weibull'
+        assert param['parameters'] == [2.0, 50.0]
+
+    def test_random_parameter_weibull_validation(self):
+        """Test Weibull distribution validation"""
+        from pyhelios import RandomParameter
+        
+        with pytest.raises(ValueError, match="shape.*must be"):
+            RandomParameter.weibull(0.0, 50.0)
+        
+        with pytest.raises(ValueError, match="scale.*must be"):
+            RandomParameter.weibull(2.0, 0.0)
+
+    def test_random_parameter_int_constant(self):
+        """Test RandomParameterInt.constant()"""
+        from pyhelios import RandomParameterInt
+        
+        param = RandomParameterInt.constant(15)
+        assert param == {'distribution': 'constant', 'parameters': [15.0]}
+
+    def test_random_parameter_int_uniform(self):
+        """Test RandomParameterInt.uniform()"""
+        from pyhelios import RandomParameterInt
+        
+        param = RandomParameterInt.uniform(10, 20)
+        assert param['distribution'] == 'uniform'
+        assert param['parameters'] == [10.0, 20.0]
+
+    def test_random_parameter_int_uniform_validation(self):
+        """Test integer uniform validation"""
+        from pyhelios import RandomParameterInt
+        
+        with pytest.raises(ValueError, match="min_val.*must be.*max_val"):
+            RandomParameterInt.uniform(20, 10)
+
+    def test_random_parameter_int_discrete(self):
+        """Test RandomParameterInt.discrete()"""
+        from pyhelios import RandomParameterInt
+        
+        param = RandomParameterInt.discrete([1, 2, 3, 5])
+        assert param['distribution'] == 'discretevalues'
+        assert param['parameters'] == [1.0, 2.0, 3.0, 5.0]
+
+    def test_random_parameter_int_discrete_validation(self):
+        """Test discrete distribution validation"""
+        from pyhelios import RandomParameterInt
+        
+        with pytest.raises(ValueError, match="cannot be empty"):
+            RandomParameterInt.discrete([])
+
+
+@pytest.mark.native_only
+class TestRandomParameterIntegration:
+    """Test RandomParameter helpers with actual plant building"""
+
+    def test_uniform_distribution_in_shoot_params(self, basic_context):
+        """Test using RandomParameter.uniform() in shoot parameters"""
+        try:
+            from pyhelios import RandomParameter
+            
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                params = plantarch.getCurrentShootParameters("unifoliate")
+                
+                # Use helper to create uniform distribution
+                params['insertion_angle_tip'] = RandomParameter.uniform(40.0, 50.0)
+                params['gravitropic_curvature'] = RandomParameter.normal(0.5, 0.1)
+                
+                # Define and verify
+                plantarch.defineShootType("VariableShoot", params)
+                
+                verified = plantarch.getCurrentShootParameters("VariableShoot")
+                assert verified['insertion_angle_tip']['distribution'] == 'uniform'
+                assert verified['insertion_angle_tip']['parameters'] == [40.0, 50.0]
+                assert verified['gravitropic_curvature']['distribution'] == 'normal'
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_integer_distributions(self, basic_context):
+        """Test RandomParameterInt helpers"""
+        try:
+            from pyhelios import RandomParameterInt
+            
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                params = plantarch.getCurrentShootParameters("unifoliate")
+                
+                # Use integer helpers
+                params['max_nodes'] = RandomParameterInt.uniform(15, 25)
+                params['max_nodes_per_season'] = RandomParameterInt.constant(20)
+                
+                plantarch.defineShootType("VariableNodeShoot", params)
+                
+                verified = plantarch.getCurrentShootParameters("VariableNodeShoot")
+                assert verified['max_nodes']['distribution'] == 'uniform'
+                assert verified['max_nodes']['parameters'] == [15.0, 25.0]
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+
+@pytest.mark.native_only
+class TestPlantStateQueries:
+    """Test plant state query methods"""
+
+    def test_get_plant_age(self, basic_context):
+        """Test getPlantAge method"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                age = 30.0
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age)
+                
+                retrieved_age = plantarch.getPlantAge(plant_id)
+                assert retrieved_age == age
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_get_plant_height(self, basic_context):
+        """Test getPlantHeight method"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 25.0)
+                
+                height = plantarch.getPlantHeight(plant_id)
+                assert isinstance(height, float)
+                assert height >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_get_plant_leaf_area(self, basic_context):
+        """Test getPlantLeafArea method"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("soybean")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 20.0)
+                
+                leaf_area = plantarch.getPlantLeafArea(plant_id)
+                assert isinstance(leaf_area, float)
+                assert leaf_area >= 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_query_methods_validation(self, basic_context):
+        """Test validation for query methods"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+                
+                # Negative plant ID should raise ValueError
+                with pytest.raises(ValueError, match="must be non-negative"):
+                    plantarch.getPlantAge(-1)
+                
+                with pytest.raises(ValueError, match="must be non-negative"):
+                    plantarch.getPlantHeight(-1)
+                
+                with pytest.raises(ValueError, match="must be non-negative"):
+                    plantarch.getPlantLeafArea(-1)
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_multiple_plants_queries(self, basic_context):
+        """Test queries work for multiple plants"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                # Build multiple plants with different ages
+                plant1 = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 20.0)
+                plant2 = plantarch.buildPlantInstanceFromLibrary(vec3(1, 0, 0), 30.0)
+                
+                # Verify each has correct age
+                assert plantarch.getPlantAge(plant1) == 20.0
+                assert plantarch.getPlantAge(plant2) == 30.0
+                
+                # Both should have positive height
+                assert plantarch.getPlantHeight(plant1) > 0
+                assert plantarch.getPlantHeight(plant2) > 0
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+
+@pytest.mark.native_only
+class TestPhenologicalControl:
+    """Test phenological control methods"""
+
+    def test_set_phenological_thresholds_basic(self, basic_context):
+        """Test setting phenological thresholds for a plant"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 10.0)
+                
+                # Set phenological timing
+                plantarch.setPlantPhenologicalThresholds(
+                    plant_id=plant_id,
+                    time_to_dormancy_break=0,
+                    time_to_flower_initiation=30,
+                    time_to_flower_opening=40,
+                    time_to_fruit_set=50,
+                    time_to_fruit_maturity=80,
+                    time_to_dormancy=120,
+                    max_leaf_lifespan=90
+                )
+                
+                # Method should complete without error
+                assert True
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_set_phenological_thresholds_perennial(self, basic_context):
+        """Test phenology for perennial fruit tree"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("apple")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365.0)
+                
+                # Set typical apple phenology
+                plantarch.setPlantPhenologicalThresholds(
+                    plant_id=plant_id,
+                    time_to_dormancy_break=60,
+                    time_to_flower_initiation=90,
+                    time_to_flower_opening=105,
+                    time_to_fruit_set=120,
+                    time_to_fruit_maturity=200,
+                    time_to_dormancy=280,
+                    max_leaf_lifespan=180
+                )
+                
+                assert True
+                
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_phenology_validation(self, basic_context):
+        """Test validation for phenological methods"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+                
+                # Negative plant ID should raise ValueError
+                with pytest.raises(ValueError, match="must be non-negative"):
+                    plantarch.setPlantPhenologicalThresholds(
+                        plant_id=-1,
+                        time_to_dormancy_break=0,
+                        time_to_flower_initiation=30,
+                        time_to_flower_opening=40,
+                        time_to_fruit_set=50,
+                        time_to_fruit_maturity=80,
+                        time_to_dormancy=120
+                    )
+                    
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_phenology_with_default_leaf_lifespan(self, basic_context):
+        """Test phenology with default max_leaf_lifespan"""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("bean")
+                
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 10.0)
+                
+                # Use default max_leaf_lifespan
+                plantarch.setPlantPhenologicalThresholds(
+                    plant_id=plant_id,
+                    time_to_dormancy_break=0,
+                    time_to_flower_initiation=25,
+                    time_to_flower_opening=30,
+                    time_to_fruit_set=35,
+                    time_to_fruit_maturity=60,
+                    time_to_dormancy=80
+                    # max_leaf_lifespan uses default 1e6
+                )
+                
+                assert True
+                
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")

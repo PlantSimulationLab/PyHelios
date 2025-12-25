@@ -118,7 +118,7 @@ except (AttributeError, ImportError):
     PhotosynthesisModelError = None
 
 try:
-    from .PlantArchitecture import PlantArchitecture, PlantArchitectureError
+    from .PlantArchitecture import PlantArchitecture, PlantArchitectureError, RandomParameter, RandomParameterInt
 except (AttributeError, ImportError):
     # PlantArchitecture functions not available in current library
     PlantArchitecture = None

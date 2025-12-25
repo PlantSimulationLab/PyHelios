@@ -93,11 +93,11 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
     
     "energybalance": PluginMetadata(
         name="energybalance",
-        description="Plant energy balance calculations and thermal modeling",
-        system_dependencies=["cuda"],
+        description="Plant energy balance calculations and thermal modeling with optional GPU acceleration",
+        system_dependencies=[],  # CUDA is optional - uses three-tier execution: GPU (CUDA), OpenMP (parallel CPU), or serial CPU
         plugin_dependencies=[],
-        platforms=["windows", "linux"],  # macOS does not support NVIDIA GPUs/CUDA
-        gpu_required=True,
+        platforms=["windows", "linux", "macos"],  # Now supports all platforms with CPU fallback
+        gpu_required=False,  # GPU acceleration is optional
         optional=True,
         test_symbols=["createEnergyBalanceModel", "runEnergyBalance"]
     ),

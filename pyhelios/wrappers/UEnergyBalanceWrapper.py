@@ -125,8 +125,8 @@ try:
     helios_lib.printDefaultValueReport.errcheck = _check_error
 
     helios_lib.printDefaultValueReportForUUIDs.argtypes = [
-        ctypes.POINTER(UEnergyBalanceModel), 
-        ctypes.POINTER(ctypes.c_uint), 
+        ctypes.POINTER(UEnergyBalanceModel),
+        ctypes.POINTER(ctypes.c_uint),
         ctypes.c_uint
     ]
     helios_lib.printDefaultValueReportForUUIDs.restype = None
@@ -138,6 +138,26 @@ try:
 except AttributeError:
     # EnergyBalanceModel functions not available in current native library
     _ENERGY_BALANCE_FUNCTIONS_AVAILABLE = False
+
+# GPU acceleration control (optional - only available when compiled with CUDA)
+_GPU_ACCELERATION_AVAILABLE = False
+try:
+    helios_lib.enableGPUAcceleration.argtypes = [ctypes.POINTER(UEnergyBalanceModel)]
+    helios_lib.enableGPUAcceleration.restype = None
+    helios_lib.enableGPUAcceleration.errcheck = _check_error
+
+    helios_lib.disableGPUAcceleration.argtypes = [ctypes.POINTER(UEnergyBalanceModel)]
+    helios_lib.disableGPUAcceleration.restype = None
+    helios_lib.disableGPUAcceleration.errcheck = _check_error
+
+    helios_lib.isGPUAccelerationEnabled.argtypes = [ctypes.POINTER(UEnergyBalanceModel)]
+    helios_lib.isGPUAccelerationEnabled.restype = ctypes.c_int
+    helios_lib.isGPUAccelerationEnabled.errcheck = _check_error
+
+    _GPU_ACCELERATION_AVAILABLE = True
+except AttributeError:
+    # GPU acceleration functions not available (library not compiled with CUDA)
+    _GPU_ACCELERATION_AVAILABLE = False
 
 
 # Python wrapper functions with validation and mock mode support
@@ -356,6 +376,56 @@ def printDefaultValueReportForUUIDs(energy_model: ctypes.POINTER(UEnergyBalanceM
     # Convert to ctypes array
     uuid_array = (ctypes.c_uint * len(uuids))(*uuids)
     helios_lib.printDefaultValueReportForUUIDs(energy_model, uuid_array, len(uuids))
+
+
+# GPU acceleration control functions
+
+def enableGPUAcceleration(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> None:
+    """Enable GPU acceleration for energy balance calculations"""
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("EnergyBalanceModel functions not available. Rebuild with energybalance enabled.")
+    if not _GPU_ACCELERATION_AVAILABLE:
+        raise NotImplementedError(
+            "GPU acceleration not available - library not compiled with CUDA support. "
+            "Energy balance will use CPU mode with OpenMP parallelization."
+        )
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+
+    helios_lib.enableGPUAcceleration(energy_model)
+
+
+def disableGPUAcceleration(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> None:
+    """Disable GPU acceleration and force CPU mode"""
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("EnergyBalanceModel functions not available. Rebuild with energybalance enabled.")
+    if not _GPU_ACCELERATION_AVAILABLE:
+        # No-op if GPU acceleration not available - already in CPU mode
+        return
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+
+    helios_lib.disableGPUAcceleration(energy_model)
+
+
+def isGPUAccelerationEnabled(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> bool:
+    """Check if GPU acceleration is currently enabled"""
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("EnergyBalanceModel functions not available. Rebuild with energybalance enabled.")
+    if not _GPU_ACCELERATION_AVAILABLE:
+        return False  # GPU never enabled without CUDA
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+
+    result = helios_lib.isGPUAccelerationEnabled(energy_model)
+    if result < 0:
+        raise RuntimeError("Error checking GPU acceleration status")
+    return result == 1
+
+
+def isGPUAccelerationAvailable() -> bool:
+    """Check if GPU acceleration functions are available in this build"""
+    return _GPU_ACCELERATION_AVAILABLE
 
 
 # Mock mode functions for development

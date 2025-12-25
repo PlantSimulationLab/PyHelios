@@ -21,8 +21,8 @@ PYHELIOS_API void destroyPlantArchitecture(PlantArchitecture* plantarch);
 
 // Plant library functions
 PYHELIOS_API int loadPlantModelFromLibrary(PlantArchitecture* plantarch, const char* plant_label);
-PYHELIOS_API unsigned int buildPlantInstanceFromLibrary(PlantArchitecture* plantarch, float* base_position, float age);
-PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, unsigned int** plant_ids, int* num_plants);
+PYHELIOS_API unsigned int buildPlantInstanceFromLibrary(PlantArchitecture* plantarch, float* base_position, float age, char** param_keys, float* param_values, int param_count);
+PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params);
 PYHELIOS_API int advanceTime(PlantArchitecture* plantarch, float dt);
 
 // Custom plant building functions
@@ -55,6 +55,18 @@ PYHELIOS_API int writePlantMeshVertices(PlantArchitecture* plantarch, unsigned i
 PYHELIOS_API int writePlantStructureXML(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
 PYHELIOS_API int writeQSMCylinderFile(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
 PYHELIOS_API int readPlantStructureXML(PlantArchitecture* plantarch, const char* filename, bool quiet, unsigned int** plant_ids, int* num_plants);
+
+// Parameter management functions
+PYHELIOS_API const char* getCurrentShootParametersJSON(PlantArchitecture* plantarch, const char* shoot_type_label);
+PYHELIOS_API int defineShootTypeFromJSON(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, const char* json_params);
+
+// Phenological control functions
+PYHELIOS_API int setPlantPhenologicalThresholds(PlantArchitecture* plantarch, unsigned int plantID, float time_to_dormancy_break, float time_to_flower_initiation, float time_to_flower_opening, float time_to_fruit_set, float time_to_fruit_maturity, float time_to_dormancy, float max_leaf_lifespan);
+
+// Plant state query functions
+PYHELIOS_API float getPlantAge(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API float getPlantHeight(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API float sumPlantLeafArea(PlantArchitecture* plantarch, unsigned int plantID);
 
 #ifdef __cplusplus
 }

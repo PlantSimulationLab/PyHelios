@@ -1,5 +1,17 @@
 # Changelog
 
+# [v0.1.13] 2025-12-25
+
+- Updated helios-core to v1.3.61
+
+## Energy Balance
+- **CUDA is now optional**: Plugin uses three-tier execution - GPU (CUDA), OpenMP (parallel CPU), or serial CPU fallback
+- Added GPU acceleration control methods: `enableGPUAcceleration()`, `disableGPUAcceleration()`, `isGPUAccelerationEnabled()`, and `isGPUAccelerationAvailable()`
+- OpenMP CPU mode is recommended for most workloads without GPU
+
+## Plant Architecture
+- Added capability to modify parameters for library plants or build custom plants
+
 # [v0.1.12] 2025-12-15
 
 - Many updates to documentation, transitioning toward consistency with c++ docs

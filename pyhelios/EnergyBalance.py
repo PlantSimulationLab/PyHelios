@@ -411,12 +411,104 @@ class EnergyBalanceModel:
     def is_available(self) -> bool:
         """
         Check if EnergyBalanceModel is available in current build.
-        
+
         Returns:
             True if plugin is available, False otherwise
         """
         registry = get_plugin_registry()
         return registry.is_plugin_available('energybalance')
+
+    def enableGPUAcceleration(self) -> None:
+        """
+        Enable GPU acceleration for energy balance calculations.
+
+        Attempts to enable GPU acceleration using CUDA. If GPU is not available at runtime,
+        this will raise an error. The energy balance model will use three-tier execution:
+        GPU (CUDA), OpenMP (parallel CPU), or serial CPU fallback.
+
+        Raises:
+            NotImplementedError: If library not compiled with CUDA support
+            EnergyBalanceModelError: If GPU acceleration cannot be enabled
+
+        Example:
+            >>> with EnergyBalanceModel(context) as energy_balance:
+            ...     try:
+            ...         energy_balance.enableGPUAcceleration()
+            ...         print("GPU acceleration enabled")
+            ...     except NotImplementedError:
+            ...         print("GPU not available - using CPU mode")
+
+        Note:
+            Only available when PyHelios is compiled with CUDA support.
+            OpenMP CPU mode is recommended for most workloads without GPU.
+        """
+        try:
+            energy_wrapper.enableGPUAcceleration(self.energy_model)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to enable GPU acceleration: {e}")
+
+    def disableGPUAcceleration(self) -> None:
+        """
+        Disable GPU acceleration and force CPU mode.
+
+        Forces the use of OpenMP CPU implementation even if GPU is available.
+        Useful for testing, benchmarking, or when CPU performance is preferred.
+
+        Raises:
+            EnergyBalanceModelError: If operation fails
+
+        Example:
+            >>> energy_balance.disableGPUAcceleration()
+
+        Note:
+            Only available when PyHelios is compiled with CUDA support.
+            Has no effect if GPU support is not compiled in.
+        """
+        try:
+            energy_wrapper.disableGPUAcceleration(self.energy_model)
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to disable GPU acceleration: {e}")
+
+    def isGPUAccelerationEnabled(self) -> bool:
+        """
+        Check if GPU acceleration is currently enabled.
+
+        Returns:
+            True if GPU acceleration is enabled and available, False otherwise
+
+        Example:
+            >>> if energy_balance.isGPUAccelerationEnabled():
+            ...     print("Using GPU acceleration")
+            ... else:
+            ...     print("Using CPU mode")
+
+        Note:
+            Returns False if library not compiled with CUDA support.
+        """
+        try:
+            return energy_wrapper.isGPUAccelerationEnabled(self.energy_model)
+        except NotImplementedError:
+            return False
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to check GPU acceleration status: {e}")
+
+    @staticmethod
+    def isGPUAccelerationAvailable() -> bool:
+        """
+        Check if GPU acceleration functions are available in this build.
+
+        Returns:
+            True if GPU acceleration support is compiled in, False otherwise
+
+        Example:
+            >>> if EnergyBalanceModel.isGPUAccelerationAvailable():
+            ...     print("GPU acceleration supported")
+            ... else:
+            ...     print("GPU acceleration not compiled in - CPU mode only")
+        """
+        return energy_wrapper.isGPUAccelerationAvailable()
 
 
 # Convenience function

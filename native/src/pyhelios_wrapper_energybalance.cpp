@@ -385,7 +385,76 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::printDefaultValueReport): Unknown error printing default value report for UUIDs.");
         }
     }
-    
+
+    //=============================================================================
+    // GPU Acceleration Control (Only available when compiled with CUDA)
+    //=============================================================================
+
+    PYHELIOS_API void enableGPUAcceleration(EnergyBalanceModel* energy_model) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+
+#ifdef HELIOS_CUDA_AVAILABLE
+            energy_model->enableGPUAcceleration();
+#else
+            setError(PYHELIOS_ERROR_RUNTIME, "GPU acceleration not available - library not compiled with CUDA support");
+#endif
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::enableGPUAcceleration): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::enableGPUAcceleration): Unknown error enabling GPU acceleration.");
+        }
+    }
+
+    PYHELIOS_API void disableGPUAcceleration(EnergyBalanceModel* energy_model) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+
+#ifdef HELIOS_CUDA_AVAILABLE
+            energy_model->disableGPUAcceleration();
+#else
+            // No-op if CUDA not available - already running in CPU mode
+#endif
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::disableGPUAcceleration): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::disableGPUAcceleration): Unknown error disabling GPU acceleration.");
+        }
+    }
+
+    PYHELIOS_API int isGPUAccelerationEnabled(EnergyBalanceModel* energy_model) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return -1;
+            }
+
+#ifdef HELIOS_CUDA_AVAILABLE
+            return energy_model->isGPUAccelerationEnabled() ? 1 : 0;
+#else
+            return 0;  // GPU acceleration never enabled without CUDA
+#endif
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::isGPUAccelerationEnabled): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::isGPUAccelerationEnabled): Unknown error checking GPU acceleration status.");
+            return -1;
+        }
+    }
+
 } //extern "C"
 
 #endif //ENERGYBALANCE_PLUGIN_AVAILABLE

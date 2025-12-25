@@ -6,12 +6,184 @@
 #include "Context.h"
 #include <string>
 #include <vector>
+#include <map>
 #include <exception>
 #include <cstring>
 
 #ifdef PLANTARCHITECTURE_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_plantarchitecture.h"
 #include "PlantArchitecture.h"
+#include "../../helios-core/plugins/radiation/lib/json/json.hpp"
+
+// Helper functions for JSON serialization (outside extern "C" - internal C++ helpers)
+namespace {
+
+nlohmann::json randomParameterFloatToJSON(RandomParameter_float param) {
+    nlohmann::json j;
+    j["distribution"] = param.distribution;
+
+    if (param.distribution == "constant") {
+        // For constant, get the value using val()
+        j["parameters"] = std::vector<float>{param.val()};
+    } else {
+        j["parameters"] = param.distribution_parameters;
+    }
+    return j;
+}
+
+nlohmann::json randomParameterIntToJSON(RandomParameter_int param) {
+    nlohmann::json j;
+    j["distribution"] = param.distribution;
+
+    if (param.distribution == "constant") {
+        // For constant, get the value using val()
+        j["parameters"] = std::vector<float>{static_cast<float>(param.val())};
+    } else {
+        // Convert int distribution_parameters to float for JSON
+        std::vector<float> float_params;
+        for (int p : param.distribution_parameters) {
+            float_params.push_back(static_cast<float>(p));
+        }
+        j["parameters"] = float_params;
+    }
+    return j;
+}
+
+RandomParameter_float jsonToRandomParameterFloat(const nlohmann::json& j, std::minstd_rand0* generator) {
+    RandomParameter_float param;
+    param.initialize(generator);
+    std::string dist = j["distribution"];
+
+    if (dist == "constant") {
+        std::vector<float> params = j["parameters"];
+        if (!params.empty()) {
+            param = params[0];
+        }
+    } else if (dist == "uniform") {
+        std::vector<float> params = j["parameters"];
+        if (params.size() >= 2) {
+            param.uniformDistribution(params[0], params[1]);
+        }
+    } else if (dist == "normal") {
+        std::vector<float> params = j["parameters"];
+        if (params.size() >= 2) {
+            param.normalDistribution(params[0], params[1]);
+        }
+    } else if (dist == "weibull") {
+        std::vector<float> params = j["parameters"];
+        if (params.size() >= 2) {
+            param.weibullDistribution(params[0], params[1]);
+        }
+    }
+
+    return param;
+}
+
+RandomParameter_int jsonToRandomParameterInt(const nlohmann::json& j, std::minstd_rand0* generator) {
+    RandomParameter_int param;
+    param.initialize(generator);
+    std::string dist = j["distribution"];
+
+    if (dist == "constant") {
+        std::vector<float> params = j["parameters"];
+        if (!params.empty()) {
+            param = static_cast<int>(params[0]);
+        }
+    } else if (dist == "uniform") {
+        std::vector<float> params = j["parameters"];
+        if (params.size() >= 2) {
+            param.uniformDistribution(static_cast<int>(params[0]), static_cast<int>(params[1]));
+        }
+    } else if (dist == "discretevalues") {
+        std::vector<float> params = j["parameters"];
+        std::vector<int> int_params;
+        for (float p : params) {
+            int_params.push_back(static_cast<int>(p));
+        }
+        param.discreteValues(int_params);
+    }
+
+    return param;
+}
+
+nlohmann::json shootParametersToJSON(const ShootParameters& params) {
+    nlohmann::json j;
+
+    // Geometric parameters
+    j["max_nodes"] = randomParameterIntToJSON(params.max_nodes);
+    j["max_nodes_per_season"] = randomParameterIntToJSON(params.max_nodes_per_season);
+    j["girth_area_factor"] = randomParameterFloatToJSON(params.girth_area_factor);
+    j["insertion_angle_tip"] = randomParameterFloatToJSON(params.insertion_angle_tip);
+    j["insertion_angle_decay_rate"] = randomParameterFloatToJSON(params.insertion_angle_decay_rate);
+    j["internode_length_max"] = randomParameterFloatToJSON(params.internode_length_max);
+    j["internode_length_min"] = randomParameterFloatToJSON(params.internode_length_min);
+    j["internode_length_decay_rate"] = randomParameterFloatToJSON(params.internode_length_decay_rate);
+    j["base_roll"] = randomParameterFloatToJSON(params.base_roll);
+    j["base_yaw"] = randomParameterFloatToJSON(params.base_yaw);
+    j["gravitropic_curvature"] = randomParameterFloatToJSON(params.gravitropic_curvature);
+    j["tortuosity"] = randomParameterFloatToJSON(params.tortuosity);
+
+    // Growth parameters
+    j["phyllochron_min"] = randomParameterFloatToJSON(params.phyllochron_min);
+    j["elongation_rate_max"] = randomParameterFloatToJSON(params.elongation_rate_max);
+    j["vegetative_bud_break_probability_min"] = randomParameterFloatToJSON(params.vegetative_bud_break_probability_min);
+    j["vegetative_bud_break_probability_decay_rate"] = randomParameterFloatToJSON(params.vegetative_bud_break_probability_decay_rate);
+    j["max_terminal_floral_buds"] = randomParameterIntToJSON(params.max_terminal_floral_buds);
+    j["flower_bud_break_probability"] = randomParameterFloatToJSON(params.flower_bud_break_probability);
+    j["fruit_set_probability"] = randomParameterFloatToJSON(params.fruit_set_probability);
+    j["vegetative_bud_break_time"] = randomParameterFloatToJSON(params.vegetative_bud_break_time);
+
+    // Boolean flags
+    j["flowers_require_dormancy"] = params.flowers_require_dormancy;
+    j["growth_requires_dormancy"] = params.growth_requires_dormancy;
+    j["determinate_shoot_growth"] = params.determinate_shoot_growth;
+
+    return j;
+}
+
+ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0* generator) {
+    ShootParameters params(generator);
+
+    // Geometric parameters
+    if (j.contains("max_nodes")) params.max_nodes = jsonToRandomParameterInt(j["max_nodes"], generator);
+    if (j.contains("max_nodes_per_season")) params.max_nodes_per_season = jsonToRandomParameterInt(j["max_nodes_per_season"], generator);
+    if (j.contains("girth_area_factor")) params.girth_area_factor = jsonToRandomParameterFloat(j["girth_area_factor"], generator);
+    if (j.contains("insertion_angle_tip")) params.insertion_angle_tip = jsonToRandomParameterFloat(j["insertion_angle_tip"], generator);
+    if (j.contains("insertion_angle_decay_rate")) params.insertion_angle_decay_rate = jsonToRandomParameterFloat(j["insertion_angle_decay_rate"], generator);
+    if (j.contains("internode_length_max")) params.internode_length_max = jsonToRandomParameterFloat(j["internode_length_max"], generator);
+    if (j.contains("internode_length_min")) params.internode_length_min = jsonToRandomParameterFloat(j["internode_length_min"], generator);
+    if (j.contains("internode_length_decay_rate")) params.internode_length_decay_rate = jsonToRandomParameterFloat(j["internode_length_decay_rate"], generator);
+    if (j.contains("base_roll")) params.base_roll = jsonToRandomParameterFloat(j["base_roll"], generator);
+    if (j.contains("base_yaw")) params.base_yaw = jsonToRandomParameterFloat(j["base_yaw"], generator);
+    if (j.contains("gravitropic_curvature")) params.gravitropic_curvature = jsonToRandomParameterFloat(j["gravitropic_curvature"], generator);
+    if (j.contains("tortuosity")) params.tortuosity = jsonToRandomParameterFloat(j["tortuosity"], generator);
+
+    // Growth parameters
+    if (j.contains("phyllochron_min")) params.phyllochron_min = jsonToRandomParameterFloat(j["phyllochron_min"], generator);
+    if (j.contains("elongation_rate_max")) params.elongation_rate_max = jsonToRandomParameterFloat(j["elongation_rate_max"], generator);
+    if (j.contains("vegetative_bud_break_probability_min")) params.vegetative_bud_break_probability_min = jsonToRandomParameterFloat(j["vegetative_bud_break_probability_min"], generator);
+    if (j.contains("vegetative_bud_break_probability_decay_rate")) params.vegetative_bud_break_probability_decay_rate = jsonToRandomParameterFloat(j["vegetative_bud_break_probability_decay_rate"], generator);
+    if (j.contains("max_terminal_floral_buds")) params.max_terminal_floral_buds = jsonToRandomParameterInt(j["max_terminal_floral_buds"], generator);
+    if (j.contains("flower_bud_break_probability")) params.flower_bud_break_probability = jsonToRandomParameterFloat(j["flower_bud_break_probability"], generator);
+    if (j.contains("fruit_set_probability")) params.fruit_set_probability = jsonToRandomParameterFloat(j["fruit_set_probability"], generator);
+    if (j.contains("vegetative_bud_break_time")) params.vegetative_bud_break_time = jsonToRandomParameterFloat(j["vegetative_bud_break_time"], generator);
+
+    // Boolean flags
+    if (j.contains("flowers_require_dormancy")) params.flowers_require_dormancy = j["flowers_require_dormancy"];
+    if (j.contains("growth_requires_dormancy")) params.growth_requires_dormancy = j["growth_requires_dormancy"];
+    if (j.contains("determinate_shoot_growth")) params.determinate_shoot_growth = j["determinate_shoot_growth"];
+
+    // Child shoot types
+    if (j.contains("child_shoot_types")) {
+        std::vector<std::string> labels = j["child_shoot_types"]["labels"];
+        std::vector<float> probs = j["child_shoot_types"]["probabilities"];
+        params.defineChildShootTypes(labels, probs);
+    }
+
+    return params;
+}
+
+} // anonymous namespace
 
 extern "C" {
 
@@ -61,7 +233,7 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API unsigned int buildPlantInstanceFromLibrary(PlantArchitecture* plantarch, float* base_position, float age) {
+    PYHELIOS_API unsigned int buildPlantInstanceFromLibrary(PlantArchitecture* plantarch, float* base_position, float age, char** param_keys, float* param_values, int param_count) {
         try {
             clearError();
             if (!plantarch) {
@@ -74,7 +246,18 @@ extern "C" {
             }
 
             helios::vec3 position(base_position[0], base_position[1], base_position[2]);
-            return plantarch->buildPlantInstanceFromLibrary(position, age);
+
+            // Convert parallel arrays to std::map if parameters provided
+            std::map<std::string, float> build_params;
+            if (param_keys && param_values && param_count > 0) {
+                for (int i = 0; i < param_count; i++) {
+                    if (param_keys[i]) {
+                        build_params[std::string(param_keys[i])] = param_values[i];
+                    }
+                }
+            }
+
+            return plantarch->buildPlantInstanceFromLibrary(position, age, build_params);
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::buildPlantInstanceFromLibrary): ") + e.what());
             return 0;
@@ -84,7 +267,7 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, unsigned int** plant_ids, int* num_plants) {
+    PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params) {
         try {
             clearError();
             if (!plantarch) {
@@ -100,7 +283,17 @@ extern "C" {
             helios::vec2 spacing(plant_spacing[0], plant_spacing[1]);
             helios::int2 count(plant_count[0], plant_count[1]);
 
-            std::vector<uint> plantIDs = plantarch->buildPlantCanopyFromLibrary(center, spacing, count, age);
+            // Convert parallel arrays to std::map if parameters provided
+            std::map<std::string, float> build_params;
+            if (param_keys && param_values && param_count_params > 0) {
+                for (int i = 0; i < param_count_params; i++) {
+                    if (param_keys[i]) {
+                        build_params[std::string(param_keys[i])] = param_values[i];
+                    }
+                }
+            }
+
+            std::vector<uint> plantIDs = plantarch->buildPlantCanopyFromLibrary(center, spacing, count, age, 1.0f, build_params);
 
             // Convert vector to static array for return
             static thread_local std::vector<unsigned int> static_result;
@@ -690,6 +883,161 @@ extern "C" {
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::addChildShoot): Unknown error adding child shoot.");
             return 0;
+        }
+    }
+
+    // Get current shoot parameters as JSON
+    PYHELIOS_API const char* getCurrentShootParametersJSON(PlantArchitecture* plantarch, const char* shoot_type_label) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return nullptr;
+            }
+            if (!shoot_type_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Shoot type label is null");
+                return nullptr;
+            }
+
+            ShootParameters params = plantarch->getCurrentShootParameters(std::string(shoot_type_label));
+            nlohmann::json j = shootParametersToJSON(params);
+
+            static thread_local std::string json_string;
+            json_string = j.dump();
+            return json_string.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getCurrentShootParameters): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getCurrentShootParameters): Unknown error.");
+            return nullptr;
+        }
+    }
+
+    // Phenological control functions
+    PYHELIOS_API int setPlantPhenologicalThresholds(
+        PlantArchitecture* plantarch,
+        unsigned int plantID,
+        float time_to_dormancy_break,
+        float time_to_flower_initiation,
+        float time_to_flower_opening,
+        float time_to_fruit_set,
+        float time_to_fruit_maturity,
+        float time_to_dormancy,
+        float max_leaf_lifespan
+    ) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+
+            plantarch->setPlantPhenologicalThresholds(
+                plantID,
+                time_to_dormancy_break,
+                time_to_flower_initiation,
+                time_to_flower_opening,
+                time_to_fruit_set,
+                time_to_fruit_maturity,
+                time_to_dormancy,
+                max_leaf_lifespan
+            );
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPlantPhenologicalThresholds): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPlantPhenologicalThresholds): Unknown error.");
+            return -1;
+        }
+    }
+
+    // Plant state query functions
+    PYHELIOS_API float getPlantAge(PlantArchitecture* plantarch, unsigned int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1.0f;
+            }
+            return plantarch->getPlantAge(plantID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantAge): ") + e.what());
+            return -1.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantAge): Unknown error.");
+            return -1.0f;
+        }
+    }
+
+    PYHELIOS_API float getPlantHeight(PlantArchitecture* plantarch, unsigned int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1.0f;
+            }
+            return plantarch->getPlantHeight(plantID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantHeight): ") + e.what());
+            return -1.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantHeight): Unknown error.");
+            return -1.0f;
+        }
+    }
+
+    PYHELIOS_API float sumPlantLeafArea(PlantArchitecture* plantarch, unsigned int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1.0f;
+            }
+            return plantarch->sumPlantLeafArea(plantID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::sumPlantLeafArea): ") + e.what());
+            return -1.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::sumPlantLeafArea): Unknown error.");
+            return -1.0f;
+        }
+    }
+
+    // Define shoot type from JSON
+    PYHELIOS_API int defineShootTypeFromJSON(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, const char* json_params) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return -1;
+            }
+            if (!shoot_type_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Shoot type label is null");
+                return -1;
+            }
+            if (!json_params) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "JSON parameters are null");
+                return -1;
+            }
+
+            nlohmann::json j = nlohmann::json::parse(json_params);
+            // Use context's random generator
+            std::minstd_rand0* generator = context->getRandomGenerator();
+            ShootParameters params = jsonToShootParameters(j, generator);
+            plantarch->defineShootType(std::string(shoot_type_label), params);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::defineShootType): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::defineShootType): Unknown error.");
+            return -1;
         }
     }
 

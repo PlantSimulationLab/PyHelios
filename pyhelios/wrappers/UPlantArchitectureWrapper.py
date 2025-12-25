@@ -37,8 +37,11 @@ try:
 
     helios_lib.buildPlantInstanceFromLibrary.argtypes = [
         ctypes.POINTER(UPlantArchitecture),
-        ctypes.POINTER(ctypes.c_float),
-        ctypes.c_float
+        ctypes.POINTER(ctypes.c_float),  # base_position
+        ctypes.c_float,                   # age
+        ctypes.POINTER(ctypes.c_char_p),  # param_keys
+        ctypes.POINTER(ctypes.c_float),   # param_values
+        ctypes.c_int                      # param_count
     ]
     helios_lib.buildPlantInstanceFromLibrary.restype = ctypes.c_uint
 
@@ -49,7 +52,10 @@ try:
         ctypes.POINTER(ctypes.c_int),    # plant_count
         ctypes.c_float,                  # age
         ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)),  # plant_ids
-        ctypes.POINTER(ctypes.c_int)     # num_plants
+        ctypes.POINTER(ctypes.c_int),    # num_plants
+        ctypes.POINTER(ctypes.c_char_p),  # param_keys
+        ctypes.POINTER(ctypes.c_float),   # param_values
+        ctypes.c_int                      # param_count_params
     ]
     helios_lib.buildPlantCanopyFromLibrary.restype = ctypes.c_int
 
@@ -242,6 +248,60 @@ try:
 except AttributeError:
     _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE = False
 
+# Parameter management functions (try separate block for graceful degradation)
+try:
+    helios_lib.getCurrentShootParametersJSON.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_char_p  # shoot_type_label
+    ]
+    helios_lib.getCurrentShootParametersJSON.restype = ctypes.c_char_p
+
+    helios_lib.defineShootTypeFromJSON.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.POINTER(UContext),  # context
+        ctypes.c_char_p,  # shoot_type_label
+        ctypes.c_char_p   # json_params
+    ]
+    helios_lib.defineShootTypeFromJSON.restype = ctypes.c_int
+
+    # Plant state query functions
+    helios_lib.getPlantAge.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint  # plantID
+    ]
+    helios_lib.getPlantAge.restype = ctypes.c_float
+
+    helios_lib.getPlantHeight.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint  # plantID
+    ]
+    helios_lib.getPlantHeight.restype = ctypes.c_float
+
+    helios_lib.sumPlantLeafArea.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint  # plantID
+    ]
+    helios_lib.sumPlantLeafArea.restype = ctypes.c_float
+
+    # Phenological control functions
+    helios_lib.setPlantPhenologicalThresholds.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_float,   # time_to_dormancy_break
+        ctypes.c_float,   # time_to_flower_initiation
+        ctypes.c_float,   # time_to_flower_opening
+        ctypes.c_float,   # time_to_fruit_set
+        ctypes.c_float,   # time_to_fruit_maturity
+        ctypes.c_float,   # time_to_dormancy
+        ctypes.c_float    # max_leaf_lifespan
+    ]
+    helios_lib.setPlantPhenologicalThresholds.restype = ctypes.c_int
+
+    _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE = True
+
+except (AttributeError, OSError):
+    _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE = False
+
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all plugin functions"""
@@ -277,6 +337,11 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.writePlantStructureXML.errcheck = _check_error
     helios_lib.writeQSMCylinderFile.errcheck = _check_error
     helios_lib.readPlantStructureXML.errcheck = _check_error
+
+# Set up error checking for parameter functions
+if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+    helios_lib.defineShootTypeFromJSON.errcheck = _check_error
+    helios_lib.setPlantPhenologicalThresholds.errcheck = _check_error
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -317,8 +382,9 @@ def loadPlantModelFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
         raise RuntimeError(f"Failed to load plant model '{plant_label}'")
 
 def buildPlantInstanceFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
-                                base_position: List[float], age: float) -> int:
-    """Build plant instance from library"""
+                                base_position: List[float], age: float,
+                                build_parameters: Optional[dict] = None) -> int:
+    """Build plant instance from library with optional parameter overrides"""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
         raise NotImplementedError(
             "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
@@ -333,16 +399,37 @@ def buildPlantInstanceFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitectu
     # Convert to ctypes array
     position_array = (ctypes.c_float * 3)(*base_position)
 
+    # Handle build_parameters
+    if build_parameters is None:
+        build_parameters = {}
+
+    # Convert dict to parallel arrays
+    keys = [k.encode('utf-8') for k in build_parameters.keys()]
+    values = list(build_parameters.values())
+    param_count = len(build_parameters)
+
+    # Create ctypes arrays (or None if empty)
+    if param_count > 0:
+        keys_array = (ctypes.c_char_p * param_count)(*keys)
+        values_array = (ctypes.c_float * param_count)(*values)
+    else:
+        keys_array = None
+        values_array = None
+
     # Call function - errcheck handles error checking automatically
     # Note: Plant IDs can be 0 or any positive integer - all are valid
-    plant_id = helios_lib.buildPlantInstanceFromLibrary(plantarch_ptr, position_array, age)
+    plant_id = helios_lib.buildPlantInstanceFromLibrary(
+        plantarch_ptr, position_array, age,
+        keys_array, values_array, param_count
+    )
 
     return plant_id
 
 def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
                               canopy_center: List[float], plant_spacing: List[float],
-                              plant_count: List[int], age: float) -> List[int]:
-    """Build plant canopy from library"""
+                              plant_count: List[int], age: float,
+                              build_parameters: Optional[dict] = None) -> List[int]:
+    """Build plant canopy from library with optional parameter overrides"""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
         raise NotImplementedError(
             "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
@@ -362,6 +449,23 @@ def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture
     spacing_array = (ctypes.c_float * 2)(*plant_spacing)
     count_array = (ctypes.c_int * 2)(*plant_count)
 
+    # Handle build_parameters
+    if build_parameters is None:
+        build_parameters = {}
+
+    # Convert dict to parallel arrays
+    keys = [k.encode('utf-8') for k in build_parameters.keys()]
+    values = list(build_parameters.values())
+    param_count = len(build_parameters)
+
+    # Create ctypes arrays (or None if empty)
+    if param_count > 0:
+        keys_array = (ctypes.c_char_p * param_count)(*keys)
+        values_array = (ctypes.c_float * param_count)(*values)
+    else:
+        keys_array = None
+        values_array = None
+
     # Output parameters
     plant_ids_ptr = ctypes.POINTER(ctypes.c_uint)()
     num_plants = ctypes.c_int()
@@ -369,7 +473,8 @@ def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture
     # Call function
     result = helios_lib.buildPlantCanopyFromLibrary(
         plantarch_ptr, center_array, spacing_array, count_array, age,
-        ctypes.byref(plant_ids_ptr), ctypes.byref(num_plants)
+        ctypes.byref(plant_ids_ptr), ctypes.byref(num_plants),
+        keys_array, values_array, param_count
     )
 
     if result != 0:
@@ -913,3 +1018,111 @@ if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     loadPlantModelFromLibrary = mock_loadPlantModelFromLibrary
     buildPlantInstanceFromLibrary = mock_buildPlantInstanceFromLibrary
     advanceTime = mock_advanceTime
+# Parameter management wrapper functions
+def getCurrentShootParameters(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), shoot_type_label: str) -> dict:
+    """Get shoot parameters as dict"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture parameter functions not available. "
+            "Rebuild PyHelios with latest plantarchitecture support."
+        )
+
+    if not shoot_type_label:
+        raise ValueError("Shoot type label cannot be empty")
+
+    label_bytes = shoot_type_label.encode('utf-8')
+    json_str = helios_lib.getCurrentShootParametersJSON(plantarch_ptr, label_bytes)
+
+    if not json_str:
+        raise RuntimeError(f"Failed to get shoot parameters for '{shoot_type_label}'")
+
+    # Parse JSON and convert to Python dict
+    import json
+    return json.loads(json_str.decode('utf-8'))
+
+def defineShootType(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), context_ptr: ctypes.POINTER(UContext), shoot_type_label: str, parameters: dict) -> None:
+    """Define custom shoot type from parameter dict"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture parameter functions not available. "
+            "Rebuild PyHelios with latest plantarchitecture support."
+        )
+
+    if not shoot_type_label:
+        raise ValueError("Shoot type label cannot be empty")
+
+    if not isinstance(parameters, dict):
+        raise ValueError("Parameters must be a dict")
+
+    # Convert dict to JSON
+    import json
+    json_str = json.dumps(parameters)
+    json_bytes = json_str.encode('utf-8')
+    label_bytes = shoot_type_label.encode('utf-8')
+
+    # Call function - errcheck handles errors automatically
+    helios_lib.defineShootTypeFromJSON(plantarch_ptr, context_ptr, label_bytes, json_bytes)
+
+# Plant state query wrapper functions
+def getPlantAge(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> float:
+    """Get plant age in days"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Plant state query functions not available. Rebuild with latest plantarchitecture support.")
+    
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    
+    return helios_lib.getPlantAge(plantarch_ptr, plant_id)
+
+def getPlantHeight(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> float:
+    """Get plant height in meters"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Plant state query functions not available. Rebuild with latest plantarchitecture support.")
+    
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    
+    return helios_lib.getPlantHeight(plantarch_ptr, plant_id)
+
+def sumPlantLeafArea(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> float:
+    """Get total plant leaf area in m²"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Plant state query functions not available. Rebuild with latest plantarchitecture support.")
+    
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    
+    return helios_lib.sumPlantLeafArea(plantarch_ptr, plant_id)
+
+# Phenological control wrapper functions
+def setPlantPhenologicalThresholds(
+    plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+    plant_id: int,
+    time_to_dormancy_break: float,
+    time_to_flower_initiation: float,
+    time_to_flower_opening: float,
+    time_to_fruit_set: float,
+    time_to_fruit_maturity: float,
+    time_to_dormancy: float,
+    max_leaf_lifespan: float
+) -> None:
+    """Set phenological timing thresholds for a plant"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Phenological control functions not available. Rebuild with latest plantarchitecture support.")
+    
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    
+    result = helios_lib.setPlantPhenologicalThresholds(
+        plantarch_ptr, plant_id,
+        time_to_dormancy_break,
+        time_to_flower_initiation,
+        time_to_flower_opening,
+        time_to_fruit_set,
+        time_to_fruit_maturity,
+        time_to_dormancy,
+        max_leaf_lifespan
+    )
+    
+    if result != 0:
+        raise RuntimeError(f"Failed to set phenological thresholds for plant {plant_id}")

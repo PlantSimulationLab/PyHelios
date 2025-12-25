@@ -5,7 +5,7 @@
 [TOC]
 
 <table>
-<tr><th>Dependencies</th><td>NVIDIA CUDA 9.0+</td></tr>
+<tr><th>Dependencies</th><td>None (CUDA optional for GPU acceleration)</td></tr>
 <tr><th>Python Import</th><td>`from pyhelios import EnergyBalanceModel`</td></tr>
 <tr><th>Main Class</th><td>\ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel"</td></tr>
 </table>
@@ -15,17 +15,23 @@
 <table>
   <tr>
     <th>Dependencies</th>
-    <td>NVIDIA CUDA 9.0+</td>
+    <td>None required (OpenMP recommended for parallel CPU execution)</td>
   </tr>
   <tr>
     <th>Platforms</th>
-    <td>Windows, Linux</td>
+    <td>Windows, Linux, macOS</td>
   </tr>
   <tr>
     <th>GPU</th>
-    <td>Required - NVIDIA CUDA-capable GPU</td>
+    <td>Optional - NVIDIA CUDA-capable GPU for GPU acceleration</td>
+  </tr>
+  <tr>
+    <th>Execution Modes</th>
+    <td>Three-tier: GPU (CUDA) → OpenMP (parallel CPU) → Serial CPU fallback</td>
   </tr>
 </table>
+
+**Note:** As of helios-core v1.3.61, CUDA is **optional**. The plugin automatically selects the best available execution mode: GPU acceleration with CUDA if available, parallel CPU with OpenMP if available, or serial CPU as fallback. OpenMP is recommended for most workloads on systems without CUDA.
 
 ## Quick Start
 
@@ -68,28 +74,37 @@ with Context() as context:
  <tr>
   <td rowspan="2">**Runtime**<br>(pip install)</td>
   <td>NVIDIA GPU</td>
-  <td>Not supported</td>
-  <td colspan="2">Required - CUDA-capable (compute capability 3.5+)</td>
+  <td colspan="3">Optional - Enables GPU acceleration if available</td>
  </tr>
  <tr>
   <td>CUDA Runtime</td>
-  <td>Not supported</td>
-  <td colspan="2">Version 9.0+<br>Typically installed with NVIDIA drivers<br>Or install <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a></td>
+  <td colspan="3">Optional - Version 9.0+ for GPU acceleration<br>If not available, uses OpenMP CPU mode or serial fallback</td>
+ </tr>
+ <tr>
+  <td>**Runtime**<br>(recommended)</td>
+  <td>OpenMP</td>
+  <td colspan="3">Recommended - Enables parallel CPU execution<br>Typically included with GCC/Clang compilers</td>
  </tr>
  <tr style="border-top: 3px double #888">
-  <td>**Build from Source**<br>(additional deps)</td>
+  <td>**Build from Source**<br>(optional)</td>
   <td>CUDA Toolkit</td>
-  <td>Not supported</td>
-  <td colspan="2">Version 9.0+ with nvcc compiler<br><a href="https://developer.nvidia.com/cuda-downloads">Download CUDA Toolkit</a></td>
+  <td colspan="3">Optional - Version 9.0+ with nvcc compiler for GPU support<br><a href="https://developer.nvidia.com/cuda-downloads">Download CUDA Toolkit</a></td>
  </tr>
 </table>
 
-**For detailed CUDA installation instructions**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
+**Execution Mode Selection (v1.3.61+):**
+The plugin automatically selects the best available execution mode at runtime:
+1. **GPU mode (CUDA)** - Fastest, requires NVIDIA GPU and CUDA
+2. **Parallel CPU mode (OpenMP)** - Recommended for systems without GPU, uses multi-core parallelization
+3. **Serial CPU mode** - Fallback if neither GPU nor OpenMP available
+
+**For GPU acceleration setup**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
 - Choosing the correct CUDA toolkit version: \ref ChoosingCUDA
 - Platform-specific installation steps (Windows, Linux)
 - GPU timeout settings for Windows: \ref PCGPUTimeout
-- OptiX requirements: \ref OptiXSetup
 - Troubleshooting common issues
+
+**Note:** CUDA is **no longer required** as of helios-core v1.3.61. The plugin works on all platforms with automatic CPU fallback.
 
 
 ## Known Issues {#EBissues}
@@ -98,7 +113,13 @@ None.
 
 ## Introduction {#EBIntro}
 
- This model plugin calculates a local energy balance for every primitive, and ultimately predicts sensible, latent, and longwave fluxes as well as surface temperature. The energy balance equation is solved in parallel on the GPU to accelerate calculations.
+ This model plugin calculates a local energy balance for every primitive, and ultimately predicts sensible, latent, and longwave fluxes as well as surface temperature. The energy balance equation is solved using one of three execution modes:
+
+ 1. **GPU acceleration (CUDA)** - Parallel execution on NVIDIA GPU for maximum performance
+ 2. **OpenMP parallel CPU** - Multi-core CPU parallelization (recommended for systems without GPU)
+ 3. **Serial CPU** - Single-threaded fallback if neither GPU nor OpenMP available
+
+ The execution mode is automatically selected based on available hardware and compiled libraries. GPU acceleration can be explicitly controlled using the GPU acceleration methods (see \ref EBGPUControl).
 
  The model is solving the steady-state budget between absorbed radiation, emitted radiation, sensible heat exchange, and latent heat exchange, which is written as
 

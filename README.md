@@ -31,11 +31,14 @@ pip install pyhelios3d
 ```
 
 This installs pre-built PyHelios with platform-appropriate plugins:
-- **macOS (Apple Silicon)**: All plugins except GPU-accelerated ones (automatically detected)
+- **macOS (Apple Silicon)**: All plugins including energybalance in CPU mode (radiation requires CUDA)
 - **macOS (Intel)**: Pre-built wheels not available - please [build from source](#build-from-source)
-- **Windows/Linux**: All plugins including GPU acceleration (when hardware supports it)
+- **Windows/Linux**: All plugins with optional GPU acceleration (automatic CPU fallback)
 
-PyHelios will gracefully handle GPU features - if you don't have CUDA-capable hardware, GPU plugins will display helpful error messages with setup instructions.
+PyHelios automatically selects the best execution mode:
+- **Plugins with GPU-only modes** (radiation): Require CUDA-capable GPU
+- **Plugins with CPU/GPU modes** (energybalance): Work on all platforms, GPU acceleration optional
+- **CPU-only plugins**: Work on all platforms without special hardware
 
 > **Note for Intel Mac Users**: Due to GitHub Actions infrastructure limitations, pre-built wheels are only available for Apple Silicon Macs. Intel Mac users must build PyHelios from source following the [macOS build instructions](#macos) below.
 
@@ -103,11 +106,22 @@ source helios-core/utilities/dependencies.sh
 pip install -e .
 ```
 
-### GPU Features Setup
+### GPU Features Setup (Optional)
 
-If you want to use GPU-accelerated features (radiation modeling, aerial LiDAR), ensure you have:
+PyHelios plugins have three types of GPU support:
 
-**Requirements:**
+**GPU-Required Plugins** (need CUDA):
+- **Radiation Model**: OptiX-powered ray tracing for light simulation
+- **Aerial LiDAR**: GPU-accelerated LiDAR simulation
+
+**GPU-Optional Plugins** (work with or without CUDA):
+- **Energy Balance** *(v1.3.61+)*: Automatic mode selection - GPU (CUDA) → OpenMP (parallel CPU) → Serial CPU
+  - CPU mode recommended for most workloads without GPU
+
+**CPU-Only Plugins** (no GPU needed):
+- All other plugins (PlantArchitecture, Photosynthesis, SolarPosition, etc.)
+
+**For GPU Acceleration** (optional), ensure you have:
 - NVIDIA GPU with CUDA support
 - NVIDIA drivers installed
 - CUDA Toolkit (version 11.8 or 12.x)
@@ -120,17 +134,24 @@ nvcc --version  # Should show CUDA compiler version
 
 **Testing GPU Features:**
 ```python
-from pyhelios import Context, RadiationModel
+from pyhelios import Context, RadiationModel, EnergyBalanceModel
 
 context = Context()
+
+# Test GPU-required plugin (radiation)
 try:
     radiation = RadiationModel(context)
     print("GPU radiation modeling available!")
 except RuntimeError as e:
-    print(f"GPU features unavailable: {e}")
-```
+    print(f"Radiation requires GPU: {e}")
 
-If GPU features fail, PyHelios will provide specific guidance on installation and setup requirements.
+# Test GPU-optional plugin (energybalance)
+with EnergyBalanceModel(context) as energy:
+    if energy.isGPUAccelerationEnabled():
+        print("EnergyBalance using GPU acceleration")
+    else:
+        print("EnergyBalance using CPU mode (OpenMP or serial)")
+```
 
 ### First Example
 
@@ -162,11 +183,9 @@ print(f"Created patch: {patch_uuid}")
 ## Key Features
 
 - **Cross-platform**: Windows, macOS, and Linux support
-- **Plant modeling**: WeberPennTree procedural generation 
+- **Plant modeling**: 20+ plant species models in the plant architecture plug-in
 - **GPU acceleration**: OptiX-powered radiation simulation
 - **3D visualization**: OpenGL-based real-time rendering
-- **Flexible plugins**: Currently 5 plug-ins implemented
-- **Development mode**: Mock mode for development without native libraries
 
 ## Updating PyHelios
 
