@@ -34,6 +34,9 @@ helios_lib.markGeometryDirty.argtypes = [ctypes.POINTER(UContext)]
 helios_lib.isGeometryDirty.argtypes = [ctypes.POINTER(UContext)]
 helios_lib.isGeometryDirty.restype = ctypes.c_bool
 
+helios_lib.seedRandomGenerator.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+helios_lib.seedRandomGenerator.restype = None
+
 helios_lib.addPatch.argtypes = [ctypes.POINTER(UContext)]
 helios_lib.addPatch.restype = ctypes.c_uint
 helios_lib.addPatch.errcheck = _check_error

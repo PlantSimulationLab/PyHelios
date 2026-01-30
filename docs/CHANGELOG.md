@@ -1,5 +1,21 @@
 # Changelog
 
+# [v0.1.14] 2026-01-30
+
+🚨++ New Plug-in Integrated ++ 🚨
+- Terrestrial LiDAR plug-in integrated
+
+- Updated helios-core to v1.3.63
+
+## Core
+- Added `Context.seedRandomGenerator()` for reproducible stochastic simulations
+
+## LiDAR
+- Removed CollisionDetection as explicit Python API dependency (handled at C++ level)
+
+## Energy Balance
+- Energy balance tests now work without radiation plugin by setting radiation flux data manually
+
 # [v0.1.13] 2025-12-25
 
 - Updated helios-core to v1.3.61

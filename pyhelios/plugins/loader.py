@@ -460,7 +460,7 @@ def detect_available_plugins() -> List[str]:
             'stomatalconductance': ['createStomatalConductanceModel'],
             'boundarylayerconductance': ['createBoundaryLayerConductanceModel'],
             'planthydraulics': ['createPlantHydraulicsModel'],
-            'lidar': ['createLiDARmodel', 'addLiDARSource'],
+            'lidar': ['createLiDARcloud', 'addLiDARScan'],
             'aeriallidar': ['createAerialLiDARmodel'],
             'plantarchitecture': ['createPlantArchitecture'],
             'voxelintersection': ['voxelIntersection'],

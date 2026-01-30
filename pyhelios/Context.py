@@ -308,6 +308,20 @@ class Context:
         self._check_context_available()
         return context_wrapper.isGeometryDirty(self.context)
 
+    def seedRandomGenerator(self, seed: int):
+        """
+        Seed the random number generator for reproducible stochastic results.
+
+        Args:
+            seed: Integer seed value for random number generation
+
+        Note:
+            This is critical for reproducible results in stochastic simulations
+            (e.g., LiDAR scans with beam divergence, random perturbations).
+        """
+        self._check_context_available()
+        context_wrapper.helios_lib.seedRandomGenerator(self.context, seed)
+
     @validate_patch_params
     def addPatch(self, center: vec3 = vec3(0, 0, 0), size: vec2 = vec2(1, 1), rotation: Optional[SphericalCoord] = None, color: Optional[RGBcolor] = None) -> int:
         self._check_context_available()

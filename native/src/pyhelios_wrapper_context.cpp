@@ -32,7 +32,12 @@ extern "C" {
     PYHELIOS_API bool isGeometryDirty(helios::Context* context) {
         return context->isGeometryDirty();
     }
-    
+
+    // Random number generator seeding
+    PYHELIOS_API void seedRandomGenerator(helios::Context* context, unsigned int seed) {
+        context->seedRandomGenerator(seed);
+    }
+
     // Basic primitive creation
     PYHELIOS_API unsigned int addPatch(helios::Context* context) {
         try {

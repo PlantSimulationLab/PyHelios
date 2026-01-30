@@ -243,15 +243,15 @@ def _get_required_plugins_for_test(item):
     """
     Determine which plugins are required for a test based on test file path and name.
     Uses the official plugin metadata system to get comprehensive plugin information.
-    
+
     Returns:
         List of plugin names that are required for this test
     """
     test_file = str(item.fspath).lower()
     test_name = str(item.name).lower()
-    
+
     required_plugins = []
-    
+
     # Get all known plugins from the metadata system
     try:
         from pyhelios.config.plugin_metadata import PLUGIN_METADATA
@@ -259,16 +259,23 @@ def _get_required_plugins_for_test(item):
     except ImportError:
         # Fallback to known plugins if metadata system not available
         all_plugin_names = [
-            'radiation', 'visualizer', 'weberpenntree', 'lidar', 'aeriallidar',
-            'energybalance', 'voxelintersection', 'collisiondetection', 
-            'projectbuilder', 'photosynthesis', 'canopygenerator'
+            'radiation', 'visualizer', 'weberpenntree', 'lidar',
+            'energybalance', 'photosynthesis'
         ]
-    
+
     # Check if test file or name contains any plugin names
     for plugin_name in all_plugin_names:
+        # Special case: "radiation_band" in energy balance tests refers to energy balance
+        # functionality (managing radiation bands), not the radiation plugin
+        if plugin_name == 'radiation' and 'energybalance' in test_file:
+            # Skip adding radiation as a requirement if this is an energy balance test
+            # and the mention is about "radiation_band" (energy balance feature)
+            if 'radiation_band' in test_name or 'radiation_flux' in test_name:
+                continue
+
         if plugin_name in test_file or plugin_name in test_name:
             required_plugins.append(plugin_name)
-    
+
     return list(set(required_plugins))  # Remove duplicates
 
 
@@ -311,8 +318,8 @@ def _check_plugin_availability(required_plugins):
                     gpu_required_missing.append(plugin)
         except ImportError:
             # Known GPU-dependent plugins if metadata system not available
-            known_gpu_plugins = {'radiation', 'lidar', 'aeriallidar', 'energybalance', 
-                               'voxelintersection', 'collisiondetection', 'projectbuilder'}
+            # Note: energybalance and collisiondetection have optional GPU support but can run on CPU
+            known_gpu_plugins = {'radiation', 'aeriallidar', 'voxelintersection', 'projectbuilder'}
             gpu_required_missing = [p for p in missing_plugins if p in known_gpu_plugins]
         
         # Generate informative reason

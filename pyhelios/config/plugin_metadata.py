@@ -36,17 +36,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         test_symbols=["buildTree", "setTreeParameters"]
     ),
     
-    "canopygenerator": PluginMetadata(
-        name="canopygenerator",
-        description="Plant canopy generation for various species",
-        system_dependencies=[],
-        plugin_dependencies=[],
-        platforms=["windows", "linux", "macos"],
-        gpu_required=False,
-        optional=False,
-        test_symbols=["generateCanopy", "setCanopyParameters"]
-    ),
-    
     "radiation": PluginMetadata(
         name="radiation",
         description="GPU-accelerated ray tracing and radiation modeling using OptiX",
@@ -71,24 +60,13 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
     
     "lidar": PluginMetadata(
         name="lidar",
-        description="LiDAR simulation and point cloud processing",
-        system_dependencies=["cuda"],
-        plugin_dependencies=[],
+        description="LiDAR simulation and point cloud processing with synthetic scanning, triangulation, and leaf area calculations",
+        system_dependencies=[],  # GPU optional, not required
+        plugin_dependencies=[],  # CollisionDetection dependency handled at C++ level, not exposed in Python API
         platforms=["windows", "linux", "macos"],
-        gpu_required=True,
+        gpu_required=False,  # GPU is optional via enableGPUAcceleration()
         optional=True,
-        test_symbols=["runLiDARscan", "setLiDARparameters"]
-    ),
-    
-    "aeriallidar": PluginMetadata(
-        name="aeriallidar",
-        description="Aerial LiDAR simulation with optional GPU acceleration",
-        system_dependencies=["cuda"],
-        plugin_dependencies=["lidar"],
-        platforms=["windows", "linux"],
-        gpu_required=True,
-        optional=True,
-        test_symbols=["runAerialLiDARscan", "setAerialLiDARparameters"]
+        test_symbols=["createLiDARcloud", "destroyLiDARcloud", "addLiDARScan", "addLiDARHitPoint"]
     ),
     
     "energybalance": PluginMetadata(
@@ -157,17 +135,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         test_symbols=["createPlantArchitecture", "loadPlantModelFromLibrary", "buildPlantInstanceFromLibrary"]
     ),
     
-    "planthydraulics": PluginMetadata(
-        name="planthydraulics",
-        description="Plant hydraulic modeling and water transport",
-        system_dependencies=[],
-        plugin_dependencies=[],
-        platforms=["windows", "linux", "macos"],
-        gpu_required=False,
-        optional=True,
-        test_symbols=["runPlantHydraulicsModel", "setHydraulicsParameters"]
-    ),
-    
     "solarposition": PluginMetadata(
         name="solarposition",
         description="Solar position calculations and sun angle modeling",
@@ -179,60 +146,6 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         test_symbols=["createSolarPosition", "getSunElevation", "getSolarFlux"]
     ),
     
-    "syntheticannotation": PluginMetadata(
-        name="syntheticannotation",
-        description="Synthetic data annotation for machine learning applications",
-        system_dependencies=[],
-        plugin_dependencies=["visualizer"],
-        platforms=["windows", "linux", "macos"],
-        gpu_required=False,
-        optional=True,
-        test_symbols=["generateAnnotations", "setAnnotationParameters"]
-    ),
-    
-    "parameteroptimization": PluginMetadata(
-        name="parameteroptimization",
-        description="Parameter optimization algorithms for model calibration",
-        system_dependencies=[],
-        plugin_dependencies=[],
-        platforms=["windows", "linux", "macos"],
-        gpu_required=False,
-        optional=True,
-        test_symbols=["runOptimization", "setOptimizationParameters"]
-    ),
-    
-    "voxelintersection": PluginMetadata(
-        name="voxelintersection",
-        description="Voxel intersection operations and spatial analysis",
-        system_dependencies=["cuda"],
-        plugin_dependencies=[],
-        platforms=["windows", "linux", "macos"],
-        gpu_required=True,
-        optional=True,
-        test_symbols=["calculateVoxelIntersection", "setVoxelParameters"]
-    ),
-    
-    "collisiondetection": PluginMetadata(
-        name="collisiondetection",
-        description="Collision detection with optional GPU acceleration",
-        system_dependencies=[],
-        plugin_dependencies=[],
-        platforms=["windows", "linux"],
-        gpu_required=False,
-        optional=True,
-        test_symbols=["runCollisionDetection", "setCollisionParameters"]
-    ),
-    
-    "projectbuilder": PluginMetadata(
-        name="projectbuilder",
-        description="GUI project builder with ImGui interface",
-        system_dependencies=["imgui", "opengl", "cuda"],
-        plugin_dependencies=[],
-        platforms=["windows", "linux", "macos"],
-        gpu_required=True,
-        optional=True,
-        test_symbols=["initializeProjectBuilder", "runProjectBuilder"]
-    )
 }
 
 

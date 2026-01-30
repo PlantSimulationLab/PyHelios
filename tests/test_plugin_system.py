@@ -114,14 +114,14 @@ class TestDependencyResolver:
     def test_resolve_dependencies_simple(self):
         """Test simple dependency resolution."""
         resolver = PluginDependencyResolver()
-        
-        # Test with basic plugins
-        result = resolver.resolve_dependencies(['weberpenntree', 'canopygenerator'])
-        
+
+        # Test with basic plugins (using integrated plugins)
+        result = resolver.resolve_dependencies(['weberpenntree', 'solarposition'])
+
         assert result.status in [ResolutionStatus.SUCCESS, ResolutionStatus.WARNING]
         assert isinstance(result.final_plugins, list)
         assert 'weberpenntree' in result.final_plugins
-        assert 'canopygenerator' in result.final_plugins
+        assert 'solarposition' in result.final_plugins
     
     def test_resolve_dependencies_with_gpu(self):
         """Test dependency resolution with GPU plugins."""
@@ -144,8 +144,8 @@ class TestDependencyResolver:
         """Test configuration validation."""
         resolver = PluginDependencyResolver()
         
-        # Test valid configuration
-        validation = resolver.validate_configuration(['weberpenntree', 'canopygenerator'])
+        # Test valid configuration (using integrated plugins)
+        validation = resolver.validate_configuration(['weberpenntree', 'solarposition'])
         
         assert isinstance(validation, dict)
         assert 'valid_plugins' in validation
@@ -188,7 +188,7 @@ plugins:
   selection_mode: "explicit"
   explicit_plugins:
     - weberpenntree
-    - canopygenerator
+    - solarposition
   excluded_plugins:
     - radiation
 
@@ -210,7 +210,7 @@ logging:
             
             # Check parsed values
             assert config.plugin_config.selection_mode == "explicit"
-            assert config.plugin_config.explicit_plugins == ["weberpenntree", "canopygenerator"]
+            assert config.plugin_config.explicit_plugins == ["weberpenntree", "solarposition"]
             assert config.plugin_config.excluded_plugins == ["radiation"]
             assert config.build_config.build_type == "Debug"
             assert config.build_config.verbose == True
@@ -226,21 +226,21 @@ logging:
         """Test plugin resolution from configuration."""
         config = ConfigManager()
         
-        # Test explicit plugin resolution
+        # Test explicit plugin resolution (using integrated plugins)
         config.plugin_config.selection_mode = "explicit"
-        config.plugin_config.explicit_plugins = ["weberpenntree", "canopygenerator"]
-        
+        config.plugin_config.explicit_plugins = ["weberpenntree", "solarposition"]
+
         plugins = config.resolve_plugin_selection()
         assert isinstance(plugins, list)
         assert len(plugins) > 0
-        
+
         # Test explicit resolution (clear platform-specific config to avoid interference)
         config.plugin_config.selection_mode = "explicit"
-        config.plugin_config.explicit_plugins = ["weberpenntree", "canopygenerator"]
+        config.plugin_config.explicit_plugins = ["weberpenntree", "solarposition"]
         config.plugin_config.platform_specific = {}  # Clear platform-specific config
-        
+
         plugins = config.resolve_plugin_selection()
-        assert plugins == ["weberpenntree", "canopygenerator"]
+        assert plugins == ["weberpenntree", "solarposition"]
     
     def test_config_validation(self):
         """Test configuration validation."""
@@ -297,7 +297,7 @@ class TestPluginRegistry:
         with patch('pyhelios.plugins.registry.detect_available_plugins') as mock_detect, \
              patch('pyhelios.plugins.registry.get_plugin_capabilities') as mock_capabilities:
             
-            mock_detect.return_value = ['weberpenntree', 'canopygenerator']
+            mock_detect.return_value = ['weberpenntree', 'solarposition']
             mock_capabilities.return_value = {
                 'weberpenntree': {
                     'name': 'weberpenntree',
@@ -306,10 +306,10 @@ class TestPluginRegistry:
                     'gpu_required': False,
                     'dependencies': []
                 },
-                'canopygenerator': {
-                    'name': 'canopygenerator',
-                    'description': 'Canopy generation',
-                    'available': True, 
+                'solarposition': {
+                    'name': 'solarposition',
+                    'description': 'Solar position calculations',
+                    'available': True,
                     'gpu_required': False,
                     'dependencies': []
                 }
@@ -386,8 +386,8 @@ class TestIntegration:
             assert isinstance(compatible_plugins, list)
             assert len(compatible_plugins) > 0
             
-            # Test that common plugins are available
-            common_plugins = ["weberpenntree", "canopygenerator", "solarposition"]
+            # Test that common integrated plugins are available
+            common_plugins = ["weberpenntree", "solarposition", "visualizer"]
             for plugin in common_plugins:
                 if plugin in compatible_plugins:
                     assert plugin in PLUGIN_METADATA

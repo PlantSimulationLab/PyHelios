@@ -13,22 +13,42 @@ from typing import List
 # Add pyhelios to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from pyhelios import Context, EnergyBalanceModel, EnergyBalanceModelError, RadiationModel
+from pyhelios import Context, EnergyBalanceModel, EnergyBalanceModelError
 from pyhelios.types import vec3, vec2
 from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.validation.exceptions import ValidationError
 
 
 def setup_radiation_for_energy_balance(context, band="SW"):
-    """Helper function to set up radiation data for energy balance tests"""
-    try:
-        with RadiationModel(context) as radiation:
-            radiation.addRadiationBand(band)
-            radiation.addCollimatedRadiationSource()
-            radiation.runBand(band)
-    except Exception as e:
-        # If radiation model fails, skip the test as energy balance requires radiation data
-        pytest.skip(f"Radiation model setup failed (required for energy balance): {e}")
+    """
+    Helper function to set up radiation data for energy balance tests.
+
+    Sets radiation flux values manually using setPrimitiveDataFloat instead of requiring
+    the radiation plugin, following the pattern used in C++ energy balance tests.
+    """
+    # Get all UUIDs in the context
+    all_uuids = context.getAllUUIDs()
+
+    if not all_uuids:
+        return  # No primitives to set data for
+
+    # Set radiation flux data for each primitive
+    # Using typical values from C++ tests (e.g., selfTest.cpp)
+    if band == "SW":
+        # Shortwave radiation flux (W/m^2)
+        for uuid in all_uuids:
+            context.setPrimitiveDataFloat(uuid, "radiation_flux_SW", 300.0)
+    elif band == "LW":
+        # Longwave radiation flux (W/m^2)
+        # Using 2*sigma*T^4 pattern from C++ tests where T=300K
+        T = 300.0
+        lw_flux = 2.0 * 5.67e-8 * (T ** 4)
+        for uuid in all_uuids:
+            context.setPrimitiveDataFloat(uuid, "radiation_flux_LW", lw_flux)
+
+    # Set air temperature (required for energy balance)
+    for uuid in all_uuids:
+        context.setPrimitiveDataFloat(uuid, "air_temperature", 300.0)
 
 
 class TestEnergyBalanceMetadata:
@@ -239,9 +259,8 @@ class TestEnergyBalanceGPUAcceleration:
 
 
 @pytest.mark.native_only
-@pytest.mark.requires_gpu
 class TestEnergyBalanceFunctionality:
-    """Test actual energy balance functionality with native library"""
+    """Test actual energy balance functionality with native library (CPU/OpenMP fallback when no GPU)"""
     
     def test_energy_balance_creation(self):
         """Test energy balance model creation and destruction"""
@@ -472,9 +491,8 @@ class TestEnergyBalanceFunctionality:
 
 
 @pytest.mark.native_only
-@pytest.mark.requires_gpu
 class TestEnergyBalanceIntegration:
-    """Test energy balance integration with other PyHelios components"""
+    """Test energy balance integration with other PyHelios components (CPU/OpenMP fallback when no GPU)"""
     
     def test_error_handling_integration(self):
         """Test that C++ exceptions become proper Python exceptions"""
@@ -544,9 +562,8 @@ class TestEnergyBalanceMockMode:
 @pytest.mark.slow
 class TestEnergyBalancePerformance:
     """Performance tests for energy balance operations"""
-    
+
     @pytest.mark.native_only
-    @pytest.mark.requires_gpu
     def test_large_geometry_performance(self):
         """Test energy balance performance with large geometry sets"""
         import time
@@ -574,7 +591,6 @@ class TestEnergyBalancePerformance:
                 assert elapsed < 30.0, f"Energy balance too slow for 1000 patches: {elapsed:.3f}s"
     
     @pytest.mark.native_only
-    @pytest.mark.requires_gpu
     def test_dynamic_simulation_performance(self):
         """Test performance of dynamic energy balance simulations"""
         import time
@@ -602,9 +618,8 @@ class TestEnergyBalancePerformance:
 
 
 @pytest.mark.native_only
-@pytest.mark.requires_gpu
 class TestEnergyBalanceEdgeCases:
-    """Test edge cases and boundary conditions"""
+    """Test edge cases and boundary conditions (CPU/OpenMP fallback when no GPU)"""
     
     def test_empty_context(self):
         """Test energy balance with empty context"""

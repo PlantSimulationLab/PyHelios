@@ -671,9 +671,6 @@ class TestPlantArchitectureCollisionIntegration:
                 # Create obstacle geometry
                 obstacle_uuid = basic_context.addPatch(center=vec3(2, 2, 1), size=(1, 1))
 
-                # Mark as static obstacle for optimization
-                plantarch.setStaticObstacles([obstacle_uuid])
-
                 # Configure collision parameters
                 plantarch.setSoftCollisionAvoidanceParameters(
                     view_half_angle_deg=80.0,
@@ -688,10 +685,13 @@ class TestPlantArchitectureCollisionIntegration:
                     include_leaves=True
                 )
 
-                # Enable soft collision avoidance
+                # Enable soft collision avoidance FIRST
                 plantarch.enableSoftCollisionAvoidance(
                     target_object_UUIDs=[obstacle_uuid]
                 )
+
+                # Mark as static obstacle for optimization (must be AFTER enabling collision detection)
+                plantarch.setStaticObstacles([obstacle_uuid])
 
                 # Build plant with collision detection enabled
                 plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=20.0)
@@ -1421,16 +1421,16 @@ class TestPlantArchitectureCustomBuildingIntegration:
                 plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
                 assert plant_id >= 0
 
-                # Add base stem shoot
+                # Add base stem shoot with 3 nodes using trifoliate (which allows more nodes)
                 base_shoot_id = plantarch.addBaseStemShoot(
-                    plant_id, 1, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "unifoliate"
+                    plant_id, 3, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate"
                 )
                 assert base_shoot_id >= 0
 
-                # Add child branch
+                # Add child branch at node 2 (now exists since we created 3 nodes)
                 branch_id = plantarch.addChildShoot(
                     plant_id, base_shoot_id, 2, 1, AxisRotation(45, 90, 0),
-                    0.005, 0.06, 1.0, 0.9, 0.8, "unifoliate"
+                    0.005, 0.06, 1.0, 0.9, 0.8, "trifoliate"
                 )
                 assert branch_id >= 0
 
@@ -1519,12 +1519,12 @@ class TestPlantArchitectureCustomBuildingIntegration:
                 # Create plant
                 plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
 
-                # Add main stem
+                # Add main stem with 6 nodes using trifoliate (which allows more nodes)
                 main_stem_id = plantarch.addBaseStemShoot(
-                    plant_id, 1, AxisRotation(0, 0, 0), 0.015, 0.12, 1.0, 1.0, 0.9, "unifoliate"
+                    plant_id, 6, AxisRotation(0, 0, 0), 0.015, 0.12, 1.0, 1.0, 0.9, "trifoliate"
                 )
 
-                # Add multiple lateral branches
+                # Add multiple lateral branches at different nodes
                 branch_angles = [45, 135, 225, 315]
                 branch_ids = []
 
@@ -1532,7 +1532,7 @@ class TestPlantArchitectureCustomBuildingIntegration:
                     branch_id = plantarch.addChildShoot(
                         plant_id, main_stem_id, i + 2, 1,
                         AxisRotation(45, angle, 0),
-                        0.008, 0.08, 1.0, 0.9, 0.85, "unifoliate"
+                        0.008, 0.08, 1.0, 0.9, 0.85, "trifoliate"
                     )
                     branch_ids.append(branch_id)
                     assert branch_id >= 0

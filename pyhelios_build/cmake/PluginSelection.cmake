@@ -91,7 +91,7 @@ function(filter_plugins_by_platform PLUGINS)
             # No specific filtering needed currently
         elseif(APPLE)
             # macOS has limited support for some GPU plugins
-            if(PLUGIN STREQUAL "aeriallidar" OR PLUGIN STREQUAL "collisiondetection")
+            if(PLUGIN STREQUAL "aeriallidar")
                 message(STATUS "⚠️  Plugin ${PLUGIN} has limited macOS support")
                 # Include anyway, but warn
             endif()

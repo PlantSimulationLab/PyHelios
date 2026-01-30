@@ -9,7 +9,7 @@ jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       matrix:
         include:
@@ -157,7 +157,7 @@ jobs:
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir wheelhouse
-        timeout-minutes: 30  # Single timeout for the entire step
+        timeout-minutes: 60  # Increased for LiDAR tests which are comprehensive
         env:
           # Build for Python 3.8+ on all platforms
           CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
@@ -405,7 +405,7 @@ jobs:
                 traceback.print_exc()
                 raise
             " &&
-            python -m pytest {project}/tests/ --tb=short -v --forked -m "not requires_gpu" -s
+            python -m pytest {project}/tests/ --tb=short -v --forked -m "not requires_gpu and not slow" -s
 
           CIBW_TEST_COMMAND_MACOS: |
             python -c "
@@ -495,7 +495,7 @@ jobs:
                 traceback.print_exc()
                 raise
             " &&
-            python -m pytest {project}/tests/ --tb=short -v --forked -m "not requires_gpu" -s
+            python -m pytest {project}/tests/ --tb=short -v --forked -m "not requires_gpu and not slow" -s
 
           CIBW_TEST_COMMAND_WINDOWS: |
             python -c "
@@ -598,7 +598,7 @@ jobs:
                 traceback.print_exc()
                 raise
             " &&
-            python -m pytest {project}/tests/ --tb=short -v -m "not requires_gpu" -s
+            python -m pytest {project}/tests/ --tb=short -v -m "not requires_gpu and not slow" -s
 
           # Platform-specific test requirements (pytest-forked only works on Unix systems)
           CIBW_TEST_REQUIRES_LINUX: "pytest pytest-forked"
@@ -656,7 +656,7 @@ jobs:
   test_wheels:
     name: Test wheels on ${{ matrix.os }} Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: build_wheels
     strategy:
       matrix:

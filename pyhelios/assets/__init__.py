@@ -268,6 +268,32 @@ class AssetPathManager:
 
         return None
 
+    def get_lidar_assets_path(self) -> Optional[str]:
+        """
+        Get the path to LiDAR plugin assets.
+
+        Returns:
+            Absolute path to lidar assets directory, or None if not found
+        """
+        # First try packaged assets (for wheel installations)
+        build_path = self._get_helios_build_path()
+        if build_path:
+            lidar_path = build_path / 'plugins' / 'lidar'
+            if lidar_path.exists():
+                return str(lidar_path)
+
+        # Fallback to helios-core directory (for development)
+        helios_core = self.get_helios_core_path()
+        if helios_core:
+            lidar_path = helios_core / 'plugins' / 'lidar'
+            if lidar_path.exists():
+                return str(lidar_path)
+
+            if not self._is_wheel_install():
+                logger.warning(f"LiDAR assets not found at: {lidar_path}")
+
+        return None
+
     def get_all_asset_paths(self) -> Dict[str, Optional[str]]:
         """
         Get all available plugin asset paths.
@@ -280,6 +306,7 @@ class AssetPathManager:
             'visualizer': self.get_visualizer_assets_path(),
             'radiation': self.get_radiation_assets_path(),
             'solarposition': self.get_solarposition_assets_path(),
+            'lidar': self.get_lidar_assets_path(),
         }
 
     def set_environment_variables(self) -> None:

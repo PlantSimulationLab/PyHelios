@@ -48,7 +48,8 @@ INTEGRATED_PLUGINS = [
     "boundarylayerconductance",
     "photosynthesis",
     "plantarchitecture",
-    "leafoptics"
+    "leafoptics",
+    "lidar"
 ]
 
 # Execute dependency_resolver.py to get PluginDependencyResolver

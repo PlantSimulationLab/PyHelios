@@ -216,6 +216,7 @@ def copy_assets_for_packaging(project_root):
         'visualizer': ['textures', 'shaders', 'fonts'],
         'plantarchitecture': ['assets/textures', 'assets/obj'],
         'leafoptics': ['spectral_data'],
+        'lidar': ['xml', 'data'],
         # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
     }
 

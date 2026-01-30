@@ -96,6 +96,10 @@ if("leafoptics" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_leafoptics.cpp)
 endif()
 
+if("lidar" IN_LIST PLUGINS)
+    list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_lidar.cpp)
+endif()
+
 # Only build static library if not building for wheels
 if(NOT DEFINED ENV{CIBUILDWHEEL})
     add_library(pyhelios_interface STATIC ${PYHELIOS_WRAPPER_SOURCES})
@@ -122,6 +126,10 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
         )
+        # Silence OpenGL deprecation warnings on macOS
+        if(APPLE)
+            target_compile_definitions(pyhelios_interface PRIVATE GL_SILENCE_DEPRECATION)
+        endif()
     endif()
 endif()
 
@@ -199,6 +207,19 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
 endif()
 
 if(NOT DEFINED ENV{CIBUILDWHEEL})
+    if("lidar" IN_LIST PLUGINS)
+        target_include_directories(pyhelios_interface PRIVATE
+            ${BASE_DIRECTORY}/plugins/lidar/include
+            ${BASE_DIRECTORY}/plugins/lidar/lib/s_hull_pro
+            ${BASE_DIRECTORY}/plugins/collisiondetection/include
+            ${BASE_DIRECTORY}/plugins/visualizer/include
+            ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
+            ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
+        )
+    endif()
+endif()
+
+if(NOT DEFINED ENV{CIBUILDWHEEL})
     # Add platform-specific OptiX include directories for radiation plugin
     if("radiation" IN_LIST PLUGINS)
         if(WIN32)
@@ -259,6 +280,10 @@ if("visualizer" IN_LIST PLUGINS)
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
     )
+    # Silence OpenGL deprecation warnings on macOS
+    if(APPLE)
+        target_compile_definitions(pyhelios_shared PRIVATE GL_SILENCE_DEPRECATION)
+    endif()
 endif()
 
 if("weberpenntree" IN_LIST PLUGINS)
@@ -307,6 +332,17 @@ endif()
 if("leafoptics" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/leafoptics/include
+    )
+endif()
+
+if("lidar" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_shared PRIVATE
+        ${BASE_DIRECTORY}/plugins/lidar/include
+        ${BASE_DIRECTORY}/plugins/lidar/lib/s_hull_pro
+        ${BASE_DIRECTORY}/plugins/collisiondetection/include
+        ${BASE_DIRECTORY}/plugins/visualizer/include
+        ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
+        ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
     )
 endif()
 
