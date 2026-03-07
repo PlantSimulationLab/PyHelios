@@ -4,9 +4,13 @@ PyHelios Test Configuration and Fixtures
 This file provides common fixtures and configuration for PyHelios tests.
 """
 
+import os
+
+# Exclude manual tests from automatic collection (they require extra dependencies)
+collect_ignore_glob = [os.path.join("manual", "*")]
+
 import pytest
 import platform
-import os
 from unittest.mock import Mock, MagicMock
 from typing import Optional
 

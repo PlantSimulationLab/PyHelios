@@ -33,47 +33,43 @@ def is_headless_environment():
     Returns:
         bool: True if headless (skip visualization tests), False if display is available
     """
-    # Check for display availability
+    import sys
+
+    # On macOS, OpenGL context creation from non-GUI apps (like pytest in terminal)
+    # typically fails even when a display is present. Skip unless explicitly enabled.
+    if sys.platform == 'darwin':
+        if not os.environ.get('PYHELIOS_TEST_VISUALIZER'):
+            return True  # macOS terminal apps can't create OpenGL contexts
+
+    # Check for display availability (Linux/other)
     display = os.environ.get('DISPLAY')
     if not display:
         return True  # No display available
-    
+
     # Check if we're in an SSH session without X11 forwarding
     ssh_client = os.environ.get('SSH_CLIENT')
     ssh_tty = os.environ.get('SSH_TTY')
     if ssh_client or ssh_tty:
-        # In SSH session - check if DISPLAY is properly set for X11 forwarding
         if not display or display == ':0':
             return True  # SSH without proper X11 forwarding
-    
+
     # Additional check for CI environments
     ci_indicators = ['CI', 'CONTINUOUS_INTEGRATION', 'GITHUB_ACTIONS', 'TRAVIS', 'JENKINS']
     if any(os.environ.get(var) for var in ci_indicators):
         return True  # Running in CI environment
-    
-    # Try a simple OpenGL context test if we can import necessary libraries
+
+    # On Linux, check if we can connect to X display
     try:
-        import subprocess
-        import sys
-        
-        # On macOS, try to verify OpenGL/graphics capability through system_profiler
-        if sys.platform == 'darwin':
-            result = subprocess.run(['system_profiler', 'SPDisplaysDataType'], 
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode != 0 or 'Graphics/Displays' not in result.stdout:
-                return True  # Can't verify graphics capability
-        
-        # On Linux, check if we can connect to X display
-        elif sys.platform.startswith('linux'):
-            result = subprocess.run(['xrandr', '--query'], 
+        if sys.platform.startswith('linux'):
+            import subprocess
+            result = subprocess.run(['xrandr', '--query'],
                                   capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
                 return True  # Can't connect to X display
-                
+
     except (ImportError, FileNotFoundError, subprocess.TimeoutExpired, Exception):
-        # If we can't run the checks, be conservative
         return True
-    
+
     return False  # Display should be available
 
 

@@ -1466,59 +1466,68 @@ class HeliosBuilder:
         except Exception as e:
             print(f"Warning: Failed to fix dylib dependencies: {e}")
     
-    def copy_ptx_files(self) -> None:
-        """Copy OptiX PTX files to PyHelios installation directory."""
-        # OptiX looks for PTX files in plugins/radiation/ relative to the working directory
-        ptx_source_dir = self.build_dir / 'plugins' / 'radiation'
-        if not ptx_source_dir.exists():
+    def copy_radiation_shader_files(self) -> None:
+        """Copy radiation GPU shader files (SPIR-V and/or PTX) to PyHelios installation directory."""
+        # GPU backends look for shader files in plugins/radiation/ relative to the working directory
+        shader_source_dir = self.build_dir / 'plugins' / 'radiation'
+        if not shader_source_dir.exists():
             if 'radiation' in self.selected_plugins:
                 raise RuntimeError(
-                    "CRITICAL: Radiation plugin was requested but OptiX PTX files not found!\n\n"
-                    "The radiation plugin requires OptiX for GPU acceleration.\n"
-                    "OptiX PTX files should be generated during CMake build.\n\n"
+                    "CRITICAL: Radiation plugin was requested but shader build directory not found!\n\n"
+                    "The radiation plugin requires GPU backend shader files.\n"
+                    "Shader files (SPIR-V for Vulkan, PTX for OptiX) should be generated during CMake build.\n\n"
                     "To fix this issue:\n"
-                    "1. Ensure CUDA toolkit is properly installed\n"
-                    "2. Verify OptiX is available in helios-core/plugins/radiation/lib/OptiX/\n"
-                    "3. Check CMake configuration enables OptiX compilation\n"
+                    "1. Ensure Vulkan SDK is installed (primary cross-platform backend)\n"
+                    "2. Or ensure CUDA toolkit + OptiX are installed (NVIDIA-only backend)\n"
+                    "3. Check CMake configuration enables at least one GPU backend\n"
                     "4. Run build with --clean to rebuild from scratch\n\n"
-                    f"Expected PTX directory: {ptx_source_dir}\n"
+                    f"Expected shader directory: {shader_source_dir}\n"
                     "PyHelios follows fail-fast policy - builds must fail when dependencies are missing."
                 )
             else:
                 # Radiation plugin not selected - this is expected
-                print("Radiation plugin not selected - skipping PTX file copy")
+                print("Radiation plugin not selected - skipping shader file copy")
                 return
 
-        ptx_files = list(ptx_source_dir.glob('*.ptx'))
-        if not ptx_files:
+        spv_files = list(shader_source_dir.glob('*.spv'))
+        ptx_files = list(shader_source_dir.glob('*.ptx'))
+        optixir_files = list(shader_source_dir.glob('*.optixir'))
+
+        if not spv_files and not ptx_files and not optixir_files:
             if 'radiation' in self.selected_plugins:
                 raise RuntimeError(
-                    "CRITICAL: Radiation plugin build completed but no PTX files generated!\n\n"
-                    "This indicates OptiX compilation failed during CMake build.\n"
-                    "PTX files are required for GPU-accelerated ray tracing.\n\n"
+                    "CRITICAL: Radiation plugin build completed but no shader files generated!\n\n"
+                    "No SPIR-V (.spv), PTX (.ptx), or OptiXIR (.optixir) files found in the build directory.\n"
+                    "At least one GPU backend must produce shader files.\n\n"
                     "To fix this issue:\n"
-                    "1. Check CMake build logs for OptiX compilation errors\n"
-                    "2. Verify CUDA nvcc compiler is available and working\n"
-                    "3. Ensure OptiX SDK is properly configured\n"
-                    "4. Run build with --verbose to see detailed compilation output\n\n"
-                    f"Build directory checked: {ptx_source_dir}\n"
+                    "1. Check CMake build logs for shader compilation errors\n"
+                    "2. For Vulkan: verify glslangValidator is available\n"
+                    "3. For OptiX 6.5: verify CUDA nvcc compiler is available\n"
+                    "4. For OptiX 8: verify CUDA toolkit and OptiX 8 SDK are available\n"
+                    "5. Run build with --verbose to see detailed compilation output\n\n"
+                    f"Build directory checked: {shader_source_dir}\n"
                     "PyHelios follows fail-fast policy - incomplete builds are not acceptable."
                 )
             else:
-                print("Radiation plugin not selected - no PTX files expected")
+                print("Radiation plugin not selected - no shader files expected")
                 return
-            
-        # Copy PTX files to PyHelios installation directory
+
+        # Copy shader files to PyHelios installation directory
         # RadiationModel will copy them to working directory as needed
         pyhelios_root = self.output_dir.parent.parent
-        ptx_dest_dir = pyhelios_root / 'plugins' / 'radiation'
-        ptx_dest_dir.mkdir(parents=True, exist_ok=True)
-        
-        for ptx_file in ptx_files:
-            dest_file = ptx_dest_dir / ptx_file.name
-            shutil.copy2(ptx_file, dest_file)
-            
-        print(f"Copied {len(ptx_files)} PTX files to: {ptx_dest_dir}")
+        shader_dest_dir = pyhelios_root / 'plugins' / 'radiation'
+        shader_dest_dir.mkdir(parents=True, exist_ok=True)
+
+        for shader_file in spv_files + ptx_files + optixir_files:
+            dest_file = shader_dest_dir / shader_file.name
+            shutil.copy2(shader_file, dest_file)
+
+        if spv_files:
+            print(f"Copied {len(spv_files)} SPIR-V shaders to: {shader_dest_dir}")
+        if ptx_files:
+            print(f"Copied {len(ptx_files)} PTX files to: {shader_dest_dir}")
+        if optixir_files:
+            print(f"Copied {len(optixir_files)} OptiXIR files to: {shader_dest_dir}")
         print("RadiationModel will copy these to working directory as needed")
     
     def build(self, cmake_args: Optional[List[str]] = None) -> Path:
@@ -1558,7 +1567,7 @@ class HeliosBuilder:
         
         library_path = self.find_built_library()
         output_library = self.copy_to_output(library_path)
-        self.copy_ptx_files()
+        self.copy_radiation_shader_files()
         print(f"Build completed successfully: {output_library}")
         print(f"Built with plugins: {final_plugins}")
         return output_library
@@ -1634,7 +1643,7 @@ def get_default_plugins() -> List[str]:
     Currently integrated plugins in PyHelios:
     - visualizer: OpenGL-based 3D visualization
     - weberpenntree: Procedural tree generation
-    - radiation: OptiX-accelerated ray tracing (GPU optional)
+    - radiation: GPU-accelerated ray tracing via Vulkan/OptiX backends
     - energybalance: GPU-accelerated thermal modeling and energy balance
     - solarposition: Solar position calculations and sun angle modeling
     - photosynthesis: Photosynthesis modeling and carbon assimilation

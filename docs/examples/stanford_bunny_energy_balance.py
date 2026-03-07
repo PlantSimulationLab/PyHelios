@@ -8,9 +8,8 @@ Bunny PLY file, sets up both radiation and energy balance models to compute surf
 temperatures, and visualizes the temperature distribution using the native PyHelios visualizer.
 
 HARDWARE REQUIREMENTS:
-- NVIDIA GPU with CUDA compute capability (for radiation simulation GPU acceleration)
-- CUDA Toolkit installed and configured (for radiation)
-- OptiX ray tracing SDK installed (for radiation)
+- GPU with Vulkan support (NVIDIA, AMD, Intel, or Apple Silicon) for radiation
+  OR NVIDIA GPU with CUDA/OptiX (for optimized radiation performance)
 - OpenGL-compatible graphics system (for visualization)
 
 SOFTWARE REQUIREMENTS:
@@ -18,7 +17,7 @@ SOFTWARE REQUIREMENTS:
 - Stanford Bunny PLY file (included in helios-core)
 
 NOTE: This example demonstrates the full PyHelios workflow including native 3D visualization.
-- Radiation plugin REQUIRES GPU (CUDA + OptiX)
+- Radiation plugin REQUIRES GPU (Vulkan for cross-platform, or CUDA + OptiX for NVIDIA)
 - EnergyBalance plugin works on CPU or GPU (automatic fallback, GPU optional as of v1.3.61+)
 - Visualizer plugin works on all platforms with OpenGL
 

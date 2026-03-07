@@ -151,16 +151,29 @@ class CrossPlatformLibraryLoader:
         """Automatically configure LD_LIBRARY_PATH for Linux/macOS to include plugin directory."""
         env_var = 'LD_LIBRARY_PATH' if self.platform_name == 'Linux' else 'DYLD_LIBRARY_PATH'
         current_path = os.environ.get(env_var, '')
-        
+
         # Check if plugin directory is already in the path
         if self.plugin_dir not in current_path:
             if current_path:
                 new_path = f"{self.plugin_dir}:{current_path}"
             else:
                 new_path = self.plugin_dir
-            
+
             os.environ[env_var] = new_path
             logger.debug(f"Automatically configured {env_var} to include: {self.plugin_dir}")
+
+        # On macOS, configure Vulkan ICD path for bundled MoltenVK if present
+        if self.platform_name == 'Darwin' and not os.environ.get('VK_ICD_FILENAMES'):
+            assets_dir = os.path.join(os.path.dirname(self.plugin_dir), 'assets', 'build')
+            bundled_icd = os.path.join(assets_dir, 'vulkan', 'icd.d', 'MoltenVK_icd.json')
+            if os.path.exists(bundled_icd):
+                os.environ['VK_ICD_FILENAMES'] = bundled_icd
+                # Also add bundled Vulkan libs to DYLD path
+                vulkan_lib_dir = os.path.join(assets_dir, 'vulkan')
+                dyld_path = os.environ.get('DYLD_LIBRARY_PATH', '')
+                if vulkan_lib_dir not in dyld_path:
+                    os.environ['DYLD_LIBRARY_PATH'] = f"{vulkan_lib_dir}:{dyld_path}" if dyld_path else vulkan_lib_dir
+                logger.debug(f"Configured VK_ICD_FILENAMES for bundled MoltenVK: {bundled_icd}")
     
     def load_library(self, force_mock: bool = False) -> ctypes.CDLL:
         """

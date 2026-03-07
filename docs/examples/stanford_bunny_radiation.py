@@ -8,9 +8,8 @@ PLY file, sets up a radiation model with shortwave radiation, and visualizes the
 radiation flux distribution using the native PyHelios visualizer plugin.
 
 HARDWARE REQUIREMENTS:
-- NVIDIA GPU with CUDA compute capability (for radiation simulation)
-- CUDA Toolkit installed and configured
-- OptiX ray tracing SDK installed
+- GPU with Vulkan support (NVIDIA, AMD, Intel, or Apple Silicon)
+  OR NVIDIA GPU with CUDA/OptiX (for optimized performance)
 - OpenGL-compatible graphics system (for visualization)
 
 SOFTWARE REQUIREMENTS:

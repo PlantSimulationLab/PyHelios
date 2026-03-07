@@ -220,43 +220,112 @@ def copy_assets_for_packaging(project_root):
         # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
     }
 
-    # Add radiation assets only on platforms that build GPU plugins (Windows/Linux)
-    if platform.system() != 'Darwin':  # Exclude radiation on macOS
-        radiation_assets = []
+    # Add radiation assets (Vulkan works on all platforms, OptiX on Windows/Linux)
+    radiation_assets = []
 
-        # Add spectral data if it exists
-        if Path(plugins_src_dir / 'radiation' / 'spectral_data').exists():
-            radiation_assets.append('spectral_data')
+    # Add spectral data if it exists
+    if Path(plugins_src_dir / 'radiation' / 'spectral_data').exists():
+        radiation_assets.append('spectral_data')
 
-        # Copy generated PTX files from build directory (critical for OptiX functionality)
-        radiation_build_dir = build_dir / 'plugins' / 'radiation'
-        if radiation_build_dir.exists():
-            # Copy generated PTX files from build directory
-            plugin_dest = dest_assets_dir / 'plugins' / 'radiation'
-            plugin_dest.mkdir(parents=True, exist_ok=True)
+    # Copy generated GPU backend files from build directory
+    radiation_build_dir = build_dir / 'plugins' / 'radiation'
+    if radiation_build_dir.exists():
+        plugin_dest = dest_assets_dir / 'plugins' / 'radiation'
+        plugin_dest.mkdir(parents=True, exist_ok=True)
 
-            ptx_files = list(radiation_build_dir.glob('*.ptx'))
-            if ptx_files:
-                ptx_copied = 0
-                for ptx_file in ptx_files:
-                    try:
-                        shutil.copy2(ptx_file, plugin_dest / ptx_file.name)
-                        print(f"[OK] Copied PTX file: {ptx_file.name}")
-                        ptx_copied += 1
-                    except Exception as e:
-                        print(f"[ERROR] Failed to copy PTX file {ptx_file.name}: {e}")
+        # Copy compiled SPIR-V shaders for Vulkan backend
+        spv_files = list(radiation_build_dir.glob('*.spv'))
+        if spv_files:
+            spv_copied = 0
+            for spv_file in spv_files:
+                try:
+                    shutil.copy2(spv_file, plugin_dest / spv_file.name)
+                    print(f"[OK] Copied SPIR-V shader: {spv_file.name}")
+                    spv_copied += 1
+                except Exception as e:
+                    print(f"[ERROR] Failed to copy SPIR-V shader {spv_file.name}: {e}")
 
-                if ptx_copied > 0:
-                    print(f"[OK] Successfully copied {ptx_copied} PTX files for radiation plugin")
-                    total_copied += ptx_copied
+            if spv_copied > 0:
+                print(f"[OK] Successfully copied {spv_copied} SPIR-V shaders for radiation plugin")
+                total_copied += spv_copied
+
+        # Copy generated PTX files for OptiX 6.5 backend (Windows/Linux only)
+        ptx_files = list(radiation_build_dir.glob('*.ptx'))
+        if ptx_files:
+            ptx_copied = 0
+            for ptx_file in ptx_files:
+                try:
+                    shutil.copy2(ptx_file, plugin_dest / ptx_file.name)
+                    print(f"[OK] Copied PTX file: {ptx_file.name}")
+                    ptx_copied += 1
+                except Exception as e:
+                    print(f"[ERROR] Failed to copy PTX file {ptx_file.name}: {e}")
+
+            if ptx_copied > 0:
+                print(f"[OK] Successfully copied {ptx_copied} PTX files for radiation plugin")
+                total_copied += ptx_copied
+
+        # Copy generated OptiXIR files for OptiX 8 backend (Windows/Linux only)
+        optixir_files = list(radiation_build_dir.glob('*.optixir'))
+        if optixir_files:
+            optixir_copied = 0
+            for optixir_file in optixir_files:
+                try:
+                    shutil.copy2(optixir_file, plugin_dest / optixir_file.name)
+                    print(f"[OK] Copied OptiXIR file: {optixir_file.name}")
+                    optixir_copied += 1
+                except Exception as e:
+                    print(f"[ERROR] Failed to copy OptiXIR file {optixir_file.name}: {e}")
+
+            if optixir_copied > 0:
+                print(f"[OK] Successfully copied {optixir_copied} OptiXIR files for radiation plugin")
+                total_copied += optixir_copied
+    else:
+        print(f"[WARNING] Radiation build directory not found: {radiation_build_dir}")
+
+    if radiation_assets:
+        plugin_asset_dirs['radiation'] = radiation_assets
+
+    # Bundle Vulkan runtime libraries on macOS for wheel distribution
+    # The Vulkan loader (libvulkan) is linked directly and delocate handles it,
+    # but MoltenVK (the Metal-to-Vulkan translation layer) is loaded at runtime
+    # via the ICD mechanism and must be bundled explicitly.
+    if platform.system() == 'Darwin':
+        vulkan_sdk = os.environ.get('VULKAN_SDK', '')
+        if vulkan_sdk:
+            vulkan_lib_dir = Path(vulkan_sdk) / 'lib'
+            vulkan_icd_dir = Path(vulkan_sdk) / 'share' / 'vulkan' / 'icd.d'
+            vulkan_dest = dest_assets_dir / 'vulkan'
+            vulkan_dest.mkdir(parents=True, exist_ok=True)
+
+            # Copy MoltenVK library
+            moltenvk = vulkan_lib_dir / 'libMoltenVK.dylib'
+            if moltenvk.exists():
+                shutil.copy2(moltenvk, vulkan_dest / moltenvk.name)
+                print(f"[OK] Bundled MoltenVK: {moltenvk.name}")
+                total_copied += 1
             else:
-                print(f"[WARNING] No PTX files found in radiation build directory: {radiation_build_dir}")
-        else:
-            print(f"[WARNING] Radiation build directory not found: {radiation_build_dir}")
+                print(f"[WARNING] MoltenVK not found at {moltenvk}")
 
-        if radiation_assets:
-            plugin_asset_dirs['radiation'] = radiation_assets
-    
+            # Copy and patch ICD JSON for Vulkan loader to find bundled MoltenVK
+            icd_json = vulkan_icd_dir / 'MoltenVK_icd.json'
+            if icd_json.exists():
+                icd_dest = vulkan_dest / 'icd.d'
+                icd_dest.mkdir(parents=True, exist_ok=True)
+
+                # Read, patch library_path to point to bundled MoltenVK, and write
+                import json
+                with open(icd_json, 'r') as f:
+                    icd_data = json.load(f)
+                # Path relative from icd.d/ to parent vulkan/ dir where libMoltenVK.dylib lives
+                icd_data['ICD']['library_path'] = '../libMoltenVK.dylib'
+                with open(icd_dest / icd_json.name, 'w') as f:
+                    json.dump(icd_data, f, indent=4)
+                print(f"[OK] Bundled Vulkan ICD (patched): {icd_json.name}")
+                total_copied += 1
+            else:
+                print(f"[WARNING] Vulkan ICD JSON not found at {icd_json}")
+
     # Process each plugin directory
     for plugin_dir in plugins_src_dir.iterdir():
         if not plugin_dir.is_dir():

@@ -34,9 +34,10 @@ def _radiation_working_directory():
     """
     Context manager that temporarily changes working directory to where RadiationModel assets are located.
     
-    RadiationModel C++ code uses hardcoded relative paths like "plugins/radiation/cuda_compile_ptx_generated_rayGeneration.cu.ptx"
-    expecting assets relative to working directory. This manager temporarily changes to the build directory
-    where assets are actually located.
+    RadiationModel C++ code uses hardcoded relative paths like "plugins/radiation/" for GPU
+    backend files (SPIR-V shaders for Vulkan, PTX files for OptiX), expecting assets relative
+    to working directory. This manager temporarily changes to the build directory where assets
+    are actually located.
     
     Raises:
         RuntimeError: If build directory or RadiationModel assets are not found, indicating a build system error.
@@ -72,7 +73,7 @@ def _radiation_working_directory():
     if not radiation_assets.exists():
         raise RuntimeError(
             f"RadiationModel assets not found at {radiation_assets}. "
-            f"This indicates a build system error. The build script should copy PTX files to this location."
+            f"This indicates a build system error. The build script should copy shader/backend files to this location."
         )
     
     # Change to the build directory temporarily
@@ -367,11 +368,10 @@ class RadiationModel:
             
             error_msg = (
                 "RadiationModel requires the 'radiation' plugin which is not available.\n\n"
-                "The radiation plugin provides GPU-accelerated ray tracing using OptiX.\n"
-                "System requirements:\n"
-                "- NVIDIA GPU with CUDA support\n"
-                "- CUDA Toolkit installed\n"
-                "- OptiX runtime (bundled with PyHelios)\n\n"
+                "The radiation plugin provides GPU-accelerated ray tracing via Vulkan or OptiX backends.\n"
+                "System requirements (one of the following):\n"
+                "- Vulkan SDK installed (supports NVIDIA, AMD, Intel, and Apple Silicon GPUs)\n"
+                "- OR CUDA Toolkit + OptiX runtime for NVIDIA GPUs (bundled with PyHelios)\n\n"
                 "To enable radiation modeling:\n"
                 "1. Build PyHelios with radiation plugin:\n"
                 "   build_scripts/build_helios --plugins radiation\n"
@@ -1160,7 +1160,7 @@ class RadiationModel:
         
         - GPU ray tracing setup is done once for all bands
         - Scene geometry acceleration structures are reused
-        - OptiX kernel launches are batched together
+        - GPU kernel launches are batched together
         - Memory transfers between CPU/GPU are minimized
         
         Example:

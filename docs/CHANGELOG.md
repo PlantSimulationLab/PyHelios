@@ -1,5 +1,24 @@
 # Changelog
 
+# [v0.1.15] 2026-03-06
+
+- Updated helios-core to v1.3.65
+
+## Radiation Model
+- Added Vulkan compute backend, enabling GPU ray tracing on AMD, Intel, and Apple Silicon GPUs without CUDA/OptiX
+- Radiation plugin now supported on macOS via Vulkan (MoltenVK)
+- Build system updated to compile and package SPIR-V shaders alongside PTX files
+- Wheel builds on macOS now include radiation and energybalance plugins with bundled MoltenVK runtime
+
+## Build & Packaging
+- Dropped Python 3.8 support; added Python 3.12 and 3.13
+- CI Vulkan SDK installation step added for macOS wheel builds
+- Library loader auto-configures `VK_ICD_FILENAMES` for bundled MoltenVK on macOS
+
+## Testing
+- Excluded `tests/manual/` directory from automatic pytest collection
+- Fixed visualizer headless detection on macOS (skip unless `PYHELIOS_TEST_VISUALIZER` is set)
+
 # [v0.1.14] 2026-01-30
 
 🚨++ New Plug-in Integrated ++ 🚨

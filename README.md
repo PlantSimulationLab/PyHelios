@@ -31,12 +31,12 @@ pip install pyhelios3d
 ```
 
 This installs pre-built PyHelios with platform-appropriate plugins:
-- **macOS (Apple Silicon)**: All plugins including energybalance in CPU mode (radiation requires CUDA)
+- **macOS (Apple Silicon)**: All plugins including radiation via Vulkan backend
 - **macOS (Intel)**: Pre-built wheels not available - please [build from source](#build-from-source)
-- **Windows/Linux**: All plugins with optional GPU acceleration (automatic CPU fallback)
+- **Windows/Linux**: All plugins with GPU acceleration via OptiX backend (NVIDIA GPUs)
 
 PyHelios automatically selects the best execution mode:
-- **Plugins with GPU-only modes** (radiation): Require CUDA-capable GPU
+- **Plugins with GPU backends** (radiation): Require GPU - Vulkan (all platforms) or OptiX (NVIDIA)
 - **Plugins with CPU/GPU modes** (energybalance): Work on all platforms, GPU acceleration optional
 - **CPU-only plugins**: Work on all platforms without special hardware
 
@@ -110,11 +110,11 @@ pip install -e .
 
 PyHelios plugins have three types of GPU support:
 
-**GPU-Required Plugins** (need CUDA):
-- **Radiation Model**: OptiX-powered ray tracing for light simulation
-- **Aerial LiDAR**: GPU-accelerated LiDAR simulation
+**GPU-Required Plugins**:
+- **Radiation Model**: GPU-accelerated ray tracing via Vulkan (all GPUs) or OptiX (NVIDIA)
+- **Aerial LiDAR**: GPU-accelerated LiDAR simulation (CUDA)
 
-**GPU-Optional Plugins** (work with or without CUDA):
+**GPU-Optional Plugins** (work with or without GPU):
 - **Energy Balance** *(v1.3.61+)*: Automatic mode selection - GPU (CUDA) → OpenMP (parallel CPU) → Serial CPU
   - CPU mode recommended for most workloads without GPU
 
@@ -122,14 +122,14 @@ PyHelios plugins have three types of GPU support:
 - All other plugins (PlantArchitecture, Photosynthesis, SolarPosition, etc.)
 
 **For GPU Acceleration** (optional), ensure you have:
-- NVIDIA GPU with CUDA support
-- NVIDIA drivers installed
-- CUDA Toolkit (version 11.8 or 12.x)
+- Vulkan SDK installed (supports NVIDIA, AMD, Intel, Apple Silicon GPUs)
+- OR for NVIDIA-optimized path: CUDA Toolkit (version 11.8 or 12.x) + OptiX
 
 **Verification:**
 ```bash
+vulkaninfo  # Should show Vulkan device information
+# OR for NVIDIA:
 nvidia-smi  # Should show GPU information
-nvcc --version  # Should show CUDA compiler version
 ```
 
 **Testing GPU Features:**
@@ -184,7 +184,7 @@ print(f"Created patch: {patch_uuid}")
 
 - **Cross-platform**: Windows, macOS, and Linux support
 - **Plant modeling**: 20+ plant species models in the plant architecture plug-in
-- **GPU acceleration**: OptiX-powered radiation simulation
+- **GPU acceleration**: Radiation simulation via Vulkan or OptiX backends
 - **3D visualization**: OpenGL-based real-time rendering
 
 ## Updating PyHelios

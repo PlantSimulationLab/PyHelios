@@ -1,5 +1,5 @@
 // PyHelios C Interface - Radiation Functions  
-// Provides OptiX-accelerated ray tracing and radiation modeling functions
+// Provides GPU-accelerated ray tracing and radiation modeling functions (Vulkan/OptiX backends)
 
 #include "../include/pyhelios_wrapper_common.h"
 #include "../include/pyhelios_wrapper_context.h"

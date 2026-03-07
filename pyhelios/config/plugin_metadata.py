@@ -38,10 +38,10 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
     
     "radiation": PluginMetadata(
         name="radiation",
-        description="GPU-accelerated ray tracing and radiation modeling using OptiX",
-        system_dependencies=["cuda", "optix"],
+        description="GPU-accelerated ray tracing and radiation modeling via Vulkan or OptiX backends",
+        system_dependencies=["vulkan"],  # Vulkan required; CUDA/OptiX optional for NVIDIA performance
         plugin_dependencies=[],
-        platforms=["windows", "linux"],  # Limited macOS support
+        platforms=["windows", "linux", "macos"],  # Vulkan backend supports all platforms
         gpu_required=True,
         optional=True,
         test_symbols=["createRadiationModel", "runRadiationModel"]

@@ -65,8 +65,8 @@ class HeliosGPUInitializationError(HeliosError):
     """
     GPU initialization errors.
     
-    Raised when GPU-related operations fail, such as OptiX initialization
-    for radiation modeling or CUDA setup.
+    Raised when GPU-related operations fail, such as Vulkan/OptiX backend
+    initialization for radiation modeling or GPU setup.
     """
     pass
 

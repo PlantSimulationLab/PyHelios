@@ -9,9 +9,9 @@ PyHelios uses a sophisticated plugin architecture with **21 available plugins** 
 - **canopygenerator**: Plant canopy generation for various species  
 - **solarposition**: Solar position calculations and sun angle modeling
 
-### GPU-Accelerated Plugins (Require CUDA)
-- **radiation**: OptiX-accelerated ray tracing and radiation modeling
-- **aeriallidar**: Aerial LiDAR simulation with GPU acceleration
+### GPU-Accelerated Plugins
+- **radiation**: GPU-accelerated ray tracing and radiation modeling via Vulkan or OptiX backends
+- **aeriallidar**: Aerial LiDAR simulation with GPU acceleration (CUDA)
 - **collisiondetection**: Collision detection with optional GPU acceleration
 
 ### Physics Modeling Plugins
@@ -89,7 +89,7 @@ registry = get_plugin_registry()
 if registry.is_plugin_available('radiation'):
     print("GPU radiation modeling available")
 else:
-    print("Radiation plugin not available - build with CUDA support enabled")
+    print("Radiation plugin not available - rebuild with GPU support (Vulkan or CUDA)")
 
 # Get detailed plugin status
 print_plugin_status()
@@ -230,7 +230,7 @@ class MyPlugin:
 
 Plugins may require system libraries:
 
-- **radiation**: CUDA Toolkit, OptiX SDK
+- **radiation**: Vulkan SDK (all platforms) or CUDA Toolkit + OptiX SDK (NVIDIA)
 - **visualizer**: OpenGL, GLFW
 - **lidar**: Point cloud libraries
 - **photosynthesis**: Mathematical libraries
@@ -287,11 +287,11 @@ print_plugin_status()
 
 **GPU Plugin Failures:**
 ```bash
-# Check CUDA installation
-nvidia-smi
+# Check Vulkan availability
+vulkaninfo
 
-# Verify OptiX availability
-python -c "from pyhelios.plugins import check_optix; check_optix()"
+# Or check CUDA installation (NVIDIA GPUs)
+nvidia-smi
 ```
 
 **Dependency Issues:**
@@ -308,9 +308,10 @@ PyHelios provides detailed error messages with actionable solutions:
 HeliosPluginNotAvailableError: The 'radiation' plugin is not available.
 
 To enable GPU-accelerated radiation modeling:
-1. Install CUDA Toolkit 11.0+
-2. Rebuild PyHelios with CUDA: build_scripts/build_helios
-3. Ensure NVIDIA GPU with compute capability 3.5+
+1. Install Vulkan SDK (cross-platform: NVIDIA, AMD, Intel, Apple Silicon)
+   OR CUDA Toolkit 11.0+ with OptiX (NVIDIA GPUs only)
+2. Rebuild PyHelios: build_scripts/build_helios --plugins radiation
+3. Ensure GPU with Vulkan 1.1+ support or NVIDIA GPU with compute capability 3.5+
 
 Alternative: Use CPU-based radiation approximations with the 'energybalance' plugin.
 ```

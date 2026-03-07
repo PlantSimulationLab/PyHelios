@@ -4,16 +4,18 @@
 
 ## Overview
 
-Several PyHelios plugins require NVIDIA CUDA for GPU-accelerated computations. This guide provides comprehensive instructions for installing and configuring CUDA for PyHelios.
+Several PyHelios plugins support NVIDIA CUDA for GPU-accelerated computations. This guide provides comprehensive instructions for installing and configuring CUDA for PyHelios.
+
+> **Note**: The radiation plugin now also supports a Vulkan compute backend, enabling GPU ray tracing on AMD, Intel, and Apple Silicon GPUs without CUDA. See the \ref RadiationDoc "Radiation Model documentation" for details.
 
 ## GPU-Accelerated Plugins
 
-The following plugins require CUDA:
+The following plugins use GPU acceleration:
 
 | Plugin | Description | CUDA Required |
 |--------|-------------|---------------|
-| \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" | OptiX-accelerated ray tracing and radiation modeling | Yes |
-| \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" | Plant energy balance and thermal modeling | Yes |
+| \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" | GPU-accelerated ray tracing via Vulkan or OptiX | No (Vulkan alternative available) |
+| \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" | Plant energy balance and thermal modeling | Optional (CPU fallback) |
 | aeriallidar | Aerial LiDAR simulation with GPU acceleration | Yes |
 | lidar | LiDAR simulation and point cloud processing | Yes |
 

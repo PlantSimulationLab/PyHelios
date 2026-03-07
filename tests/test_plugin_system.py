@@ -132,9 +132,11 @@ class TestDependencyResolver:
         
         assert isinstance(result.final_plugins, list)
         
-        # If CUDA is available, radiation should be included
-        # If not, it should be removed with warnings
-        if result.system_check_results.get('cuda', False):
+        # Radiation requires either Vulkan or CUDA GPU backend
+        # If any GPU backend is available, radiation should be included
+        has_gpu_backend = (result.system_check_results.get('vulkan', False) or
+                          result.system_check_results.get('cuda', False))
+        if has_gpu_backend:
             assert 'radiation' in result.final_plugins
         else:
             assert 'radiation' not in result.final_plugins

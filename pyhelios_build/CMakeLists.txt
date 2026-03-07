@@ -21,13 +21,22 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/PluginSelection.cmake")
 setup_plugin_system()
 
 #-------- MANYLINUX COMPATIBILITY FIX ---------#
-# Apply z_size_t compatibility fix globally for all dependencies
+# Fix zlib header resolution for manylinux containers.
+# Helios core's CMakeLists.txt adds the zlib SOURCE directory to include paths,
+# but zlib's CMake build renames zconf.h -> zconf.h.included in the source dir
+# and generates a new zconf.h in the BUILD directory. Without the build directory
+# in the include path, the compiler falls back to the system zconf.h from
+# zlib-devel (zlib 1.2.7 on CentOS 7) which doesn't define z_size_t.
+# We add the zlib build directory to the global include path so the generated
+# zconf.h (matching the bundled zlib 1.3.1 zlib.h) is found first.
+include_directories("${CMAKE_BINARY_DIR}/lib/zlib")
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(DEFINED ENV{CIBUILDWHEEL} OR DEFINED ENV{AUDITWHEEL_PLAT} OR "$ENV{AUDITWHEEL_PLAT}" MATCHES "manylinux")
         message(STATUS "PyHelios: Applying manylinux z_size_t compatibility fix globally")
         # Force inclusion of stddef.h for all C/C++ compilations to ensure size_t is available
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -include stddef.h")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include stddef.h") 
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include stddef.h")
         message(STATUS "PyHelios: Applied global stddef.h inclusion for manylinux compatibility")
     endif()
 endif()
@@ -44,6 +53,20 @@ if("radiation" IN_LIST PLUGINS)
     if(CUDAToolkit_FOUND)
         message(STATUS "Found CUDA toolkit for radiation plugin: ${CUDAToolkit_VERSION}")
     endif()
+endif()
+
+#-------- RADIATION PLUGIN VULKAN HEADER FIX ---------#
+# The radiation plugin's selfTest.cpp unconditionally includes VulkanDevice.h and
+# VulkanComputeBackend.h, which require vulkan/vulkan.h and vk_mem_alloc.h.
+# However, the radiation CMakeLists only adds these include paths when HAVE_VULKAN
+# is true. On Linux CUDA containers (OptiX-only), HAVE_VULKAN is false, so
+# selfTest.cpp fails to compile. We add the VMA include dir here to fix this.
+# (Vulkan SDK headers are installed in the Docker image by build-wheels.yml.)
+if("radiation" IN_LIST PLUGINS AND TARGET radiation)
+    target_include_directories(radiation PRIVATE
+        "${BASE_DIRECTORY}/plugins/radiation/lib/vma"
+    )
+    message(STATUS "PyHelios: Added VMA include directory for radiation selfTest compilation")
 endif()
 
 #-------- PYHELIOS INTERFACE ---------#

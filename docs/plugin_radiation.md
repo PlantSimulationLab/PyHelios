@@ -1,6 +1,6 @@
 # Radiation Model Plugin {#RadiationDoc}
 
-The Radiation Model plugin provides GPU-accelerated ray tracing for radiation simulation using OptiX. This documentation is based on the actual implementation.
+The Radiation Model plugin provides GPU-accelerated ray tracing for radiation simulation using Vulkan or OptiX backends. Backend selection is automatic based on available hardware: Vulkan supports all GPU vendors (NVIDIA, AMD, Intel, Apple Silicon), while OptiX provides an optimized path for NVIDIA GPUs. This documentation is based on the actual implementation.
 
 ## Overview
 
@@ -8,44 +8,32 @@ The \ref pyhelios.RadiationModel.RadiationModel "RadiationModel class" provides 
 
 ## Requirements
 
-<table>
-  <tr>
-     <th>Installation Method</th>
-     <th>Requirement</th>
-     <td>\image html apple-logo.png</td>
-     <td>\image html unix-logo.png</td>
-     <td>\image html windows-logo.png</td>
-  </tr>
-  <tr>
-     <td rowspan="3">**Runtime**<br>(pip install)</td>
-     <td>NVIDIA GPU</td>
-     <td>Not supported</td>
-     <td colspan="2">CUDA-capable (compute capability 3.5+)</td>
-  </tr>
-  <tr>
-     <td>CUDA Runtime</td>
-     <td>Not supported</td>
-     <td colspan="2">Version 9.0+<br>Typically with NVIDIA drivers<br>Or install <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a></td>
-  </tr>
-  <tr>
-     <td>OptiX Runtime</td>
-     <td>Not supported</td>
-     <td colspan="2">Bundled with wheels<br>**WSL**: See \ref OptiXSetup "OptiX Setup"</td>
-  </tr>
-  <tr style="border-top: 3px double #888">
-     <td rowspan="2">**Build from Source**<br>(additional deps)</td>
-     <td>CUDA Toolkit</td>
-     <td>Not supported</td>
-     <td colspan="2">Version 9.0+ with nvcc compiler<br><a href="https://developer.nvidia.com/cuda-toolkit">Download</a></td>
-  </tr>
-  <tr>
-     <td>OptiX SDK</td>
-     <td>Not supported</td>
-     <td colspan="2">Headers bundled in repository</td>
-  </tr>
-</table>
+The radiation plugin supports two GPU backends. At least one must be available:
 
-**For detailed CUDA installation instructions**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
+### Vulkan Backend (All Platforms)
+
+Supports NVIDIA, AMD, Intel, and Apple Silicon GPUs via Vulkan compute shaders with software BVH traversal.
+
+| Requirement | macOS | Linux | Windows |
+|-------------|-------|-------|---------|
+| **GPU** | Any with Vulkan support | Any with Vulkan support | Any with Vulkan support |
+| **Vulkan SDK** | Via MoltenVK (bundled with macOS) | <a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a> | <a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a> |
+
+### OptiX Backend (NVIDIA Only)
+
+Provides optimized ray tracing on NVIDIA GPUs using hardware RT cores.
+
+| Requirement | macOS | Linux | Windows |
+|-------------|-------|-------|---------|
+| **GPU** | Not supported | CUDA-capable (compute capability 3.5+) | CUDA-capable (compute capability 3.5+) |
+| **CUDA Runtime** | Not supported | Version 9.0+ | Version 9.0+ |
+| **OptiX Runtime** | Not supported | Bundled with PyHelios | Bundled with PyHelios |
+
+### Backend Selection
+
+Backend selection is automatic based on available hardware. Use the CMake option `FORCE_VULKAN_BACKEND=ON` to force the Vulkan backend for testing.
+
+**For CUDA/OptiX setup**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
 - Choosing the correct CUDA toolkit version: \ref ChoosingCUDA
 - Platform-specific installation steps (Windows, Linux)
 - GPU timeout settings for Windows: \ref PCGPUTimeout
@@ -266,7 +254,7 @@ radiation.updateGeometry([patch_uuid, triangle_uuid])
 
 - GPU ray tracing setup is performed once for all bands
 - Scene geometry acceleration structures are reused across bands
-- OptiX kernel launches are batched together
+- GPU kernel launches are batched together
 - Memory transfers between CPU/GPU are minimized
 - Ray traversal computations are shared between spectral bands
 
@@ -1007,7 +995,7 @@ try:
 
 except RadiationModelError as e:
     print(f"Radiation modeling failed: {e}")
-    print("Ensure NVIDIA GPU with CUDA support is available")
+    print("Ensure GPU with Vulkan support is available (or NVIDIA GPU with CUDA/OptiX)")
     print("Check that radiation plugin is compiled: build_scripts/build_helios --plugins radiation")
 except Exception as e:
     print(f"Simulation setup failed: {e}")
@@ -1333,10 +1321,10 @@ except Exception as e:
     print(f"RadiationModel initialization failed: {e}")
     
     # Check if GPU is available
-    if "NVIDIA GPU" in str(e):
-        print("Ensure NVIDIA GPU with CUDA support is available")
+    if "Vulkan" in str(e):
+        print("Vulkan backend error - check Vulkan SDK installation and GPU drivers")
     elif "OptiX" in str(e):
-        print("OptiX runtime error - check graphics drivers")
+        print("OptiX backend error - check CUDA/OptiX installation and NVIDIA drivers")
     elif "GPU" in str(e):
         print(f"GPU initialization failed: {e}")
 ```
