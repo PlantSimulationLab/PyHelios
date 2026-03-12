@@ -2205,14 +2205,14 @@ class TestCompoundGeometry:
         center = vec3(0, 0, 0)
         
         # Invalid radius
-        with pytest.raises(ValueError, match="radius must be positive"):
+        with pytest.raises(ValueError, match="must be positive"):
             basic_context.addSphere(center, 0.0, 8)
-        
-        with pytest.raises(ValueError, match="radius must be positive"):
+
+        with pytest.raises(ValueError, match="must be positive"):
             basic_context.addSphere(center, -1.0, 8)
-        
+
         # Invalid subdivisions
-        with pytest.raises(ValueError, match="Number of divisions must be at least 3"):
+        with pytest.raises(ValueError, match="must be >= 3"):
             basic_context.addSphere(center, 1.0, 2)
     
     def test_addTube_basic(self, basic_context):
@@ -2350,14 +2350,14 @@ class TestCompoundGeometry:
         center = vec3(0, 0, 0)
         
         # Invalid size (negative dimensions)
-        with pytest.raises(ValueError, match="All box dimensions must be positive"):
+        with pytest.raises(ValueError, match="must be positive"):
             basic_context.addBox(center, vec3(-1, 1, 1))
-        
-        with pytest.raises(ValueError, match="All box dimensions must be positive"):
+
+        with pytest.raises(ValueError, match="must be positive"):
             basic_context.addBox(center, vec3(1, 0, 1))
-        
+
         # Invalid subdivisions
-        with pytest.raises(ValueError, match="All subdivision counts must be at least 1"):
+        with pytest.raises(ValueError, match="subdivision counts must be at least 1"):
             basic_context.addBox(center, vec3(1, 1, 1), int3(0, 1, 1))
     
     def test_compound_geometry_return_types(self, basic_context):
@@ -2594,3 +2594,276 @@ class TestContextTimeDateMockMode:
             
             with pytest.raises(NotImplementedError, match="not available"):
                 context.getDate()
+
+
+@pytest.mark.native_only
+class TestTextureGetters:
+    """Test single-UUID texture methods."""
+
+    def test_getPrimitiveTextureFile_no_texture(self, basic_context):
+        """Primitive without texture returns empty string."""
+        uuid = basic_context.addPatch()
+        result = basic_context.getPrimitiveTextureFile(uuid)
+        assert isinstance(result, str)
+
+    def test_setPrimitiveTextureFile(self, basic_context):
+        """Setting and getting texture file round-trips."""
+        uuid = basic_context.addPatch()
+        basic_context.setPrimitiveTextureFile(uuid, "test_texture.png")
+        result = basic_context.getPrimitiveTextureFile(uuid)
+        assert result == "test_texture.png"
+
+    def test_getPrimitiveTextureSize_no_texture(self, basic_context):
+        """Primitive without texture returns zero size."""
+        uuid = basic_context.addPatch()
+        size = basic_context.getPrimitiveTextureSize(uuid)
+        assert size.x == 0
+        assert size.y == 0
+
+    def test_getPrimitiveTextureUV_patch(self, basic_context):
+        """Patch should have UV coordinates."""
+        uuid = basic_context.addPatch()
+        uvs = basic_context.getPrimitiveTextureUV(uuid)
+        assert isinstance(uvs, list)
+
+    def test_getPrimitiveSolidFraction(self, basic_context):
+        """Solid fraction for patch without transparency texture."""
+        uuid = basic_context.addPatch()
+        fraction = basic_context.getPrimitiveSolidFraction(uuid)
+        assert isinstance(fraction, float)
+        assert fraction >= 0.0
+
+    def test_primitiveTextureHasTransparencyChannel(self, basic_context):
+        """Primitive without texture has no transparency channel."""
+        uuid = basic_context.addPatch()
+        result = basic_context.primitiveTextureHasTransparencyChannel(uuid)
+        assert isinstance(result, bool)
+
+    def test_overrideAndUseTextureColor(self, basic_context):
+        """Override and restore texture color."""
+        uuid = basic_context.addPatch()
+        # Initially not overridden
+        assert basic_context.isPrimitiveTextureColorOverridden(uuid) == False
+        # Override
+        basic_context.overridePrimitiveTextureColor(uuid)
+        assert basic_context.isPrimitiveTextureColorOverridden(uuid) == True
+        # Restore
+        basic_context.usePrimitiveTextureColor(uuid)
+        assert basic_context.isPrimitiveTextureColorOverridden(uuid) == False
+
+    def test_texture_invalid_uuid(self, basic_context):
+        """Texture methods should raise on invalid UUID."""
+        with pytest.raises(Exception):
+            basic_context.getPrimitiveTextureFile(99999)
+
+
+@pytest.mark.native_only
+class TestListOverloads:
+    """Test that scalar getters accept a list of UUIDs and return batch results."""
+
+    def test_getPrimitiveNormal_list(self, basic_context):
+        """List overload returns ndarray matching individual normals."""
+        uuids = [basic_context.addPatch() for _ in range(5)]
+        batch_normals = basic_context.getPrimitiveNormal(uuids)
+        assert batch_normals.shape == (5, 3)
+        for i, uuid in enumerate(uuids):
+            single = basic_context.getPrimitiveNormal(uuid)
+            assert batch_normals[i, 0] == pytest.approx(single.x, abs=1e-6)
+            assert batch_normals[i, 1] == pytest.approx(single.y, abs=1e-6)
+            assert batch_normals[i, 2] == pytest.approx(single.z, abs=1e-6)
+
+    def test_getPrimitiveColor_list(self, basic_context):
+        """List overload returns ndarray matching individual colors."""
+        colors = [RGBcolor(0.1*i, 0.2*i, 0.3*i) for i in range(1, 4)]
+        uuids = [basic_context.addPatch(color=c) for c in colors]
+        batch_colors = basic_context.getPrimitiveColor(uuids)
+        assert batch_colors.shape == (3, 3)
+        for i, uuid in enumerate(uuids):
+            single = basic_context.getPrimitiveColor(uuid)
+            assert batch_colors[i, 0] == pytest.approx(single.r, abs=1e-6)
+            assert batch_colors[i, 1] == pytest.approx(single.g, abs=1e-6)
+            assert batch_colors[i, 2] == pytest.approx(single.b, abs=1e-6)
+
+    def test_getPrimitiveArea_list(self, basic_context):
+        """List overload returns ndarray matching individual areas."""
+        sizes = [vec2(1, 1), vec2(2, 3), vec2(0.5, 4)]
+        uuids = [basic_context.addPatch(size=s) for s in sizes]
+        batch_areas = basic_context.getPrimitiveArea(uuids)
+        assert batch_areas.shape == (3,)
+        for i, uuid in enumerate(uuids):
+            assert batch_areas[i] == pytest.approx(basic_context.getPrimitiveArea(uuid), abs=1e-6)
+
+    def test_getPrimitiveType_list(self, basic_context):
+        """List overload returns ndarray matching individual types."""
+        patch = basic_context.addPatch()
+        tri = basic_context.addTriangle(vec3(0,0,0), vec3(1,0,0), vec3(0.5,1,0))
+        uuids = [patch, tri]
+        batch_types = basic_context.getPrimitiveType(uuids)
+        assert batch_types.shape == (2,)
+        assert batch_types[0] == basic_context.getPrimitiveType(patch).value
+        assert batch_types[1] == basic_context.getPrimitiveType(tri).value
+
+    def test_getPrimitiveSolidFraction_list(self, basic_context):
+        """List overload returns ndarray matching individual solid fractions."""
+        uuids = [basic_context.addPatch() for _ in range(3)]
+        batch = basic_context.getPrimitiveSolidFraction(uuids)
+        assert batch.shape == (3,)
+        for i, uuid in enumerate(uuids):
+            assert batch[i] == pytest.approx(basic_context.getPrimitiveSolidFraction(uuid), abs=1e-6)
+
+    def test_getPrimitiveVertices_list(self, basic_context):
+        """List overload returns (flat_data, offsets) for mixed geometry."""
+        patch = basic_context.addPatch()
+        tri = basic_context.addTriangle(vec3(0,0,0), vec3(1,0,0), vec3(0.5,1,0))
+        uuids = [patch, tri]
+        data, offsets = basic_context.getPrimitiveVertices(uuids)
+        assert len(offsets) == 3  # N+1 offsets
+        # Patch: 4 vertices = 12 floats
+        patch_floats = offsets[1] - offsets[0]
+        assert patch_floats == 12
+        # Triangle: 3 vertices = 9 floats
+        tri_floats = offsets[2] - offsets[1]
+        assert tri_floats == 9
+        # Verify values match single-UUID getter
+        single_verts = basic_context.getPrimitiveVertices(patch)
+        for j, v in enumerate(single_verts):
+            assert data[offsets[0] + j*3] == pytest.approx(v.x, abs=1e-6)
+            assert data[offsets[0] + j*3 + 1] == pytest.approx(v.y, abs=1e-6)
+            assert data[offsets[0] + j*3 + 2] == pytest.approx(v.z, abs=1e-6)
+
+    def test_getPrimitiveMaterialLabel_list(self, basic_context):
+        """List overload returns list of strings matching individual labels."""
+        uuids = [basic_context.addPatch() for _ in range(3)]
+        labels = basic_context.getPrimitiveMaterialLabel(uuids)
+        assert len(labels) == 3
+        for i, uuid in enumerate(uuids):
+            assert labels[i] == basic_context.getPrimitiveMaterialLabel(uuid)
+
+    def test_getPrimitiveTextureFile_list(self, basic_context):
+        """List overload returns list of texture file strings."""
+        uuids = [basic_context.addPatch() for _ in range(3)]
+        files = basic_context.getPrimitiveTextureFile(uuids)
+        assert len(files) == 3
+        assert all(isinstance(f, str) for f in files)
+
+    def test_list_empty(self, basic_context):
+        """Empty list returns empty results for all overloads."""
+        assert basic_context.getPrimitiveNormal([]).shape == (0, 3)
+        assert basic_context.getPrimitiveColor([]).shape == (0, 3)
+        assert basic_context.getPrimitiveArea([]).shape == (0,)
+        assert basic_context.getPrimitiveType([]).shape == (0,)
+        data, offsets = basic_context.getPrimitiveVertices([])
+        assert data.shape == (0,)
+        assert basic_context.getPrimitiveTextureFile([]) == []
+        assert basic_context.getPrimitiveMaterialLabel([]) == []
+
+    def test_list_single_uuid(self, basic_context):
+        """Single-element list works correctly."""
+        uuid = basic_context.addPatch(size=vec2(2, 3))
+        normals = basic_context.getPrimitiveNormal([uuid])
+        assert normals.shape == (1, 3)
+        areas = basic_context.getPrimitiveArea([uuid])
+        assert areas.shape == (1,)
+        assert areas[0] == pytest.approx(6.0, abs=1e-6)
+
+    def test_list_invalid_uuid(self, basic_context):
+        """List with invalid UUID raises exception."""
+        with pytest.raises(Exception):
+            basic_context.getPrimitiveNormal([99999])
+
+
+@pytest.mark.native_only
+class TestConvenienceMethods:
+    """Test getAll* convenience methods."""
+
+    def test_getAllPrimitiveNormals(self, basic_context):
+        """getAllPrimitiveNormals returns correct shape."""
+        basic_context.addPatch()
+        basic_context.addTriangle(vec3(0,0,0), vec3(1,0,0), vec3(0.5,1,0))
+        normals = basic_context.getAllPrimitiveNormals()
+        assert normals.shape[0] == basic_context.getPrimitiveCount()
+        assert normals.shape[1] == 3
+
+    def test_getAllPrimitiveAreas(self, basic_context):
+        """getAllPrimitiveAreas returns correct shape."""
+        basic_context.addPatch(size=vec2(2, 3))
+        basic_context.addPatch(size=vec2(1, 1))
+        areas = basic_context.getAllPrimitiveAreas()
+        assert areas.shape[0] == basic_context.getPrimitiveCount()
+
+    def test_getAllPrimitiveVertices(self, basic_context):
+        """getAllPrimitiveVertices returns data and offsets."""
+        basic_context.addPatch()
+        basic_context.addPatch()
+        data, offsets = basic_context.getAllPrimitiveVertices()
+        assert len(offsets) == basic_context.getPrimitiveCount() + 1
+        assert data.shape[0] == offsets[-1]
+
+    def test_getAllPrimitiveMaterialLabels(self, basic_context):
+        """getAllPrimitiveMaterialLabels returns list of strings."""
+        basic_context.addPatch()
+        labels = basic_context.getAllPrimitiveMaterialLabels()
+        assert len(labels) == basic_context.getPrimitiveCount()
+        assert all(isinstance(l, str) for l in labels)
+
+
+@pytest.mark.native_only
+class TestPrimitiveInfoWithTexture:
+    """Test PrimitiveInfo includes texture fields."""
+
+    def test_primitiveInfo_has_texture_fields(self, basic_context):
+        """PrimitiveInfo should have texture_file, texture_uv, solid_fraction fields."""
+        uuid = basic_context.addPatch()
+        info = basic_context.getPrimitiveInfo(uuid)
+        assert hasattr(info, 'texture_file')
+        assert hasattr(info, 'texture_uv')
+        assert hasattr(info, 'solid_fraction')
+
+    def test_primitiveInfo_texture_file_none_or_empty(self, basic_context):
+        """PrimitiveInfo for untextured primitive has None/empty texture_file."""
+        uuid = basic_context.addPatch()
+        info = basic_context.getPrimitiveInfo(uuid)
+        assert info.texture_file is None or info.texture_file == ""
+
+
+@pytest.mark.cross_platform
+class TestOverloadMockMode:
+    """Test overloaded methods and API structure in mock mode."""
+
+    @pytest.mark.mock_mode
+    def test_list_overload_mock_mode(self):
+        from pyhelios.plugins.loader import get_library_info
+        library_info = get_library_info()
+        if library_info.get('is_mock', False):
+            with Context() as context:
+                with pytest.raises(RuntimeError, match="mock mode"):
+                    context.getPrimitiveNormal([1, 2, 3])
+
+    @pytest.mark.mock_mode
+    def test_texture_file_mock_mode(self):
+        from pyhelios.plugins.loader import get_library_info
+        library_info = get_library_info()
+        if library_info.get('is_mock', False):
+            with Context() as context:
+                with pytest.raises(RuntimeError, match="mock mode"):
+                    context.getPrimitiveTextureFile(1)
+
+    def test_convenience_api_structure(self):
+        """Test that getAll* convenience methods exist on Context class."""
+        for method in ['getAllPrimitiveNormals', 'getAllPrimitiveColors',
+                       'getAllPrimitiveAreas', 'getAllPrimitiveTypes',
+                       'getAllPrimitiveSolidFractions', 'getAllPrimitiveVertices',
+                       'getAllPrimitiveTextureFiles', 'getAllPrimitiveMaterialLabels']:
+            assert hasattr(Context, method), f"Context missing method: {method}"
+            assert callable(getattr(Context, method))
+
+    def test_texture_api_structure(self):
+        """Test that texture methods exist on Context class."""
+        for method in ['getPrimitiveTextureFile', 'setPrimitiveTextureFile',
+                       'getPrimitiveTextureSize', 'getPrimitiveTextureUV',
+                       'primitiveTextureHasTransparencyChannel',
+                       'getPrimitiveSolidFraction',
+                       'overridePrimitiveTextureColor', 'usePrimitiveTextureColor',
+                       'isPrimitiveTextureColorOverridden']:
+            assert hasattr(Context, method), f"Context missing method: {method}"
+            assert callable(getattr(Context, method))

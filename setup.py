@@ -266,11 +266,11 @@ setup(
         'Operating System :: POSIX :: Linux', 
         'Operating System :: MacOS',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: 3.14',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Physics',
         'Topic :: Scientific/Engineering :: Visualization',
@@ -306,7 +306,7 @@ setup(
         ],
     },
     
-    python_requires='>=3.9',
+    python_requires='>=3.10',
     
     # Additional metadata
     keywords='helios, plant simulation, 3d modeling, ray tracing, photosynthesis, plant architecture',

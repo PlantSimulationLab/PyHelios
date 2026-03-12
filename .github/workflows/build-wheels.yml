@@ -25,7 +25,14 @@ jobs:
       - name: Set package version from tag
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
-        run: echo "SETUPTOOLS_SCM_PRETEND_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # PyPI permanently reserves filenames for deleted releases.
+          # Use .postN suffix for versions whose files were previously uploaded and deleted.
+          case "$VERSION" in
+            0.1.16) VERSION="0.1.16.post2" ;;
+          esac
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout PyHelios
         uses: actions/checkout@v4
@@ -199,8 +206,8 @@ jobs:
         run: python -m cibuildwheel --output-dir wheelhouse
         timeout-minutes: 60  # Increased for LiDAR tests which are comprehensive
         env:
-          # Build for Python 3.9+ on all platforms
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*
+          # Build for Python 3.10+ on all platforms
+          CIBW_BUILD: cp310-* cp311-* cp312-* cp313-* cp314-*
 
           # Fail fast on build errors instead of continuing to next Python version
           CIBW_BUILD_VERBOSITY: 1
@@ -235,7 +242,7 @@ jobs:
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0 CMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} SYSTEM_VERSION_COMPAT=0 VULKAN_SDK=${{ env.VULKAN_SDK }} PATH=${{ env.VULKAN_SDK }}/bin:$PATH"
 
           # Ensure CUDA is visible inside cibuildwheel's Windows build environment
-          CIBW_ENVIRONMENT_PASS_WINDOWS: "CUDA_PATH CUDA_HOME"
+          CIBW_ENVIRONMENT_PASS_WINDOWS: "CUDA_PATH CUDA_HOME SETUPTOOLS_SCM_PRETEND_VERSION"
           CIBW_BEFORE_BUILD_WINDOWS: >
             echo "=== CIBW_BEFORE_BUILD_WINDOWS Started ===" &&
             set "PATH=%CUDA_PATH%\bin;%PATH%" &&
@@ -251,7 +258,7 @@ jobs:
             echo "=== CIBW_BEFORE_BUILD_WINDOWS Completed ==="
 
           CIBW_SHELL_LINUX: "/usr/bin/bash -eo pipefail -c"
-          CIBW_ENVIRONMENT_PASS_LINUX: "SHELL"
+          CIBW_ENVIRONMENT_PASS_LINUX: "SHELL SETUPTOOLS_SCM_PRETEND_VERSION"
           CIBW_BEFORE_ALL_LINUX: >
             if [ -f /opt/rh/devtoolset-10/enable ]; then
               echo "Enabling devtoolset-10 for C++17 support" && source /opt/rh/devtoolset-10/enable
@@ -272,7 +279,7 @@ jobs:
             yum install -y zlib-devel mesa-libGL-devel mesa-libEGL-devel libX11-devel libXrandr-devel mesa-libGLU-devel libXinerama-devel libXcursor-devel libXi-devel libXxf86vm-devel &&
             export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:${PKG_CONFIG_PATH}" &&
             export CMAKE_PREFIX_PATH="/usr:${CMAKE_PREFIX_PATH}" &&
-            /opt/python/cp39-cp39/bin/python build_scripts/prepare_wheel.py --buildmode release --verbose --clean
+            /opt/python/cp310-cp310/bin/python build_scripts/prepare_wheel.py --buildmode release --verbose --clean
           # Per-ABI: do not rebuild; only stage/copy already built artifacts
           CIBW_BEFORE_BUILD_LINUX: >
             if [ -f /opt/rh/devtoolset-10/enable ]; then
@@ -290,7 +297,7 @@ jobs:
             export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:${PKG_CONFIG_PATH}" &&
             export CMAKE_PREFIX_PATH="/usr:${CMAKE_PREFIX_PATH}" &&
             echo "Reusing native build; packaging only." &&
-            /opt/python/cp39-cp39/bin/python build_scripts/prepare_wheel.py --buildmode release --verbose
+            /opt/python/cp310-cp310/bin/python build_scripts/prepare_wheel.py --buildmode release --verbose
 
           # Manylinux-specific environment for zlib compatibility and OpenGL discovery
           # Use documented $PATH expansion to append devtoolset without overriding cibuildwheel's Python
@@ -701,15 +708,15 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            python-version: '3.9'
+            python-version: '3.10'
           - os: ubuntu-22.04
-            python-version: '3.13'
+            python-version: '3.14'
           - os: windows-2022
-            python-version: '3.9'
+            python-version: '3.10'
           - os: windows-2022
-            python-version: '3.13'
+            python-version: '3.14'
           - os: macos-14
-            python-version: '3.13'
+            python-version: '3.14'
 
     steps:
       - name: Checkout PyHelios for tests
@@ -1299,8 +1306,18 @@ jobs:
           merge-multiple: true
           path: wheelhouse
 
+      - name: List wheel sizes
+        run: |
+          echo "=== Wheel sizes (PyPI limit: 100MB default) ==="
+          ls -lhS wheelhouse/
+          echo ""
+          echo "=== Wheels exceeding 100MB ==="
+          find wheelhouse/ -name "*.whl" -size +100M -exec ls -lh {} \; || echo "None found"
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: wheelhouse/
           verify-metadata: false  # Skip metadata verification due to dynamic versioning
+          skip-existing: true  # Allow re-runs without failing on already-uploaded wheels
+          verbose: true  # Show full PyPI error details on upload failure

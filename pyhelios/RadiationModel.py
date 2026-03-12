@@ -15,7 +15,8 @@ from .plugins.registry import get_plugin_registry, require_plugin, graceful_plug
 from .wrappers import URadiationModelWrapper as radiation_wrapper
 from .validation.plugins import (
     validate_wavelength_range, validate_flux_value, validate_ray_count,
-    validate_direction_vector, validate_band_label, validate_source_id, validate_source_id_list
+    validate_direction_vector, validate_band_label, validate_source_id, validate_source_id_list,
+    validate_position_like, validate_direction_like, validate_size_like
 )
 from .validation.plugin_decorators import (
     validate_radiation_band_params, validate_collimated_source_params, validate_sphere_source_params,
@@ -368,10 +369,12 @@ class RadiationModel:
             
             error_msg = (
                 "RadiationModel requires the 'radiation' plugin which is not available.\n\n"
-                "The radiation plugin provides GPU-accelerated ray tracing via Vulkan or OptiX backends.\n"
-                "System requirements (one of the following):\n"
-                "- Vulkan SDK installed (supports NVIDIA, AMD, Intel, and Apple Silicon GPUs)\n"
-                "- OR CUDA Toolkit + OptiX runtime for NVIDIA GPUs (bundled with PyHelios)\n\n"
+                "The radiation plugin provides GPU-accelerated ray tracing with runtime\n"
+                "backend auto-detection (OptiX 8 -> OptiX 6 -> Vulkan).\n"
+                "System requirements (at least one backend):\n"
+                "- Vulkan: Vulkan loader library (macOS/Linux); no extra packages on Windows\n"
+                "- OptiX 8.1: NVIDIA GPU with driver >= 560 and CUDA 12.0+\n"
+                "- OptiX 6.5: NVIDIA GPU with driver < 560 and CUDA 9.0+\n\n"
                 "To enable radiation modeling:\n"
                 "1. Build PyHelios with radiation plugin:\n"
                 "   build_scripts/build_helios --plugins radiation\n"
@@ -548,12 +551,11 @@ class RadiationModel:
         Returns:
             Source ID
         """
+        validate_position_like(position, "position", "addSphereRadiationSource")
         # Handle both tuple and vec3 types
         if hasattr(position, 'x') and hasattr(position, 'y') and hasattr(position, 'z'):
-            # vec3-like object
             x, y, z = position.x, position.y, position.z
         else:
-            # Assume tuple-like object
             x, y, z = position
         source_id = radiation_wrapper.addSphereRadiationSource(self.radiation_model, x, y, z, radius)
         logger.debug(f"Added sphere radiation source: ID {source_id} at ({x}, {y}, {z}) with radius {radius}")
@@ -604,6 +606,7 @@ class RadiationModel:
         """
         if not isinstance(source_id, int) or source_id < 0:
             raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        validate_direction_like(position, "position", "setSourcePosition")
         radiation_wrapper.setSourcePosition(self.radiation_model, source_id, position)
         logger.debug(f"Updated position for radiation source {source_id}")
 
@@ -632,6 +635,9 @@ class RadiationModel:
             ... )
             >>> radiation.setSourceFlux(source_id, "PAR", 500.0)
         """
+        validate_position_like(position, "position", "addRectangleRadiationSource")
+        validate_size_like(size, "size", "addRectangleRadiationSource")
+        validate_position_like(rotation, "rotation", "addRectangleRadiationSource")
         return radiation_wrapper.addRectangleRadiationSource(self.radiation_model, position, size, rotation)
 
     @require_plugin('radiation', 'add disk radiation source')
@@ -659,6 +665,8 @@ class RadiationModel:
             ... )
             >>> radiation.setSourceFlux(source_id, "PAR", 300.0)
         """
+        validate_position_like(position, "position", "addDiskRadiationSource")
+        validate_position_like(rotation, "rotation", "addDiskRadiationSource")
         if radius <= 0:
             raise ValueError(f"Radius must be positive, got {radius}")
         return radiation_wrapper.addDiskRadiationSource(self.radiation_model, position, radius, rotation)
@@ -1040,6 +1048,7 @@ class RadiationModel:
         validate_band_label(label, "label", "setDiffuseRadiationExtinctionCoeff")
         if K < 0:
             raise ValueError(f"Extinction coefficient must be non-negative, got {K}")
+        validate_direction_like(peak_direction, "peak_direction", "setDiffuseRadiationExtinctionCoeff")
         radiation_wrapper.setDiffuseRadiationExtinctionCoeff(self.radiation_model, label, K, peak_direction)
         logger.debug(f"Set diffuse extinction coefficient for band '{label}': K={K}")
 
@@ -1293,6 +1302,7 @@ class RadiationModel:
             >>> g_value = radiation.calculateGtheta(vec3(0, 0, 1))
             >>> print(f"G-function: {g_value}")
         """
+        validate_position_like(view_direction, "view_direction", "calculateGtheta")
         context_ptr = self.context.getNativePtr()
         return radiation_wrapper.calculateGtheta(self.radiation_model, context_ptr, view_direction)
 
@@ -1398,15 +1408,15 @@ class RadiationModel:
         validated_samples = validate_antialiasing_samples(antialiasing_samples, "antialiasing_samples", "addRadiationCamera")
 
         # Validate position (must be vec3)
-        if not (hasattr(position, 'x') and hasattr(position, 'y') and hasattr(position, 'z')):
+        if not isinstance(position, vec3):
             raise TypeError("position must be a vec3 object. Use vec3(x, y, z) to create one.")
         validated_position = position
 
         # Validate lookat_or_direction (must be vec3 or SphericalCoord)
-        if hasattr(lookat_or_direction, 'radius') and hasattr(lookat_or_direction, 'elevation'):
-            validated_direction = lookat_or_direction  # SphericalCoord
-        elif hasattr(lookat_or_direction, 'x') and hasattr(lookat_or_direction, 'y') and hasattr(lookat_or_direction, 'z'):
-            validated_direction = lookat_or_direction  # vec3
+        if isinstance(lookat_or_direction, SphericalCoord):
+            validated_direction = lookat_or_direction
+        elif isinstance(lookat_or_direction, vec3):
+            validated_direction = lookat_or_direction
         else:
             raise TypeError("lookat_or_direction must be a vec3 or SphericalCoord object. Use vec3(x, y, z) or SphericalCoord to create one.")
 
@@ -1468,6 +1478,7 @@ class RadiationModel:
         """
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        validate_position_like(position, "position", "setCameraPosition")
         radiation_wrapper.setCameraPosition(self.radiation_model, camera_label, position)
         logger.debug(f"Updated camera '{camera_label}' position")
 
@@ -1506,6 +1517,7 @@ class RadiationModel:
         """
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        validate_position_like(lookat, "lookat", "setCameraLookat")
         radiation_wrapper.setCameraLookat(self.radiation_model, camera_label, lookat)
         logger.debug(f"Updated camera '{camera_label}' lookat point")
 
@@ -1546,6 +1558,7 @@ class RadiationModel:
         """
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        validate_direction_like(direction, "direction", "setCameraOrientation")
         radiation_wrapper.setCameraOrientation(self.radiation_model, camera_label, direction)
         logger.debug(f"Updated camera '{camera_label}' orientation")
 
@@ -1721,6 +1734,8 @@ class RadiationModel:
             ... )
         """
         validate_band_label(camera_label, "camera_label", "addRadiationCameraFromLibrary")
+        validate_position_like(position, "position", "addRadiationCameraFromLibrary")
+        validate_position_like(lookat, "lookat", "addRadiationCameraFromLibrary")
 
         try:
             radiation_wrapper.addRadiationCameraFromLibrary(
@@ -2193,3 +2208,167 @@ class RadiationModel:
         """Get information about the radiation plugin."""
         registry = get_plugin_registry()
         return registry.get_plugin_capabilities('radiation')
+
+    # =========================================================================
+    # EXR Image Export (v1.3.66+)
+    # =========================================================================
+
+    def writeCameraImageDataEXR(self, camera: str, band, imagefile_base: str,
+                                image_path: str = "./", frame: int = -1):
+        """
+        Write camera pixel data to an EXR file with lossless float compression.
+
+        Preserves full floating-point precision unlike JPEG/PNG exports.
+
+        Args:
+            camera: Camera label
+            band: Band label (str) for single-band, or list of band labels for multi-band
+            imagefile_base: Base filename for output
+            image_path: Output directory path (default: current directory)
+            frame: Frame number to append to filename (-1 to omit)
+
+        Raises:
+            RadiationModelError: If writing fails
+            TypeError: If parameters have incorrect types
+        """
+        if not isinstance(camera, str) or not camera.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(imagefile_base, str) or not imagefile_base.strip():
+            raise TypeError("Image file base must be a non-empty string")
+        if not isinstance(image_path, str):
+            raise TypeError("Image path must be a string")
+        if not isinstance(frame, int):
+            raise TypeError("Frame must be an integer")
+
+        if isinstance(band, str):
+            if not band.strip():
+                raise TypeError("Band label must be a non-empty string")
+        elif isinstance(band, (list, tuple)):
+            if not band:
+                raise ValueError("Band list cannot be empty")
+            for b in band:
+                if not isinstance(b, str) or not b.strip():
+                    raise TypeError("Each band label must be a non-empty string")
+        else:
+            raise TypeError("band must be a string or list of strings")
+
+        radiation_wrapper.writeCameraImageDataEXR(
+            self.radiation_model, camera, band, imagefile_base, image_path, frame)
+
+    def writeDepthImageData(self, camera_label: str, imagefile_base: str,
+                            image_path: str = "./", frame: int = -1):
+        """
+        Write depth image data to an ASCII text file.
+
+        Args:
+            camera_label: Camera label
+            imagefile_base: Base filename for output
+            image_path: Output directory path (default: current directory)
+            frame: Frame number to append to filename (-1 to omit)
+
+        Raises:
+            RadiationModelError: If writing fails
+            TypeError: If parameters have incorrect types
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(imagefile_base, str) or not imagefile_base.strip():
+            raise TypeError("Image file base must be a non-empty string")
+        if not isinstance(image_path, str):
+            raise TypeError("Image path must be a string")
+        if not isinstance(frame, int):
+            raise TypeError("Frame must be an integer")
+
+        radiation_wrapper.writeDepthImageData(
+            self.radiation_model, camera_label, imagefile_base, image_path, frame)
+
+    def writeDepthImageDataEXR(self, camera_label: str, imagefile_base: str,
+                               image_path: str = "./", frame: int = -1):
+        """
+        Write depth image data to an EXR file with lossless float compression.
+
+        Preserves full floating-point depth precision unlike ASCII or JPEG exports.
+
+        Args:
+            camera_label: Camera label
+            imagefile_base: Base filename for output
+            image_path: Output directory path (default: current directory)
+            frame: Frame number to append to filename (-1 to omit)
+
+        Raises:
+            RadiationModelError: If writing fails
+            TypeError: If parameters have incorrect types
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(imagefile_base, str) or not imagefile_base.strip():
+            raise TypeError("Image file base must be a non-empty string")
+        if not isinstance(image_path, str):
+            raise TypeError("Image path must be a string")
+        if not isinstance(frame, int):
+            raise TypeError("Frame must be an integer")
+
+        radiation_wrapper.writeDepthImageDataEXR(
+            self.radiation_model, camera_label, imagefile_base, image_path, frame)
+
+    def writeNormDepthImage(self, camera_label: str, imagefile_base: str, max_depth: float,
+                            image_path: str = "./", frame: int = -1):
+        """
+        Write normalized depth image as grayscale JPEG.
+
+        Depth values are normalized to the range [0, max_depth] for visualization.
+
+        Args:
+            camera_label: Camera label
+            imagefile_base: Base filename for output
+            max_depth: Maximum depth value for normalization (e.g., sky depth)
+            image_path: Output directory path (default: current directory)
+            frame: Frame number to append to filename (-1 to omit)
+
+        Raises:
+            RadiationModelError: If writing fails
+            TypeError: If parameters have incorrect types
+            ValueError: If max_depth is not positive
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(imagefile_base, str) or not imagefile_base.strip():
+            raise TypeError("Image file base must be a non-empty string")
+        if not isinstance(max_depth, (int, float)):
+            raise TypeError("max_depth must be a number")
+        if max_depth <= 0:
+            raise ValueError("max_depth must be positive")
+        if not isinstance(image_path, str):
+            raise TypeError("Image path must be a string")
+        if not isinstance(frame, int):
+            raise TypeError("Frame must be an integer")
+
+        radiation_wrapper.writeNormDepthImage(
+            self.radiation_model, camera_label, imagefile_base, float(max_depth), image_path, frame)
+
+    # =========================================================================
+    # Backend Query (v1.3.67+)
+    # =========================================================================
+
+    def getBackendName(self) -> str:
+        """
+        Get the name of the active ray tracing backend.
+
+        Returns:
+            Backend name string (e.g., "OptiX 8.1", "Vulkan Compute")
+        """
+        return radiation_wrapper.getBackendName(self.radiation_model)
+
+    @staticmethod
+    def probeAnyGPUBackend() -> bool:
+        """
+        Probe whether any compiled-in GPU backend is available on this system.
+
+        Probes backends in priority order (OptiX 8 -> OptiX 6 -> Vulkan) without
+        constructing a full backend. Useful for checking GPU availability before
+        creating a RadiationModel.
+
+        Returns:
+            True if at least one GPU backend is available
+        """
+        return radiation_wrapper.probeAnyGPUBackend()

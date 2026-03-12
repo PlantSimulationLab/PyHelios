@@ -25,6 +25,8 @@ See the Helios C++ documentation for a more in-depth description of Helios: http
 
 ### Installation
 
+**Requirements:** Python 3.10 or later (pre-built wheels available for Python 3.10–3.14)
+
 **Easy Install (Recommended):**
 ```bash
 pip install pyhelios3d
@@ -50,7 +52,7 @@ If you need to customize plugins or build from source:
 
 **Prerequisites:**
 - Visual Studio 2019+ or Build Tools for Visual Studio
-- Python 3.7+
+- Python 3.10+
 
 ```bash
 # Clone repository
@@ -68,7 +70,7 @@ pip install -e .
 
 **Prerequisites:**
 - Xcode command line tools
-- Python 3.7+
+- Python 3.10+
 
 ```bash
 # Install Xcode command line tools
@@ -91,7 +93,7 @@ pip install -e .
 **Prerequisites:**
 - Build essentials
 - CMake
-- Python 3.7+
+- Python 3.10+
 
 ```bash
 # Clone repository
@@ -121,9 +123,11 @@ PyHelios plugins have three types of GPU support:
 **CPU-Only Plugins** (no GPU needed):
 - All other plugins (PlantArchitecture, Photosynthesis, SolarPosition, etc.)
 
-**For GPU Acceleration** (optional), ensure you have:
-- Vulkan SDK installed (supports NVIDIA, AMD, Intel, Apple Silicon GPUs)
-- OR for NVIDIA-optimized path: CUDA Toolkit (version 11.8 or 12.x) + OptiX
+**For GPU Acceleration** (optional), ensure you have at least one:
+- Vulkan loader library (macOS/Linux only; no extra packages on Windows)
+- OR for NVIDIA-optimized path: CUDA 12.0+ with driver >= 560 (OptiX 8.1) or CUDA 9.0+ with driver < 560 (OptiX 6.5)
+
+The radiation plugin auto-detects the best available backend at runtime (OptiX 8 -> OptiX 6 -> Vulkan).
 
 **Verification:**
 ```bash

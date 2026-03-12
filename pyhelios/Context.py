@@ -6,7 +6,7 @@ from enum import Enum
 import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
-from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType
+from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
 from .validation.geometry import (
@@ -15,7 +15,7 @@ from .validation.geometry import (
 )
 
 
-@dataclass 
+@dataclass
 class PrimitiveInfo:
     """
     Physical properties and geometry information for a primitive.
@@ -28,7 +28,10 @@ class PrimitiveInfo:
     vertices: List[vec3]
     color: RGBcolor
     centroid: Optional[vec3] = None
-    
+    texture_file: Optional[str] = None
+    texture_uv: Optional[List[vec2]] = None
+    solid_fraction: Optional[float] = None
+
     def __post_init__(self):
         """Calculate centroid from vertices if not provided."""
         if self.centroid is None and self.vertices:
@@ -388,36 +391,108 @@ class Context:
             ...                                    "texture.png", uv0, uv1, uv2)
         """
         self._check_context_available()
-        
+
+        # Parameter type validation
+        for name, val in [("vertex0", vertex0), ("vertex1", vertex1), ("vertex2", vertex2)]:
+            if not isinstance(val, vec3):
+                raise ValueError(f"{name} must be a vec3, got {type(val).__name__}")
+        for name, val in [("uv0", uv0), ("uv1", uv1), ("uv2", uv2)]:
+            if not isinstance(val, vec2):
+                raise ValueError(f"{name} must be a vec2, got {type(val).__name__}")
+
         # Validate texture file path
-        validated_texture_file = self._validate_file_path(texture_file, 
+        validated_texture_file = self._validate_file_path(texture_file,
                                                           ['.png', '.jpg', '.jpeg', '.tga', '.bmp'])
-        
+
         # Call the wrapper function
         return context_wrapper.addTriangleWithTexture(
-            self.context, 
+            self.context,
             vertex0.to_list(), vertex1.to_list(), vertex2.to_list(),
             validated_texture_file,
             uv0.to_list(), uv1.to_list(), uv2.to_list()
         )
 
-    def getPrimitiveType(self, uuid: int) -> PrimitiveType:
+    def getPrimitiveType(self, uuid):
+        """Get the type of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            PrimitiveType for single UUID, or np.ndarray of shape (N,) uint32 for list
+        """
         self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return np.empty((0,), dtype=np.uint32)
+            ptr, size = context_wrapper.getBatchPrimitiveTypes(self.context, uuid)
+            if size == 0 or not ptr:
+                return np.empty((0,), dtype=np.uint32)
+            return np.ctypeslib.as_array(ptr, shape=(size,)).copy()
         primitive_type = context_wrapper.getPrimitiveType(self.context, uuid)
         return PrimitiveType(primitive_type)
 
-    def getPrimitiveArea(self, uuid: int) -> float:
+    def getPrimitiveArea(self, uuid):
+        """Get the area of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            float for single UUID, or np.ndarray of shape (N,) for list
+        """
         self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return np.empty((0,), dtype=np.float32)
+            ptr, size = context_wrapper.getBatchPrimitiveAreas(self.context, uuid)
+            if size == 0 or not ptr:
+                return np.empty((0,), dtype=np.float32)
+            return np.ctypeslib.as_array(ptr, shape=(size,)).copy()
         return context_wrapper.getPrimitiveArea(self.context, uuid)
 
-    def getPrimitiveNormal(self, uuid: int) -> vec3:
-        self._check_context_available()
-        normal_ptr = context_wrapper.getPrimitiveNormal(self.context, uuid)
-        v = vec3(normal_ptr[0], normal_ptr[1], normal_ptr[2])
-        return v
+    def getPrimitiveNormal(self, uuid):
+        """Get the normal vector of a primitive or multiple primitives.
 
-    def getPrimitiveVertices(self, uuid: int) -> List[vec3]:
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            vec3 for single UUID, or np.ndarray of shape (N, 3) for list
+        """
         self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return np.empty((0, 3), dtype=np.float32)
+            ptr, size = context_wrapper.getBatchPrimitiveNormals(self.context, uuid)
+            if size == 0 or not ptr:
+                return np.empty((0, 3), dtype=np.float32)
+            return np.ctypeslib.as_array(ptr, shape=(size,)).copy().reshape(-1, 3)
+        normal_ptr = context_wrapper.getPrimitiveNormal(self.context, uuid)
+        return vec3(normal_ptr[0], normal_ptr[1], normal_ptr[2])
+
+    def getPrimitiveVertices(self, uuid):
+        """Get vertices of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            List[vec3] for single UUID, or tuple of (flat_data, offsets) for list
+            where flat_data is a float32 ndarray and offsets is a uint32 ndarray
+            of length N+1. Vertices for primitive i are at
+            flat_data[offsets[i]:offsets[i+1]].
+        """
+        self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return (np.empty((0,), dtype=np.float32), np.zeros((1,), dtype=np.uint32))
+            ptr, offsets, total = context_wrapper.getBatchPrimitiveVertices(self.context, uuid)
+            offsets_arr = np.array(offsets, dtype=np.uint32)
+            if total == 0 or not ptr:
+                return (np.empty((0,), dtype=np.float32), offsets_arr)
+            data = np.ctypeslib.as_array(ptr, shape=(total,)).copy()
+            return (data, offsets_arr)
         size = ctypes.c_uint()
         vertices_ptr = context_wrapper.getPrimitiveVertices(self.context, uuid, ctypes.byref(size))
         # size.value is the total number of floats (3 per vertex), not the number of vertices
@@ -425,8 +500,23 @@ class Context:
         vertices = [vec3(vertices_list[i], vertices_list[i+1], vertices_list[i+2]) for i in range(0, size.value, 3)]
         return vertices
 
-    def getPrimitiveColor(self, uuid: int) -> RGBcolor:
+    def getPrimitiveColor(self, uuid):
+        """Get the color of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            RGBcolor for single UUID, or np.ndarray of shape (N, 3) for list
+        """
         self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return np.empty((0, 3), dtype=np.float32)
+            ptr, size = context_wrapper.getBatchPrimitiveColors(self.context, uuid)
+            if size == 0 or not ptr:
+                return np.empty((0, 3), dtype=np.float32)
+            return np.ctypeslib.as_array(ptr, shape=(size,)).copy().reshape(-1, 3)
         color_ptr = context_wrapper.getPrimitiveColor(self.context, uuid)
         return RGBcolor(color_ptr[0], color_ptr[1], color_ptr[2])
 
@@ -453,28 +543,43 @@ class Context:
     def getPrimitiveInfo(self, uuid: int) -> PrimitiveInfo:
         """
         Get physical properties and geometry information for a single primitive.
-        
+
         Args:
             uuid: UUID of the primitive
-            
+
         Returns:
             PrimitiveInfo object containing physical properties and geometry
         """
-        # Get all physical properties using existing methods
         primitive_type = self.getPrimitiveType(uuid)
         area = self.getPrimitiveArea(uuid)
         normal = self.getPrimitiveNormal(uuid)
         vertices = self.getPrimitiveVertices(uuid)
         color = self.getPrimitiveColor(uuid)
-        
-        # Create and return PrimitiveInfo object
+
+        texture_file = None
+        texture_uv = None
+        solid_fraction = None
+        try:
+            tf = self.getPrimitiveTextureFile(uuid)
+            if tf:
+                texture_file = tf
+            texture_uv = self.getPrimitiveTextureUV(uuid)
+            if not texture_uv:
+                texture_uv = None
+            solid_fraction = self.getPrimitiveSolidFraction(uuid)
+        except Exception:
+            pass
+
         return PrimitiveInfo(
             uuid=uuid,
             primitive_type=primitive_type,
             area=area,
             normal=normal,
             vertices=vertices,
-            color=color
+            color=color,
+            texture_file=texture_file,
+            texture_uv=texture_uv,
+            solid_fraction=solid_fraction,
         )
 
     def getAllPrimitiveInfo(self) -> List[PrimitiveInfo]:
@@ -1016,6 +1121,14 @@ class Context:
         """
         self._check_context_available()
 
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(radius, (int, float, vec3)):
+            raise ValueError(f"Radius must be a number or vec3, got {type(radius).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
         # Validate parameters
         if ndivs < 3:
             raise ValueError("Number of divisions must be at least 3")
@@ -1100,6 +1213,20 @@ class Context:
         """
         self._check_context_available()
 
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(size, vec2):
+            raise ValueError(f"Size must be a vec2, got {type(size).__name__}")
+        if not isinstance(rotation, SphericalCoord):
+            raise ValueError(f"Rotation must be a SphericalCoord, got {type(rotation).__name__}")
+        if not isinstance(subdiv, int2):
+            raise ValueError(f"Subdiv must be an int2, got {type(subdiv).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+        if texture_repeat is not None and not isinstance(texture_repeat, int2):
+            raise ValueError(f"texture_repeat must be an int2 or None, got {type(texture_repeat).__name__}")
+
         # Extract rotation as 3 values (radius, elevation, azimuth)
         rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
 
@@ -1146,6 +1273,16 @@ class Context:
         """
         self._check_context_available()
 
+        # Parameter type validation
+        if not isinstance(center, vec3):
+            raise ValueError(f"Center must be a vec3, got {type(center).__name__}")
+        if not isinstance(size, vec3):
+            raise ValueError(f"Size must be a vec3, got {type(size).__name__}")
+        if not isinstance(subdiv, int3):
+            raise ValueError(f"Subdiv must be an int3, got {type(subdiv).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
         if reverse_normals:
             if texturefile:
                 return context_wrapper.addBoxObject_texture_reverse(self.context, center.to_list(), size.to_list(), subdiv.to_list(), texturefile, reverse_normals)
@@ -1179,6 +1316,18 @@ class Context:
             Object ID of the created compound object
         """
         self._check_context_available()
+
+        # Parameter type validation
+        if not isinstance(node0, vec3):
+            raise ValueError(f"node0 must be a vec3, got {type(node0).__name__}")
+        if not isinstance(node1, vec3):
+            raise ValueError(f"node1 must be a vec3, got {type(node1).__name__}")
+        if not isinstance(radius0, (int, float)):
+            raise ValueError(f"radius0 must be a number, got {type(radius0).__name__}")
+        if not isinstance(radius1, (int, float)):
+            raise ValueError(f"radius1 must be a number, got {type(radius1).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
 
         if texturefile:
             return context_wrapper.addConeObject_texture(self.context, ndivs, node0.to_list(), node1.to_list(), radius0, radius1, texturefile)
@@ -1252,6 +1401,21 @@ class Context:
             Object ID of the created compound object
         """
         self._check_context_available()
+
+        # Parameter type validation
+        if not isinstance(nodes, (list, tuple)):
+            raise ValueError(f"Nodes must be a list, got {type(nodes).__name__}")
+        for i, node in enumerate(nodes):
+            if not isinstance(node, vec3):
+                raise ValueError(f"nodes[{i}] must be a vec3, got {type(node).__name__}")
+        if not isinstance(radii, (list, tuple)):
+            raise ValueError(f"Radii must be a list, got {type(radii).__name__}")
+        if colors is not None:
+            if not isinstance(colors, (list, tuple)):
+                raise ValueError(f"Colors must be a list or None, got {type(colors).__name__}")
+            for i, c in enumerate(colors):
+                if not isinstance(c, RGBcolor):
+                    raise ValueError(f"colors[{i}] must be an RGBcolor, got {type(c).__name__}")
 
         if len(nodes) < 2:
             raise ValueError("Tube requires at least 2 nodes")
@@ -1780,9 +1944,18 @@ class Context:
             List of UUIDs for the loaded primitives
         """
         self._check_context_available()
+
+        # Parameter type validation
+        if origin is not None and not isinstance(origin, vec3):
+            raise ValueError(f"Origin must be a vec3 or None, got {type(origin).__name__}")
+        if rotation is not None and not isinstance(rotation, SphericalCoord):
+            raise ValueError(f"Rotation must be a SphericalCoord or None, got {type(rotation).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
         # Validate file path for security
         validated_filename = self._validate_file_path(filename, ['.ply'])
-        
+
         if origin is None and height is None and rotation is None and color is None:
             # Simple load with no transformations
             return context_wrapper.loadPLY(self.context, validated_filename, silent)
@@ -1828,9 +2001,20 @@ class Context:
             List of UUIDs for the loaded primitives
         """
         self._check_context_available()
+
+        # Parameter type validation
+        if origin is not None and not isinstance(origin, vec3):
+            raise ValueError(f"Origin must be a vec3 or None, got {type(origin).__name__}")
+        if scale is not None and not isinstance(scale, vec3):
+            raise ValueError(f"Scale must be a vec3 or None, got {type(scale).__name__}")
+        if rotation is not None and not isinstance(rotation, SphericalCoord):
+            raise ValueError(f"Rotation must be a SphericalCoord or None, got {type(rotation).__name__}")
+        if color is not None and not isinstance(color, RGBcolor):
+            raise ValueError(f"Color must be an RGBcolor or None, got {type(color).__name__}")
+
         # Validate file path for security
         validated_filename = self._validate_file_path(filename, ['.obj'])
-        
+
         if origin is None and height is None and scale is None and rotation is None and color is None:
             # Simple load with no transformations
             return context_wrapper.loadOBJ(self.context, validated_filename, silent)
@@ -2775,6 +2959,300 @@ class Context:
         return context_wrapper.getDate(self.context)
 
     # ==========================================================================
+    # Timeseries Methods
+    # ==========================================================================
+
+    def addTimeseriesData(self, label: str, value: float, date: 'Date', time: 'Time'):
+        """
+        Add a data point to a timeseries variable.
+
+        Args:
+            label: Name of the timeseries variable (e.g., "temperature")
+            value: Value of the data point
+            date: Date of the data point
+            time: Time of the data point
+
+        Raises:
+            ValueError: If label is empty, or date/time are wrong types
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> from pyhelios.types import Date, Time
+            >>> context.addTimeseriesData("temperature", 25.3, Date(2024, 6, 15), Time(12, 0, 0))
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+        if not isinstance(date, Date):
+            raise ValueError(f"date must be a Date instance, got {type(date).__name__}")
+        if not isinstance(time, Time):
+            raise ValueError(f"time must be a Time instance, got {type(time).__name__}")
+
+        context_wrapper.addTimeseriesData(
+            self.context, label, float(value),
+            date.day, date.month, date.year,
+            time.hour, time.minute, time.second
+        )
+
+    def setCurrentTimeseriesPoint(self, label: str, index: int):
+        """
+        Set the Context date and time from a timeseries data point index.
+
+        Args:
+            label: Name of the timeseries variable
+            index: Index of the data point (0 = earliest, chronologically ordered)
+
+        Raises:
+            ValueError: If label is empty or index is negative
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> context.setCurrentTimeseriesPoint("temperature", 0)
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"Index must be a non-negative integer, got {index}")
+
+        context_wrapper.setCurrentTimeseriesPoint(self.context, label, index)
+
+    def queryTimeseriesData(self, label: str, date: 'Date' = None, time: 'Time' = None,
+                            index: int = None) -> float:
+        """
+        Query a timeseries data value.
+
+        Three modes of operation:
+        - With date and time: returns interpolated value at the specified date/time
+        - With index: returns value at the specified data point index
+        - With neither: returns value at the current Context date/time
+
+        Args:
+            label: Name of the timeseries variable
+            date: Date to query at (requires time as well)
+            time: Time to query at (requires date as well)
+            index: Index of the data point (0 = earliest)
+
+        Returns:
+            The timeseries value as a float
+
+        Raises:
+            ValueError: If both date/time and index are provided, or if date without time
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> # Query at specific date/time
+            >>> val = context.queryTimeseriesData("temperature", date=Date(2024, 6, 15), time=Time(12, 0, 0))
+            >>> # Query by index
+            >>> val = context.queryTimeseriesData("temperature", index=0)
+            >>> # Query at current context time
+            >>> val = context.queryTimeseriesData("temperature")
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+
+        has_datetime = date is not None or time is not None
+        has_index = index is not None
+
+        if has_datetime and has_index:
+            raise ValueError("Cannot specify both date/time and index. Use one or the other.")
+
+        if has_datetime:
+            if date is None or time is None:
+                raise ValueError("Both date and time must be provided together")
+            if not isinstance(date, Date):
+                raise ValueError(f"date must be a Date instance, got {type(date).__name__}")
+            if not isinstance(time, Time):
+                raise ValueError(f"time must be a Time instance, got {type(time).__name__}")
+            return context_wrapper.queryTimeseriesDataDateTime(
+                self.context, label,
+                date.day, date.month, date.year,
+                time.hour, time.minute, time.second
+            )
+
+        if has_index:
+            if not isinstance(index, int) or index < 0:
+                raise ValueError(f"Index must be a non-negative integer, got {index}")
+            return context_wrapper.queryTimeseriesDataIndex(self.context, label, index)
+
+        return context_wrapper.queryTimeseriesDataCurrent(self.context, label)
+
+    def queryTimeseriesTime(self, label: str, index: int) -> 'Time':
+        """
+        Get the Time associated with a timeseries data point.
+
+        Args:
+            label: Name of the timeseries variable
+            index: Index of the data point (0 = earliest)
+
+        Returns:
+            Time object for the data point
+
+        Raises:
+            ValueError: If label is empty or index is negative
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> t = context.queryTimeseriesTime("temperature", 0)
+            >>> print(f"{t.hour:02d}:{t.minute:02d}:{t.second:02d}")
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"Index must be a non-negative integer, got {index}")
+
+        hour, minute, second = context_wrapper.queryTimeseriesTime(self.context, label, index)
+        return Time(hour=hour, minute=minute, second=second)
+
+    def queryTimeseriesDate(self, label: str, index: int) -> 'Date':
+        """
+        Get the Date associated with a timeseries data point.
+
+        Args:
+            label: Name of the timeseries variable
+            index: Index of the data point (0 = earliest)
+
+        Returns:
+            Date object for the data point
+
+        Raises:
+            ValueError: If label is empty or index is negative
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> d = context.queryTimeseriesDate("temperature", 0)
+            >>> print(f"{d.year}-{d.month:02d}-{d.day:02d}")
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+        if not isinstance(index, int) or index < 0:
+            raise ValueError(f"Index must be a non-negative integer, got {index}")
+
+        year, month, day = context_wrapper.queryTimeseriesDate(self.context, label, index)
+        return Date(year=year, month=month, day=day)
+
+    def getTimeseriesLength(self, label: str) -> int:
+        """
+        Get the number of data points in a timeseries variable.
+
+        Args:
+            label: Name of the timeseries variable
+
+        Returns:
+            Number of data points
+
+        Raises:
+            ValueError: If label is empty
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> n = context.getTimeseriesLength("temperature")
+            >>> print(f"Timeseries has {n} data points")
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+
+        return context_wrapper.getTimeseriesLength(self.context, label)
+
+    def doesTimeseriesVariableExist(self, label: str) -> bool:
+        """
+        Check whether a timeseries variable exists.
+
+        Args:
+            label: Name of the timeseries variable
+
+        Returns:
+            True if the variable exists, False otherwise
+
+        Raises:
+            ValueError: If label is empty
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> if context.doesTimeseriesVariableExist("temperature"):
+            ...     print("Temperature data loaded")
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+
+        return context_wrapper.doesTimeseriesVariableExist(self.context, label)
+
+    def listTimeseriesVariables(self) -> List[str]:
+        """
+        List all existing timeseries variables.
+
+        Returns:
+            List of timeseries variable names
+
+        Raises:
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> variables = context.listTimeseriesVariables()
+            >>> for var in variables:
+            ...     print(f"  {var}: {context.getTimeseriesLength(var)} points")
+        """
+        self._check_context_available()
+
+        return context_wrapper.listTimeseriesVariables(self.context)
+
+    def loadTabularTimeseriesData(self, data_file: str, column_labels: List[str],
+                                  delimiter: str = ",", date_string_format: str = "YYYYMMDD",
+                                  headerlines: int = 0):
+        """
+        Load tabular timeseries data from a text file.
+
+        The file should contain columns of data with dates/times and measured values.
+        Column labels specify how each column should be interpreted. Special labels
+        include "year", "DOY", "date", "datetime", "hour", "minute", "second", "time".
+        Other labels become timeseries variable names.
+
+        Args:
+            data_file: Path to the text file containing tabular data
+            column_labels: List of column label strings specifying what each column contains
+            delimiter: Column delimiter string (default: ",")
+            date_string_format: Format of date strings in the file. Supported formats:
+                "YYYYMMDD", "YYYYMMDDHH", "YYYYMMDDHHMM", "DD/MM/YYYY",
+                "MM/DD/YYYY", "DDMMYYYY", "YYYY-MM-DD", "DD/MM/YYYY HH:MM",
+                "MM/DD/YYYY HH:MM", "ISO8601" (default: "YYYYMMDD")
+            headerlines: Number of header lines to skip (default: 0)
+
+        Raises:
+            ValueError: If data_file is empty, column_labels is empty, or delimiter is empty
+            RuntimeError: If the file cannot be read or parsed
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> context.loadTabularTimeseriesData(
+            ...     "weather_data.csv",
+            ...     column_labels=["date", "hour", "temperature", "humidity"],
+            ...     delimiter=",",
+            ...     headerlines=1
+            ... )
+            >>> temp = context.queryTimeseriesData("temperature", index=0)
+        """
+        self._check_context_available()
+        if not isinstance(data_file, str) or not data_file:
+            raise ValueError("data_file must be a non-empty string")
+        if not isinstance(column_labels, list) or not column_labels:
+            raise ValueError("column_labels must be a non-empty list of strings")
+        for i, label in enumerate(column_labels):
+            if not isinstance(label, str):
+                raise ValueError(f"column_labels[{i}] must be a string, got {type(label).__name__}")
+        if not isinstance(delimiter, str) or not delimiter:
+            raise ValueError("delimiter must be a non-empty string")
+
+        context_wrapper.loadTabularTimeseriesData(
+            self.context, data_file, column_labels, delimiter,
+            date_string_format, headerlines
+        )
+
+    # ==========================================================================
     # Primitive and Object Deletion Methods
     # ==========================================================================
 
@@ -2978,10 +3456,12 @@ class Context:
             >>> context.setMaterialColor("wood", RGBAcolor(0.6, 0.4, 0.2, 1.0))
             >>> context.setMaterialColor("wood", (0.6, 0.4, 0.2, 1.0))
         """
-        if hasattr(color, 'r'):
+        if isinstance(color, RGBAcolor):
             r, g, b, a = color.r, color.g, color.b, color.a
-        else:
+        elif isinstance(color, (list, tuple)) and len(color) == 4:
             r, g, b, a = color[0], color[1], color[2], color[3]
+        else:
+            raise ValueError(f"Color must be an RGBAcolor or a 4-element list/tuple, got {type(color).__name__}")
         context_wrapper.setMaterialColor(self.context, material_label, r, g, b, a)
 
     def getMaterialTexture(self, material_label: str) -> str:
@@ -3071,19 +3551,27 @@ class Context:
         else:
             context_wrapper.assignMaterialToObject(self.context, objID, material_label)
 
-    def getPrimitiveMaterialLabel(self, uuid: int) -> str:
-        """
-        Get the material label assigned to a primitive.
+    def getPrimitiveMaterialLabel(self, uuid):
+        """Get the material label assigned to a primitive or multiple primitives.
 
         Args:
-            uuid: UUID of the primitive
+            uuid: Single UUID (int) or list of UUIDs
 
         Returns:
-            Material label, or empty string if no material assigned
+            str for single UUID, or List[str] for list
 
         Raises:
             RuntimeError: If primitive doesn't exist
         """
+        if isinstance(uuid, (list, tuple)):
+            self._check_context_available()
+            if not uuid:
+                return []
+            ptr, offsets, total = context_wrapper.getBatchPrimitiveMaterialLabels(self.context, uuid)
+            if total == 0 or not ptr:
+                return ["" for _ in uuid]
+            full_str = ptr.decode('utf-8') if isinstance(ptr, bytes) else ptr
+            return [full_str[offsets[i]:offsets[i+1]] for i in range(len(uuid))]
         return context_wrapper.getPrimitiveMaterialLabel(self.context, uuid)
 
     def getPrimitiveTwosidedFlag(self, uuid: int, default_value: int = 1) -> int:
@@ -3115,4 +3603,170 @@ class Context:
             RuntimeError: If material doesn't exist
         """
         return context_wrapper.getPrimitivesUsingMaterial(self.context, material_label)
+
+    # =========================================================================
+    # Texture Methods
+    # =========================================================================
+
+    def getPrimitiveTextureFile(self, uuid):
+        """Get the texture file path of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            str for single UUID, or List[str] for list
+        """
+        self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return []
+            ptr, offsets, total = context_wrapper.getBatchPrimitiveTextureFiles(self.context, uuid)
+            if total == 0 or not ptr:
+                return ["" for _ in uuid]
+            full_str = ptr.decode('utf-8') if isinstance(ptr, bytes) else ptr
+            return [full_str[offsets[i]:offsets[i+1]] for i in range(len(uuid))]
+        return context_wrapper.getPrimitiveTextureFile(self.context, uuid)
+
+    def setPrimitiveTextureFile(self, uuid: int, texture_file: str) -> None:
+        """Set the texture file path of a primitive.
+
+        Args:
+            uuid: UUID of the primitive
+            texture_file: Path to the texture file
+        """
+        self._check_context_available()
+        context_wrapper.setPrimitiveTextureFile(self.context, uuid, texture_file)
+
+    def getPrimitiveTextureSize(self, uuid: int) -> int2:
+        """Get the texture size (width, height) of a primitive.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            int2 with width and height of the texture
+        """
+        self._check_context_available()
+        w, h = context_wrapper.getPrimitiveTextureSize(self.context, uuid)
+        return int2(w, h)
+
+    def getPrimitiveTextureUV(self, uuid):
+        """Get the texture UV coordinates of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            List[vec2] for single UUID, or tuple of (flat_data, offsets) for list
+        """
+        self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return (np.empty((0,), dtype=np.float32), np.zeros((1,), dtype=np.uint32))
+            ptr, offsets, total = context_wrapper.getBatchPrimitiveTextureUV(self.context, uuid)
+            offsets_arr = np.array(offsets, dtype=np.uint32)
+            if total == 0 or not ptr:
+                return (np.empty((0,), dtype=np.float32), offsets_arr)
+            data = np.ctypeslib.as_array(ptr, shape=(total,)).copy()
+            return (data, offsets_arr)
+        uv_pairs = context_wrapper.getPrimitiveTextureUV(self.context, uuid)
+        return [vec2(u, v) for u, v in uv_pairs]
+
+    def primitiveTextureHasTransparencyChannel(self, uuid: int) -> bool:
+        """Check if primitive texture has a transparency channel.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            True if texture has transparency channel
+        """
+        self._check_context_available()
+        return context_wrapper.primitiveTextureHasTransparencyChannel(self.context, uuid)
+
+    def getPrimitiveSolidFraction(self, uuid):
+        """Get the solid fraction of a primitive or multiple primitives.
+
+        Args:
+            uuid: Single UUID (int) or list of UUIDs
+
+        Returns:
+            float for single UUID, or np.ndarray of shape (N,) for list
+        """
+        self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            if not uuid:
+                return np.empty((0,), dtype=np.float32)
+            ptr, size = context_wrapper.getBatchPrimitiveSolidFractions(self.context, uuid)
+            if size == 0 or not ptr:
+                return np.empty((0,), dtype=np.float32)
+            return np.ctypeslib.as_array(ptr, shape=(size,)).copy()
+        return context_wrapper.getPrimitiveSolidFraction(self.context, uuid)
+
+    def overridePrimitiveTextureColor(self, uuid: int) -> None:
+        """Override texture color with constant RGB color for a primitive.
+
+        Args:
+            uuid: UUID of the primitive
+        """
+        self._check_context_available()
+        context_wrapper.overridePrimitiveTextureColor(self.context, uuid)
+
+    def usePrimitiveTextureColor(self, uuid: int) -> None:
+        """Use texture map color instead of constant RGB for a primitive.
+
+        Args:
+            uuid: UUID of the primitive
+        """
+        self._check_context_available()
+        context_wrapper.usePrimitiveTextureColor(self.context, uuid)
+
+    def isPrimitiveTextureColorOverridden(self, uuid: int) -> bool:
+        """Check if primitive texture color is overridden.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            True if texture color is overridden with constant RGB
+        """
+        self._check_context_available()
+        return context_wrapper.isPrimitiveTextureColorOverridden(self.context, uuid)
+
+    # =========================================================================
+    # Convenience Methods (getAll*)
+    # =========================================================================
+
+    def getAllPrimitiveNormals(self) -> 'np.ndarray':
+        """Get normals for all primitives. Returns ndarray of shape (N, 3)."""
+        return self.getPrimitiveNormal(self.getAllUUIDs())
+
+    def getAllPrimitiveColors(self) -> 'np.ndarray':
+        """Get colors for all primitives. Returns ndarray of shape (N, 3)."""
+        return self.getPrimitiveColor(self.getAllUUIDs())
+
+    def getAllPrimitiveAreas(self) -> 'np.ndarray':
+        """Get areas for all primitives. Returns ndarray of shape (N,)."""
+        return self.getPrimitiveArea(self.getAllUUIDs())
+
+    def getAllPrimitiveTypes(self) -> 'np.ndarray':
+        """Get types for all primitives. Returns ndarray of shape (N,) uint32."""
+        return self.getPrimitiveType(self.getAllUUIDs())
+
+    def getAllPrimitiveSolidFractions(self) -> 'np.ndarray':
+        """Get solid fractions for all primitives. Returns ndarray of shape (N,)."""
+        return self.getPrimitiveSolidFraction(self.getAllUUIDs())
+
+    def getAllPrimitiveVertices(self):
+        """Get vertices for all primitives. Returns (flat_data, offsets) tuple."""
+        return self.getPrimitiveVertices(self.getAllUUIDs())
+
+    def getAllPrimitiveTextureFiles(self) -> List[str]:
+        """Get texture files for all primitives. Returns list of strings."""
+        return self.getPrimitiveTextureFile(self.getAllUUIDs())
+
+    def getAllPrimitiveMaterialLabels(self) -> List[str]:
+        """Get material labels for all primitives. Returns list of strings."""
+        return self.getPrimitiveMaterialLabel(self.getAllUUIDs())
 

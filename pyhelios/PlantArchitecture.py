@@ -477,6 +477,10 @@ class PlantArchitecture:
             ...     build_parameters={'trunk_height': 2.0}
             ... )
         """
+        # Parameter type validation
+        if not isinstance(base_position, vec3):
+            raise ValueError(f"base_position must be a vec3, got {type(base_position).__name__}")
+
         # Convert position to list for C++ interface
         position_list = [base_position.x, base_position.y, base_position.z]
 
@@ -544,6 +548,14 @@ class PlantArchitecture:
             ...     build_parameters={'cordon_height': 1.8}
             ... )
         """
+        # Parameter type validation
+        if not isinstance(canopy_center, vec3):
+            raise ValueError(f"canopy_center must be a vec3, got {type(canopy_center).__name__}")
+        if not isinstance(plant_spacing, vec2):
+            raise ValueError(f"plant_spacing must be a vec2, got {type(plant_spacing).__name__}")
+        if not isinstance(plant_count, int2):
+            raise ValueError(f"plant_count must be an int2, got {type(plant_count).__name__}")
+
         # Validate age (allow zero)
         if age < 0:
             raise ValueError(f"Age must be non-negative, got {age}")
@@ -1440,6 +1452,10 @@ class PlantArchitecture:
             ...     plant_id, 1, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.8, "mainstem"
             ... )
         """
+        # Parameter type validation
+        if not isinstance(base_position, vec3):
+            raise ValueError(f"base_position must be a vec3, got {type(base_position).__name__}")
+
         # Convert position to list for C++ interface
         position_list = [base_position.x, base_position.y, base_position.z]
 

@@ -1,5 +1,25 @@
 # Changelog
 
+# [v0.1.16] 2026-03-12
+
+- Updated helios-core to v1.3.67
+
+## Context
+- Added primitive texture management methods: `getPrimitiveTextureFile()`, `setPrimitiveTextureFile()`, `getPrimitiveTextureSize()`, `getPrimitiveTextureUV()`, `primitiveTextureHasTransparencyChannel()`, `getPrimitiveSolidFraction()`, `overridePrimitiveTextureColor()`, `usePrimitiveTextureColor()`, `isPrimitiveTextureColorOverridden()`
+- Primitive getters now accept a list of UUIDs for efficient batch queries returning NumPy arrays (e.g., `getPrimitiveNormal([uuid1, uuid2])` returns an ndarray of shape (N, 3))
+- Added `getAll*` convenience methods that query all primitives in the context (e.g., `getAllPrimitiveNormals()`)
+- Extended `PrimitiveInfo` with `texture_file`, `texture_uv`, and `solid_fraction` fields
+- Added timeseries data management: `addTimeseriesData()`, `setCurrentTimeseriesPoint()`, `queryTimeseriesData()`, `queryTimeseriesDate()`, `queryTimeseriesTime()`, `getTimeseriesLength()`, `doesTimeseriesVariableExist()`, `listTimeseriesVariables()`, `loadTabularTimeseriesData()`
+
+## Radiation Model
+- Added EXR image export methods: `writeCameraImageDataEXR()`, `writeDepthImageData()`, `writeDepthImageDataEXR()`, `writeNormDepthImage()`
+- Added `getBackendName()` and `probeAnyGPUBackend()` for runtime GPU backend detection
+- Updated error messages to reflect runtime backend auto-detection (OptiX 8 -> OptiX 6 -> Vulkan)
+
+## Validation
+- Added `isinstance()`-based type validation to PlantArchitecture and RadiationModel methods per argument type validation policy
+- Added `validate_position_like()`, `validate_direction_like()`, and `validate_size_like()` validators for flexible parameter types
+
 # [v0.1.15] 2026-03-06
 
 - Updated helios-core to v1.3.65

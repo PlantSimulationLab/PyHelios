@@ -6,69 +6,123 @@ following PyHelios's fail-fast philosophy.
 """
 
 import functools
+import inspect
 import math
 from typing import Any, Callable, Dict, Union
 
 from .exceptions import ValidationError, create_validation_error
 
 
-def validate_input(param_validators: Dict[str, Callable] = None, 
+def _bind_args_to_params(func, args, kwargs):
+    """Bind positional and keyword arguments to parameter names.
+
+    Returns a dict mapping parameter names to their values for all
+    explicitly provided arguments (excludes defaults for unprovided params).
+    Also returns updated args/kwargs suitable for calling the function
+    with any coerced values applied.
+    """
+    sig = inspect.signature(func)
+    try:
+        bound = sig.bind(*args, **kwargs)
+    except TypeError:
+        # If binding fails, let the actual function call produce the error
+        return {}, args, kwargs
+    # Don't apply defaults - we only want to validate explicitly provided args
+    return dict(bound.arguments), args, kwargs
+
+
+def validate_input(param_validators: Dict[str, Callable] = None,
                   type_coercions: Dict[str, Callable] = None):
     """
     Decorator for comprehensive parameter validation.
-    
+
     Performs type coercion first, then validation, following the pattern:
-    1. Coerce types where safe (e.g., list to vec3)
-    2. Validate all parameters meet requirements
-    3. Call original function if validation passes
-    
+    1. Bind all arguments (positional and keyword) to parameter names
+    2. Coerce types where safe (e.g., list to vec3)
+    3. Validate all parameters meet requirements
+    4. Call original function if validation passes
+
     Args:
         param_validators: Dict mapping parameter names to validation functions
         type_coercions: Dict mapping parameter names to coercion functions
-    
-    Example:
-        >>> # Using the validate_input decorator:
-        >>> # validate_input(
-        >>> #     param_validators={'center': validate_vec3, 'radius': validate_positive_value},
-        >>> #     type_coercions={'center': coerce_to_vec3}
-        >>> # )
-        >>> # def addSphere(self, center, radius, **kwargs):
-        >>> #     # center is guaranteed to be vec3, radius is positive
     """
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # Perform type coercion first
+            # Bind positional args to parameter names so we can validate them
+            bound_params, _, _ = _bind_args_to_params(func, args, kwargs)
+
+            # Build a mutable copy of all named arguments
+            # We need to track which params came as positional vs keyword
+            # so we can pass coerced values back correctly
+            sig = inspect.signature(func)
+            param_names = list(sig.parameters.keys())
+
+            # Map positional args to their parameter names
+            positional_params = {}
+            for i, arg in enumerate(args):
+                if i < len(param_names):
+                    positional_params[param_names[i]] = i
+
+            # Convert args to a mutable list for coercion
+            args_list = list(args)
+
+            # Perform type coercion first (on both positional and keyword args)
             if type_coercions:
                 for param, coercion_func in type_coercions.items():
+                    value = None
+                    has_value = False
+
                     if param in kwargs:
+                        value = kwargs[param]
+                        has_value = True
+                    elif param in positional_params:
+                        value = args_list[positional_params[param]]
+                        has_value = True
+
+                    if has_value:
                         try:
-                            kwargs[param] = coercion_func(kwargs[param], param_name=param)
+                            coerced = coercion_func(value, param_name=param)
+                            # Write back the coerced value
+                            if param in kwargs:
+                                kwargs[param] = coerced
+                            elif param in positional_params:
+                                args_list[positional_params[param]] = coerced
                         except ValidationError:
-                            raise  # Re-raise validation errors from coercion
+                            raise
                         except Exception as e:
                             raise create_validation_error(
                                 f"Failed to coerce parameter to expected type: {str(e)}",
                                 param_name=param,
                                 function_name=func.__name__
                             )
-            
-            # Then validate parameters
+
+            # Then validate parameters (on both positional and keyword args)
             if param_validators:
                 for param, validator in param_validators.items():
+                    value = None
+                    has_value = False
+
                     if param in kwargs:
+                        value = kwargs[param]
+                        has_value = True
+                    elif param in positional_params:
+                        value = args_list[positional_params[param]]
+                        has_value = True
+
+                    if has_value:
                         try:
-                            validator(kwargs[param], param_name=param, function_name=func.__name__)
+                            validator(value, param_name=param, function_name=func.__name__)
                         except ValidationError:
-                            raise  # Re-raise validation errors
+                            raise
                         except Exception as e:
                             raise create_validation_error(
                                 f"Parameter validation failed: {str(e)}",
                                 param_name=param,
                                 function_name=func.__name__
                             )
-            
-            return func(*args, **kwargs)
+
+            return func(*tuple(args_list), **kwargs)
         return wrapper
     return decorator
 

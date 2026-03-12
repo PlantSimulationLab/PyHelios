@@ -1613,6 +1613,128 @@ PYHELIOS_API void getTime(helios::Context* context, int* hour, int* minute, int*
 PYHELIOS_API void getDate(helios::Context* context, int* day, int* month, int* year);
 
 //=============================================================================
+// Timeseries Functions
+//=============================================================================
+
+/**
+ * @brief Add a data point to a timeseries variable
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param value Value of the data point
+ * @param day Day of month (1-31)
+ * @param month Month of year (1-12)
+ * @param year Year (YYYY format)
+ * @param hour Hour of day (0-23)
+ * @param minute Minute of hour (0-59)
+ * @param second Second of minute (0-59)
+ */
+PYHELIOS_API void addTimeseriesData(helios::Context* context, const char* label, float value,
+                                     int day, int month, int year, int hour, int minute, int second);
+
+/**
+ * @brief Set the Context date and time from a timeseries data point index
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param index Index of the timeseries data point (0 = earliest)
+ */
+PYHELIOS_API void setCurrentTimeseriesPoint(helios::Context* context, const char* label, unsigned int index);
+
+/**
+ * @brief Query a timeseries value at a specific date and time (with interpolation)
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param day Day of month
+ * @param month Month of year
+ * @param year Year
+ * @param hour Hour of day
+ * @param minute Minute of hour
+ * @param second Second of minute
+ * @return Interpolated value at the specified date/time
+ */
+PYHELIOS_API float queryTimeseriesData_DateTime(helios::Context* context, const char* label,
+                                                 int day, int month, int year, int hour, int minute, int second);
+
+/**
+ * @brief Query a timeseries value at the current Context date/time
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @return Value at the current Context date/time
+ */
+PYHELIOS_API float queryTimeseriesData_Current(helios::Context* context, const char* label);
+
+/**
+ * @brief Query a timeseries value by index
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param index Index of the data point (0 = earliest)
+ * @return Value at the specified index
+ */
+PYHELIOS_API float queryTimeseriesData_Index(helios::Context* context, const char* label, unsigned int index);
+
+/**
+ * @brief Get the Time associated with a timeseries data point
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param index Index of the data point (0 = earliest)
+ * @param hour Output parameter for hour
+ * @param minute Output parameter for minute
+ * @param second Output parameter for second
+ */
+PYHELIOS_API void queryTimeseriesTime(helios::Context* context, const char* label, unsigned int index,
+                                       int* hour, int* minute, int* second);
+
+/**
+ * @brief Get the Date associated with a timeseries data point
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param index Index of the data point (0 = earliest)
+ * @param day Output parameter for day
+ * @param month Output parameter for month
+ * @param year Output parameter for year
+ */
+PYHELIOS_API void queryTimeseriesDate(helios::Context* context, const char* label, unsigned int index,
+                                       int* day, int* month, int* year);
+
+/**
+ * @brief Get the number of data points in a timeseries variable
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @return Number of data points
+ */
+PYHELIOS_API unsigned int getTimeseriesLength(helios::Context* context, const char* label);
+
+/**
+ * @brief Check whether a timeseries variable exists
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @return true if the variable exists, false otherwise
+ */
+PYHELIOS_API bool doesTimeseriesVariableExist(helios::Context* context, const char* label);
+
+/**
+ * @brief List all existing timeseries variables
+ * @param context Pointer to the Context
+ * @param count Output parameter for the number of variables
+ * @return Array of C-string pointers (valid until next call)
+ */
+PYHELIOS_API const char** listTimeseriesVariables(helios::Context* context, unsigned int* count);
+
+/**
+ * @brief Load tabular timeseries data from a text file
+ * @param context Pointer to the Context
+ * @param data_file Path to the text file
+ * @param column_labels Array of column label strings
+ * @param label_count Number of column labels
+ * @param delimiter Column delimiter string
+ * @param date_string_format Date format string (e.g., "YYYYMMDD", "ISO8601")
+ * @param headerlines Number of header lines to skip
+ */
+PYHELIOS_API void loadTabularTimeseriesData(helios::Context* context, const char* data_file,
+                                             const char** column_labels, unsigned int label_count,
+                                             const char* delimiter, const char* date_string_format,
+                                             unsigned int headerlines);
+
+//=============================================================================
 // Primitive and Object Deletion Functions
 //=============================================================================
 
@@ -1718,6 +1840,72 @@ PYHELIOS_API unsigned int getPrimitiveTwosidedFlag(void* context, unsigned int U
 
 /** @brief Get all primitives that use a given material */
 PYHELIOS_API const unsigned int* getPrimitivesUsingMaterial(void* context, const char* material_label, size_t* count);
+
+//=============================================================================
+// Texture Functions
+//=============================================================================
+
+/** @brief Get the texture file path of a primitive */
+PYHELIOS_API const char* getPrimitiveTextureFile(void* context, unsigned int uuid);
+
+/** @brief Set the texture file path of a primitive */
+PYHELIOS_API void setPrimitiveTextureFile(void* context, unsigned int uuid, const char* texture_file);
+
+/** @brief Get the texture size of a primitive (width, height) */
+PYHELIOS_API void getPrimitiveTextureSize(void* context, unsigned int uuid, int* width, int* height);
+
+/** @brief Get the texture UV coordinates of a primitive */
+PYHELIOS_API float* getPrimitiveTextureUV(void* context, unsigned int uuid, unsigned int* size);
+
+/** @brief Check if primitive texture has a transparency channel */
+PYHELIOS_API bool primitiveTextureHasTransparencyChannel(void* context, unsigned int uuid);
+
+/** @brief Get the solid fraction of a primitive */
+PYHELIOS_API float getPrimitiveSolidFraction(void* context, unsigned int uuid);
+
+/** @brief Override texture color with constant RGB color for a primitive */
+PYHELIOS_API void overridePrimitiveTextureColor(void* context, unsigned int uuid);
+
+/** @brief Use texture map color instead of constant RGB color for a primitive */
+PYHELIOS_API void usePrimitiveTextureColor(void* context, unsigned int uuid);
+
+/** @brief Check if primitive texture color is overridden */
+PYHELIOS_API bool isPrimitiveTextureColorOverridden(void* context, unsigned int uuid);
+
+//=============================================================================
+// Fixed-Size Batch Getters
+//=============================================================================
+
+/** @brief Get normals for multiple primitives. Returns flattened float array (N*3). */
+PYHELIOS_API float* getBatchPrimitiveNormals(void* context, unsigned int* uuids, unsigned int count, unsigned int* result_size);
+
+/** @brief Get colors for multiple primitives. Returns flattened float array (N*3). */
+PYHELIOS_API float* getBatchPrimitiveColors(void* context, unsigned int* uuids, unsigned int count, unsigned int* result_size);
+
+/** @brief Get areas for multiple primitives. Returns float array (N). */
+PYHELIOS_API float* getBatchPrimitiveAreas(void* context, unsigned int* uuids, unsigned int count, unsigned int* result_size);
+
+/** @brief Get types for multiple primitives. Returns uint array (N). */
+PYHELIOS_API unsigned int* getBatchPrimitiveTypes(void* context, unsigned int* uuids, unsigned int count, unsigned int* result_size);
+
+/** @brief Get solid fractions for multiple primitives. Returns float array (N). */
+PYHELIOS_API float* getBatchPrimitiveSolidFractions(void* context, unsigned int* uuids, unsigned int count, unsigned int* result_size);
+
+//=============================================================================
+// Variable-Size Batch Getters
+//=============================================================================
+
+/** @brief Get vertices for multiple primitives. offsets_out must be caller-allocated with count+1 elements. */
+PYHELIOS_API float* getBatchPrimitiveVertices(void* context, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_floats);
+
+/** @brief Get texture UVs for multiple primitives. offsets_out must be caller-allocated with count+1 elements. */
+PYHELIOS_API float* getBatchPrimitiveTextureUV(void* context, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_floats);
+
+/** @brief Get texture files for multiple primitives as concatenated string. offsets_out must be caller-allocated with count+1 elements. */
+PYHELIOS_API const char* getBatchPrimitiveTextureFiles(void* context, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_chars);
+
+/** @brief Get material labels for multiple primitives as concatenated string. offsets_out must be caller-allocated with count+1 elements. */
+PYHELIOS_API const char* getBatchPrimitiveMaterialLabels(void* context, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_chars);
 
 #ifdef __cplusplus
 }

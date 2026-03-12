@@ -4518,6 +4518,343 @@ extern "C" {
     }
 
     //=============================================================================
+    // Timeseries Functions
+    //=============================================================================
+
+    PYHELIOS_API void addTimeseriesData(helios::Context* context, const char* label, float value,
+                                        int day, int month, int year, int hour, int minute, int second) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            helios::Date date(day, month, year);
+            helios::Time time(hour, minute, second);
+            context->addTimeseriesData(label, value, date, time);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (addTimeseriesData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addTimeseriesData): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setCurrentTimeseriesPoint(helios::Context* context, const char* label, unsigned int index) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            context->setCurrentTimeseriesPoint(label, index);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setCurrentTimeseriesPoint): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setCurrentTimeseriesPoint): Unknown error");
+        }
+    }
+
+    PYHELIOS_API float queryTimeseriesData_DateTime(helios::Context* context, const char* label,
+                                                     int day, int month, int year, int hour, int minute, int second) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0.0f;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return 0.0f;
+            }
+
+            helios::Date date(day, month, year);
+            helios::Time time(hour, minute, second);
+            return context->queryTimeseriesData(label, date, time);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return 0.0f;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (queryTimeseriesData_DateTime): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (queryTimeseriesData_DateTime): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float queryTimeseriesData_Current(helios::Context* context, const char* label) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0.0f;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return 0.0f;
+            }
+
+            return context->queryTimeseriesData(label);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return 0.0f;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (queryTimeseriesData_Current): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (queryTimeseriesData_Current): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float queryTimeseriesData_Index(helios::Context* context, const char* label, unsigned int index) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0.0f;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return 0.0f;
+            }
+
+            return context->queryTimeseriesData(label, index);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return 0.0f;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (queryTimeseriesData_Index): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (queryTimeseriesData_Index): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API void queryTimeseriesTime(helios::Context* context, const char* label, unsigned int index,
+                                           int* hour, int* minute, int* second) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+            if (!hour || !minute || !second) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output parameters cannot be null");
+                return;
+            }
+
+            helios::Time time = context->queryTimeseriesTime(label, index);
+            *hour = time.hour;
+            *minute = time.minute;
+            *second = time.second;
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (queryTimeseriesTime): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (queryTimeseriesTime): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void queryTimeseriesDate(helios::Context* context, const char* label, unsigned int index,
+                                           int* day, int* month, int* year) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+            if (!day || !month || !year) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output parameters cannot be null");
+                return;
+            }
+
+            helios::Date date = context->queryTimeseriesDate(label, index);
+            *day = date.day;
+            *month = date.month;
+            *year = date.year;
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (queryTimeseriesDate): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (queryTimeseriesDate): Unknown error");
+        }
+    }
+
+    PYHELIOS_API unsigned int getTimeseriesLength(helios::Context* context, const char* label) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return 0;
+            }
+
+            return context->getTimeseriesLength(label);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getTimeseriesLength): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getTimeseriesLength): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API bool doesTimeseriesVariableExist(helios::Context* context, const char* label) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return false;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return false;
+            }
+
+            return context->doesTimeseriesVariableExist(label);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return false;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (doesTimeseriesVariableExist): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (doesTimeseriesVariableExist): Unknown error");
+            return false;
+        }
+    }
+
+    PYHELIOS_API const char** listTimeseriesVariables(helios::Context* context, unsigned int* count) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count output parameter is null");
+                return nullptr;
+            }
+
+            static thread_local std::vector<std::string> static_strings;
+            static thread_local std::vector<const char*> static_ptrs;
+
+            static_strings = context->listTimeseriesVariables();
+            static_ptrs.clear();
+            static_ptrs.reserve(static_strings.size());
+            for (auto& s : static_strings) {
+                static_ptrs.push_back(s.c_str());
+            }
+            *count = static_strings.size();
+            return static_ptrs.empty() ? nullptr : static_ptrs.data();
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (listTimeseriesVariables): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (listTimeseriesVariables): Unknown error");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API void loadTabularTimeseriesData(helios::Context* context, const char* data_file,
+                                                 const char** column_labels, unsigned int label_count,
+                                                 const char* delimiter, const char* date_string_format,
+                                                 unsigned int headerlines) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!data_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Data file path is null");
+                return;
+            }
+            if (!column_labels && label_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Column labels array is null but label_count > 0");
+                return;
+            }
+            if (!delimiter) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Delimiter is null");
+                return;
+            }
+            if (!date_string_format) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Date string format is null");
+                return;
+            }
+
+            std::vector<std::string> labels_vec;
+            labels_vec.reserve(label_count);
+            for (unsigned int i = 0; i < label_count; i++) {
+                if (!column_labels[i]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Column label at index " + std::to_string(i) + " is null");
+                    return;
+                }
+                labels_vec.emplace_back(column_labels[i]);
+            }
+
+            context->loadTabularTimeseriesData(std::string(data_file), labels_vec, std::string(delimiter),
+                                                std::string(date_string_format), headerlines);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (loadTabularTimeseriesData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (loadTabularTimeseriesData): Unknown error");
+        }
+    }
+
+    //=============================================================================
     // File Export Functions
     //=============================================================================
 
@@ -5329,6 +5666,472 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitivesUsingMaterial): Unknown error.");
             if (count) *count = 0;
             return nullptr;
+        }
+    }
+
+    //=============================================================================
+    // Texture Functions (Phase 1)
+    //=============================================================================
+
+    PYHELIOS_API const char* getPrimitiveTextureFile(void* context_ptr, unsigned int uuid) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return "";
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::string texture_file;
+            texture_file = context->getPrimitiveTextureFile(uuid);
+            return texture_file.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveTextureFile): ") + e.what());
+            return "";
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveTextureFile): Unknown error.");
+            return "";
+        }
+    }
+
+    PYHELIOS_API void setPrimitiveTextureFile(void* context_ptr, unsigned int uuid, const char* texture_file) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            context->setPrimitiveTextureFile(uuid, std::string(texture_file));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveTextureFile): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveTextureFile): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getPrimitiveTextureSize(void* context_ptr, unsigned int uuid, int* width, int* height) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (width) *width = 0;
+                if (height) *height = 0;
+                return;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            helios::int2 size = context->getPrimitiveTextureSize(uuid);
+            if (width) *width = size.x;
+            if (height) *height = size.y;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveTextureSize): ") + e.what());
+            if (width) *width = 0;
+            if (height) *height = 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveTextureSize): Unknown error.");
+            if (width) *width = 0;
+            if (height) *height = 0;
+        }
+    }
+
+    PYHELIOS_API float* getPrimitiveTextureUV(void* context_ptr, unsigned int uuid, unsigned int* size) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            std::vector<helios::vec2> uvs = context->getPrimitiveTextureUV(uuid);
+
+            static thread_local std::vector<float> uv_buffer;
+            uv_buffer.clear();
+            uv_buffer.reserve(uvs.size() * 2);
+            for (const auto& uv : uvs) {
+                uv_buffer.push_back(uv.x);
+                uv_buffer.push_back(uv.y);
+            }
+            if (size) *size = uv_buffer.size();
+            return uv_buffer.empty() ? nullptr : uv_buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveTextureUV): ") + e.what());
+            if (size) *size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveTextureUV): Unknown error.");
+            if (size) *size = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API bool primitiveTextureHasTransparencyChannel(void* context_ptr, unsigned int uuid) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return false;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            return context->primitiveTextureHasTransparencyChannel(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::primitiveTextureHasTransparencyChannel): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::primitiveTextureHasTransparencyChannel): Unknown error.");
+            return false;
+        }
+    }
+
+    PYHELIOS_API float getPrimitiveSolidFraction(void* context_ptr, unsigned int uuid) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0.0f;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            return context->getPrimitiveSolidFraction(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveSolidFraction): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveSolidFraction): Unknown error.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API void overridePrimitiveTextureColor(void* context_ptr, unsigned int uuid) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            context->overridePrimitiveTextureColor(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::overridePrimitiveTextureColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::overridePrimitiveTextureColor): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void usePrimitiveTextureColor(void* context_ptr, unsigned int uuid) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            context->usePrimitiveTextureColor(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::usePrimitiveTextureColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::usePrimitiveTextureColor): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API bool isPrimitiveTextureColorOverridden(void* context_ptr, unsigned int uuid) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return false;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            return context->isPrimitiveTextureColorOverridden(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::isPrimitiveTextureColorOverridden): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::isPrimitiveTextureColorOverridden): Unknown error.");
+            return false;
+        }
+    }
+
+    //=============================================================================
+    // Fixed-Size Batch Getters (Phase 2)
+    //=============================================================================
+
+    PYHELIOS_API float* getBatchPrimitiveNormals(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* result_size) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (result_size) *result_size = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<float> buffer;
+            buffer.clear();
+            buffer.reserve(count * 3);
+            for (unsigned int i = 0; i < count; i++) {
+                helios::vec3 normal = context->getPrimitiveNormal(uuids[i]);
+                buffer.push_back(normal.x);
+                buffer.push_back(normal.y);
+                buffer.push_back(normal.z);
+            }
+            if (result_size) *result_size = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveNormals): ") + e.what());
+            if (result_size) *result_size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveNormals): Unknown error.");
+            if (result_size) *result_size = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API float* getBatchPrimitiveColors(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* result_size) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (result_size) *result_size = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<float> buffer;
+            buffer.clear();
+            buffer.reserve(count * 3);
+            for (unsigned int i = 0; i < count; i++) {
+                helios::RGBcolor color = context->getPrimitiveColor(uuids[i]);
+                buffer.push_back(color.r);
+                buffer.push_back(color.g);
+                buffer.push_back(color.b);
+            }
+            if (result_size) *result_size = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveColors): ") + e.what());
+            if (result_size) *result_size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveColors): Unknown error.");
+            if (result_size) *result_size = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API float* getBatchPrimitiveAreas(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* result_size) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (result_size) *result_size = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<float> buffer;
+            buffer.clear();
+            buffer.reserve(count);
+            for (unsigned int i = 0; i < count; i++) {
+                buffer.push_back(context->getPrimitiveArea(uuids[i]));
+            }
+            if (result_size) *result_size = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveAreas): ") + e.what());
+            if (result_size) *result_size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveAreas): Unknown error.");
+            if (result_size) *result_size = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getBatchPrimitiveTypes(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* result_size) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (result_size) *result_size = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<unsigned int> buffer;
+            buffer.clear();
+            buffer.reserve(count);
+            for (unsigned int i = 0; i < count; i++) {
+                buffer.push_back((unsigned int)context->getPrimitiveType(uuids[i]));
+            }
+            if (result_size) *result_size = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveTypes): ") + e.what());
+            if (result_size) *result_size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveTypes): Unknown error.");
+            if (result_size) *result_size = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API float* getBatchPrimitiveSolidFractions(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* result_size) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (result_size) *result_size = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<float> buffer;
+            buffer.clear();
+            buffer.reserve(count);
+            for (unsigned int i = 0; i < count; i++) {
+                buffer.push_back(context->getPrimitiveSolidFraction(uuids[i]));
+            }
+            if (result_size) *result_size = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveSolidFractions): ") + e.what());
+            if (result_size) *result_size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveSolidFractions): Unknown error.");
+            if (result_size) *result_size = 0;
+            return nullptr;
+        }
+    }
+
+    //=============================================================================
+    // Variable-Size Batch Getters (Phase 3)
+    //=============================================================================
+
+    PYHELIOS_API float* getBatchPrimitiveVertices(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_floats) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (total_floats) *total_floats = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<float> buffer;
+            buffer.clear();
+
+            for (unsigned int i = 0; i < count; i++) {
+                if (offsets_out) offsets_out[i] = buffer.size();
+                std::vector<helios::vec3> vertices = context->getPrimitiveVertices(uuids[i]);
+                for (const auto& v : vertices) {
+                    buffer.push_back(v.x);
+                    buffer.push_back(v.y);
+                    buffer.push_back(v.z);
+                }
+            }
+            if (offsets_out) offsets_out[count] = buffer.size();
+            if (total_floats) *total_floats = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveVertices): ") + e.what());
+            if (total_floats) *total_floats = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveVertices): Unknown error.");
+            if (total_floats) *total_floats = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API float* getBatchPrimitiveTextureUV(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_floats) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (total_floats) *total_floats = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::vector<float> buffer;
+            buffer.clear();
+
+            for (unsigned int i = 0; i < count; i++) {
+                if (offsets_out) offsets_out[i] = buffer.size();
+                std::vector<helios::vec2> uvs = context->getPrimitiveTextureUV(uuids[i]);
+                for (const auto& uv : uvs) {
+                    buffer.push_back(uv.x);
+                    buffer.push_back(uv.y);
+                }
+            }
+            if (offsets_out) offsets_out[count] = buffer.size();
+            if (total_floats) *total_floats = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveTextureUV): ") + e.what());
+            if (total_floats) *total_floats = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveTextureUV): Unknown error.");
+            if (total_floats) *total_floats = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API const char* getBatchPrimitiveTextureFiles(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_chars) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (total_chars) *total_chars = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::string buffer;
+            buffer.clear();
+
+            for (unsigned int i = 0; i < count; i++) {
+                if (offsets_out) offsets_out[i] = buffer.size();
+                std::string file = context->getPrimitiveTextureFile(uuids[i]);
+                buffer.append(file);
+            }
+            if (offsets_out) offsets_out[count] = buffer.size();
+            if (total_chars) *total_chars = buffer.size();
+            return buffer.empty() ? "" : buffer.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveTextureFiles): ") + e.what());
+            if (total_chars) *total_chars = 0;
+            return "";
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveTextureFiles): Unknown error.");
+            if (total_chars) *total_chars = 0;
+            return "";
+        }
+    }
+
+    PYHELIOS_API const char* getBatchPrimitiveMaterialLabels(void* context_ptr, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_chars) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (total_chars) *total_chars = 0;
+                return nullptr;
+            }
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+            static thread_local std::string buffer;
+            buffer.clear();
+
+            for (unsigned int i = 0; i < count; i++) {
+                if (offsets_out) offsets_out[i] = buffer.size();
+                std::string label = context->getPrimitiveMaterialLabel(uuids[i]);
+                buffer.append(label);
+            }
+            if (offsets_out) offsets_out[count] = buffer.size();
+            if (total_chars) *total_chars = buffer.size();
+            return buffer.empty() ? "" : buffer.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getBatchPrimitiveMaterialLabels): ") + e.what());
+            if (total_chars) *total_chars = 0;
+            return "";
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBatchPrimitiveMaterialLabels): Unknown error.");
+            if (total_chars) *total_chars = 0;
+            return "";
         }
     }
 

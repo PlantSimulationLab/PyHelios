@@ -46,6 +46,15 @@ endif()
 # This will create the executable target ${EXECUTABLE_NAME} automatically
 include( "${BASE_DIRECTORY}/core/CMake_project.cmake" )
 
+#-------- EXCLUDE UNNECESSARY THIRD-PARTY TARGETS ---------#
+# zlib's CMakeLists.txt unconditionally creates a shared library target ("zlib")
+# in addition to the static one ("zlibstatic"). We only need zlibstatic, and the
+# shared target causes resource compilation errors on Windows (win32/zlib1.rc).
+# Exclude it from the default build rather than patching the submodule source.
+if(TARGET zlib)
+    set_target_properties(zlib PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()
+
 #-------- CUDA SETUP FOR RADIATION PLUGIN ---------#
 # Find CUDA if radiation plugin is enabled
 if("radiation" IN_LIST PLUGINS)
@@ -441,22 +450,22 @@ endif()
 
 # Copy OptiX DLL to lib directory for Windows wheel packaging
 if("radiation" IN_LIST PLUGINS AND WIN32)
-    # Determine OptiX version and DLL name
+    # Determine OptiX version and DLL name (use absolute path for POST_BUILD commands)
+    get_filename_component(ABS_BASE_DIRECTORY "${BASE_DIRECTORY}" ABSOLUTE)
     if(OPTIX_VERSION_LEGACY)
-        set(OPTIX_PATH ${BASE_DIRECTORY}/plugins/radiation/lib/OptiX/windows64-5.1.1/)
+        set(OPTIX_SRC_PATH "${ABS_BASE_DIRECTORY}/plugins/radiation/lib/OptiX/windows64-5.1.1/")
         set(OPTIX_DLL "optix.51.dll")
     else()
-        set(OPTIX_PATH ${BASE_DIRECTORY}/plugins/radiation/lib/OptiX/windows64-6.5.0/)
+        set(OPTIX_SRC_PATH "${ABS_BASE_DIRECTORY}/plugins/radiation/lib/OptiX/windows64-6.5.0/")
         set(OPTIX_DLL "optix.6.5.0.dll")
     endif()
 
-    # Copy OptiX DLL to lib directory for wheel packaging
-    # The radiation plugin already copies it to CMAKE_BINARY_DIR, we just move it to lib/
+    # Copy OptiX DLL directly from source to lib directory for wheel packaging
     add_custom_command(TARGET pyhelios_shared POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/${OPTIX_DLL}"
+        "${OPTIX_SRC_PATH}bin64/${OPTIX_DLL}"
         "${CMAKE_BINARY_DIR}/lib/${OPTIX_DLL}"
-        COMMENT "Moving OptiX DLL to lib directory for wheel packaging"
+        COMMENT "Copying OptiX DLL to lib directory for wheel packaging"
     )
 endif()
 

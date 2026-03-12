@@ -1007,6 +1007,89 @@ PYHELIOS_API void enableCameraMetadata(RadiationModel* radiation_model,
 PYHELIOS_API void enableCameraMetadataMultiple(RadiationModel* radiation_model,
                                                 const char** camera_labels, size_t count);
 
+//=============================================================================
+// EXR Image Export Functions (v1.3.66+)
+//=============================================================================
+
+/**
+ * @brief Write single-band camera pixel data to EXR file with lossless float compression
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera Camera label
+ * @param band Band label
+ * @param imagefile_base Base filename for output
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit)
+ */
+PYHELIOS_API void writeCameraImageDataEXR(RadiationModel* radiation_model, const char* camera,
+                                          const char* band, const char* imagefile_base,
+                                          const char* image_path, int frame);
+
+/**
+ * @brief Write multi-band camera pixel data to a single EXR file with lossless float compression
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera Camera label
+ * @param bands Array of band labels
+ * @param band_count Number of bands
+ * @param imagefile_base Base filename for output
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit)
+ */
+PYHELIOS_API void writeCameraImageDataEXRMultiple(RadiationModel* radiation_model, const char* camera,
+                                                   const char** bands, size_t band_count,
+                                                   const char* imagefile_base, const char* image_path, int frame);
+
+/**
+ * @brief Write depth image data to ASCII text file
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param imagefile_base Base filename for output
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit)
+ */
+PYHELIOS_API void writeDepthImageData(RadiationModel* radiation_model, const char* camera_label,
+                                      const char* imagefile_base, const char* image_path, int frame);
+
+/**
+ * @brief Write depth image data to EXR file with lossless float compression
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param imagefile_base Base filename for output
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit)
+ */
+PYHELIOS_API void writeDepthImageDataEXR(RadiationModel* radiation_model, const char* camera_label,
+                                         const char* imagefile_base, const char* image_path, int frame);
+
+/**
+ * @brief Write normalized depth image (grayscale JPEG)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param imagefile_base Base filename for output
+ * @param max_depth Maximum depth value for normalization
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit)
+ */
+PYHELIOS_API void writeNormDepthImage(RadiationModel* radiation_model, const char* camera_label,
+                                      const char* imagefile_base, float max_depth,
+                                      const char* image_path, int frame);
+
+//=============================================================================
+// Backend Query Functions (v1.3.67+)
+//=============================================================================
+
+/**
+ * @brief Get the name of the active ray tracing backend
+ * @param radiation_model Pointer to the RadiationModel
+ * @return Backend name string (e.g., "OptiX 8.1", "Vulkan Compute"), or nullptr on error
+ */
+PYHELIOS_API const char* getBackendName(RadiationModel* radiation_model);
+
+/**
+ * @brief Probe whether any compiled-in GPU backend is available on this system
+ * @return 1 if at least one backend is available, 0 if none
+ */
+PYHELIOS_API int probeAnyGPUBackend();
+
 #ifdef __cplusplus
 }
 #endif

@@ -452,6 +452,35 @@ try:
                                                          ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
     helios_lib.enableCameraMetadataMultiple.restype = None
 
+    # EXR Image Export Functions (v1.3.66+)
+    helios_lib.writeCameraImageDataEXR.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                    ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.writeCameraImageDataEXR.restype = None
+
+    helios_lib.writeCameraImageDataEXRMultiple.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                            ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
+                                                            ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.writeCameraImageDataEXRMultiple.restype = None
+
+    helios_lib.writeDepthImageData.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.writeDepthImageData.restype = None
+
+    helios_lib.writeDepthImageDataEXR.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                   ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.writeDepthImageDataEXR.restype = None
+
+    helios_lib.writeNormDepthImage.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                ctypes.c_char_p, ctypes.c_float, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.writeNormDepthImage.restype = None
+
+    # Backend Query Functions (v1.3.67+)
+    helios_lib.getBackendName.argtypes = [ctypes.POINTER(URadiationModel)]
+    helios_lib.getBackendName.restype = ctypes.c_char_p
+
+    helios_lib.probeAnyGPUBackend.argtypes = []
+    helios_lib.probeAnyGPUBackend.restype = ctypes.c_int
+
     # Add automatic error checking to all RadiationModel functions
     helios_lib.createRadiationModel.errcheck = _check_error
     # Note: destroyRadiationModel doesn't need errcheck as it doesn't fail
@@ -602,6 +631,17 @@ try:
     helios_lib.updateCameraParameters.errcheck = _check_error
     helios_lib.enableCameraMetadata.errcheck = _check_error
     helios_lib.enableCameraMetadataMultiple.errcheck = _check_error
+
+    # EXR Image Export Functions (v1.3.66+)
+    helios_lib.writeCameraImageDataEXR.errcheck = _check_error
+    helios_lib.writeCameraImageDataEXRMultiple.errcheck = _check_error
+    helios_lib.writeDepthImageData.errcheck = _check_error
+    helios_lib.writeDepthImageDataEXR.errcheck = _check_error
+    helios_lib.writeNormDepthImage.errcheck = _check_error
+
+    # Backend Query Functions (v1.3.67+)
+    helios_lib.getBackendName.errcheck = _check_error
+    helios_lib.probeAnyGPUBackend.errcheck = _check_error
 
     # Mark that RadiationModel functions are available
     _RADIATION_MODEL_FUNCTIONS_AVAILABLE = True
@@ -2042,4 +2082,107 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
                                           ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
                                           ctypes.c_float(radius), ctypes.c_float(elevation), ctypes.c_float(azimuth),
                                           props_array, ctypes.c_uint(antialiasing_samples))
+
+#=============================================================================
+# EXR Image Export Functions (v1.3.66+)
+#=============================================================================
+
+def writeCameraImageDataEXR(radiation_model, camera: str, band, imagefile_base: str,
+                            image_path: str = "./", frame: int = -1):
+    """Write camera pixel data to EXR file with lossless float compression.
+
+    If band is a string, writes single-band data. If band is a list of strings,
+    writes multi-band data to a single EXR file with separate channels.
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write camera image data.")
+
+    camera_encoded = camera.encode('utf-8')
+    imagefile_base_encoded = imagefile_base.encode('utf-8')
+    image_path_encoded = image_path.encode('utf-8')
+
+    if isinstance(band, str):
+        band_encoded = band.encode('utf-8')
+        helios_lib.writeCameraImageDataEXR(radiation_model, camera_encoded, band_encoded,
+                                           imagefile_base_encoded, image_path_encoded, frame)
+    elif isinstance(band, (list, tuple)):
+        band_array = (ctypes.c_char_p * len(band))()
+        for i, b in enumerate(band):
+            band_array[i] = b.encode('utf-8')
+        helios_lib.writeCameraImageDataEXRMultiple(radiation_model, camera_encoded,
+                                                    band_array, len(band),
+                                                    imagefile_base_encoded, image_path_encoded, frame)
+    else:
+        raise TypeError("band must be a string or list of strings")
+
+
+def writeDepthImageData(radiation_model, camera_label: str, imagefile_base: str,
+                        image_path: str = "./", frame: int = -1):
+    """Write depth image data to ASCII text file."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write depth image data.")
+
+    helios_lib.writeDepthImageData(radiation_model, camera_label.encode('utf-8'),
+                                   imagefile_base.encode('utf-8'), image_path.encode('utf-8'), frame)
+
+
+def writeDepthImageDataEXR(radiation_model, camera_label: str, imagefile_base: str,
+                           image_path: str = "./", frame: int = -1):
+    """Write depth image data to EXR file with lossless float compression."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write depth image data.")
+
+    helios_lib.writeDepthImageDataEXR(radiation_model, camera_label.encode('utf-8'),
+                                      imagefile_base.encode('utf-8'), image_path.encode('utf-8'), frame)
+
+
+def writeNormDepthImage(radiation_model, camera_label: str, imagefile_base: str, max_depth: float,
+                        image_path: str = "./", frame: int = -1):
+    """Write normalized depth image (grayscale JPEG) with depth values scaled to [0, max_depth]."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write depth image.")
+
+    helios_lib.writeNormDepthImage(radiation_model, camera_label.encode('utf-8'),
+                                   imagefile_base.encode('utf-8'), ctypes.c_float(max_depth),
+                                   image_path.encode('utf-8'), frame)
+
+
+#=============================================================================
+# Backend Query Functions (v1.3.67+)
+#=============================================================================
+
+def getBackendName(radiation_model) -> str:
+    """Get the name of the active ray tracing backend (e.g., 'OptiX 8.1', 'Vulkan Compute')."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot get backend name.")
+
+    result = helios_lib.getBackendName(radiation_model)
+    if result is None:
+        return ""
+    return result.decode('utf-8')
+
+
+def probeAnyGPUBackend() -> bool:
+    """Probe whether any compiled-in GPU backend is available on this system.
+
+    Probes backends in priority order (OptiX 8 -> OptiX 6 -> Vulkan) without
+    constructing a full backend. Useful for availability checks.
+
+    Returns:
+        True if at least one GPU backend is available
+    """
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+
+    return helios_lib.probeAnyGPUBackend() != 0
 

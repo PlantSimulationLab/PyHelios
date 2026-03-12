@@ -1095,9 +1095,9 @@ class TestPlantArchitectureCustomBuilding:
         with pytest.raises(ValueError, match="Age must be non-negative"):
             plantarch.addPlantInstance(vec3(0, 0, 0), -1.0)
 
-        # Test invalid position type (lists no longer accepted)
-        with pytest.raises(AttributeError):  # Lists don't have .x, .y, .z attributes
-            plantarch.addPlantInstance([1, 2], 0.0)  # Wrong dimension
+        # Test invalid position type
+        with pytest.raises(ValueError, match="base_position must be a vec3"):
+            plantarch.addPlantInstance([1, 2], 0.0)
 
     def test_delete_plant_instance(self, plantarch):
         """Test deleting a plant instance"""

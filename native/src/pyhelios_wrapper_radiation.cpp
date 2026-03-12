@@ -2683,6 +2683,174 @@ extern "C" {
     }
 
 
+    //=============================================================================
+    // EXR Image Export Functions (v1.3.66+)
+    //=============================================================================
+
+    PYHELIOS_API void writeCameraImageDataEXR(RadiationModel* radiation_model, const char* camera,
+                                              const char* band, const char* imagefile_base,
+                                              const char* image_path, int frame) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera || !band || !imagefile_base || !image_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required string parameters are null");
+                return;
+            }
+
+            radiation_model->writeCameraImageDataEXR(std::string(camera), std::string(band),
+                                                     std::string(imagefile_base), std::string(image_path), frame);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeCameraImageDataEXR): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeCameraImageDataEXR): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void writeCameraImageDataEXRMultiple(RadiationModel* radiation_model, const char* camera,
+                                                       const char** bands, size_t band_count,
+                                                       const char* imagefile_base, const char* image_path, int frame) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera || !bands || !imagefile_base || !image_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+
+            std::vector<std::string> band_vector;
+            band_vector.reserve(band_count);
+            for (size_t i = 0; i < band_count; i++) {
+                if (bands[i]) {
+                    band_vector.push_back(std::string(bands[i]));
+                }
+            }
+
+            radiation_model->writeCameraImageDataEXR(std::string(camera), band_vector,
+                                                     std::string(imagefile_base), std::string(image_path), frame);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeCameraImageDataEXRMultiple): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeCameraImageDataEXRMultiple): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void writeDepthImageData(RadiationModel* radiation_model, const char* camera_label,
+                                          const char* imagefile_base, const char* image_path, int frame) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !imagefile_base || !image_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required string parameters are null");
+                return;
+            }
+
+            radiation_model->writeDepthImageData(std::string(camera_label), std::string(imagefile_base),
+                                                 std::string(image_path), frame);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeDepthImageData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeDepthImageData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void writeDepthImageDataEXR(RadiationModel* radiation_model, const char* camera_label,
+                                             const char* imagefile_base, const char* image_path, int frame) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !imagefile_base || !image_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required string parameters are null");
+                return;
+            }
+
+            radiation_model->writeDepthImageDataEXR(std::string(camera_label), std::string(imagefile_base),
+                                                    std::string(image_path), frame);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeDepthImageDataEXR): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeDepthImageDataEXR): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void writeNormDepthImage(RadiationModel* radiation_model, const char* camera_label,
+                                          const char* imagefile_base, float max_depth,
+                                          const char* image_path, int frame) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !imagefile_base || !image_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required string parameters are null");
+                return;
+            }
+
+            radiation_model->writeNormDepthImage(std::string(camera_label), std::string(imagefile_base),
+                                                 max_depth, std::string(image_path), frame);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeNormDepthImage): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeNormDepthImage): Unknown error.");
+        }
+    }
+
+    //=============================================================================
+    // Backend Query Functions (v1.3.67+)
+    //=============================================================================
+
+    PYHELIOS_API const char* getBackendName(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return nullptr;
+            }
+
+            static thread_local std::string static_result;
+            static_result = radiation_model->getBackendName();
+            return static_result.c_str();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getBackendName): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getBackendName): Unknown error.");
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API int probeAnyGPUBackend() {
+        try {
+            clearError();
+            return helios::probeAnyGPUBackend() ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (probeAnyGPUBackend): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (probeAnyGPUBackend): Unknown error.");
+            return 0;
+        }
+    }
+
 } //extern "C"
 
 #endif //RADIATION_PLUGIN_AVAILABLE

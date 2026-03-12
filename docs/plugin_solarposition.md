@@ -29,7 +29,7 @@
 
 ```python
 from pyhelios import Context, SolarPosition
-from pyhelios.types import vec3
+from pyhelios.types import *
 
 with Context() as context:
     # Set date and time
@@ -209,7 +209,7 @@ This plugin calculates the position of the sun, and also implements other models
 
  ```python
 from pyhelios import Context, SolarPosition
-from pyhelios.types import vec3
+from pyhelios.types import *
 
 with Context() as context:
     # Set the current time and date
@@ -370,43 +370,42 @@ with Context() as context:
 
  In order to enable flux calibration for cloudy conditions, you must 1) Load timeseries data containing the measured all-wave solar radiation flux. This data must cover the entire period of the simulation. 2) Call \ref pyhelios.SolarPosition.SolarPosition::enableCloudCalibration "enableCloudCalibration()", which requires a string corresponding to the timeseries data label.
 
-**Note:** Full timeseries data management (loadTabularTimeseriesData, queryTimeseriesData) is currently available in the C++ API only. The Python API supports \ref pyhelios.SolarPosition.SolarPosition::enableCloudCalibration "enableCloudCalibration()" and \ref pyhelios.SolarPosition.SolarPosition::calibrateTurbidityFromTimeseries "calibrateTurbidityFromTimeseries()" methods, but you must manage timeseries data loading yourself (e.g., using pandas).
-
- Below is a simplified Python example showing cloud calibration workflow:
+ Below is a Python example showing cloud calibration using Context timeseries:
 
 ```python
 from pyhelios import Context, SolarPosition
-import pandas as pd
-import math
-
-# Load weather data using pandas
-weather_data = pd.read_csv("/path/to/weatherdatafile.txt")
 
 with Context() as context:
-    # Initialize the SolarPosition class
+    # Load weather data directly into Context timeseries
+    context.loadTabularTimeseriesData(
+        "/path/to/weatherdatafile.txt",
+        column_labels=["date", "hour", "Tair_C", "humidity_rel", "Patm_Pa", "R_tot_Wm2"],
+        delimiter=",",
+        headerlines=1
+    )
+
     with SolarPosition(context, 7, 31.256, 119.947) as sun:
-        # Enable cloud calibration
-        # Note: This requires Context timeseries support (C++ only currently)
-        # sun.enableCloudCalibration("R_tot_Wm2")
+        # Enable cloud calibration using measured radiation timeseries
+        sun.enableCloudCalibration("R_tot_Wm2")
 
-        # Calibrate turbidity (if timeseries loaded in Context)
-        # turbidity = sun.calibrateTurbidityFromTimeseries("R_tot_Wm2")
+        # Calibrate turbidity from measured radiation data
+        turbidity = sun.calibrateTurbidityFromTimeseries("R_tot_Wm2")
 
-        # For Python, manually iterate through weather data
-        for index, row in weather_data.iterrows():
-            # Set time for this data point
-            # (parse date/time from row data)
+        # Loop through timeseries data points
+        n = context.getTimeseriesLength("Tair_C")
+        for i in range(n):
+            # Set context date/time to this timeseries point
+            context.setCurrentTimeseriesPoint("Tair_C", i)
 
-            # Extract atmospheric conditions
-            Tair_K = row['Tair_C'] + 273.15
-            humidity_rel = row['humidity_rel']
-            Patm_Pa = row['Patm_Pa']
-            turbidity = 0.05  # Or use calibrated value
+            # Query atmospheric data at this timestep
+            Tair_K = context.queryTimeseriesData("Tair_C", index=i) + 273.15
+            humidity_rel = context.queryTimeseriesData("humidity_rel", index=i)
+            Patm_Pa = context.queryTimeseriesData("Patm_Pa", index=i)
 
             # Set atmospheric conditions for this timestep
             sun.setAtmosphericConditions(Patm_Pa, Tair_K, humidity_rel, turbidity)
 
-            # Calculate solar flux (no parameter repetition)
+            # Calculate solar flux
             R = sun.getSolarFlux()
             f_diff = sun.getDiffuseFraction()
 

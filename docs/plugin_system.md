@@ -230,7 +230,7 @@ class MyPlugin:
 
 Plugins may require system libraries:
 
-- **radiation**: Vulkan SDK (all platforms) or CUDA Toolkit + OptiX SDK (NVIDIA)
+- **radiation**: Vulkan loader (macOS/Linux; bundled on Windows) or CUDA Toolkit + OptiX (NVIDIA)
 - **visualizer**: OpenGL, GLFW
 - **lidar**: Point cloud libraries
 - **photosynthesis**: Mathematical libraries
@@ -308,10 +308,10 @@ PyHelios provides detailed error messages with actionable solutions:
 HeliosPluginNotAvailableError: The 'radiation' plugin is not available.
 
 To enable GPU-accelerated radiation modeling:
-1. Install Vulkan SDK (cross-platform: NVIDIA, AMD, Intel, Apple Silicon)
-   OR CUDA Toolkit 11.0+ with OptiX (NVIDIA GPUs only)
+1. Install Vulkan loader (macOS/Linux) or CUDA 12.0+ (NVIDIA driver >= 560)
+   Windows: No external Vulkan dependencies needed (headers + glslang bundled)
 2. Rebuild PyHelios: build_scripts/build_helios --plugins radiation
-3. Ensure GPU with Vulkan 1.1+ support or NVIDIA GPU with compute capability 3.5+
+3. Backend auto-detected at runtime: OptiX 8 -> OptiX 6 -> Vulkan
 
 Alternative: Use CPU-based radiation approximations with the 'energybalance' plugin.
 ```

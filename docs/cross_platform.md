@@ -2,6 +2,15 @@
 
 PyHelios is designed to work seamlessly across Windows, macOS, and Linux. This guide covers platform-specific considerations and features.
 
+## Python Version Support
+
+PyHelios requires **Python 3.10 or later**. Pre-built wheels are available for Python 3.10–3.14.
+
+| Python Version | Status |
+|----------------|--------|
+| 3.10 – 3.14 | Supported (pre-built wheels available) |
+| 3.9 and earlier | Not supported |
+
 ## Platform Support Matrix
 
 | Feature | Windows | macOS | Linux | Notes |

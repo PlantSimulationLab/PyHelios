@@ -780,13 +780,8 @@ class HeliosBuilder:
                 '-DBUILD_SHARED_LIBS=ON',  # Build as shared library on Unix
             ])
         
-        # Windows-specific workaround for zlib resource compilation issue
+        # Windows-specific: disable resource compilation if CMAKE_RC_COMPILER is not set
         if self.platform_name == 'Windows':
-            # The RC compiler fails on win32/zlib1.rc due to C syntax in included headers
-            # Patch zlib CMakeLists.txt to disable the problematic shared library target
-            self._patch_zlib_cmake_for_windows()
-            
-            # Disable resource compilation entirely if CMAKE_RC_COMPILER is not set
             if not os.environ.get('CMAKE_RC_COMPILER'):
                 cmake_cmd.extend(['-DCMAKE_RC_COMPILER='])  # Empty RC compiler disables resource compilation
         
@@ -1477,8 +1472,8 @@ class HeliosBuilder:
                     "The radiation plugin requires GPU backend shader files.\n"
                     "Shader files (SPIR-V for Vulkan, PTX for OptiX) should be generated during CMake build.\n\n"
                     "To fix this issue:\n"
-                    "1. Ensure Vulkan SDK is installed (primary cross-platform backend)\n"
-                    "2. Or ensure CUDA toolkit + OptiX are installed (NVIDIA-only backend)\n"
+                    "1. Ensure Vulkan loader is installed (macOS/Linux; bundled on Windows)\n"
+                    "2. Or ensure CUDA toolkit is installed (NVIDIA GPU backend)\n"
                     "3. Check CMake configuration enables at least one GPU backend\n"
                     "4. Run build with --clean to rebuild from scratch\n\n"
                     f"Expected shader directory: {shader_source_dir}\n"
@@ -1571,70 +1566,6 @@ class HeliosBuilder:
         print(f"Build completed successfully: {output_library}")
         print(f"Built with plugins: {final_plugins}")
         return output_library
-
-    def _patch_zlib_cmake_for_windows(self) -> None:
-        """
-        Patch zlib's CMakeLists.txt on Windows to disable the shared library target
-        that causes resource compilation errors with win32/zlib1.rc.
-        """
-        zlib_cmake_path = self.helios_root / "core" / "lib" / "zlib" / "CMakeLists.txt"
-        
-        if not zlib_cmake_path.exists():
-            print("Warning: zlib CMakeLists.txt not found, skipping patch")
-            return
-            
-        print("Patching zlib CMakeLists.txt to disable shared library on Windows...")
-        
-        try:
-            # Read the original file
-            with open(zlib_cmake_path, 'r') as f:
-                content = f.read()
-            
-            # Check if already patched (to avoid double-patching)
-            if "# PYHELIOS PATCH: Disabled shared library" in content:
-                print("zlib CMakeLists.txt already patched")
-                return
-        except Exception as e:
-            print(f"Warning: Failed to read zlib CMakeLists.txt: {e}")
-            return
-            
-        # Patch: comment out the shared library creation and related lines
-        patches = [
-            # Comment out the shared library creation
-            ("add_library(zlib SHARED", "# PYHELIOS PATCH: Disabled shared library\n# add_library(zlib SHARED"),
-            # Comment out the include directories for shared lib
-            ("target_include_directories(zlib PUBLIC", "# target_include_directories(zlib PUBLIC"),
-            # Comment out all properties for shared lib
-            ("set_target_properties(zlib PROPERTIES DEFINE_SYMBOL ZLIB_DLL)", "# set_target_properties(zlib PROPERTIES DEFINE_SYMBOL ZLIB_DLL)"),
-            ("set_target_properties(zlib PROPERTIES SOVERSION 1)", "# set_target_properties(zlib PROPERTIES SOVERSION 1)"),
-            ("    set_target_properties(zlib PROPERTIES VERSION ${ZLIB_FULL_VERSION})", "    # set_target_properties(zlib PROPERTIES VERSION ${ZLIB_FULL_VERSION})"),
-            ("   set_target_properties(zlib zlibstatic PROPERTIES OUTPUT_NAME z)", "   set_target_properties(zlibstatic PROPERTIES OUTPUT_NAME z)"),
-            ("     set_target_properties(zlib PROPERTIES LINK_FLAGS", "     # set_target_properties(zlib PROPERTIES LINK_FLAGS"),
-            ("    set_target_properties(zlib PROPERTIES SUFFIX \"1.dll\")", "    # set_target_properties(zlib PROPERTIES SUFFIX \"1.dll\")"),
-            # Update install targets to exclude zlib shared library
-            ("    install(TARGETS zlib zlibstatic", "    install(TARGETS zlibstatic"),
-            # Add static runtime linking for zlib
-            ("add_library(zlibstatic STATIC ${ZLIB_SRCS} ${ZLIB_PUBLIC_HDRS} ${ZLIB_PRIVATE_HDRS})", 
-             "add_library(zlibstatic STATIC ${ZLIB_SRCS} ${ZLIB_PUBLIC_HDRS} ${ZLIB_PRIVATE_HDRS})\n# PYHELIOS PATCH: Use static MSVC runtime\nif(MSVC)\n    set_target_properties(zlibstatic PROPERTIES MSVC_RUNTIME_LIBRARY \"MultiThreaded$<$<CONFIG:Debug>:Debug>\")\nendif()"),
-            # Disable problematic resource compilation
-            ("if(NOT MINGW)\n    set(ZLIB_DLL_SRCS\n        win32/zlib1.rc # If present will override custom build rule below.\n    )\nendif()",
-             "# PYHELIOS PATCH: Disable resource compilation to avoid RC errors\n# if(NOT MINGW)\n#     set(ZLIB_DLL_SRCS\n#         win32/zlib1.rc # If present will override custom build rule below.\n#     )\n# endif()"),
-        ]
-        
-        for old, new in patches:
-            if old in content:
-                content = content.replace(old, new)
-                print(f"  Patched: {old[:50]}...")
-        
-        # Write the patched file back
-        try:
-            with open(zlib_cmake_path, 'w') as f:
-                f.write(content)
-            print("zlib CMakeLists.txt patched successfully")
-        except Exception as e:
-            print(f"Warning: Failed to write patched zlib CMakeLists.txt: {e}")
-            raise HeliosBuildError(f"Could not patch zlib CMakeLists.txt: {e}")
-
 
 def get_default_plugins() -> List[str]:
     """

@@ -12,26 +12,42 @@ The radiation plugin supports two GPU backends. At least one must be available:
 
 ### Vulkan Backend (All Platforms)
 
-Supports NVIDIA, AMD, Intel, and Apple Silicon GPUs via Vulkan compute shaders with software BVH traversal.
+Supports NVIDIA, AMD, Intel, and Apple Silicon GPUs via Vulkan compute shaders with software BVH traversal. Vulkan headers and the glslang shader compiler are bundled with Helios, so no external Vulkan SDK installation is required on Windows.
 
 | Requirement | macOS | Linux | Windows |
 |-------------|-------|-------|---------|
 | **GPU** | Any with Vulkan support | Any with Vulkan support | Any with Vulkan support |
-| **Vulkan SDK** | Via MoltenVK (bundled with macOS) | <a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a> | <a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a> |
+| **Dependencies** | `brew install vulkan-loader molten-vk` | `sudo apt-get install libvulkan-dev` | None (all bundled) |
 
 ### OptiX Backend (NVIDIA Only)
 
-Provides optimized ray tracing on NVIDIA GPUs using hardware RT cores.
+Provides optimized ray tracing on NVIDIA GPUs using hardware RT cores. Two OptiX versions are supported:
 
-| Requirement | macOS | Linux | Windows |
-|-------------|-------|-------|---------|
-| **GPU** | Not supported | CUDA-capable (compute capability 3.5+) | CUDA-capable (compute capability 3.5+) |
-| **CUDA Runtime** | Not supported | Version 9.0+ | Version 9.0+ |
-| **OptiX Runtime** | Not supported | Bundled with PyHelios | Bundled with PyHelios |
+| Backend | Driver Requirement | CUDA | Notes |
+|---------|-------------------|------|-------|
+| **OptiX 8.1** | NVIDIA driver >= 560 | CUDA 12.0+ | Default for modern drivers |
+| **OptiX 6.5** | NVIDIA driver < 560 | CUDA 9.0+ | Legacy driver support |
 
 ### Backend Selection
 
-Backend selection is automatic based on available hardware. Use the CMake option `FORCE_VULKAN_BACKEND=ON` to force the Vulkan backend for testing.
+Backend selection is **automatic at runtime** via GPU hardware probing. When the radiation model starts, it probes compiled-in backends in priority order (OptiX 8 -> OptiX 6 -> Vulkan) and selects the first one that is compatible with the current hardware. If no compatible GPU is found, a clear diagnostic error is raised.
+
+You can query the active backend at runtime:
+
+```python
+with RadiationModel(context) as radiation:
+    print(f"Active backend: {radiation.getBackendName()}")
+    # e.g., "OptiX 8.1", "OptiX 6.5", "Vulkan Compute"
+```
+
+You can also probe GPU availability without creating a full radiation model:
+
+```python
+if RadiationModel.probeAnyGPUBackend():
+    print("GPU backend available")
+else:
+    print("No compatible GPU backend found")
+```
 
 **For CUDA/OptiX setup**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
 - Choosing the correct CUDA toolkit version: \ref ChoosingCUDA
@@ -1059,6 +1075,48 @@ radiation.writeCameraImageData(
     imagefile_base="raw_data",
     image_path="./data"
 )
+
+# Camera image data in EXR format (lossless float precision, v1.3.66+)
+radiation.writeCameraImageDataEXR(
+    camera="overhead_camera",
+    band="PAR",                    # Single band
+    imagefile_base="raw_float_data",
+    image_path="./data"
+)
+
+# Multi-band EXR (all bands as separate channels in one file)
+radiation.writeCameraImageDataEXR(
+    camera="overhead_camera",
+    band=["Red", "Green", "Blue"],  # Multiple bands
+    imagefile_base="rgb_float_data",
+    image_path="./data"
+)
+```
+
+### Depth Image Export
+
+```python
+# Depth image as ASCII text file
+radiation.writeDepthImageData(
+    camera_label="overhead_camera",
+    imagefile_base="depth_data",
+    image_path="./data"
+)
+
+# Depth image as EXR file (lossless float precision, v1.3.66+)
+radiation.writeDepthImageDataEXR(
+    camera_label="overhead_camera",
+    imagefile_base="depth_float",
+    image_path="./data"
+)
+
+# Normalized depth image (grayscale JPEG for visualization)
+radiation.writeNormDepthImage(
+    camera_label="overhead_camera",
+    imagefile_base="depth_visual",
+    max_depth=50.0,  # Maximum depth for normalization
+    image_path="./data"
+)
 ```
 
 ### Object Detection Training Data
@@ -1314,15 +1372,24 @@ except RuntimeError as e:
 from pyhelios import RadiationModel
 from pyhelios.exceptions import HeliosGPUInitializationError
 
+# Check GPU availability before creating RadiationModel
+if not RadiationModel.probeAnyGPUBackend():
+    print("No compatible GPU backend found")
+    print("Supported backends: OptiX 8 (NVIDIA driver >= 560), OptiX 6 (NVIDIA driver < 560), Vulkan")
+
 try:
     radiation = RadiationModel(context)
-    
+    print(f"Using backend: {radiation.getBackendName()}")
+
 except Exception as e:
     print(f"RadiationModel initialization failed: {e}")
-    
-    # Check if GPU is available
+
+    # Runtime backend probing provides clear diagnostic messages
     if "Vulkan" in str(e):
-        print("Vulkan backend error - check Vulkan SDK installation and GPU drivers")
+        print("Vulkan backend error - check GPU drivers")
+        print("  macOS: brew install vulkan-loader molten-vk")
+        print("  Linux: sudo apt-get install libvulkan-dev")
+        print("  Windows: No additional packages needed")
     elif "OptiX" in str(e):
         print("OptiX backend error - check CUDA/OptiX installation and NVIDIA drivers")
     elif "GPU" in str(e):

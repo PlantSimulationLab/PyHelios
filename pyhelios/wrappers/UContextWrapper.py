@@ -3514,6 +3514,198 @@ def getDate(context):
 
 
 # ============================================================================
+# Timeseries Functions
+# ============================================================================
+
+_TIMESERIES_FUNCTIONS_AVAILABLE = False
+
+try:
+    helios_lib.addTimeseriesData.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_float,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int
+    ]
+    helios_lib.addTimeseriesData.restype = None
+
+    helios_lib.setCurrentTimeseriesPoint.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint]
+    helios_lib.setCurrentTimeseriesPoint.restype = None
+
+    helios_lib.queryTimeseriesData_DateTime.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int
+    ]
+    helios_lib.queryTimeseriesData_DateTime.restype = ctypes.c_float
+
+    helios_lib.queryTimeseriesData_Current.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.queryTimeseriesData_Current.restype = ctypes.c_float
+
+    helios_lib.queryTimeseriesData_Index.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint]
+    helios_lib.queryTimeseriesData_Index.restype = ctypes.c_float
+
+    helios_lib.queryTimeseriesTime.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)
+    ]
+    helios_lib.queryTimeseriesTime.restype = None
+
+    helios_lib.queryTimeseriesDate.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)
+    ]
+    helios_lib.queryTimeseriesDate.restype = None
+
+    helios_lib.getTimeseriesLength.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getTimeseriesLength.restype = ctypes.c_uint
+
+    helios_lib.doesTimeseriesVariableExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.doesTimeseriesVariableExist.restype = ctypes.c_bool
+
+    helios_lib.listTimeseriesVariables.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.listTimeseriesVariables.restype = ctypes.POINTER(ctypes.c_char_p)
+
+    helios_lib.loadTabularTimeseriesData.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint,
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint
+    ]
+    helios_lib.loadTabularTimeseriesData.restype = None
+
+    _TIMESERIES_FUNCTIONS_AVAILABLE = True
+
+except AttributeError:
+    _TIMESERIES_FUNCTIONS_AVAILABLE = False
+
+def _check_error_timeseries(result, func, args):
+    """Automatic error checking for timeseries functions"""
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    return result
+
+if _TIMESERIES_FUNCTIONS_AVAILABLE:
+    for fname in ['addTimeseriesData', 'setCurrentTimeseriesPoint',
+                  'queryTimeseriesData_DateTime', 'queryTimeseriesData_Current',
+                  'queryTimeseriesData_Index', 'queryTimeseriesTime',
+                  'queryTimeseriesDate', 'getTimeseriesLength',
+                  'doesTimeseriesVariableExist', 'listTimeseriesVariables',
+                  'loadTabularTimeseriesData']:
+        getattr(helios_lib, fname).errcheck = _check_error_timeseries
+
+
+_NOT_AVAILABLE_MSG = ("Timeseries functions not available in current Helios library. "
+                      "Rebuild PyHelios with updated C++ wrapper implementation.")
+
+
+def addTimeseriesData(context, label: str, value: float, day: int, month: int, year: int,
+                      hour: int, minute: int, second: int):
+    """Add a data point to a timeseries variable"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    helios_lib.addTimeseriesData(context, label.encode('utf-8'), value,
+                                 day, month, year, hour, minute, second)
+
+
+def setCurrentTimeseriesPoint(context, label: str, index: int):
+    """Set the Context date and time from a timeseries data point index"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    helios_lib.setCurrentTimeseriesPoint(context, label.encode('utf-8'), index)
+
+
+def queryTimeseriesDataDateTime(context, label: str, day: int, month: int, year: int,
+                                hour: int, minute: int, second: int) -> float:
+    """Query a timeseries value at a specific date and time (with interpolation)"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    return helios_lib.queryTimeseriesData_DateTime(context, label.encode('utf-8'),
+                                                    day, month, year, hour, minute, second)
+
+
+def queryTimeseriesDataCurrent(context, label: str) -> float:
+    """Query a timeseries value at the current Context date/time"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    return helios_lib.queryTimeseriesData_Current(context, label.encode('utf-8'))
+
+
+def queryTimeseriesDataIndex(context, label: str, index: int) -> float:
+    """Query a timeseries value by index"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    return helios_lib.queryTimeseriesData_Index(context, label.encode('utf-8'), index)
+
+
+def queryTimeseriesTime(context, label: str, index: int):
+    """Get the Time at a timeseries data point. Returns (hour, minute, second)."""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+
+    hour = ctypes.c_int()
+    minute = ctypes.c_int()
+    second = ctypes.c_int()
+    helios_lib.queryTimeseriesTime(context, label.encode('utf-8'), index,
+                                    ctypes.byref(hour), ctypes.byref(minute), ctypes.byref(second))
+    return (hour.value, minute.value, second.value)
+
+
+def queryTimeseriesDate(context, label: str, index: int):
+    """Get the Date at a timeseries data point. Returns (year, month, day)."""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+
+    day = ctypes.c_int()
+    month = ctypes.c_int()
+    year = ctypes.c_int()
+    helios_lib.queryTimeseriesDate(context, label.encode('utf-8'), index,
+                                    ctypes.byref(day), ctypes.byref(month), ctypes.byref(year))
+    return (year.value, month.value, day.value)
+
+
+def getTimeseriesLength(context, label: str) -> int:
+    """Get the number of data points in a timeseries variable"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    return helios_lib.getTimeseriesLength(context, label.encode('utf-8'))
+
+
+def doesTimeseriesVariableExist(context, label: str) -> bool:
+    """Check whether a timeseries variable exists"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    return helios_lib.doesTimeseriesVariableExist(context, label.encode('utf-8'))
+
+
+def listTimeseriesVariables(context):
+    """List all existing timeseries variables. Returns List[str]."""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+
+    count = ctypes.c_uint()
+    result_ptr = helios_lib.listTimeseriesVariables(context, ctypes.byref(count))
+
+    if count.value == 0 or not result_ptr:
+        return []
+
+    return [result_ptr[i].decode('utf-8') for i in range(count.value)]
+
+
+def loadTabularTimeseriesData(context, data_file: str, column_labels, delimiter: str,
+                              date_string_format: str, headerlines: int):
+    """Load tabular timeseries data from a text file"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+
+    encoded_labels = [label.encode('utf-8') for label in column_labels]
+    labels_array = (ctypes.c_char_p * len(encoded_labels))(*encoded_labels)
+
+    helios_lib.loadTabularTimeseriesData(
+        context, data_file.encode('utf-8'),
+        labels_array, len(encoded_labels),
+        delimiter.encode('utf-8'), date_string_format.encode('utf-8'),
+        headerlines
+    )
+
+
+# ============================================================================
 # Primitive and Object Deletion Functions
 # ============================================================================
 
@@ -3868,4 +4060,256 @@ def getPrimitivesUsingMaterial(context, material_label: str) -> List[int]:
     if count.value == 0 or not uuids_ptr:
         return []
     return list(uuids_ptr[:count.value])
+
+
+# =============================================================================
+# Texture Functions
+# =============================================================================
+
+_TEXTURE_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.getPrimitiveTextureFile.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.getPrimitiveTextureFile.restype = ctypes.c_char_p
+    helios_lib.getPrimitiveTextureFile.errcheck = _check_error
+
+    helios_lib.setPrimitiveTextureFile.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.setPrimitiveTextureFile.restype = None
+    helios_lib.setPrimitiveTextureFile.errcheck = _check_error
+
+    helios_lib.getPrimitiveTextureSize.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.getPrimitiveTextureSize.restype = None
+    helios_lib.getPrimitiveTextureSize.errcheck = _check_error
+
+    helios_lib.getPrimitiveTextureUV.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getPrimitiveTextureUV.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getPrimitiveTextureUV.errcheck = _check_error
+
+    helios_lib.primitiveTextureHasTransparencyChannel.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.primitiveTextureHasTransparencyChannel.restype = ctypes.c_bool
+    helios_lib.primitiveTextureHasTransparencyChannel.errcheck = _check_error
+
+    helios_lib.getPrimitiveSolidFraction.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.getPrimitiveSolidFraction.restype = ctypes.c_float
+    helios_lib.getPrimitiveSolidFraction.errcheck = _check_error
+
+    helios_lib.overridePrimitiveTextureColor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.overridePrimitiveTextureColor.restype = None
+    helios_lib.overridePrimitiveTextureColor.errcheck = _check_error
+
+    helios_lib.usePrimitiveTextureColor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.usePrimitiveTextureColor.restype = None
+    helios_lib.usePrimitiveTextureColor.errcheck = _check_error
+
+    helios_lib.isPrimitiveTextureColorOverridden.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    helios_lib.isPrimitiveTextureColorOverridden.restype = ctypes.c_bool
+    helios_lib.isPrimitiveTextureColorOverridden.errcheck = _check_error
+
+    _TEXTURE_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _TEXTURE_FUNCTIONS_AVAILABLE = False
+
+
+def getPrimitiveTextureFile(context, uuid: int) -> str:
+    """Get the texture file path of a primitive."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    result = helios_lib.getPrimitiveTextureFile(context, ctypes.c_uint(uuid))
+    return result.decode('utf-8') if result else ""
+
+def setPrimitiveTextureFile(context, uuid: int, texture_file: str) -> None:
+    """Set the texture file path of a primitive."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    helios_lib.setPrimitiveTextureFile(context, ctypes.c_uint(uuid), texture_file.encode('utf-8'))
+
+def getPrimitiveTextureSize(context, uuid: int):
+    """Get the texture size of a primitive. Returns (width, height) tuple."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    width = ctypes.c_int()
+    height = ctypes.c_int()
+    helios_lib.getPrimitiveTextureSize(context, ctypes.c_uint(uuid), ctypes.byref(width), ctypes.byref(height))
+    return (width.value, height.value)
+
+def getPrimitiveTextureUV(context, uuid: int):
+    """Get the texture UV coordinates of a primitive. Returns list of (u, v) float pairs."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    size = ctypes.c_uint()
+    uv_ptr = helios_lib.getPrimitiveTextureUV(context, ctypes.c_uint(uuid), ctypes.byref(size))
+    if size.value == 0 or not uv_ptr:
+        return []
+    uv_list = ctypes.cast(uv_ptr, ctypes.POINTER(ctypes.c_float * size.value)).contents
+    return [(uv_list[i], uv_list[i+1]) for i in range(0, size.value, 2)]
+
+def primitiveTextureHasTransparencyChannel(context, uuid: int) -> bool:
+    """Check if primitive texture has a transparency channel."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    return helios_lib.primitiveTextureHasTransparencyChannel(context, ctypes.c_uint(uuid))
+
+def getPrimitiveSolidFraction(context, uuid: int) -> float:
+    """Get the solid fraction of a primitive."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    return helios_lib.getPrimitiveSolidFraction(context, ctypes.c_uint(uuid))
+
+def overridePrimitiveTextureColor(context, uuid: int) -> None:
+    """Override texture color with constant RGB color for a primitive."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    helios_lib.overridePrimitiveTextureColor(context, ctypes.c_uint(uuid))
+
+def usePrimitiveTextureColor(context, uuid: int) -> None:
+    """Use texture map color instead of constant RGB color for a primitive."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    helios_lib.usePrimitiveTextureColor(context, ctypes.c_uint(uuid))
+
+def isPrimitiveTextureColorOverridden(context, uuid: int) -> bool:
+    """Check if primitive texture color is overridden."""
+    if not _TEXTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Texture functions not available. Rebuild with updated C++ wrapper.")
+    return helios_lib.isPrimitiveTextureColorOverridden(context, ctypes.c_uint(uuid))
+
+
+# =============================================================================
+# Batch Getter Functions
+# =============================================================================
+
+_BATCH_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.getBatchPrimitiveNormals.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveNormals.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getBatchPrimitiveNormals.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveColors.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveColors.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getBatchPrimitiveColors.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveAreas.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveAreas.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getBatchPrimitiveAreas.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveTypes.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveTypes.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getBatchPrimitiveTypes.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveSolidFractions.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveSolidFractions.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getBatchPrimitiveSolidFractions.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveVertices.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveVertices.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getBatchPrimitiveVertices.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveTextureUV.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveTextureUV.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getBatchPrimitiveTextureUV.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveTextureFiles.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveTextureFiles.restype = ctypes.c_char_p
+    helios_lib.getBatchPrimitiveTextureFiles.errcheck = _check_error
+
+    helios_lib.getBatchPrimitiveMaterialLabels.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getBatchPrimitiveMaterialLabels.restype = ctypes.c_char_p
+    helios_lib.getBatchPrimitiveMaterialLabels.errcheck = _check_error
+
+    _BATCH_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _BATCH_FUNCTIONS_AVAILABLE = False
+
+
+def _make_uuid_array(uuids: List[int]):
+    """Create a ctypes uint array from a list of UUIDs."""
+    return (ctypes.c_uint * len(uuids))(*uuids)
+
+def getBatchPrimitiveNormals(context, uuids: List[int]):
+    """Get normals for multiple primitives. Returns (float_ptr, count)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    uuids_array = _make_uuid_array(uuids)
+    result_size = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveNormals(context, uuids_array, len(uuids), ctypes.byref(result_size))
+    return (ptr, result_size.value)
+
+def getBatchPrimitiveColors(context, uuids: List[int]):
+    """Get colors for multiple primitives. Returns (float_ptr, count)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    uuids_array = _make_uuid_array(uuids)
+    result_size = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveColors(context, uuids_array, len(uuids), ctypes.byref(result_size))
+    return (ptr, result_size.value)
+
+def getBatchPrimitiveAreas(context, uuids: List[int]):
+    """Get areas for multiple primitives. Returns (float_ptr, count)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    uuids_array = _make_uuid_array(uuids)
+    result_size = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveAreas(context, uuids_array, len(uuids), ctypes.byref(result_size))
+    return (ptr, result_size.value)
+
+def getBatchPrimitiveTypes(context, uuids: List[int]):
+    """Get types for multiple primitives. Returns (uint_ptr, count)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    uuids_array = _make_uuid_array(uuids)
+    result_size = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveTypes(context, uuids_array, len(uuids), ctypes.byref(result_size))
+    return (ptr, result_size.value)
+
+def getBatchPrimitiveSolidFractions(context, uuids: List[int]):
+    """Get solid fractions for multiple primitives. Returns (float_ptr, count)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    uuids_array = _make_uuid_array(uuids)
+    result_size = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveSolidFractions(context, uuids_array, len(uuids), ctypes.byref(result_size))
+    return (ptr, result_size.value)
+
+def getBatchPrimitiveVertices(context, uuids: List[int]):
+    """Get vertices for multiple primitives. Returns (float_ptr, offsets_array, total_floats)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    count = len(uuids)
+    uuids_array = _make_uuid_array(uuids)
+    offsets = (ctypes.c_uint * (count + 1))()
+    total_floats = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveVertices(context, uuids_array, count, offsets, ctypes.byref(total_floats))
+    return (ptr, list(offsets), total_floats.value)
+
+def getBatchPrimitiveTextureUV(context, uuids: List[int]):
+    """Get texture UVs for multiple primitives. Returns (float_ptr, offsets_array, total_floats)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    count = len(uuids)
+    uuids_array = _make_uuid_array(uuids)
+    offsets = (ctypes.c_uint * (count + 1))()
+    total_floats = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveTextureUV(context, uuids_array, count, offsets, ctypes.byref(total_floats))
+    return (ptr, list(offsets), total_floats.value)
+
+def getBatchPrimitiveTextureFiles(context, uuids: List[int]):
+    """Get texture files for multiple primitives. Returns (char_ptr, offsets_array, total_chars)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    count = len(uuids)
+    uuids_array = _make_uuid_array(uuids)
+    offsets = (ctypes.c_uint * (count + 1))()
+    total_chars = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveTextureFiles(context, uuids_array, count, offsets, ctypes.byref(total_chars))
+    return (ptr, list(offsets), total_chars.value)
+
+def getBatchPrimitiveMaterialLabels(context, uuids: List[int]):
+    """Get material labels for multiple primitives. Returns (char_ptr, offsets_array, total_chars)."""
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    count = len(uuids)
+    uuids_array = _make_uuid_array(uuids)
+    offsets = (ctypes.c_uint * (count + 1))()
+    total_chars = ctypes.c_uint()
+    ptr = helios_lib.getBatchPrimitiveMaterialLabels(context, uuids_array, count, offsets, ctypes.byref(total_chars))
+    return (ptr, list(offsets), total_chars.value)
 
