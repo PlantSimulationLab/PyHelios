@@ -333,7 +333,74 @@ class Context:
         # C++ interface expects [radius, elevation, azimuth] (3 values), not [radius, elevation, zenith, azimuth] (4 values)
         rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
         return context_wrapper.addPatchWithCenterSizeRotationAndColor(self.context, center.to_list(), size.to_list(), rotation_list, color.to_list())
-        
+
+    def addPatchTextured(self, center: vec3, size: vec2, texture_file: str,
+                         rotation: Optional[SphericalCoord] = None,
+                         uv_center: Optional[vec2] = None,
+                         uv_size: Optional[vec2] = None) -> int:
+        """Add a textured patch primitive to the context.
+
+        Creates a rectangular patch with a texture image mapped to its surface.
+
+        Args:
+            center: 3D position of the patch center
+            size: Width and height of the patch
+            texture_file: Path to texture image file (supports PNG, JPG, JPEG, TGA, BMP)
+            rotation: Optional spherical rotation (defaults to no rotation)
+            uv_center: Optional UV center of texture map (required if uv_size is provided)
+            uv_size: Optional UV size of texture map (required if uv_center is provided)
+
+        Returns:
+            UUID of the created textured patch primitive
+
+        Raises:
+            ValueError: If arguments have wrong types or UV params are partially specified
+            FileNotFoundError: If texture file doesn't exist
+            RuntimeError: If context is in mock mode
+
+        Example:
+            >>> context = Context()
+            >>> uuid = context.addPatchTextured(
+            ...     center=vec3(0, 0, 0),
+            ...     size=vec2(2, 2),
+            ...     texture_file="texture.png"
+            ... )
+        """
+        self._check_context_available()
+
+        if not isinstance(center, vec3):
+            raise ValueError(f"center must be a vec3, got {type(center).__name__}")
+        if not isinstance(size, vec2):
+            raise ValueError(f"size must be a vec2, got {type(size).__name__}")
+        if not isinstance(texture_file, str):
+            raise ValueError(f"texture_file must be a str, got {type(texture_file).__name__}")
+        if rotation is not None and not isinstance(rotation, SphericalCoord):
+            raise ValueError(f"rotation must be a SphericalCoord, got {type(rotation).__name__}")
+
+        if (uv_center is None) != (uv_size is None):
+            raise ValueError("uv_center and uv_size must both be provided or both omitted")
+        if uv_center is not None and not isinstance(uv_center, vec2):
+            raise ValueError(f"uv_center must be a vec2, got {type(uv_center).__name__}")
+        if uv_size is not None and not isinstance(uv_size, vec2):
+            raise ValueError(f"uv_size must be a vec2, got {type(uv_size).__name__}")
+
+        validated_texture_file = self._validate_file_path(texture_file,
+                                                          ['.png', '.jpg', '.jpeg', '.tga', '.bmp'])
+
+        rotation = rotation or SphericalCoord(1, 0, 0)
+        rotation_list = [rotation.radius, rotation.elevation, rotation.azimuth]
+
+        if uv_center is not None:
+            return context_wrapper.addPatchWithTextureAndUV(
+                self.context, center.to_list(), size.to_list(), rotation_list,
+                validated_texture_file, uv_center.to_list(), uv_size.to_list()
+            )
+        else:
+            return context_wrapper.addPatchWithTexture(
+                self.context, center.to_list(), size.to_list(), rotation_list,
+                validated_texture_file
+            )
+
     @validate_triangle_params
     def addTriangle(self, vertex0: vec3, vertex1: vec3, vertex2: vec3, color: Optional[RGBcolor] = None) -> int:
         """Add a triangle primitive to the context
@@ -3200,6 +3267,22 @@ class Context:
         self._check_context_available()
 
         return context_wrapper.listTimeseriesVariables(self.context)
+
+    def clearTimeseriesData(self):
+        """Clear all timeseries data from the Context.
+
+        Removes all timeseries variables and their associated date/time values.
+
+        Raises:
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> context.clearTimeseriesData()
+            >>> context.listTimeseriesVariables()
+            []
+        """
+        self._check_context_available()
+        context_wrapper.clearTimeseriesData(self.context)
 
     def loadTabularTimeseriesData(self, data_file: str, column_labels: List[str],
                                   delimiter: str = ",", date_string_format: str = "YYYYMMDD",

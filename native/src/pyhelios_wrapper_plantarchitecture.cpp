@@ -267,7 +267,7 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params) {
+    PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, float germination_rate, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params) {
         try {
             clearError();
             if (!plantarch) {
@@ -293,7 +293,7 @@ extern "C" {
                 }
             }
 
-            std::vector<uint> plantIDs = plantarch->buildPlantCanopyFromLibrary(center, spacing, count, age, 1.0f, build_params);
+            std::vector<uint> plantIDs = plantarch->buildPlantCanopyFromLibrary(center, spacing, count, age, germination_rate, build_params);
 
             // Convert vector to static array for return
             static thread_local std::vector<unsigned int> static_result;
@@ -1038,6 +1038,29 @@ extern "C" {
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::defineShootType): Unknown error.");
             return -1;
+        }
+    }
+
+    PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*)) {
+        try {
+            clearError();
+            if (!pa_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+            if (callback) {
+                pa_ptr->setProgressCallback([callback](float progress, const std::string& msg) {
+                    callback(progress, msg.c_str());
+                });
+            } else {
+                pa_ptr->setProgressCallback(nullptr);
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME,
+                     std::string("ERROR (plantarch_setProgressCallback): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN,
+                     "ERROR (plantarch_setProgressCallback): Unknown error.");
         }
     }
 

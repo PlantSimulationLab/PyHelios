@@ -1,5 +1,17 @@
 # Changelog
 
+# [v0.1.17] 2026-03-15
+
+- Updated helios-core to v1.3.68
+
+## Context
+- Added `addPatchTextured()` method for creating textured patches with optional UV coordinates
+- Added `clearTimeseriesData()` method to remove all timeseries variables and their associated date/time values from the Context
+
+## Plant Architecture
+- Added `germination_rate` parameter to `buildPlantCanopyFromLibrary()` to control the fraction of grid positions occupied by plants
+- Added `setProgressCallback()` for receiving `(progress, message)` updates during long-running operations like `advanceTime()`
+
 # [v0.1.16] 2026-03-12
 
 - Updated helios-core to v1.3.67

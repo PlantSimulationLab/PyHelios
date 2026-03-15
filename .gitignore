@@ -12,6 +12,10 @@ build/
 # Auto-generated version file (setuptools-scm)
 pyhelios/_version.py
 
+# Compiled stub extensions (built from _stub.c by setuptools)
+pyhelios/_stub.cpython-*.so
+pyhelios/_stub.cpython-*.pyd
+
 # Note: All other generated files (libraries, assets) are kept in pyhelios_build/
 # and are NOT in the source tree, so they don't need gitignore entries
 
@@ -31,12 +35,12 @@ docs/generated/
 
 # Miscellaneous
 *.bak
+*.backup
 *.swp
 *.tmp
 *.log
 *.cache
 *.DS_Store
-*.bak
 *.orig
 *.rej
 *.~*

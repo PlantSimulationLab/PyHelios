@@ -150,6 +150,46 @@ extern "C" {
         }
     }
     
+    PYHELIOS_API unsigned int addPatchWithTexture(helios::Context* context, float* center, float* size, float* rotation, const char* texture_file) {
+        try {
+            clearError();
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
+            return context->addPatch(center_vec, size_vec, rotation_coord, texture_file);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addPatch): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addPatch): Unknown error creating textured patch.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned int addPatchWithTextureAndUV(helios::Context* context, float* center, float* size, float* rotation, const char* texture_file, float* uv_center, float* uv_size) {
+        try {
+            clearError();
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord = helios::make_SphericalCoord(rotation[0], rotation[1], rotation[2]);
+            helios::vec2 uv_center_vec(uv_center[0], uv_center[1]);
+            helios::vec2 uv_size_vec(uv_size[0], uv_size[1]);
+            return context->addPatch(center_vec, size_vec, rotation_coord, texture_file, uv_center_vec, uv_size_vec);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addPatch): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addPatch): Unknown error creating textured patch with UV.");
+            return 0;
+        }
+    }
+
     // Triangle creation functions
     PYHELIOS_API unsigned int addTriangle(helios::Context* context, float* vertex0, float* vertex1, float* vertex2) {
         try {
@@ -4851,6 +4891,23 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (loadTabularTimeseriesData): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (loadTabularTimeseriesData): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void clearTimeseriesData(helios::Context* context) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            context->clearTimeseriesData();
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearTimeseriesData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (clearTimeseriesData): Unknown error");
         }
     }
 

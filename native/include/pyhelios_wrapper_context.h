@@ -104,6 +104,30 @@ PYHELIOS_API unsigned int addPatchWithCenterSizeRotationAndColor(helios::Context
 PYHELIOS_API unsigned int addPatchWithCenterSizeRotationAndColorRGBA(helios::Context* context, float* center, float* size, float* rotation, float* color);
 
 /**
+ * @brief Add a patch with center, size, rotation, and texture file
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for patch center
+ * @param size Array of 2 floats [width, height] for patch size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for patch rotation
+ * @param texture_file Path to texture image file (JPEG or PNG)
+ * @return UUID of the created patch
+ */
+PYHELIOS_API unsigned int addPatchWithTexture(helios::Context* context, float* center, float* size, float* rotation, const char* texture_file);
+
+/**
+ * @brief Add a patch with center, size, rotation, texture file, and UV coordinates
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for patch center
+ * @param size Array of 2 floats [width, height] for patch size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for patch rotation
+ * @param texture_file Path to texture image file (JPEG or PNG)
+ * @param uv_center Array of 2 floats [u, v] for UV center of texture map
+ * @param uv_size Array of 2 floats [u, v] for UV size of texture map
+ * @return UUID of the created patch
+ */
+PYHELIOS_API unsigned int addPatchWithTextureAndUV(helios::Context* context, float* center, float* size, float* rotation, const char* texture_file, float* uv_center, float* uv_size);
+
+/**
  * @brief Add a triangle primitive to the context
  * @param context Pointer to the Context
  * @param vertex0 Array of 3 floats [x, y, z] for first vertex
@@ -1733,6 +1757,12 @@ PYHELIOS_API void loadTabularTimeseriesData(helios::Context* context, const char
                                              const char** column_labels, unsigned int label_count,
                                              const char* delimiter, const char* date_string_format,
                                              unsigned int headerlines);
+
+/**
+ * @brief Clear all timeseries data from the context
+ * @param context Pointer to the Context
+ */
+PYHELIOS_API void clearTimeseriesData(helios::Context* context);
 
 //=============================================================================
 // Primitive and Object Deletion Functions

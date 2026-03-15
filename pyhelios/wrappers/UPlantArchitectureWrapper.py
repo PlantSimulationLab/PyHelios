@@ -19,6 +19,9 @@ class UPlantArchitecture(ctypes.Structure):
 # Import UContext from main wrapper to avoid type conflicts
 from .UContextWrapper import UContext
 
+# Callback type for progress reporting
+PROGRESS_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_float, ctypes.c_char_p)
+
 # Function prototypes with availability detection
 try:
     # PlantArchitecture management functions
@@ -51,6 +54,7 @@ try:
         ctypes.POINTER(ctypes.c_float),  # plant_spacing
         ctypes.POINTER(ctypes.c_int),    # plant_count
         ctypes.c_float,                  # age
+        ctypes.c_float,                  # germination_rate
         ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)),  # plant_ids
         ctypes.POINTER(ctypes.c_int),    # num_plants
         ctypes.POINTER(ctypes.c_char_p),  # param_keys
@@ -243,6 +247,13 @@ try:
     ]
     helios_lib.readPlantStructureXML.restype = ctypes.c_int
 
+    # Progress callback function
+    helios_lib.plantarch_setProgressCallback.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        PROGRESS_CALLBACK
+    ]
+    helios_lib.plantarch_setProgressCallback.restype = None
+
     _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE = True
 
 except AttributeError:
@@ -337,6 +348,8 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.writePlantStructureXML.errcheck = _check_error
     helios_lib.writeQSMCylinderFile.errcheck = _check_error
     helios_lib.readPlantStructureXML.errcheck = _check_error
+    # Progress callback error checking
+    helios_lib.plantarch_setProgressCallback.errcheck = _check_error
 
 # Set up error checking for parameter functions
 if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
@@ -428,6 +441,7 @@ def buildPlantInstanceFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitectu
 def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
                               canopy_center: List[float], plant_spacing: List[float],
                               plant_count: List[int], age: float,
+                              germination_rate: float = 1.0,
                               build_parameters: Optional[dict] = None) -> List[int]:
     """Build plant canopy from library with optional parameter overrides"""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
@@ -443,6 +457,8 @@ def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture
         raise ValueError("Plant count must have exactly 2 values")
     if age < 0:
         raise ValueError("Age cannot be negative")
+    if germination_rate < 0 or germination_rate > 1:
+        raise ValueError("Germination rate must be between 0 and 1")
 
     # Convert to ctypes arrays
     center_array = (ctypes.c_float * 3)(*canopy_center)
@@ -473,6 +489,7 @@ def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture
     # Call function
     result = helios_lib.buildPlantCanopyFromLibrary(
         plantarch_ptr, center_array, spacing_array, count_array, age,
+        germination_rate,
         ctypes.byref(plant_ids_ptr), ctypes.byref(num_plants),
         keys_array, values_array, param_count
     )
@@ -499,6 +516,26 @@ def advanceTime(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), dt: float) ->
     result = helios_lib.advanceTime(plantarch_ptr, dt)
     if result != 0:
         raise RuntimeError(f"Failed to advance time by {dt} days")
+
+
+def setProgressCallback(plantarch_ptr, callback):
+    """Set progress callback for long-running PlantArchitecture operations.
+
+    Args:
+        plantarch_ptr: Pointer to PlantArchitecture instance
+        callback: PROGRESS_CALLBACK ctypes function, or None to clear
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture functions not available in current Helios library. "
+            "Rebuild PyHelios with 'plantarchitecture' enabled:\n"
+            "  build_scripts/build_helios --plugins plantarchitecture"
+        )
+    helios_lib.plantarch_setProgressCallback(
+        plantarch_ptr,
+        callback if callback is not None else PROGRESS_CALLBACK(0)
+    )
+
 
 # Custom plant building wrapper functions
 def addPlantInstance(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),

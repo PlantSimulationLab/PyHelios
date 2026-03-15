@@ -22,7 +22,7 @@ PYHELIOS_API void destroyPlantArchitecture(PlantArchitecture* plantarch);
 // Plant library functions
 PYHELIOS_API int loadPlantModelFromLibrary(PlantArchitecture* plantarch, const char* plant_label);
 PYHELIOS_API unsigned int buildPlantInstanceFromLibrary(PlantArchitecture* plantarch, float* base_position, float age, char** param_keys, float* param_values, int param_count);
-PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params);
+PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, float germination_rate, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params);
 PYHELIOS_API int advanceTime(PlantArchitecture* plantarch, float dt);
 
 // Custom plant building functions
@@ -67,6 +67,9 @@ PYHELIOS_API int setPlantPhenologicalThresholds(PlantArchitecture* plantarch, un
 PYHELIOS_API float getPlantAge(PlantArchitecture* plantarch, unsigned int plantID);
 PYHELIOS_API float getPlantHeight(PlantArchitecture* plantarch, unsigned int plantID);
 PYHELIOS_API float sumPlantLeafArea(PlantArchitecture* plantarch, unsigned int plantID);
+
+// Progress callback
+PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 
 #ifdef __cplusplus
 }

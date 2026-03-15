@@ -2260,9 +2260,9 @@ class TestPhenologicalControl:
         try:
             with PlantArchitecture(basic_context) as plantarch:
                 plantarch.loadPlantModelFromLibrary("bean")
-                
+
                 plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 10.0)
-                
+
                 # Use default max_leaf_lifespan
                 plantarch.setPlantPhenologicalThresholds(
                     plant_id=plant_id,
@@ -2274,8 +2274,131 @@ class TestPhenologicalControl:
                     time_to_dormancy=80
                     # max_leaf_lifespan uses default 1e6
                 )
-                
+
                 assert True
-                
+
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitectureProgressCallbackValidation:
+    """Test progress callback parameter validation"""
+
+    def test_set_progress_callback_rejects_non_callable(self):
+        """Test setProgressCallback rejects non-callable arguments"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            try:
+                with PlantArchitecture(context) as pa:
+                    with pytest.raises(ValueError, match="callable"):
+                        pa.setProgressCallback("not_a_callable")
+                    with pytest.raises(ValueError, match="callable"):
+                        pa.setProgressCallback(42)
+            except PlantArchitectureError:
+                pytest.skip("PlantArchitecture not available")
+
+    def test_set_progress_callback_accepts_none(self):
+        """Test setProgressCallback accepts None to clear callback"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            try:
+                with PlantArchitecture(context) as pa:
+                    pa.setProgressCallback(None)
+            except PlantArchitectureError:
+                pytest.skip("PlantArchitecture not available")
+
+    def test_set_progress_callback_accepts_callable(self):
+        """Test setProgressCallback accepts a callable"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            try:
+                with PlantArchitecture(context) as pa:
+                    pa.setProgressCallback(lambda p, m: None)
+                    pa.setProgressCallback(None)
+            except PlantArchitectureError:
+                pytest.skip("PlantArchitecture not available")
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureProgressCallbackNative:
+    """Test progress callback with native library functionality"""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        """Create a Context for testing with proper cleanup"""
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        """Create PlantArchitecture instance with proper cleanup"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        try:
+            plantarch_instance = PlantArchitecture(context)
+            yield plantarch_instance
+            plantarch_instance.__exit__(None, None, None)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+
+    def test_progress_callback(self, plantarch):
+        """Test progress callback receives updates during advanceTime"""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        model = 'bean' if 'bean' in models else models[0]
+        plantarch.loadPlantModelFromLibrary(model)
+
+        position = vec3(0, 0, 0)
+        plantarch.buildPlantInstanceFromLibrary(position, age=0.0)
+
+        updates = []
+
+        def on_progress(progress, message):
+            updates.append((progress, message))
+
+        plantarch.setProgressCallback(on_progress)
+        plantarch.advanceTime(1.0)
+
+        assert len(updates) > 0, "Progress callback should have been called at least once"
+
+        for progress, message in updates:
+            assert 0.0 <= progress <= 1.0, f"Progress {progress} out of range [0, 1]"
+            assert isinstance(message, str), f"Message should be str, got {type(message)}"
+            assert len(message) > 0, "Message should be non-empty"
+
+        assert updates[-1][0] == pytest.approx(1.0, abs=0.05), \
+            f"Final progress should be ~1.0, got {updates[-1][0]}"
+
+    def test_progress_callback_clear(self, plantarch):
+        """Test clearing progress callback with None"""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        model = 'bean' if 'bean' in models else models[0]
+        plantarch.loadPlantModelFromLibrary(model)
+        plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=0.0)
+
+        updates = []
+        plantarch.setProgressCallback(lambda p, m: updates.append((p, m)))
+        plantarch.advanceTime(1.0)
+
+        count_before_clear = len(updates)
+        assert count_before_clear > 0, "Should have received callbacks"
+
+        plantarch.setProgressCallback(None)
+        plantarch.advanceTime(1.0)
+
+        assert len(updates) == count_before_clear, \
+            "No callbacks should fire after clearing with None"

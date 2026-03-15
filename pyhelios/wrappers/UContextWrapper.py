@@ -57,6 +57,24 @@ helios_lib.addPatchWithCenterSizeRotationAndColorRGBA.argtypes = [ctypes.POINTER
 helios_lib.addPatchWithCenterSizeRotationAndColorRGBA.restype = ctypes.c_uint
 helios_lib.addPatchWithCenterSizeRotationAndColorRGBA.errcheck = _check_error
 
+# Textured patch function prototypes (may not be available in older builds)
+_AVAILABLE_PATCH_TEXTURE_FUNCTIONS = []
+try:
+    helios_lib.addPatchWithTexture.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
+    helios_lib.addPatchWithTexture.restype = ctypes.c_uint
+    helios_lib.addPatchWithTexture.errcheck = _check_error
+    _AVAILABLE_PATCH_TEXTURE_FUNCTIONS.append('addPatchWithTexture')
+except AttributeError:
+    pass
+
+try:
+    helios_lib.addPatchWithTextureAndUV.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addPatchWithTextureAndUV.restype = ctypes.c_uint
+    helios_lib.addPatchWithTextureAndUV.errcheck = _check_error
+    _AVAILABLE_PATCH_TEXTURE_FUNCTIONS.append('addPatchWithTextureAndUV')
+except AttributeError:
+    pass
+
 helios_lib.getPrimitiveType.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
 helios_lib.getPrimitiveType.restype = ctypes.c_uint
 helios_lib.getPrimitiveType.errcheck = _check_error
@@ -900,6 +918,32 @@ def addPatchWithCenterSizeRotationAndColorRGBA(context, center:List[float], size
     rotation_ptr = (ctypes.c_float * len(rotation))(*rotation)
     color_ptr = (ctypes.c_float * len(color))(*color)
     return helios_lib.addPatchWithCenterSizeRotationAndColorRGBA(context, center_ptr, size_ptr, rotation_ptr, color_ptr)
+
+def addPatchWithTexture(context, center:List[float], size:List[float], rotation:List[float], texture_file:str):
+    if 'addPatchWithTexture' not in _AVAILABLE_PATCH_TEXTURE_FUNCTIONS:
+        raise NotImplementedError(
+            "addPatchWithTexture function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper: build_scripts/build_helios"
+        )
+    center_ptr = (ctypes.c_float * len(center))(*center)
+    size_ptr = (ctypes.c_float * len(size))(*size)
+    rotation_ptr = (ctypes.c_float * len(rotation))(*rotation)
+    texture_file_encoded = texture_file.encode('utf-8')
+    return helios_lib.addPatchWithTexture(context, center_ptr, size_ptr, rotation_ptr, texture_file_encoded)
+
+def addPatchWithTextureAndUV(context, center:List[float], size:List[float], rotation:List[float], texture_file:str, uv_center:List[float], uv_size:List[float]):
+    if 'addPatchWithTextureAndUV' not in _AVAILABLE_PATCH_TEXTURE_FUNCTIONS:
+        raise NotImplementedError(
+            "addPatchWithTextureAndUV function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper: build_scripts/build_helios"
+        )
+    center_ptr = (ctypes.c_float * len(center))(*center)
+    size_ptr = (ctypes.c_float * len(size))(*size)
+    rotation_ptr = (ctypes.c_float * len(rotation))(*rotation)
+    texture_file_encoded = texture_file.encode('utf-8')
+    uv_center_ptr = (ctypes.c_float * len(uv_center))(*uv_center)
+    uv_size_ptr = (ctypes.c_float * len(uv_size))(*uv_size)
+    return helios_lib.addPatchWithTextureAndUV(context, center_ptr, size_ptr, rotation_ptr, texture_file_encoded, uv_center_ptr, uv_size_ptr)
 
 def getPrimitiveType(context, uuid):
     # Error checking is handled automatically by errcheck
@@ -3571,6 +3615,9 @@ try:
     ]
     helios_lib.loadTabularTimeseriesData.restype = None
 
+    helios_lib.clearTimeseriesData.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.clearTimeseriesData.restype = None
+
     _TIMESERIES_FUNCTIONS_AVAILABLE = True
 
 except AttributeError:
@@ -3587,7 +3634,7 @@ if _TIMESERIES_FUNCTIONS_AVAILABLE:
                   'queryTimeseriesData_Index', 'queryTimeseriesTime',
                   'queryTimeseriesDate', 'getTimeseriesLength',
                   'doesTimeseriesVariableExist', 'listTimeseriesVariables',
-                  'loadTabularTimeseriesData']:
+                  'loadTabularTimeseriesData', 'clearTimeseriesData']:
         getattr(helios_lib, fname).errcheck = _check_error_timeseries
 
 
@@ -3703,6 +3750,13 @@ def loadTabularTimeseriesData(context, data_file: str, column_labels, delimiter:
         delimiter.encode('utf-8'), date_string_format.encode('utf-8'),
         headerlines
     )
+
+
+def clearTimeseriesData(context):
+    """Clear all timeseries data from the Context"""
+    if not _TIMESERIES_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MSG)
+    helios_lib.clearTimeseriesData(context)
 
 
 # ============================================================================

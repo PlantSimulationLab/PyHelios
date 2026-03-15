@@ -509,6 +509,7 @@ class PlantArchitecture:
     def buildPlantCanopyFromLibrary(self, canopy_center: vec3,
                                   plant_spacing: vec2,
                                   plant_count: int2, age: float,
+                                  germination_rate: float = 1.0,
                                   build_parameters: Optional[dict] = None) -> List[int]:
         """
         Build a canopy of regularly spaced plants from the currently loaded library model.
@@ -518,6 +519,9 @@ class PlantArchitecture:
             plant_spacing: Spacing between plants in x- and y-directions (meters) as vec2
             plant_count: Number of plants in x- and y-directions as int2
             age: Age of all plants in days (must be >= 0)
+            germination_rate: Probability that each plant position will be occupied (0 to 1).
+                            A value of 1.0 means all positions are filled; 0.5 means roughly
+                            half the positions will have plants. Default is 1.0.
             build_parameters: Optional dict of parameter overrides for training system parameters.
                             Parameters are applied to all plants in the canopy.
                             Examples:
@@ -528,7 +532,8 @@ class PlantArchitecture:
             List of plant IDs for the created plant instances
 
         Raises:
-            ValueError: If age is negative, plant count values are not positive, or build_parameters is invalid
+            ValueError: If age is negative, germination_rate is not in [0, 1],
+                       plant count values are not positive, or build_parameters is invalid
             PlantArchitectureError: If canopy building fails
 
         Example:
@@ -539,12 +544,13 @@ class PlantArchitecture:
             ...     plant_count=int2(3, 3),
             ...     age=30.0
             ... )
-            >>> # With custom parameters
+            >>> # With 80% germination rate and custom parameters
             >>> plant_ids = plantarch.buildPlantCanopyFromLibrary(
             ...     canopy_center=vec3(0, 0, 0),
             ...     plant_spacing=vec2(1.5, 2.0),
             ...     plant_count=int2(5, 3),
             ...     age=45.0,
+            ...     germination_rate=0.8,
             ...     build_parameters={'cordon_height': 1.8}
             ... )
         """
@@ -559,6 +565,12 @@ class PlantArchitecture:
         # Validate age (allow zero)
         if age < 0:
             raise ValueError(f"Age must be non-negative, got {age}")
+
+        # Validate germination rate
+        if not isinstance(germination_rate, (int, float)):
+            raise ValueError(f"germination_rate must be a number, got {type(germination_rate).__name__}")
+        if germination_rate < 0 or germination_rate > 1:
+            raise ValueError(f"germination_rate must be between 0 and 1, got {germination_rate}")
 
         # Validate count values
         if plant_count.x <= 0 or plant_count.y <= 0:
@@ -582,7 +594,8 @@ class PlantArchitecture:
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.buildPlantCanopyFromLibrary(
-                    self._plantarch_ptr, center_list, spacing_list, count_list, age, build_parameters
+                    self._plantarch_ptr, center_list, spacing_list, count_list, age,
+                    germination_rate, build_parameters
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant canopy: {e}")
@@ -619,6 +632,35 @@ class PlantArchitecture:
                 plantarch_wrapper.advanceTime(self._plantarch_ptr, dt)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to advance time by {dt} days: {e}")
+
+    def setProgressCallback(self, callback):
+        """Set a callback to receive progress updates during long-running operations.
+
+        The callback fires during advanceTime() and adjustFruitForObstacleCollision()
+        as the underlying ProgressBar updates.
+
+        Args:
+            callback: A callable(progress: float, message: str) where progress is
+                      in [0, 1], or None to clear the callback.
+
+        Raises:
+            ValueError: If callback is not callable and not None.
+        """
+        if callback is not None:
+            if not callable(callback):
+                raise ValueError(
+                    f"callback must be callable or None, got {type(callback).__name__}"
+                )
+
+            def _c_callback(progress, message_bytes):
+                msg = message_bytes.decode('utf-8') if isinstance(message_bytes, bytes) else str(message_bytes)
+                callback(progress, msg)
+
+            self._progress_callback_ref = plantarch_wrapper.PROGRESS_CALLBACK(_c_callback)
+            plantarch_wrapper.setProgressCallback(self._plantarch_ptr, self._progress_callback_ref)
+        else:
+            plantarch_wrapper.setProgressCallback(self._plantarch_ptr, None)
+            self._progress_callback_ref = None
 
     def getCurrentShootParameters(self, shoot_type_label: str) -> dict:
         """
