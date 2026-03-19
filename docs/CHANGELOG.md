@@ -1,5 +1,18 @@
 # Changelog
 
+# [v0.1.18] 2026-03-18
+
+- Updated helios-core to v1.3.70
+
+## Plant Architecture
+- Added optional `include_hidden` parameter to `getAllPlantUUIDs()` to allow querying hidden prototype primitives
+- `deletePlantInstance()` now automatically cleans up hidden prototype primitives when all plant instances have been deleted
+
+## Context
+- Added `doesPrimitiveExist()` method to check whether primitives exist by single UUID or list of UUIDs
+- Added `resolveMaterialTextures()` method for material-based texture suppression resolution (modifies colors in-place, returns resolved texture paths)
+- Added `packGPUBuffers()` method to pack GPU-ready geometry buffers into a single binary blob for zero-copy Three.js BufferGeometry loading
+
 # [v0.1.17] 2026-03-15
 
 - Updated helios-core to v1.3.68

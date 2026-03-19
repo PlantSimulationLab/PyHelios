@@ -2857,6 +2857,11 @@ class TestOverloadMockMode:
             assert hasattr(Context, method), f"Context missing method: {method}"
             assert callable(getattr(Context, method))
 
+    def test_does_primitive_exist_api_structure(self):
+        """Test that doesPrimitiveExist method exists on Context class."""
+        assert hasattr(Context, 'doesPrimitiveExist')
+        assert callable(getattr(Context, 'doesPrimitiveExist'))
+
     def test_texture_api_structure(self):
         """Test that texture methods exist on Context class."""
         for method in ['getPrimitiveTextureFile', 'setPrimitiveTextureFile',
@@ -2867,3 +2872,480 @@ class TestOverloadMockMode:
                        'isPrimitiveTextureColorOverridden']:
             assert hasattr(Context, method), f"Context missing method: {method}"
             assert callable(getattr(Context, method))
+
+
+@pytest.mark.native_only
+class TestDoesPrimitiveExist:
+    """Test doesPrimitiveExist for single UUIDs and lists."""
+
+    def test_existing_patch(self, basic_context):
+        """A freshly added patch should exist."""
+        uuid = basic_context.addPatch(
+            center=DataTypes.vec3(0, 0, 0),
+            size=DataTypes.vec2(1, 1),
+            color=DataTypes.RGBcolor(1, 1, 1),
+        )
+        assert basic_context.doesPrimitiveExist(uuid) is True
+
+    def test_nonexistent_uuid(self, basic_context):
+        """A UUID that was never created should not exist."""
+        assert basic_context.doesPrimitiveExist(999999) is False
+
+    def test_multiple_patches(self, basic_context):
+        """All UUIDs from multiple addPatch calls should exist."""
+        uuids = [
+            basic_context.addPatch(
+                center=DataTypes.vec3(i, 0, 0),
+                size=DataTypes.vec2(1, 1),
+                color=DataTypes.RGBcolor(1, 1, 1),
+            )
+            for i in range(5)
+        ]
+        for uuid in uuids:
+            assert basic_context.doesPrimitiveExist(uuid) is True
+
+    def test_list_all_exist(self, basic_context):
+        """A list of valid UUIDs should return True."""
+        uuids = [
+            basic_context.addPatch(
+                center=DataTypes.vec3(i, 0, 0),
+                size=DataTypes.vec2(1, 1),
+                color=DataTypes.RGBcolor(1, 1, 1),
+            )
+            for i in range(3)
+        ]
+        assert basic_context.doesPrimitiveExist(uuids) is True
+
+    def test_list_with_invalid(self, basic_context):
+        """A list containing one invalid UUID should return False."""
+        uuid = basic_context.addPatch(
+            center=DataTypes.vec3(0, 0, 0),
+            size=DataTypes.vec2(1, 1),
+            color=DataTypes.RGBcolor(1, 1, 1),
+        )
+        assert basic_context.doesPrimitiveExist([uuid, 999999]) is False
+
+    def test_empty_list(self, basic_context):
+        """An empty list should return False (matches C++ behaviour)."""
+        assert basic_context.doesPrimitiveExist([]) is False
+
+    def test_after_delete(self, basic_context):
+        """A deleted primitive should no longer exist."""
+        uuid = basic_context.addPatch(
+            center=DataTypes.vec3(0, 0, 0),
+            size=DataTypes.vec2(1, 1),
+            color=DataTypes.RGBcolor(1, 1, 1),
+        )
+        assert basic_context.doesPrimitiveExist(uuid) is True
+        basic_context.deletePrimitive(uuid)
+        assert basic_context.doesPrimitiveExist(uuid) is False
+
+    def test_tile_uuids_exist(self, basic_context):
+        """All UUIDs returned from addTile should exist."""
+        uuids = basic_context.addTile(
+            center=DataTypes.vec3(0, 0, 0),
+            size=DataTypes.vec2(2, 2),
+            subdiv=DataTypes.int2(2, 2),
+            color=DataTypes.RGBcolor(0.5, 0.5, 0.5),
+        )
+        assert basic_context.doesPrimitiveExist(uuids) is True
+
+
+@pytest.mark.native_only
+class TestVisibility:
+    """Test hide/show/isHidden for primitives and objects."""
+
+    def test_hide_show_primitive(self, basic_context):
+        """Hide then show a single primitive."""
+        uuid = basic_context.addPatch(
+            center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+        assert basic_context.isPrimitiveHidden(uuid) is False
+        basic_context.hidePrimitive(uuid)
+        assert basic_context.isPrimitiveHidden(uuid) is True
+        basic_context.showPrimitive(uuid)
+        assert basic_context.isPrimitiveHidden(uuid) is False
+
+    def test_hide_show_primitives_batch(self, basic_context):
+        """Hide then show multiple primitives at once."""
+        uuids = [
+            basic_context.addPatch(
+                center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(1, 1))
+            for i in range(3)
+        ]
+        basic_context.hidePrimitive(uuids)
+        for uuid in uuids:
+            assert basic_context.isPrimitiveHidden(uuid) is True
+        basic_context.showPrimitive(uuids)
+        for uuid in uuids:
+            assert basic_context.isPrimitiveHidden(uuid) is False
+
+    def test_hidden_primitive_excluded_from_getAllUUIDs(self, basic_context):
+        """Hidden primitives should not appear in getAllUUIDs."""
+        uuid1 = basic_context.addPatch(
+            center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+        uuid2 = basic_context.addPatch(
+            center=DataTypes.vec3(1, 0, 0), size=DataTypes.vec2(1, 1))
+        basic_context.hidePrimitive(uuid1)
+        visible_uuids = basic_context.getAllUUIDs()
+        assert uuid1 not in visible_uuids
+        assert uuid2 in visible_uuids
+
+    def test_hide_show_object(self, basic_context):
+        """Hide then show a single compound object."""
+        obj_id = basic_context.addBoxObject(
+            center=DataTypes.vec3(0, 0, 0),
+            size=DataTypes.vec3(1, 1, 1),
+            subdiv=DataTypes.int3(1, 1, 1),
+        )
+        assert basic_context.isObjectHidden(obj_id) is False
+        basic_context.hideObject(obj_id)
+        assert basic_context.isObjectHidden(obj_id) is True
+        basic_context.showObject(obj_id)
+        assert basic_context.isObjectHidden(obj_id) is False
+
+    def test_hide_show_objects_batch(self, basic_context):
+        """Hide then show multiple objects at once."""
+        obj_ids = [
+            basic_context.addBoxObject(
+                center=DataTypes.vec3(i * 2, 0, 0),
+                size=DataTypes.vec3(1, 1, 1),
+                subdiv=DataTypes.int3(1, 1, 1),
+            )
+            for i in range(3)
+        ]
+        basic_context.hideObject(obj_ids)
+        for oid in obj_ids:
+            assert basic_context.isObjectHidden(oid) is True
+        basic_context.showObject(obj_ids)
+        for oid in obj_ids:
+            assert basic_context.isObjectHidden(oid) is False
+
+    def test_hide_empty_list_noop(self, basic_context):
+        """Hiding/showing empty lists should be a no-op."""
+        basic_context.hidePrimitive([])
+        basic_context.showPrimitive([])
+        basic_context.hideObject([])
+        basic_context.showObject([])
+
+
+@pytest.mark.native_only
+class TestObjectDataOperations:
+    """Test object data set/get/query operations."""
+
+    def _make_box(self, ctx, x=0):
+        return ctx.addBoxObject(
+            center=DataTypes.vec3(x, 0, 0),
+            size=DataTypes.vec3(1, 1, 1),
+            subdiv=DataTypes.int3(1, 1, 1),
+        )
+
+    def test_object_data_int(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataInt(obj_id, "count", 42)
+        assert basic_context.getObjectData(obj_id, "count", int) == 42
+        assert basic_context.getObjectDataInt(obj_id, "count") == 42
+
+    def test_object_data_float(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataFloat(obj_id, "temp", 25.5)
+        assert basic_context.getObjectDataFloat(obj_id, "temp") == pytest.approx(25.5)
+
+    def test_object_data_double(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataDouble(obj_id, "precise", 3.141592653589793)
+        assert basic_context.getObjectData(obj_id, "precise", "double") == pytest.approx(3.141592653589793)
+
+    def test_object_data_string(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataString(obj_id, "species", "oak")
+        assert basic_context.getObjectDataString(obj_id, "species") == "oak"
+
+    def test_object_data_vec3(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataVec3(obj_id, "position", 1.0, 2.0, 3.0)
+        result = basic_context.getObjectData(obj_id, "position", DataTypes.vec3)
+        assert result.x == pytest.approx(1.0)
+        assert result.y == pytest.approx(2.0)
+        assert result.z == pytest.approx(3.0)
+
+    def test_object_data_vec3_from_object(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        v = DataTypes.vec3(4.0, 5.0, 6.0)
+        basic_context.setObjectDataVec3(obj_id, "pos", v)
+        result = basic_context.getObjectData(obj_id, "pos", DataTypes.vec3)
+        assert result.x == pytest.approx(4.0)
+
+    def test_object_data_exists(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        assert basic_context.doesObjectDataExist(obj_id, "missing") is False
+        basic_context.setObjectDataInt(obj_id, "exists_test", 1)
+        assert basic_context.doesObjectDataExist(obj_id, "exists_test") is True
+
+    def test_object_data_type_and_size(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataFloat(obj_id, "val", 1.0)
+        dtype = basic_context.getObjectDataType(obj_id, "val")
+        assert dtype == 2  # HELIOS_TYPE_FLOAT
+        size = basic_context.getObjectDataSize(obj_id, "val")
+        assert size == 1
+
+    def test_clear_object_data(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataInt(obj_id, "to_clear", 99)
+        assert basic_context.doesObjectDataExist(obj_id, "to_clear") is True
+        basic_context.clearObjectData(obj_id, "to_clear")
+        assert basic_context.doesObjectDataExist(obj_id, "to_clear") is False
+
+    def test_list_object_data(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataInt(obj_id, "alpha", 1)
+        basic_context.setObjectDataFloat(obj_id, "beta", 2.0)
+        labels = basic_context.listObjectData(obj_id)
+        assert "alpha" in labels
+        assert "beta" in labels
+
+    def test_list_all_object_data_labels(self, basic_context):
+        obj1 = self._make_box(basic_context, 0)
+        obj2 = self._make_box(basic_context, 3)
+        basic_context.setObjectDataInt(obj1, "label_a", 1)
+        basic_context.setObjectDataInt(obj2, "label_b", 2)
+        all_labels = basic_context.listAllObjectDataLabels()
+        assert "label_a" in all_labels
+        assert "label_b" in all_labels
+
+    def test_duplicate_object_data(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataFloat(obj_id, "original", 3.14)
+        basic_context.duplicateObjectData(obj_id, "original", "copy")
+        assert basic_context.getObjectDataFloat(obj_id, "copy") == pytest.approx(3.14)
+
+    def test_rename_object_data(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataFloat(obj_id, "old_name", 2.71)
+        basic_context.renameObjectData(obj_id, "old_name", "new_name")
+        assert basic_context.doesObjectDataExist(obj_id, "old_name") is False
+        assert basic_context.getObjectDataFloat(obj_id, "new_name") == pytest.approx(2.71)
+
+    def test_broadcast_object_data(self, basic_context):
+        obj_ids = [self._make_box(basic_context, i * 3) for i in range(3)]
+        basic_context.setObjectDataFloat(obj_ids, "shared", 99.9)
+        for oid in obj_ids:
+            assert basic_context.getObjectDataFloat(oid, "shared") == pytest.approx(99.9)
+
+    def test_filter_objects_by_data_float(self, basic_context):
+        obj_ids = [self._make_box(basic_context, i * 3) for i in range(5)]
+        for i, oid in enumerate(obj_ids):
+            basic_context.setObjectDataFloat(oid, "score", float(i * 10))
+        result = basic_context.filterObjectsByData(obj_ids, "score", 20.0, ">=")
+        assert len(result) == 3  # scores 20, 30, 40
+
+    def test_filter_objects_by_data_string(self, basic_context):
+        obj_ids = [self._make_box(basic_context, i * 3) for i in range(3)]
+        basic_context.setObjectDataString(obj_ids[0], "type", "tree")
+        basic_context.setObjectDataString(obj_ids[1], "type", "shrub")
+        basic_context.setObjectDataString(obj_ids[2], "type", "tree")
+        result = basic_context.filterObjectsByData(obj_ids, "type", "tree")
+        assert len(result) == 2
+
+    def test_object_data_auto_detection(self, basic_context):
+        obj_id = self._make_box(basic_context)
+        basic_context.setObjectDataFloat(obj_id, "auto_val", 7.5)
+        result = basic_context.getObjectData(obj_id, "auto_val")
+        assert result == pytest.approx(7.5)
+
+
+@pytest.mark.native_only
+class TestGlobalDataOperations:
+    """Test global data set/get/query operations."""
+
+    def test_global_data_int(self, basic_context):
+        basic_context.setGlobalDataInt("gcount", 100)
+        assert basic_context.getGlobalDataInt("gcount") == 100
+
+    def test_global_data_float(self, basic_context):
+        basic_context.setGlobalDataFloat("gtemp", 37.5)
+        assert basic_context.getGlobalDataFloat("gtemp") == pytest.approx(37.5)
+
+    def test_global_data_double(self, basic_context):
+        basic_context.setGlobalDataDouble("pi", 3.141592653589793)
+        assert basic_context.getGlobalData("pi", "double") == pytest.approx(3.141592653589793)
+
+    def test_global_data_string(self, basic_context):
+        basic_context.setGlobalDataString("project", "helios")
+        assert basic_context.getGlobalDataString("project") == "helios"
+
+    def test_global_data_vec3(self, basic_context):
+        basic_context.setGlobalDataVec3("origin", 1.0, 2.0, 3.0)
+        result = basic_context.getGlobalData("origin", DataTypes.vec3)
+        assert result.x == pytest.approx(1.0)
+        assert result.y == pytest.approx(2.0)
+        assert result.z == pytest.approx(3.0)
+
+    def test_global_data_exists(self, basic_context):
+        assert basic_context.doesGlobalDataExist("missing") is False
+        basic_context.setGlobalDataInt("present", 1)
+        assert basic_context.doesGlobalDataExist("present") is True
+
+    def test_clear_global_data(self, basic_context):
+        basic_context.setGlobalDataInt("to_clear", 42)
+        assert basic_context.doesGlobalDataExist("to_clear") is True
+        basic_context.clearGlobalData("to_clear")
+        assert basic_context.doesGlobalDataExist("to_clear") is False
+
+    def test_list_global_data(self, basic_context):
+        basic_context.setGlobalDataInt("ga", 1)
+        basic_context.setGlobalDataFloat("gb", 2.0)
+        labels = basic_context.listGlobalData()
+        assert "ga" in labels
+        assert "gb" in labels
+
+    def test_rename_global_data(self, basic_context):
+        basic_context.setGlobalDataFloat("old_global", 9.9)
+        basic_context.renameGlobalData("old_global", "new_global")
+        assert basic_context.doesGlobalDataExist("old_global") is False
+        assert basic_context.getGlobalDataFloat("new_global") == pytest.approx(9.9)
+
+    def test_duplicate_global_data(self, basic_context):
+        basic_context.setGlobalDataFloat("src_global", 5.5)
+        basic_context.duplicateGlobalData("src_global", "dst_global")
+        assert basic_context.getGlobalDataFloat("dst_global") == pytest.approx(5.5)
+
+    def test_increment_global_data_int(self, basic_context):
+        basic_context.setGlobalDataInt("counter", 10)
+        basic_context.incrementGlobalData("counter", 5)
+        assert basic_context.getGlobalDataInt("counter") == 15
+
+    def test_increment_global_data_float(self, basic_context):
+        basic_context.setGlobalDataFloat("accum", 1.0)
+        basic_context.incrementGlobalData("accum", 0.5)
+        assert basic_context.getGlobalDataFloat("accum") == pytest.approx(1.5)
+
+    def test_global_data_auto_detection(self, basic_context):
+        basic_context.setGlobalDataFloat("auto_g", 42.0)
+        result = basic_context.getGlobalData("auto_g")
+        assert result == pytest.approx(42.0)
+
+
+@pytest.mark.native_only
+class TestPrimitiveDataStatistics:
+    """Test primitive data statistics, filtering, and aggregation."""
+
+    def _make_patches(self, ctx, n=5):
+        """Create n patches with float data 'val' = index * 10."""
+        uuids = []
+        for i in range(n):
+            uuid = ctx.addPatch(
+                center=DataTypes.vec3(i, 0, 0),
+                size=DataTypes.vec2(1, 1))
+            ctx.setPrimitiveDataFloat(uuid, "val", float(i * 10))
+            uuids.append(uuid)
+        return uuids
+
+    def test_calculate_mean_float(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        # values: 0, 10, 20, 30, 40 -> mean = 20
+        mean = basic_context.calculatePrimitiveDataMean(uuids, "val")
+        assert mean == pytest.approx(20.0)
+
+    def test_calculate_sum_float(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        # values: 0 + 10 + 20 + 30 + 40 = 100
+        total = basic_context.calculatePrimitiveDataSum(uuids, "val")
+        assert total == pytest.approx(100.0)
+
+    def test_calculate_area_weighted_mean(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        # All patches same size, so area-weighted mean = simple mean
+        awm = basic_context.calculatePrimitiveDataAreaWeightedMean(uuids, "val")
+        assert awm == pytest.approx(20.0)
+
+    def test_calculate_area_weighted_sum(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        # Each patch area=1, so area-weighted sum = sum of val * area = sum of val
+        aws = basic_context.calculatePrimitiveDataAreaWeightedSum(uuids, "val")
+        assert aws == pytest.approx(100.0)
+
+    def test_scale_primitive_data_with_uuids(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        basic_context.scalePrimitiveData(uuids, "val", 2.0)
+        total = basic_context.calculatePrimitiveDataSum(uuids, "val")
+        assert total == pytest.approx(200.0)
+
+    def test_scale_primitive_data_all(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        basic_context.scalePrimitiveData("val", 0.5)
+        total = basic_context.calculatePrimitiveDataSum(uuids, "val")
+        assert total == pytest.approx(50.0)
+
+    def test_increment_primitive_data_int(self, basic_context):
+        uuids = [basic_context.addPatch(
+            center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(1, 1))
+            for i in range(3)]
+        for uuid in uuids:
+            basic_context.setPrimitiveDataInt(uuid, "count", 10)
+        basic_context.incrementPrimitiveData(uuids, "count", 5)
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "count", int) == 15
+
+    def test_increment_primitive_data_float(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        basic_context.incrementPrimitiveData(uuids, "val", 1.0)
+        # values become 1, 11, 21, 31, 41 -> sum = 105
+        total = basic_context.calculatePrimitiveDataSum(uuids, "val")
+        assert total == pytest.approx(105.0)
+
+    def test_aggregate_sum(self, basic_context):
+        uuids = [basic_context.addPatch(
+            center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(1, 1))
+            for i in range(3)]
+        for uuid in uuids:
+            basic_context.setPrimitiveDataFloat(uuid, "a", 2.0)
+            basic_context.setPrimitiveDataFloat(uuid, "b", 3.0)
+        basic_context.aggregatePrimitiveDataSum(uuids, ["a", "b"], "a_plus_b")
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "a_plus_b", float) == pytest.approx(5.0)
+
+    def test_aggregate_product(self, basic_context):
+        uuids = [basic_context.addPatch(
+            center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(1, 1))
+            for i in range(3)]
+        for uuid in uuids:
+            basic_context.setPrimitiveDataFloat(uuid, "x", 4.0)
+            basic_context.setPrimitiveDataFloat(uuid, "y", 5.0)
+        basic_context.aggregatePrimitiveDataProduct(uuids, ["x", "y"], "x_times_y")
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "x_times_y", float) == pytest.approx(20.0)
+
+    def test_sum_primitive_surface_area(self, basic_context):
+        uuids = [basic_context.addPatch(
+            center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(2, 3))
+            for i in range(4)]
+        # Each patch 2x3 = area 6, 4 patches = 24
+        area = basic_context.sumPrimitiveSurfaceArea(uuids)
+        assert area == pytest.approx(24.0)
+
+    def test_filter_primitives_by_data_float(self, basic_context):
+        uuids = self._make_patches(basic_context)
+        # values: 0, 10, 20, 30, 40. Filter >= 20 -> 3 results
+        result = basic_context.filterPrimitivesByData(uuids, "val", 20.0, ">=")
+        assert len(result) == 3
+
+    def test_filter_primitives_by_data_int(self, basic_context):
+        uuids = [basic_context.addPatch(
+            center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(1, 1))
+            for i in range(5)]
+        for i, uuid in enumerate(uuids):
+            basic_context.setPrimitiveDataInt(uuid, "level", i)
+        result = basic_context.filterPrimitivesByData(uuids, "level", 3, "<")
+        assert len(result) == 3  # levels 0, 1, 2
+
+    def test_filter_primitives_by_data_string(self, basic_context):
+        uuids = [basic_context.addPatch(
+            center=DataTypes.vec3(i, 0, 0), size=DataTypes.vec2(1, 1))
+            for i in range(4)]
+        basic_context.setPrimitiveDataString(uuids[0], "tag", "leaf")
+        basic_context.setPrimitiveDataString(uuids[1], "tag", "branch")
+        basic_context.setPrimitiveDataString(uuids[2], "tag", "leaf")
+        basic_context.setPrimitiveDataString(uuids[3], "tag", "trunk")
+        result = basic_context.filterPrimitivesByData(uuids, "tag", "leaf")
+        assert len(result) == 2

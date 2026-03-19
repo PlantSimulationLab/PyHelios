@@ -147,6 +147,7 @@ try:
     helios_lib.getAllPlantUUIDs.argtypes = [
         ctypes.POINTER(UPlantArchitecture),
         ctypes.c_uint,
+        ctypes.c_bool,
         ctypes.POINTER(ctypes.c_int)
     ]
     helios_lib.getAllPlantUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
@@ -753,7 +754,7 @@ def getAllPlantObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plan
     else:
         return []
 
-def getAllPlantUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+def getAllPlantUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int, include_hidden: bool = False) -> List[int]:
     """Get all UUIDs for a plant"""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
         raise NotImplementedError(
@@ -765,7 +766,7 @@ def getAllPlantUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id
 
     # Get array from C++
     count = ctypes.c_int()
-    ptr = helios_lib.getAllPlantUUIDs(plantarch_ptr, plant_id, ctypes.byref(count))
+    ptr = helios_lib.getAllPlantUUIDs(plantarch_ptr, plant_id, include_hidden, ctypes.byref(count))
 
     # Convert to Python list
     if ptr and count.value > 0:

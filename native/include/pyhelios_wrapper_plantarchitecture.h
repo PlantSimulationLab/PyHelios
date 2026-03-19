@@ -35,7 +35,7 @@ PYHELIOS_API unsigned int addChildShoot(PlantArchitecture* plantarch, unsigned i
 // Plant query functions
 PYHELIOS_API int getAvailablePlantModels(PlantArchitecture* plantarch, char*** model_names, int* count);
 PYHELIOS_API unsigned int* getAllPlantObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
-PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, bool include_hidden, int* count);
 
 // Memory cleanup functions
 PYHELIOS_API void freeStringArray(char** strings, int count);

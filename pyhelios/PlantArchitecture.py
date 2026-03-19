@@ -796,15 +796,17 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get object IDs for plant {plant_id}: {e}")
 
-    def getAllPlantUUIDs(self, plant_id: int) -> List[int]:
+    def getAllPlantUUIDs(self, plant_id: int, include_hidden: bool = False) -> List[int]:
         """
         Get all primitive UUIDs for a specific plant.
 
         Args:
             plant_id: ID of the plant instance
+            include_hidden: If True, also include UUIDs of hidden prototype
+                primitives managed by this PlantArchitecture instance.
 
         Returns:
-            List of primitive UUIDs comprising the plant
+            List of primitive UUIDs comprising the plant (and optionally hidden prototypes)
 
         Raises:
             ValueError: If plant_id is negative
@@ -818,7 +820,7 @@ class PlantArchitecture:
             raise ValueError("Plant ID must be non-negative")
 
         try:
-            return plantarch_wrapper.getAllPlantUUIDs(self._plantarch_ptr, plant_id)
+            return plantarch_wrapper.getAllPlantUUIDs(self._plantarch_ptr, plant_id, include_hidden)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get UUIDs for plant {plant_id}: {e}")
 

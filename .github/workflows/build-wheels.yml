@@ -196,6 +196,29 @@ jobs:
               rm -rf /tmp/v${VULKAN_HEADERS_VERSION}.tar.gz /tmp/Vulkan-Headers-${VULKAN_HEADERS_VERSION} && \
               ls /usr/include/vulkan/vulkan.h && \
               echo "Vulkan headers installed and verified"
+          # Build and install the Vulkan loader (libvulkan.so) from source.
+          # The radiation plugin links directly against Vulkan symbols (vkCreateImage, etc.)
+          # so a real loader is required — a stub with only vkGetInstanceProcAddr is not enough.
+          RUN VULKAN_HEADERS_VERSION="1.3.290" && \
+              cd /tmp && \
+              wget -q "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/v${VULKAN_HEADERS_VERSION}.tar.gz" -O vulkan-loader.tar.gz && \
+              tar xzf vulkan-loader.tar.gz && \
+              cd "Vulkan-Loader-${VULKAN_HEADERS_VERSION}" && \
+              mkdir build && cd build && \
+              cmake .. -DCMAKE_BUILD_TYPE=Release \
+                -DVULKAN_HEADERS_INSTALL_DIR=/usr \
+                -DCMAKE_INSTALL_PREFIX=/usr \
+                -DCMAKE_INSTALL_LIBDIR=lib64 \
+                -DBUILD_WSI_XCB_SUPPORT=OFF \
+                -DBUILD_WSI_XLIB_SUPPORT=OFF \
+                -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
+                -DBUILD_WSI_DIRECTFB_SUPPORT=OFF \
+                -DBUILD_WSI_SCREEN_SUPPORT=OFF && \
+              make -j$(nproc) && \
+              make install && \
+              cd /tmp && rm -rf vulkan-loader.tar.gz "Vulkan-Loader-${VULKAN_HEADERS_VERSION}" && \
+              ls /usr/lib64/libvulkan.so && \
+              echo "Vulkan loader built and installed"
           EOF
           docker build -t pyhelios/manylinux2014_x86_64_cuda_11.8_shim -f Dockerfile.ci .
           # Prove sh resolves in the built image before we hand it to cibuildwheel

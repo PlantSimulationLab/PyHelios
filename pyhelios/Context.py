@@ -591,6 +591,22 @@ class Context:
         self._check_context_available()
         return context_wrapper.getPrimitiveCount(self.context)
 
+    def doesPrimitiveExist(self, uuid) -> bool:
+        """Check if a primitive exists for a given UUID or list of UUIDs.
+
+        Args:
+            uuid: A single UUID (int) or a list of UUIDs.
+
+        Returns:
+            True if the primitive(s) exist, False otherwise.
+            For a list, returns True only if ALL primitives exist.
+        """
+        self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            arr = (ctypes.c_uint * len(uuid))(*uuid)
+            return context_wrapper.doesPrimitiveExistBatch(self.context, arr, len(uuid))
+        return context_wrapper.doesPrimitiveExist(self.context, uuid)
+
     def getAllUUIDs(self) -> List[int]:
         self._check_context_available()
         size = ctypes.c_uint()
@@ -3711,6 +3727,44 @@ class Context:
             return [full_str[offsets[i]:offsets[i+1]] for i in range(len(uuid))]
         return context_wrapper.getPrimitiveTextureFile(self.context, uuid)
 
+    def resolveMaterialTextures(self, uuids, colors_np):
+        """Resolve material texture suppression for export.
+
+        For each primitive, applies material-based texture suppression rules:
+        1. If primitive has texture but material has no texture -> suppress texture, use material color
+        2. If both have texture and textureColorOverride -> prefix "mask:", use material color
+        3. Otherwise -> leave unchanged
+
+        Args:
+            uuids: List of primitive UUIDs
+            colors_np: numpy float32 array of shape (N, 3), modified IN-PLACE
+
+        Returns:
+            List[str] of resolved texture file paths
+        """
+        self._check_context_available()
+        if not uuids:
+            return []
+        return context_wrapper.resolveMaterialTextures(self.context, uuids, colors_np)
+
+    def packGPUBuffers(self, uuids):
+        """Pack GPU-ready geometry buffers for a set of primitives in a single C++ pass.
+
+        Produces a binary blob containing contiguous typed arrays (positions,
+        colors, uvs, indices, faceToUuid) grouped by texture, ready for
+        zero-copy loading into Three.js BufferGeometry attributes.
+
+        Args:
+            uuids: List of primitive UUIDs
+
+        Returns:
+            bytes: Raw binary blob (see wire format v2 spec)
+        """
+        self._check_context_available()
+        if not uuids:
+            return b''
+        return context_wrapper.packGPUBuffers(self.context, uuids)
+
     def setPrimitiveTextureFile(self, uuid: int, texture_file: str) -> None:
         """Set the texture file path of a primitive.
 
@@ -3852,4 +3906,516 @@ class Context:
     def getAllPrimitiveMaterialLabels(self) -> List[str]:
         """Get material labels for all primitives. Returns list of strings."""
         return self.getPrimitiveMaterialLabel(self.getAllUUIDs())
+
+    # ==================== Visibility Methods ====================
+
+    def hidePrimitive(self, uuids_or_uuid) -> None:
+        """Hide one or more primitives. Hidden primitives are excluded from getAllUUIDs().
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to hide.
+        """
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.hidePrimitivesWrapper(self.context, list(uuids_or_uuid))
+        else:
+            context_wrapper.hidePrimitiveWrapper(self.context, uuids_or_uuid)
+
+    def showPrimitive(self, uuids_or_uuid) -> None:
+        """Show one or more previously hidden primitives.
+
+        Args:
+            uuids_or_uuid: Single UUID (int) or list of UUIDs to show.
+        """
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.showPrimitivesWrapper(self.context, list(uuids_or_uuid))
+        else:
+            context_wrapper.showPrimitiveWrapper(self.context, uuids_or_uuid)
+
+    def isPrimitiveHidden(self, uuid: int) -> bool:
+        """Check if a primitive is hidden.
+
+        Args:
+            uuid: UUID of the primitive.
+
+        Returns:
+            True if the primitive is hidden.
+        """
+        return context_wrapper.isPrimitiveHiddenWrapper(self.context, uuid)
+
+    def hideObject(self, objids_or_objid) -> None:
+        """Hide one or more compound objects (and all their primitives).
+
+        Args:
+            objids_or_objid: Single object ID (int) or list of object IDs to hide.
+        """
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.hideObjectsWrapper(self.context, list(objids_or_objid))
+        else:
+            context_wrapper.hideObjectWrapper(self.context, objids_or_objid)
+
+    def showObject(self, objids_or_objid) -> None:
+        """Show one or more previously hidden compound objects.
+
+        Args:
+            objids_or_objid: Single object ID (int) or list of object IDs to show.
+        """
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.showObjectsWrapper(self.context, list(objids_or_objid))
+        else:
+            context_wrapper.showObjectWrapper(self.context, objids_or_objid)
+
+    def isObjectHidden(self, objID: int) -> bool:
+        """Check if a compound object is hidden.
+
+        Args:
+            objID: Object ID.
+
+        Returns:
+            True if the object is hidden.
+        """
+        return context_wrapper.isObjectHiddenWrapper(self.context, objID)
+
+    # ==================== Object Data Methods ====================
+
+    def setObjectDataInt(self, objids_or_objid, label: str, value: int) -> None:
+        """Set object data as signed 32-bit integer for one or multiple objects."""
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataInt(self.context, objids_or_objid, label, value)
+        else:
+            context_wrapper.setObjectDataInt(self.context, objids_or_objid, label, value)
+
+    def setObjectDataUInt(self, objids_or_objid, label: str, value: int) -> None:
+        """Set object data as unsigned 32-bit integer for one or multiple objects."""
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataUInt(self.context, objids_or_objid, label, value)
+        else:
+            context_wrapper.setObjectDataUInt(self.context, objids_or_objid, label, value)
+
+    def setObjectDataFloat(self, objids_or_objid, label: str, value: float) -> None:
+        """Set object data as 32-bit float for one or multiple objects."""
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataFloat(self.context, objids_or_objid, label, value)
+        else:
+            context_wrapper.setObjectDataFloat(self.context, objids_or_objid, label, value)
+
+    def setObjectDataDouble(self, objids_or_objid, label: str, value: float) -> None:
+        """Set object data as 64-bit double for one or multiple objects."""
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataDouble(self.context, objids_or_objid, label, value)
+        else:
+            context_wrapper.setObjectDataDouble(self.context, objids_or_objid, label, value)
+
+    def setObjectDataString(self, objids_or_objid, label: str, value: str) -> None:
+        """Set object data as string for one or multiple objects."""
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataString(self.context, objids_or_objid, label, value)
+        else:
+            context_wrapper.setObjectDataString(self.context, objids_or_objid, label, value)
+
+    def setObjectDataVec2(self, objids_or_objid, label: str, x_or_vec, y: float = None) -> None:
+        """Set object data as vec2. Accepts vec2 object or x,y components."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y = x_or_vec.x, x_or_vec.y
+        else:
+            x = x_or_vec
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataVec2(self.context, objids_or_objid, label, x, y)
+        else:
+            context_wrapper.setObjectDataVec2(self.context, objids_or_objid, label, x, y)
+
+    def setObjectDataVec3(self, objids_or_objid, label: str, x_or_vec, y: float = None, z: float = None) -> None:
+        """Set object data as vec3. Accepts vec3 object or x,y,z components."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
+        else:
+            x = x_or_vec
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataVec3(self.context, objids_or_objid, label, x, y, z)
+        else:
+            context_wrapper.setObjectDataVec3(self.context, objids_or_objid, label, x, y, z)
+
+    def setObjectDataVec4(self, objids_or_objid, label: str, x_or_vec, y: float = None, z: float = None, w: float = None) -> None:
+        """Set object data as vec4. Accepts vec4 object or x,y,z,w components."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
+        else:
+            x = x_or_vec
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataVec4(self.context, objids_or_objid, label, x, y, z, w)
+        else:
+            context_wrapper.setObjectDataVec4(self.context, objids_or_objid, label, x, y, z, w)
+
+    def setObjectDataInt2(self, objids_or_objid, label: str, x_or_vec, y: int = None) -> None:
+        """Set object data as int2. Accepts int2 object or x,y components."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y = x_or_vec.x, x_or_vec.y
+        else:
+            x = x_or_vec
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataInt2(self.context, objids_or_objid, label, x, y)
+        else:
+            context_wrapper.setObjectDataInt2(self.context, objids_or_objid, label, x, y)
+
+    def setObjectDataInt3(self, objids_or_objid, label: str, x_or_vec, y: int = None, z: int = None) -> None:
+        """Set object data as int3. Accepts int3 object or x,y,z components."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
+        else:
+            x = x_or_vec
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataInt3(self.context, objids_or_objid, label, x, y, z)
+        else:
+            context_wrapper.setObjectDataInt3(self.context, objids_or_objid, label, x, y, z)
+
+    def setObjectDataInt4(self, objids_or_objid, label: str, x_or_vec, y: int = None, z: int = None, w: int = None) -> None:
+        """Set object data as int4. Accepts int4 object or x,y,z,w components."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
+        else:
+            x = x_or_vec
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.setBroadcastObjectDataInt4(self.context, objids_or_objid, label, x, y, z, w)
+        else:
+            context_wrapper.setObjectDataInt4(self.context, objids_or_objid, label, x, y, z, w)
+
+    def getObjectData(self, objID: int, label: str, data_type: type = None):
+        """Get object data with optional type specification. Auto-detects type if not specified."""
+        if data_type is None:
+            return context_wrapper.getObjectDataAuto(self.context, objID, label)
+        if data_type == int:
+            return context_wrapper.getObjectDataInt(self.context, objID, label)
+        elif data_type == float:
+            return context_wrapper.getObjectDataFloat(self.context, objID, label)
+        elif data_type == str:
+            return context_wrapper.getObjectDataString(self.context, objID, label)
+        elif data_type == vec3:
+            coords = context_wrapper.getObjectDataVec3(self.context, objID, label)
+            return vec3(coords[0], coords[1], coords[2])
+        elif data_type == vec2:
+            coords = context_wrapper.getObjectDataVec2(self.context, objID, label)
+            return vec2(coords[0], coords[1])
+        elif data_type == vec4:
+            coords = context_wrapper.getObjectDataVec4(self.context, objID, label)
+            return vec4(coords[0], coords[1], coords[2], coords[3])
+        elif data_type == int2:
+            coords = context_wrapper.getObjectDataInt2(self.context, objID, label)
+            return int2(coords[0], coords[1])
+        elif data_type == int3:
+            coords = context_wrapper.getObjectDataInt3(self.context, objID, label)
+            return int3(coords[0], coords[1], coords[2])
+        elif data_type == int4:
+            coords = context_wrapper.getObjectDataInt4(self.context, objID, label)
+            return int4(coords[0], coords[1], coords[2], coords[3])
+        elif data_type == "uint":
+            return context_wrapper.getObjectDataUInt(self.context, objID, label)
+        elif data_type == "double":
+            return context_wrapper.getObjectDataDouble(self.context, objID, label)
+        else:
+            raise ValueError(f"Unsupported object data type: {data_type}")
+
+    def getObjectDataFloat(self, objID: int, label: str) -> float:
+        """Get float object data."""
+        return context_wrapper.getObjectDataFloat(self.context, objID, label)
+
+    def getObjectDataInt(self, objID: int, label: str) -> int:
+        """Get int object data."""
+        return context_wrapper.getObjectDataInt(self.context, objID, label)
+
+    def getObjectDataString(self, objID: int, label: str) -> str:
+        """Get string object data."""
+        return context_wrapper.getObjectDataString(self.context, objID, label)
+
+    def getObjectDataType(self, objID: int, label: str) -> int:
+        """Get the HeliosDataType enum for object data."""
+        return context_wrapper.getObjectDataTypeWrapper(self.context, objID, label)
+
+    def getObjectDataSize(self, objID: int, label: str) -> int:
+        """Get the size of object data array."""
+        return context_wrapper.getObjectDataSizeWrapper(self.context, objID, label)
+
+    def doesObjectDataExist(self, objID: int, label: str) -> bool:
+        """Check if object data exists."""
+        return context_wrapper.doesObjectDataExistWrapper(self.context, objID, label)
+
+    def clearObjectData(self, objids_or_objid, label: str) -> None:
+        """Clear object data. Accepts single ID or list."""
+        if isinstance(objids_or_objid, (list, tuple)):
+            context_wrapper.clearObjectDataBatchWrapper(self.context, objids_or_objid, label)
+        else:
+            context_wrapper.clearObjectDataWrapper(self.context, objids_or_objid, label)
+
+    def listObjectData(self, objID: int) -> List[str]:
+        """List all data labels on a specific object."""
+        return context_wrapper.listObjectDataWrapper(self.context, objID)
+
+    def listAllObjectDataLabels(self) -> List[str]:
+        """List all object data labels in context."""
+        return context_wrapper.listAllObjectDataLabelsWrapper(self.context)
+
+    def duplicateObjectData(self, objID: int, old_label: str, new_label: str) -> None:
+        """Copy object data to a new label."""
+        context_wrapper.duplicateObjectDataWrapper(self.context, objID, old_label, new_label)
+
+    def renameObjectData(self, objID: int, old_label: str, new_label: str) -> None:
+        """Rename an object data label."""
+        context_wrapper.renameObjectDataWrapper(self.context, objID, old_label, new_label)
+
+    def filterObjectsByData(self, objIDs: List[int], label: str, value, comparator: str = "=") -> List[int]:
+        """Filter objects by data value. Auto-dispatches based on value type."""
+        if isinstance(value, str):
+            return context_wrapper.filterObjectsByDataStringWrapper(self.context, objIDs, label, value)
+        elif isinstance(value, float):
+            return context_wrapper.filterObjectsByDataFloatWrapper(self.context, objIDs, label, value, comparator)
+        elif isinstance(value, int):
+            return context_wrapper.filterObjectsByDataIntWrapper(self.context, objIDs, label, value, comparator)
+        else:
+            raise ValueError(f"Unsupported filter value type: {type(value).__name__}")
+
+    # ==================== Global Data Methods ====================
+
+    def setGlobalDataInt(self, label: str, value: int) -> None:
+        """Set global data as signed 32-bit integer."""
+        context_wrapper.setGlobalDataInt(self.context, label, value)
+
+    def setGlobalDataUInt(self, label: str, value: int) -> None:
+        """Set global data as unsigned 32-bit integer."""
+        context_wrapper.setGlobalDataUInt(self.context, label, value)
+
+    def setGlobalDataFloat(self, label: str, value: float) -> None:
+        """Set global data as 32-bit float."""
+        context_wrapper.setGlobalDataFloat(self.context, label, value)
+
+    def setGlobalDataDouble(self, label: str, value: float) -> None:
+        """Set global data as 64-bit double."""
+        context_wrapper.setGlobalDataDouble(self.context, label, value)
+
+    def setGlobalDataString(self, label: str, value: str) -> None:
+        """Set global data as string."""
+        context_wrapper.setGlobalDataString(self.context, label, value)
+
+    def setGlobalDataVec2(self, label: str, x_or_vec, y: float = None) -> None:
+        """Set global data as vec2."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y = x_or_vec.x, x_or_vec.y
+        else:
+            x = x_or_vec
+        context_wrapper.setGlobalDataVec2(self.context, label, x, y)
+
+    def setGlobalDataVec3(self, label: str, x_or_vec, y: float = None, z: float = None) -> None:
+        """Set global data as vec3."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
+        else:
+            x = x_or_vec
+        context_wrapper.setGlobalDataVec3(self.context, label, x, y, z)
+
+    def setGlobalDataVec4(self, label: str, x_or_vec, y: float = None, z: float = None, w: float = None) -> None:
+        """Set global data as vec4."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
+        else:
+            x = x_or_vec
+        context_wrapper.setGlobalDataVec4(self.context, label, x, y, z, w)
+
+    def setGlobalDataInt2(self, label: str, x_or_vec, y: int = None) -> None:
+        """Set global data as int2."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y = x_or_vec.x, x_or_vec.y
+        else:
+            x = x_or_vec
+        context_wrapper.setGlobalDataInt2(self.context, label, x, y)
+
+    def setGlobalDataInt3(self, label: str, x_or_vec, y: int = None, z: int = None) -> None:
+        """Set global data as int3."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
+        else:
+            x = x_or_vec
+        context_wrapper.setGlobalDataInt3(self.context, label, x, y, z)
+
+    def setGlobalDataInt4(self, label: str, x_or_vec, y: int = None, z: int = None, w: int = None) -> None:
+        """Set global data as int4."""
+        if hasattr(x_or_vec, 'x') and y is None:
+            x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
+        else:
+            x = x_or_vec
+        context_wrapper.setGlobalDataInt4(self.context, label, x, y, z, w)
+
+    def getGlobalData(self, label: str, data_type: type = None):
+        """Get global data with optional type specification. Auto-detects type if not specified."""
+        if data_type is None:
+            return context_wrapper.getGlobalDataAuto(self.context, label)
+        if data_type == int:
+            return context_wrapper.getGlobalDataInt(self.context, label)
+        elif data_type == float:
+            return context_wrapper.getGlobalDataFloat(self.context, label)
+        elif data_type == str:
+            return context_wrapper.getGlobalDataString(self.context, label)
+        elif data_type == vec3:
+            coords = context_wrapper.getGlobalDataVec3(self.context, label)
+            return vec3(coords[0], coords[1], coords[2])
+        elif data_type == vec2:
+            coords = context_wrapper.getGlobalDataVec2(self.context, label)
+            return vec2(coords[0], coords[1])
+        elif data_type == vec4:
+            coords = context_wrapper.getGlobalDataVec4(self.context, label)
+            return vec4(coords[0], coords[1], coords[2], coords[3])
+        elif data_type == int2:
+            coords = context_wrapper.getGlobalDataInt2(self.context, label)
+            return int2(coords[0], coords[1])
+        elif data_type == int3:
+            coords = context_wrapper.getGlobalDataInt3(self.context, label)
+            return int3(coords[0], coords[1], coords[2])
+        elif data_type == int4:
+            coords = context_wrapper.getGlobalDataInt4(self.context, label)
+            return int4(coords[0], coords[1], coords[2], coords[3])
+        elif data_type == "uint":
+            return context_wrapper.getGlobalDataUInt(self.context, label)
+        elif data_type == "double":
+            return context_wrapper.getGlobalDataDouble(self.context, label)
+        else:
+            raise ValueError(f"Unsupported global data type: {data_type}")
+
+    def getGlobalDataFloat(self, label: str) -> float:
+        """Get float global data."""
+        return context_wrapper.getGlobalDataFloat(self.context, label)
+
+    def getGlobalDataInt(self, label: str) -> int:
+        """Get int global data."""
+        return context_wrapper.getGlobalDataInt(self.context, label)
+
+    def getGlobalDataString(self, label: str) -> str:
+        """Get string global data."""
+        return context_wrapper.getGlobalDataString(self.context, label)
+
+    def getGlobalDataType(self, label: str) -> int:
+        """Get the HeliosDataType enum for global data."""
+        return context_wrapper.getGlobalDataTypeWrapper(self.context, label)
+
+    def getGlobalDataSize(self, label: str) -> int:
+        """Get the size of global data array."""
+        return context_wrapper.getGlobalDataSizeWrapper(self.context, label)
+
+    def doesGlobalDataExist(self, label: str) -> bool:
+        """Check if global data exists."""
+        return context_wrapper.doesGlobalDataExistWrapper(self.context, label)
+
+    def clearGlobalData(self, label: str) -> None:
+        """Clear global data."""
+        context_wrapper.clearGlobalDataWrapper(self.context, label)
+
+    def renameGlobalData(self, old_label: str, new_label: str) -> None:
+        """Rename a global data label."""
+        context_wrapper.renameGlobalDataWrapper(self.context, old_label, new_label)
+
+    def duplicateGlobalData(self, old_label: str, new_label: str) -> None:
+        """Duplicate global data to a new label."""
+        context_wrapper.duplicateGlobalDataWrapper(self.context, old_label, new_label)
+
+    def listGlobalData(self) -> List[str]:
+        """List all global data labels."""
+        return context_wrapper.listGlobalDataWrapper(self.context)
+
+    def incrementGlobalData(self, label: str, increment) -> None:
+        """Increment global data. Auto-dispatches based on increment type."""
+        if isinstance(increment, float):
+            context_wrapper.incrementGlobalDataFloatWrapper(self.context, label, increment)
+        elif isinstance(increment, int):
+            context_wrapper.incrementGlobalDataIntWrapper(self.context, label, increment)
+        else:
+            raise ValueError(f"Unsupported increment type: {type(increment).__name__}")
+
+    # ==================== Primitive Data Statistics & Filtering ====================
+
+    def calculatePrimitiveDataMean(self, uuids: List[int], label: str, return_type: type = float):
+        """Calculate arithmetic mean of primitive data across UUIDs.
+
+        Args:
+            uuids: List of primitive UUIDs.
+            label: Data label.
+            return_type: float (default), "double", or vec3.
+        """
+        if return_type == float:
+            return context_wrapper.calculatePrimitiveDataMeanFloatWrapper(self.context, uuids, label)
+        elif return_type == "double":
+            return context_wrapper.calculatePrimitiveDataMeanDoubleWrapper(self.context, uuids, label)
+        elif return_type == vec3:
+            coords = context_wrapper.calculatePrimitiveDataMeanVec3Wrapper(self.context, uuids, label)
+            return vec3(coords[0], coords[1], coords[2])
+        else:
+            raise ValueError(f"Unsupported return type: {return_type}")
+
+    def calculatePrimitiveDataAreaWeightedMean(self, uuids: List[int], label: str, return_type: type = float):
+        """Calculate area-weighted mean of primitive data."""
+        if return_type == float:
+            return context_wrapper.calculatePrimitiveDataAreaWeightedMeanFloatWrapper(self.context, uuids, label)
+        else:
+            raise ValueError(f"Unsupported return type: {return_type}")
+
+    def calculatePrimitiveDataSum(self, uuids: List[int], label: str, return_type: type = float):
+        """Calculate sum of primitive data across UUIDs."""
+        if return_type == float:
+            return context_wrapper.calculatePrimitiveDataSumFloatWrapper(self.context, uuids, label)
+        elif return_type == "double":
+            return context_wrapper.calculatePrimitiveDataSumDoubleWrapper(self.context, uuids, label)
+        else:
+            raise ValueError(f"Unsupported return type: {return_type}")
+
+    def calculatePrimitiveDataAreaWeightedSum(self, uuids: List[int], label: str, return_type: type = float):
+        """Calculate area-weighted sum of primitive data."""
+        if return_type == float:
+            return context_wrapper.calculatePrimitiveDataAreaWeightedSumFloatWrapper(self.context, uuids, label)
+        else:
+            raise ValueError(f"Unsupported return type: {return_type}")
+
+    def scalePrimitiveData(self, uuids_or_label, label_or_factor, factor=None) -> None:
+        """Scale primitive data by a factor.
+
+        Overloads:
+            scalePrimitiveData(uuids, label, factor) - scale for specific UUIDs
+            scalePrimitiveData(label, factor) - scale for ALL primitives
+        """
+        if isinstance(uuids_or_label, str):
+            context_wrapper.scalePrimitiveDataAllWrapper(self.context, uuids_or_label, label_or_factor)
+        else:
+            context_wrapper.scalePrimitiveDataWithUUIDsWrapper(self.context, uuids_or_label, label_or_factor, factor)
+
+    def incrementPrimitiveData(self, uuids: List[int], label: str, increment) -> None:
+        """Increment primitive data. Auto-dispatches based on increment type."""
+        if isinstance(increment, float):
+            context_wrapper.incrementPrimitiveDataFloatWrapper(self.context, uuids, label, increment)
+        elif isinstance(increment, int):
+            context_wrapper.incrementPrimitiveDataIntWrapper(self.context, uuids, label, increment)
+        else:
+            raise ValueError(f"Unsupported increment type: {type(increment).__name__}")
+
+    def aggregatePrimitiveDataSum(self, uuids: List[int], labels: List[str], result_label: str) -> None:
+        """Sum multiple primitive data fields into a new field."""
+        context_wrapper.aggregatePrimitiveDataSumWrapper(self.context, uuids, labels, result_label)
+
+    def aggregatePrimitiveDataProduct(self, uuids: List[int], labels: List[str], result_label: str) -> None:
+        """Multiply multiple primitive data fields into a new field."""
+        context_wrapper.aggregatePrimitiveDataProductWrapper(self.context, uuids, labels, result_label)
+
+    def sumPrimitiveSurfaceArea(self, uuids: List[int]) -> float:
+        """Calculate total one-sided surface area for a set of primitives."""
+        return context_wrapper.sumPrimitiveSurfaceAreaWrapper(self.context, uuids)
+
+    def filterPrimitivesByData(self, uuids: List[int], label: str, value, comparator: str = "=") -> List[int]:
+        """Filter primitives by data value. Auto-dispatches based on value type.
+
+        Args:
+            uuids: UUIDs to filter.
+            label: Data label to compare.
+            value: Filter value (float, int, or str).
+            comparator: Comparison operator ("=", "<", ">", "<=", ">="). Not used for strings.
+        """
+        if isinstance(value, str):
+            return context_wrapper.filterPrimitivesByDataStringWrapper(self.context, uuids, label, value)
+        elif isinstance(value, float):
+            return context_wrapper.filterPrimitivesByDataFloatWrapper(self.context, uuids, label, value, comparator)
+        elif isinstance(value, int):
+            return context_wrapper.filterPrimitivesByDataIntWrapper(self.context, uuids, label, value, comparator)
+        else:
+            raise ValueError(f"Unsupported filter value type: {type(value).__name__}")
 

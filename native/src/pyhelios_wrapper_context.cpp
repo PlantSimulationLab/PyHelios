@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstdio>
 #include <atomic>
+#include <unordered_map>
 
 extern "C" {
     // Context management - core functionality required by PyHelios
@@ -2642,7 +2643,16 @@ extern "C" {
     PYHELIOS_API unsigned int getPrimitiveCount(helios::Context* context) {
         return context->getPrimitiveCount();
     }
-    
+
+    PYHELIOS_API bool doesPrimitiveExist(helios::Context* context, unsigned int uuid) {
+        return context->doesPrimitiveExist(uuid);
+    }
+
+    PYHELIOS_API bool doesPrimitiveExistBatch(helios::Context* context, unsigned int* uuids, unsigned int count) {
+        std::vector<uint> uuid_vec(uuids, uuids + count);
+        return context->doesPrimitiveExist(uuid_vec);
+    }
+
     PYHELIOS_API float* getPrimitiveVertices(helios::Context* context, unsigned int uuid, unsigned int* size) {
         try {
             clearError(); // Clear any previous error
@@ -6190,6 +6200,1955 @@ extern "C" {
             if (total_chars) *total_chars = 0;
             return "";
         }
+    }
+
+    PYHELIOS_API const char* resolveMaterialTextures(
+        void* context_ptr,
+        unsigned int* uuids,
+        unsigned int count,
+        float* colors_inout,
+        unsigned int* tex_offsets_out,
+        unsigned int* total_chars_out
+    ) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (total_chars_out) *total_chars_out = 0;
+                return nullptr;
+            }
+
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+
+            // Material info cache keyed by uint materialID (fast hash, ~5-10 entries)
+            struct MatInfo {
+                bool has_texture;
+                bool tex_color_override;
+                float r, g, b;
+                std::string texture_file;  // stored once per unique material
+            };
+
+            std::unordered_map<unsigned int, MatInfo> mat_cache;
+            static thread_local std::string buffer;
+            buffer.clear();
+
+            for (unsigned int i = 0; i < count; i++) {
+                if (tex_offsets_out) tex_offsets_out[i] = buffer.size();
+
+                // Single map lookup: UUID -> Primitive* -> materialID
+                unsigned int matID = context->getPrimitiveMaterialID(uuids[i]);
+
+                // Cache miss: look up material once via const Material& (one map lookup)
+                auto it = mat_cache.find(matID);
+                if (it == mat_cache.end()) {
+                    MatInfo info = {false, false, 0.0f, 0.0f, 0.0f, ""};
+                    const helios::Material& mat = context->getMaterial(matID);
+                    info.texture_file = mat.texture_file;
+                    info.has_texture = !mat.texture_file.empty();
+                    info.tex_color_override = mat.texture_color_overridden;
+                    info.r = mat.color.r;
+                    info.g = mat.color.g;
+                    info.b = mat.color.b;
+                    auto inserted = mat_cache.emplace(matID, std::move(info));
+                    it = inserted.first;
+                }
+
+                const MatInfo& mat = it->second;
+
+                // The texture file comes from the material (Primitive::getTextureFile()
+                // just returns context->materials.at(materialID).texture_file)
+                if (mat.has_texture) {
+                    if (mat.tex_color_override) {
+                        // Rule 2: Mask — material has texture and color override is set
+                        buffer.append("mask:");
+                        buffer.append(mat.texture_file);
+                        colors_inout[i * 3 + 0] = mat.r;
+                        colors_inout[i * 3 + 1] = mat.g;
+                        colors_inout[i * 3 + 2] = mat.b;
+                    } else {
+                        // Rule 3: Pass-through — material has texture, no override
+                        buffer.append(mat.texture_file);
+                    }
+                } else {
+                    // Rule 1 / pass-through: material has no texture
+                    // Texture file is empty, override color with material color
+                    colors_inout[i * 3 + 0] = mat.r;
+                    colors_inout[i * 3 + 1] = mat.g;
+                    colors_inout[i * 3 + 2] = mat.b;
+                    // buffer gets nothing appended (empty tex_file)
+                }
+            }
+
+            if (tex_offsets_out) tex_offsets_out[count] = buffer.size();
+            if (total_chars_out) *total_chars_out = buffer.size();
+            return buffer.empty() ? "" : buffer.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::resolveMaterialTextures): ") + e.what());
+            if (total_chars_out) *total_chars_out = 0;
+            return "";
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::resolveMaterialTextures): Unknown error.");
+            if (total_chars_out) *total_chars_out = 0;
+            return "";
+        }
+    }
+
+    PYHELIOS_API unsigned char* packGPUBuffers(
+        void* context_ptr,
+        unsigned int* uuids,
+        unsigned int count,
+        unsigned int* out_size
+    ) {
+        try {
+            clearError();
+            if (!context_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                if (out_size) *out_size = 0;
+                return nullptr;
+            }
+            if (count == 0) {
+                if (out_size) *out_size = 0;
+                return nullptr;
+            }
+
+            helios::Context* context = static_cast<helios::Context*>(context_ptr);
+
+            // ---- Material cache (same pattern as resolveMaterialTextures) ----
+            struct MatInfo {
+                bool has_texture;
+                bool tex_color_override;
+                float r, g, b;
+                std::string texture_file;
+            };
+            std::unordered_map<unsigned int, MatInfo> mat_cache;
+
+            // ---- First pass: gather per-primitive metadata ----
+            struct PrimMeta {
+                unsigned int uuid;
+                unsigned int vert_count;
+                unsigned int tri_count;
+                std::string group_key;  // "" = untextured, "mask:path" = mask, "path" = textured
+                bool has_texture;
+                bool mask_mode;
+            };
+
+            std::vector<PrimMeta> metas(count);
+            unsigned int total_verts = 0;
+            unsigned int total_tris = 0;
+
+            for (unsigned int i = 0; i < count; i++) {
+                PrimMeta& m = metas[i];
+                m.uuid = uuids[i];
+
+                // Get vertex count
+                std::vector<helios::vec3> vertices = context->getPrimitiveVertices(m.uuid);
+                m.vert_count = vertices.size();
+                m.tri_count = (m.vert_count >= 3) ? (m.vert_count - 2) : 0;
+
+                // Material resolution
+                unsigned int matID = context->getPrimitiveMaterialID(m.uuid);
+                auto it = mat_cache.find(matID);
+                if (it == mat_cache.end()) {
+                    MatInfo info = {false, false, 0.0f, 0.0f, 0.0f, ""};
+                    const helios::Material& mat = context->getMaterial(matID);
+                    info.texture_file = mat.texture_file;
+                    info.has_texture = !mat.texture_file.empty();
+                    info.tex_color_override = mat.texture_color_overridden;
+                    info.r = mat.color.r;
+                    info.g = mat.color.g;
+                    info.b = mat.color.b;
+                    auto inserted = mat_cache.emplace(matID, std::move(info));
+                    it = inserted.first;
+                }
+                const MatInfo& mat = it->second;
+
+                if (mat.has_texture) {
+                    if (mat.tex_color_override) {
+                        m.group_key = "mask:" + mat.texture_file;
+                        m.mask_mode = true;
+                        m.has_texture = true;
+                    } else {
+                        m.group_key = mat.texture_file;
+                        m.mask_mode = false;
+                        m.has_texture = true;
+                    }
+                } else {
+                    m.group_key = "";
+                    m.mask_mode = false;
+                    m.has_texture = false;
+                }
+
+                total_verts += m.vert_count;
+                total_tris += m.tri_count;
+            }
+
+            // ---- Sort by group key ----
+            std::vector<unsigned int> sorted_indices(count);
+            for (unsigned int i = 0; i < count; i++) sorted_indices[i] = i;
+            std::sort(sorted_indices.begin(), sorted_indices.end(),
+                [&metas](unsigned int a, unsigned int b) {
+                    return metas[a].group_key < metas[b].group_key;
+                });
+
+            // ---- Identify groups ----
+            struct GroupDesc {
+                std::string group_key;
+                std::string texture_path;
+                bool mask_mode;
+                bool has_uvs;
+                bool has_colors;
+                unsigned int vertex_start;
+                unsigned int vertex_count;
+                unsigned int triangle_start;
+                unsigned int triangle_count;
+            };
+
+            std::vector<GroupDesc> groups;
+            {
+                unsigned int v_offset = 0;
+                unsigned int t_offset = 0;
+                unsigned int gi = 0;
+                while (gi < count) {
+                    const std::string& key = metas[sorted_indices[gi]].group_key;
+                    GroupDesc gd;
+                    gd.group_key = key;
+                    gd.mask_mode = metas[sorted_indices[gi]].mask_mode;
+                    gd.has_uvs = !key.empty();  // textured or mask both have UVs
+                    gd.has_colors = key.empty() || gd.mask_mode;  // untextured and mask have vertex colors
+                    gd.vertex_start = v_offset;
+                    gd.triangle_start = t_offset;
+
+                    if (gd.mask_mode) {
+                        gd.texture_path = key.substr(5);  // strip "mask:" prefix
+                    } else if (!key.empty()) {
+                        gd.texture_path = key;
+                    }
+
+                    unsigned int group_verts = 0;
+                    unsigned int group_tris = 0;
+                    while (gi < count && metas[sorted_indices[gi]].group_key == key) {
+                        group_verts += metas[sorted_indices[gi]].vert_count;
+                        group_tris += metas[sorted_indices[gi]].tri_count;
+                        gi++;
+                    }
+                    gd.vertex_count = group_verts;
+                    gd.triangle_count = group_tris;
+                    v_offset += group_verts;
+                    t_offset += group_tris;
+                    groups.push_back(std::move(gd));
+                }
+            }
+
+            unsigned int group_count = groups.size();
+
+            // ---- Compute buffer layout ----
+            // Header: 16 bytes
+            unsigned int header_size = 16;
+
+            // Group descriptors: 19 bytes fixed + texture_path_length per group
+            unsigned int descriptors_size = 0;
+            for (const auto& g : groups) {
+                descriptors_size += 19 + g.texture_path.size();
+            }
+
+            // Align descriptor end to 4-byte boundary for typed arrays
+            unsigned int aligned_desc_end = ((header_size + descriptors_size) + 3) & ~3u;
+
+            // Typed arrays
+            unsigned int positions_size = total_verts * 3 * sizeof(float);
+            unsigned int colors_size = total_verts * 3 * sizeof(float);
+            unsigned int uvs_size = total_verts * 2 * sizeof(float);
+            unsigned int indices_size = total_tris * 3 * sizeof(uint32_t);
+            unsigned int faceToUuid_size = total_tris * sizeof(uint32_t);
+
+            unsigned int total_size = aligned_desc_end +
+                positions_size + colors_size + uvs_size +
+                indices_size + faceToUuid_size;
+
+            // ---- Allocate output buffer ----
+            static thread_local std::vector<unsigned char> buffer;
+            buffer.resize(total_size);
+            unsigned char* buf = buffer.data();
+
+            // ---- Write header ----
+            buf[0] = 2;  // version
+            buf[1] = 0;  // flags
+            buf[2] = group_count & 0xFF;
+            buf[3] = (group_count >> 8) & 0xFF;
+            *reinterpret_cast<uint32_t*>(buf + 4) = total_verts;
+            *reinterpret_cast<uint32_t*>(buf + 8) = total_tris;
+            *reinterpret_cast<uint32_t*>(buf + 12) = count;
+
+            // ---- Write group descriptors ----
+            unsigned int offset = header_size;
+            for (const auto& g : groups) {
+                *reinterpret_cast<uint32_t*>(buf + offset) = g.vertex_start; offset += 4;
+                *reinterpret_cast<uint32_t*>(buf + offset) = g.vertex_count; offset += 4;
+                *reinterpret_cast<uint32_t*>(buf + offset) = g.triangle_start; offset += 4;
+                *reinterpret_cast<uint32_t*>(buf + offset) = g.triangle_count; offset += 4;
+                uint16_t tex_len = g.texture_path.size();
+                *reinterpret_cast<uint16_t*>(buf + offset) = tex_len; offset += 2;
+                uint8_t flags = 0;
+                if (g.mask_mode) flags |= 0x01;
+                if (g.has_uvs) flags |= 0x02;
+                if (g.has_colors) flags |= 0x04;
+                buf[offset] = flags; offset += 1;
+                if (tex_len > 0) {
+                    memcpy(buf + offset, g.texture_path.c_str(), tex_len);
+                    offset += tex_len;
+                }
+            }
+
+            // ---- Compute array offsets (4-byte aligned) ----
+            offset = aligned_desc_end;  // skip any padding bytes
+            unsigned int pos_offset = offset;
+            unsigned int col_offset = pos_offset + positions_size;
+            unsigned int uv_offset = col_offset + colors_size;
+            unsigned int idx_offset = uv_offset + uvs_size;
+            unsigned int ftu_offset = idx_offset + indices_size;
+
+            float* positions_ptr = reinterpret_cast<float*>(buf + pos_offset);
+            float* colors_ptr = reinterpret_cast<float*>(buf + col_offset);
+            float* uvs_ptr = reinterpret_cast<float*>(buf + uv_offset);
+            uint32_t* indices_ptr = reinterpret_cast<uint32_t*>(buf + idx_offset);
+            uint32_t* ftu_ptr = reinterpret_cast<uint32_t*>(buf + ftu_offset);
+
+            // Zero-fill UVs (untextured prims will have 0,0 UVs)
+            memset(buf + uv_offset, 0, uvs_size);
+            // Zero-fill colors (textured-only prims won't set colors)
+            memset(buf + col_offset, 0, colors_size);
+
+            // ---- Second pass: populate arrays ----
+            unsigned int v_cursor = 0;  // current vertex write position
+            unsigned int t_cursor = 0;  // current triangle write position
+
+            for (unsigned int si = 0; si < count; si++) {
+                unsigned int pi = sorted_indices[si];
+                const PrimMeta& m = metas[pi];
+
+                // Fetch vertex positions
+                std::vector<helios::vec3> vertices = context->getPrimitiveVertices(m.uuid);
+                unsigned int nv = vertices.size();
+
+                // Write positions
+                for (unsigned int vi = 0; vi < nv; vi++) {
+                    positions_ptr[v_cursor * 3 + vi * 3 + 0] = vertices[vi].x;
+                    positions_ptr[v_cursor * 3 + vi * 3 + 1] = vertices[vi].y;
+                    positions_ptr[v_cursor * 3 + vi * 3 + 2] = vertices[vi].z;
+                }
+
+                // Write colors (material-resolved)
+                unsigned int matID = context->getPrimitiveMaterialID(m.uuid);
+                const MatInfo& mat = mat_cache[matID];
+                if (m.group_key.empty() || m.mask_mode) {
+                    // Untextured or mask mode: use material color
+                    float cr = mat.r, cg = mat.g, cb = mat.b;
+                    if (mat.has_texture && !mat.tex_color_override) {
+                        // Normal texture, no override — use primitive color
+                        helios::RGBcolor pc = context->getPrimitiveColor(m.uuid);
+                        cr = pc.r; cg = pc.g; cb = pc.b;
+                    }
+                    for (unsigned int vi = 0; vi < nv; vi++) {
+                        colors_ptr[v_cursor * 3 + vi * 3 + 0] = cr;
+                        colors_ptr[v_cursor * 3 + vi * 3 + 1] = cg;
+                        colors_ptr[v_cursor * 3 + vi * 3 + 2] = cb;
+                    }
+                }
+
+                // Write UVs (if textured or mask)
+                if (m.has_texture || m.mask_mode) {
+                    std::vector<helios::vec2> uvs = context->getPrimitiveTextureUV(m.uuid);
+                    for (unsigned int vi = 0; vi < std::min((unsigned int)uvs.size(), nv); vi++) {
+                        uvs_ptr[v_cursor * 2 + vi * 2 + 0] = uvs[vi].x;
+                        uvs_ptr[v_cursor * 2 + vi * 2 + 1] = 1.0f - uvs[vi].y;  // V-flip for Three.js
+                    }
+                }
+
+                // Write indices (triangle fan for polygons) and faceToUuid
+                if (nv >= 3) {
+                    for (unsigned int ti = 0; ti < nv - 2; ti++) {
+                        indices_ptr[t_cursor * 3 + 0] = v_cursor;
+                        indices_ptr[t_cursor * 3 + 1] = v_cursor + ti + 1;
+                        indices_ptr[t_cursor * 3 + 2] = v_cursor + ti + 2;
+                        ftu_ptr[t_cursor] = m.uuid;
+                        t_cursor++;
+                    }
+                }
+
+                v_cursor += nv;
+            }
+
+            if (out_size) *out_size = total_size;
+            return buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (packGPUBuffers): ") + e.what());
+            if (out_size) *out_size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (packGPUBuffers): Unknown error.");
+            if (out_size) *out_size = 0;
+            return nullptr;
+        }
+    }
+
+    // ==================== Visibility Functions ====================
+
+    PYHELIOS_API void hidePrimitive(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            context->hidePrimitive(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::hidePrimitive): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::hidePrimitive): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void hidePrimitives(helios::Context* context, unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!uuids || count == 0) { return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->hidePrimitive(uuids_vec);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::hidePrimitive batch): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::hidePrimitive batch): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void showPrimitive(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            context->showPrimitive(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::showPrimitive): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::showPrimitive): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void showPrimitives(helios::Context* context, unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!uuids || count == 0) { return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->showPrimitive(uuids_vec);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::showPrimitive batch): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::showPrimitive batch): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API bool isPrimitiveHidden(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->isPrimitiveHidden(uuid);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::isPrimitiveHidden): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::isPrimitiveHidden): Unknown error.");
+            return false;
+        }
+    }
+
+    PYHELIOS_API void hideObject(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            context->hideObject(objID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::hideObject): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::hideObject): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void hideObjects(helios::Context* context, unsigned int* objIDs, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->hideObject(ids_vec);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::hideObject batch): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::hideObject batch): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void showObject(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            context->showObject(objID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::showObject): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::showObject): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void showObjects(helios::Context* context, unsigned int* objIDs, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->showObject(ids_vec);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::showObject batch): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::showObject batch): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API bool isObjectHidden(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->isObjectHidden(objID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::isObjectHidden): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::isObjectHidden): Unknown error.");
+            return false;
+        }
+    }
+
+    // ==================== Object Data Functions ====================
+
+    // --- Setters (single) ---
+
+    PYHELIOS_API void setObjectDataInt(helios::Context* context, unsigned int objID, const char* label, int value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setObjectData(objID, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataUInt(helios::Context* context, unsigned int objID, const char* label, unsigned int value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setObjectData(objID, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataFloat(helios::Context* context, unsigned int objID, const char* label, float value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setObjectData(objID, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataDouble(helios::Context* context, unsigned int objID, const char* label, double value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setObjectData(objID, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataString(helios::Context* context, unsigned int objID, const char* label, const char* value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !value) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or value is null"); return; }
+            std::string str_value(value);
+            context->setObjectData(objID, label, str_value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataVec2(helios::Context* context, unsigned int objID, const char* label, float x, float y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::vec2 v(x, y);
+            context->setObjectData(objID, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataVec3(helios::Context* context, unsigned int objID, const char* label, float x, float y, float z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::vec3 v(x, y, z);
+            context->setObjectData(objID, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataVec4(helios::Context* context, unsigned int objID, const char* label, float x, float y, float z, float w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::vec4 v(x, y, z, w);
+            context->setObjectData(objID, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataInt2(helios::Context* context, unsigned int objID, const char* label, int x, int y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::int2 v(x, y);
+            context->setObjectData(objID, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataInt3(helios::Context* context, unsigned int objID, const char* label, int x, int y, int z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::int3 v(x, y, z);
+            context->setObjectData(objID, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setObjectDataInt4(helios::Context* context, unsigned int objID, const char* label, int x, int y, int z, int w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::int4 v(x, y, z, w);
+            context->setObjectData(objID, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setObjectData): Unknown error.");
+        }
+    }
+
+    // --- Broadcast setters ---
+
+    PYHELIOS_API void setBroadcastObjectDataInt(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->setObjectData(ids_vec, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataUInt(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, unsigned int value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->setObjectData(ids_vec, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataFloat(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->setObjectData(ids_vec, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataDouble(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, double value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->setObjectData(ids_vec, label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataString(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, const char* value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label || !value) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or value is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            std::string str_value(value);
+            context->setObjectData(ids_vec, label, str_value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataVec2(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float x, float y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            helios::vec2 v(x, y);
+            context->setObjectData(ids_vec, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataVec3(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float x, float y, float z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            helios::vec3 v(x, y, z);
+            context->setObjectData(ids_vec, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataVec4(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float x, float y, float z, float w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            helios::vec4 v(x, y, z, w);
+            context->setObjectData(ids_vec, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataInt2(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int x, int y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            helios::int2 v(x, y);
+            context->setObjectData(ids_vec, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataInt3(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int x, int y, int z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            helios::int3 v(x, y, z);
+            context->setObjectData(ids_vec, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setBroadcastObjectDataInt4(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int x, int y, int z, int w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object IDs array is null or empty"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            helios::int4 v(x, y, z, w);
+            context->setObjectData(ids_vec, label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBroadcastObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBroadcastObjectData): Unknown error.");
+        }
+    }
+
+    // --- Getters ---
+
+    PYHELIOS_API int getObjectDataInt(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; }
+            int value;
+            context->getObjectData(objID, label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned int getObjectDataUInt(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; }
+            uint value;
+            context->getObjectData(objID, label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API float getObjectDataFloat(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0.0f; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0.0f; }
+            float value;
+            context->getObjectData(objID, label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API double getObjectDataDouble(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0.0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0.0; }
+            double value;
+            context->getObjectData(objID, label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+            return 0.0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+            return 0.0;
+        }
+    }
+
+    PYHELIOS_API int getObjectDataString(helios::Context* context, unsigned int objID, const char* label, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label || !buffer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or buffer is null"); return 0; }
+            std::string value;
+            context->getObjectData(objID, label, value);
+            int copy_length = std::min((int)value.length(), buffer_size - 1);
+            std::strncpy(buffer, value.c_str(), copy_length);
+            buffer[copy_length] = '\0';
+            return copy_length;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API void getObjectDataVec2(helios::Context* context, unsigned int objID, const char* label, float* x, float* y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::vec2 v;
+            context->getObjectData(objID, label, v);
+            *x = v.x; *y = v.y;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getObjectDataVec3(helios::Context* context, unsigned int objID, const char* label, float* x, float* y, float* z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::vec3 v;
+            context->getObjectData(objID, label, v);
+            *x = v.x; *y = v.y; *z = v.z;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getObjectDataVec4(helios::Context* context, unsigned int objID, const char* label, float* x, float* y, float* z, float* w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z || !w) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::vec4 v;
+            context->getObjectData(objID, label, v);
+            *x = v.x; *y = v.y; *z = v.z; *w = v.w;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getObjectDataInt2(helios::Context* context, unsigned int objID, const char* label, int* x, int* y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::int2 v;
+            context->getObjectData(objID, label, v);
+            *x = v.x; *y = v.y;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getObjectDataInt3(helios::Context* context, unsigned int objID, const char* label, int* x, int* y, int* z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::int3 v;
+            context->getObjectData(objID, label, v);
+            *x = v.x; *y = v.y; *z = v.z;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getObjectDataInt4(helios::Context* context, unsigned int objID, const char* label, int* x, int* y, int* z, int* w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z || !w) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::int4 v;
+            context->getObjectData(objID, label, v);
+            *x = v.x; *y = v.y; *z = v.z; *w = v.w;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectData): Unknown error.");
+        }
+    }
+
+    // --- Utilities ---
+
+    PYHELIOS_API int getObjectDataType(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return -1; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return -1; }
+            return static_cast<int>(context->getObjectDataType(objID, label));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectDataType): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectDataType): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int getObjectDataSize(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; }
+            return static_cast<int>(context->getObjectDataSize(objID, label));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getObjectDataSize): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getObjectDataSize): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API bool doesObjectDataExist(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return false; }
+            return context->doesObjectDataExist(objID, label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (doesObjectDataExist): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (doesObjectDataExist): Unknown error.");
+            return false;
+        }
+    }
+
+    PYHELIOS_API void clearObjectData(helios::Context* context, unsigned int objID, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->clearObjectData(objID, label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (clearObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void clearObjectDataBatch(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!objIDs || count == 0) { return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            context->clearObjectData(ids_vec, label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearObjectDataBatch): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (clearObjectDataBatch): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API const char** listObjectData(helios::Context* context, unsigned int objID, unsigned int* count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (count) *count = 0; return nullptr; }
+            if (!count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count output parameter is null"); return nullptr; }
+            static thread_local std::vector<std::string> static_strings;
+            static thread_local std::vector<const char*> static_ptrs;
+            static_strings = context->listObjectData(objID);
+            static_ptrs.clear();
+            static_ptrs.reserve(static_strings.size());
+            for (auto& s : static_strings) { static_ptrs.push_back(s.c_str()); }
+            *count = static_strings.size();
+            return static_ptrs.empty() ? nullptr : static_ptrs.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (listObjectData): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (listObjectData): Unknown error.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API const char** listAllObjectDataLabels(helios::Context* context, unsigned int* count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (count) *count = 0; return nullptr; }
+            if (!count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count output parameter is null"); return nullptr; }
+            static thread_local std::vector<std::string> static_strings;
+            static thread_local std::vector<const char*> static_ptrs;
+            static_strings = context->listAllObjectDataLabels();
+            static_ptrs.clear();
+            static_ptrs.reserve(static_strings.size());
+            for (auto& s : static_strings) { static_ptrs.push_back(s.c_str()); }
+            *count = static_strings.size();
+            return static_ptrs.empty() ? nullptr : static_ptrs.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (listAllObjectDataLabels): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (listAllObjectDataLabels): Unknown error.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API void duplicateObjectData(helios::Context* context, unsigned int objID, const char* old_label, const char* new_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!old_label || !new_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->duplicateObjectData(objID, old_label, new_label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (duplicateObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (duplicateObjectData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void renameObjectData(helios::Context* context, unsigned int objID, const char* old_label, const char* new_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!old_label || !new_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->renameObjectData(objID, old_label, new_label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (renameObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (renameObjectData): Unknown error.");
+        }
+    }
+
+    // --- Filters ---
+
+    PYHELIOS_API unsigned int* filterObjectsByDataFloat(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (result_count) *result_count = 0; return nullptr; }
+            if (!objIDs || count == 0 || !label || !comparator) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterObjectsByData(ids_vec, std::string(label), value, std::string(comparator));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (filterObjectsByData): ") + e.what());
+            if (result_count) *result_count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (filterObjectsByData): Unknown error.");
+            if (result_count) *result_count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* filterObjectsByDataDouble(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, double value, const char* comparator, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (result_count) *result_count = 0; return nullptr; }
+            if (!objIDs || count == 0 || !label || !comparator) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterObjectsByData(ids_vec, std::string(label), value, std::string(comparator));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (filterObjectsByData): ") + e.what());
+            if (result_count) *result_count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (filterObjectsByData): Unknown error.");
+            if (result_count) *result_count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* filterObjectsByDataInt(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, int value, const char* comparator, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (result_count) *result_count = 0; return nullptr; }
+            if (!objIDs || count == 0 || !label || !comparator) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterObjectsByData(ids_vec, std::string(label), value, std::string(comparator));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (filterObjectsByData): ") + e.what());
+            if (result_count) *result_count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (filterObjectsByData): Unknown error.");
+            if (result_count) *result_count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* filterObjectsByDataUInt(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, unsigned int value, const char* comparator, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (result_count) *result_count = 0; return nullptr; }
+            if (!objIDs || count == 0 || !label || !comparator) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterObjectsByData(ids_vec, std::string(label), value, std::string(comparator));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (filterObjectsByData): ") + e.what());
+            if (result_count) *result_count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (filterObjectsByData): Unknown error.");
+            if (result_count) *result_count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* filterObjectsByDataString(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, const char* value, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (result_count) *result_count = 0; return nullptr; }
+            if (!objIDs || count == 0 || !label || !value) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> ids_vec(objIDs, objIDs + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterObjectsByData(ids_vec, std::string(label), std::string(value));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (filterObjectsByData): ") + e.what());
+            if (result_count) *result_count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (filterObjectsByData): Unknown error.");
+            if (result_count) *result_count = 0;
+            return nullptr;
+        }
+    }
+
+    // ==================== Global Data Functions ====================
+
+    // --- Setters ---
+
+    PYHELIOS_API void setGlobalDataInt(helios::Context* context, const char* label, int value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setGlobalData(label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataUInt(helios::Context* context, const char* label, unsigned int value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setGlobalData(label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataFloat(helios::Context* context, const char* label, float value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setGlobalData(label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataDouble(helios::Context* context, const char* label, double value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->setGlobalData(label, value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataString(helios::Context* context, const char* label, const char* value) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !value) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or value is null"); return; }
+            std::string str_value(value);
+            context->setGlobalData(label, str_value);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataVec2(helios::Context* context, const char* label, float x, float y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::vec2 v(x, y);
+            context->setGlobalData(label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataVec3(helios::Context* context, const char* label, float x, float y, float z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::vec3 v(x, y, z);
+            context->setGlobalData(label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataVec4(helios::Context* context, const char* label, float x, float y, float z, float w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::vec4 v(x, y, z, w);
+            context->setGlobalData(label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataInt2(helios::Context* context, const char* label, int x, int y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::int2 v(x, y);
+            context->setGlobalData(label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataInt3(helios::Context* context, const char* label, int x, int y, int z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::int3 v(x, y, z);
+            context->setGlobalData(label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setGlobalDataInt4(helios::Context* context, const char* label, int x, int y, int z, int w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            helios::int4 v(x, y, z, w);
+            context->setGlobalData(label, v);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setGlobalData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setGlobalData): Unknown error.");
+        }
+    }
+
+    // --- Getters ---
+
+    PYHELIOS_API int getGlobalDataInt(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; }
+            int value;
+            context->getGlobalData(label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned int getGlobalDataUInt(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; }
+            uint value;
+            context->getGlobalData(label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API float getGlobalDataFloat(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0.0f; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0.0f; }
+            float value;
+            context->getGlobalData(label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API double getGlobalDataDouble(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0.0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0.0; }
+            double value;
+            context->getGlobalData(label, value);
+            return value;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what());
+            return 0.0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error.");
+            return 0.0;
+        }
+    }
+
+    PYHELIOS_API int getGlobalDataString(helios::Context* context, const char* label, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label || !buffer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or buffer is null"); return 0; }
+            std::string value;
+            context->getGlobalData(label, value);
+            int copy_length = std::min((int)value.length(), buffer_size - 1);
+            std::strncpy(buffer, value.c_str(), copy_length);
+            buffer[copy_length] = '\0';
+            return copy_length;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API void getGlobalDataVec2(helios::Context* context, const char* label, float* x, float* y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::vec2 v; context->getGlobalData(label, v); *x = v.x; *y = v.y;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void getGlobalDataVec3(helios::Context* context, const char* label, float* x, float* y, float* z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::vec3 v; context->getGlobalData(label, v); *x = v.x; *y = v.y; *z = v.z;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void getGlobalDataVec4(helios::Context* context, const char* label, float* x, float* y, float* z, float* w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z || !w) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::vec4 v; context->getGlobalData(label, v); *x = v.x; *y = v.y; *z = v.z; *w = v.w;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void getGlobalDataInt2(helios::Context* context, const char* label, int* x, int* y) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::int2 v; context->getGlobalData(label, v); *x = v.x; *y = v.y;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void getGlobalDataInt3(helios::Context* context, const char* label, int* x, int* y, int* z) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::int3 v; context->getGlobalData(label, v); *x = v.x; *y = v.y; *z = v.z;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void getGlobalDataInt4(helios::Context* context, const char* label, int* x, int* y, int* z, int* w) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label || !x || !y || !z || !w) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label or output pointers are null"); return; }
+            helios::int4 v; context->getGlobalData(label, v); *x = v.x; *y = v.y; *z = v.z; *w = v.w;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalData): Unknown error."); }
+    }
+
+    // --- Utilities ---
+
+    PYHELIOS_API int getGlobalDataType(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return -1; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return -1; }
+            return static_cast<int>(context->getGlobalDataType(label));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalDataType): ") + e.what()); return -1; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalDataType): Unknown error."); return -1; }
+    }
+
+    PYHELIOS_API int getGlobalDataSize(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; }
+            return static_cast<int>(context->getGlobalDataSize(label));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getGlobalDataSize): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getGlobalDataSize): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API bool doesGlobalDataExist(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return false; }
+            return context->doesGlobalDataExist(label);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (doesGlobalDataExist): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (doesGlobalDataExist): Unknown error."); return false; }
+    }
+
+    PYHELIOS_API void clearGlobalData(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->clearGlobalData(label);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (clearGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void renameGlobalData(helios::Context* context, const char* old_label, const char* new_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!old_label || !new_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->renameGlobalData(old_label, new_label);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (renameGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (renameGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void duplicateGlobalData(helios::Context* context, const char* old_label, const char* new_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!old_label || !new_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->duplicateGlobalData(old_label, new_label);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (duplicateGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (duplicateGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API const char** listGlobalData(helios::Context* context, unsigned int* count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (count) *count = 0; return nullptr; }
+            if (!count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count output parameter is null"); return nullptr; }
+            static thread_local std::vector<std::string> static_strings;
+            static thread_local std::vector<const char*> static_ptrs;
+            static_strings = context->listGlobalData();
+            static_ptrs.clear();
+            static_ptrs.reserve(static_strings.size());
+            for (auto& s : static_strings) { static_ptrs.push_back(s.c_str()); }
+            *count = static_strings.size();
+            return static_ptrs.empty() ? nullptr : static_ptrs.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (listGlobalData): ") + e.what());
+            if (count) *count = 0; return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (listGlobalData): Unknown error.");
+            if (count) *count = 0; return nullptr;
+        }
+    }
+
+    // --- Increment ---
+
+    PYHELIOS_API void incrementGlobalDataInt(helios::Context* context, const char* label, int increment) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->incrementGlobalData(label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (incrementGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (incrementGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void incrementGlobalDataUInt(helios::Context* context, const char* label, unsigned int increment) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->incrementGlobalData(label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (incrementGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (incrementGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void incrementGlobalDataFloat(helios::Context* context, const char* label, float increment) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->incrementGlobalData(label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (incrementGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (incrementGlobalData): Unknown error."); }
+    }
+
+    PYHELIOS_API void incrementGlobalDataDouble(helios::Context* context, const char* label, double increment) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->incrementGlobalData(label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (incrementGlobalData): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (incrementGlobalData): Unknown error."); }
+    }
+
+    // ==================== Primitive Data Statistics & Filtering ====================
+
+    #define STATS_PREAMBLE \
+        clearError(); \
+        if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; } \
+        if (!uuids || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs null or empty"); return 0; } \
+        if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return 0; } \
+        std::vector<uint> uuids_vec(uuids, uuids + count);
+
+    PYHELIOS_API float calculatePrimitiveDataMeanFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        STATS_PREAMBLE
+        try { float v; context->calculatePrimitiveDataMean(uuids_vec, std::string(label), v); return v; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API double calculatePrimitiveDataMeanDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            double v; context->calculatePrimitiveDataMean(uuids_vec, std::string(label), v); return v;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API void calculatePrimitiveDataMeanVec2(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float* x, float* y) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label || !x || !y) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            helios::vec2 v; context->calculatePrimitiveDataMean(uuids_vec, std::string(label), v); *x = v.x; *y = v.y;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void calculatePrimitiveDataMeanVec3(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float* x, float* y, float* z) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label || !x || !y || !z) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            helios::vec3 v; context->calculatePrimitiveDataMean(uuids_vec, std::string(label), v); *x = v.x; *y = v.y; *z = v.z;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void calculatePrimitiveDataMeanVec4(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float* x, float* y, float* z, float* w) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label || !x || !y || !z || !w) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            helios::vec4 v; context->calculatePrimitiveDataMean(uuids_vec, std::string(label), v); *x = v.x; *y = v.y; *z = v.z; *w = v.w;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API float calculatePrimitiveDataAreaWeightedMeanFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        STATS_PREAMBLE
+        try { float v; context->calculatePrimitiveDataAreaWeightedMean(uuids_vec, std::string(label), v); return v; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API double calculatePrimitiveDataAreaWeightedMeanDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            double v; context->calculatePrimitiveDataAreaWeightedMean(uuids_vec, std::string(label), v); return v;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API float calculatePrimitiveDataSumFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        STATS_PREAMBLE
+        try { float v; context->calculatePrimitiveDataSum(uuids_vec, std::string(label), v); return v; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API double calculatePrimitiveDataSumDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            double v; context->calculatePrimitiveDataSum(uuids_vec, std::string(label), v); return v;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API float calculatePrimitiveDataAreaWeightedSumFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        STATS_PREAMBLE
+        try { float v; context->calculatePrimitiveDataAreaWeightedSum(uuids_vec, std::string(label), v); return v; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API double calculatePrimitiveDataAreaWeightedSumDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            double v; context->calculatePrimitiveDataAreaWeightedSum(uuids_vec, std::string(label), v); return v;
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    #undef STATS_PREAMBLE
+
+    // Scale & Increment
+
+    PYHELIOS_API void scalePrimitiveDataWithUUIDs(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float factor) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->scalePrimitiveData(uuids_vec, std::string(label), factor);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void scalePrimitiveDataAll(helios::Context* context, const char* label, float factor) {
+        clearError();
+        try {
+            if (!context || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            context->scalePrimitiveData(std::string(label), factor);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void incrementPrimitiveDataInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, int increment) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->incrementPrimitiveData(uuids_vec, label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void incrementPrimitiveDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float increment) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->incrementPrimitiveData(uuids_vec, label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    // Aggregate
+
+    PYHELIOS_API void aggregatePrimitiveDataSum(helios::Context* context, unsigned int* uuids, unsigned int count, const char** labels, unsigned int label_count, const char* result_label) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !labels || label_count == 0 || !result_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            std::vector<std::string> labels_vec;
+            labels_vec.reserve(label_count);
+            for (unsigned int i = 0; i < label_count; i++) { labels_vec.emplace_back(labels[i]); }
+            context->aggregatePrimitiveDataSum(uuids_vec, labels_vec, std::string(result_label));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void aggregatePrimitiveDataProduct(helios::Context* context, unsigned int* uuids, unsigned int count, const char** labels, unsigned int label_count, const char* result_label) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !labels || label_count == 0 || !result_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            std::vector<std::string> labels_vec;
+            labels_vec.reserve(label_count);
+            for (unsigned int i = 0; i < label_count; i++) { labels_vec.emplace_back(labels[i]); }
+            context->aggregatePrimitiveDataProduct(uuids_vec, labels_vec, std::string(result_label));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    // Surface area
+
+    PYHELIOS_API float sumPrimitiveSurfaceArea(helios::Context* context, unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            return context->sumPrimitiveSurfaceArea(uuids_vec);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    // Filter
+
+    PYHELIOS_API unsigned int* filterPrimitivesByDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label || !comparator) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterPrimitivesByData(uuids_vec, std::string(label), value, std::string(comparator));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); if (result_count) *result_count = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); if (result_count) *result_count = 0; return nullptr; }
+    }
+
+    PYHELIOS_API unsigned int* filterPrimitivesByDataInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, int value, const char* comparator, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label || !comparator) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterPrimitivesByData(uuids_vec, std::string(label), value, std::string(comparator));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); if (result_count) *result_count = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); if (result_count) *result_count = 0; return nullptr; }
+    }
+
+    PYHELIOS_API unsigned int* filterPrimitivesByDataString(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, const char* value, unsigned int* result_count) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label || !value) { if (result_count) *result_count = 0; return nullptr; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = context->filterPrimitivesByData(uuids_vec, std::string(label), std::string(value));
+            *result_count = static_result.size();
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); if (result_count) *result_count = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); if (result_count) *result_count = 0; return nullptr; }
     }
 
 } //extern "C"

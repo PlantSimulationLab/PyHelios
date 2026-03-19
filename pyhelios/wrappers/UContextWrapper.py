@@ -106,6 +106,12 @@ helios_lib.getPrimitiveColorRGBA.errcheck = _check_error
 helios_lib.getPrimitiveCount.argtypes = [ctypes.POINTER(UContext)]
 helios_lib.getPrimitiveCount.restype = ctypes.c_uint
 
+helios_lib.doesPrimitiveExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+helios_lib.doesPrimitiveExist.restype = ctypes.c_bool
+
+helios_lib.doesPrimitiveExistBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+helios_lib.doesPrimitiveExistBatch.restype = ctypes.c_bool
+
 helios_lib.getAllUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint)]
 helios_lib.getAllUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
 helios_lib.getAllUUIDs.errcheck = _check_error
@@ -975,6 +981,12 @@ def getPrimitiveColorRGBA(context, uuid):
 
 def getPrimitiveCount(context):
     return helios_lib.getPrimitiveCount(context)
+
+def doesPrimitiveExist(context, uuid):
+    return helios_lib.doesPrimitiveExist(context, uuid)
+
+def doesPrimitiveExistBatch(context, uuids, count):
+    return helios_lib.doesPrimitiveExistBatch(context, uuids, count)
 
 def getAllUUIDs(context, size):
     # Error checking is handled automatically by errcheck
@@ -4269,6 +4281,26 @@ try:
     helios_lib.getBatchPrimitiveMaterialLabels.restype = ctypes.c_char_p
     helios_lib.getBatchPrimitiveMaterialLabels.errcheck = _check_error
 
+    helios_lib.resolveMaterialTextures.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.resolveMaterialTextures.restype = ctypes.c_char_p
+    helios_lib.resolveMaterialTextures.errcheck = _check_error
+
+    helios_lib.packGPUBuffers.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.packGPUBuffers.restype = ctypes.POINTER(ctypes.c_ubyte)
+    helios_lib.packGPUBuffers.errcheck = _check_error
+
     _BATCH_FUNCTIONS_AVAILABLE = True
 except AttributeError:
     _BATCH_FUNCTIONS_AVAILABLE = False
@@ -4367,3 +4399,1119 @@ def getBatchPrimitiveMaterialLabels(context, uuids: List[int]):
     ptr = helios_lib.getBatchPrimitiveMaterialLabels(context, uuids_array, count, offsets, ctypes.byref(total_chars))
     return (ptr, list(offsets), total_chars.value)
 
+
+def resolveMaterialTextures(context, uuids: List[int], colors_np):
+    """Resolve material texture suppression in C++.
+
+    Args:
+        context: Context pointer
+        uuids: List of primitive UUIDs
+        colors_np: numpy float32 array of shape (N, 3), modified IN-PLACE
+
+    Returns:
+        List[str] of resolved texture file paths
+    """
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    count = len(uuids)
+    if count == 0:
+        return []
+    uuids_array = _make_uuid_array(uuids)
+    offsets = (ctypes.c_uint * (count + 1))()
+    total_chars = ctypes.c_uint()
+    colors_ptr = colors_np.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+    ptr = helios_lib.resolveMaterialTextures(
+        context, uuids_array, count, colors_ptr, offsets, ctypes.byref(total_chars))
+
+    if total_chars.value == 0 or not ptr:
+        return ["" for _ in uuids]
+    full_str = ptr.decode('utf-8') if isinstance(ptr, bytes) else ptr
+    return [full_str[offsets[i]:offsets[i+1]] for i in range(count)]
+
+
+def packGPUBuffers(context, uuids: List[int]) -> bytes:
+    """Pack GPU-ready geometry buffers for a set of primitives in a single C++ pass.
+
+    Returns the raw binary blob containing header, group descriptors, and
+    contiguous typed arrays (positions, colors, uvs, indices, faceToUuid)
+    that can be served directly to the frontend for zero-copy BufferGeometry loading.
+    """
+    if not _BATCH_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Batch functions not available. Rebuild with updated C++ wrapper.")
+    count = len(uuids)
+    if count == 0:
+        return b''
+    uuids_array = _make_uuid_array(uuids)
+    out_size = ctypes.c_uint()
+    ptr = helios_lib.packGPUBuffers(context, uuids_array, count, ctypes.byref(out_size))
+    if not ptr or out_size.value == 0:
+        return b''
+    return bytes(ctypes.cast(ptr, ctypes.POINTER(ctypes.c_ubyte * out_size.value)).contents)
+
+
+# ==================== Visibility Functions ====================
+
+_VISIBILITY_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.hidePrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.hidePrimitive.restype = None
+    helios_lib.hidePrimitive.errcheck = _check_error
+
+    helios_lib.hidePrimitives.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.hidePrimitives.restype = None
+    helios_lib.hidePrimitives.errcheck = _check_error
+
+    helios_lib.showPrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.showPrimitive.restype = None
+    helios_lib.showPrimitive.errcheck = _check_error
+
+    helios_lib.showPrimitives.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.showPrimitives.restype = None
+    helios_lib.showPrimitives.errcheck = _check_error
+
+    helios_lib.isPrimitiveHidden.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.isPrimitiveHidden.restype = ctypes.c_bool
+    helios_lib.isPrimitiveHidden.errcheck = _check_error
+
+    helios_lib.hideObject.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.hideObject.restype = None
+    helios_lib.hideObject.errcheck = _check_error
+
+    helios_lib.hideObjects.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.hideObjects.restype = None
+    helios_lib.hideObjects.errcheck = _check_error
+
+    helios_lib.showObject.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.showObject.restype = None
+    helios_lib.showObject.errcheck = _check_error
+
+    helios_lib.showObjects.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.showObjects.restype = None
+    helios_lib.showObjects.errcheck = _check_error
+
+    helios_lib.isObjectHidden.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.isObjectHidden.restype = ctypes.c_bool
+    helios_lib.isObjectHidden.errcheck = _check_error
+
+    _VISIBILITY_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _VISIBILITY_FUNCTIONS_AVAILABLE = False
+
+_NOT_AVAILABLE_VISIBILITY_MSG = (
+    "Visibility functions not available in current Helios library. "
+    "Rebuild PyHelios with updated C++ wrapper implementation."
+)
+
+
+def hidePrimitiveWrapper(context, uuid: int) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    helios_lib.hidePrimitive(context, uuid)
+
+
+def hidePrimitivesWrapper(context, uuids: List[int]) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    if not uuids:
+        return
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.hidePrimitives(context, uuids_array, len(uuids))
+
+
+def showPrimitiveWrapper(context, uuid: int) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    helios_lib.showPrimitive(context, uuid)
+
+
+def showPrimitivesWrapper(context, uuids: List[int]) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    if not uuids:
+        return
+    uuids_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.showPrimitives(context, uuids_array, len(uuids))
+
+
+def isPrimitiveHiddenWrapper(context, uuid: int) -> bool:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    return helios_lib.isPrimitiveHidden(context, uuid)
+
+
+def hideObjectWrapper(context, objID: int) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    helios_lib.hideObject(context, objID)
+
+
+def hideObjectsWrapper(context, objIDs: List[int]) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    if not objIDs:
+        return
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.hideObjects(context, ids_array, len(objIDs))
+
+
+def showObjectWrapper(context, objID: int) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    helios_lib.showObject(context, objID)
+
+
+def showObjectsWrapper(context, objIDs: List[int]) -> None:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    if not objIDs:
+        return
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.showObjects(context, ids_array, len(objIDs))
+
+
+def isObjectHiddenWrapper(context, objID: int) -> bool:
+    if not _VISIBILITY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_VISIBILITY_MSG)
+    return helios_lib.isObjectHidden(context, objID)
+
+
+# ==================== Object Data Functions ====================
+
+_OBJECT_DATA_FUNCTIONS_AVAILABLE = False
+try:
+    # Setters (single)
+    for _t, _ct in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint), ('Float', ctypes.c_float), ('Double', ctypes.c_double)]:
+        _fn = getattr(helios_lib, f'setObjectData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, _ct]
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    helios_lib.setObjectDataString.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setObjectDataString.restype = None
+    helios_lib.setObjectDataString.errcheck = _check_error
+
+    helios_lib.setObjectDataVec2.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float, ctypes.c_float]
+    helios_lib.setObjectDataVec2.restype = None
+    helios_lib.setObjectDataVec2.errcheck = _check_error
+    helios_lib.setObjectDataVec3.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setObjectDataVec3.restype = None
+    helios_lib.setObjectDataVec3.errcheck = _check_error
+    helios_lib.setObjectDataVec4.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setObjectDataVec4.restype = None
+    helios_lib.setObjectDataVec4.errcheck = _check_error
+
+    helios_lib.setObjectDataInt2.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    helios_lib.setObjectDataInt2.restype = None
+    helios_lib.setObjectDataInt2.errcheck = _check_error
+    helios_lib.setObjectDataInt3.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setObjectDataInt3.restype = None
+    helios_lib.setObjectDataInt3.errcheck = _check_error
+    helios_lib.setObjectDataInt4.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setObjectDataInt4.restype = None
+    helios_lib.setObjectDataInt4.errcheck = _check_error
+
+    # Getters
+    for _t, _ct in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint), ('Float', ctypes.c_float), ('Double', ctypes.c_double)]:
+        _fn = getattr(helios_lib, f'getObjectData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+        _fn.restype = _ct
+        _fn.errcheck = _check_error
+
+    helios_lib.getObjectDataString.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getObjectDataString.restype = ctypes.c_int
+    helios_lib.getObjectDataString.errcheck = _check_error
+
+    for _n, _ct, _count in [('Vec2', ctypes.c_float, 2), ('Vec3', ctypes.c_float, 3), ('Vec4', ctypes.c_float, 4),
+                             ('Int2', ctypes.c_int, 2), ('Int3', ctypes.c_int, 3), ('Int4', ctypes.c_int, 4)]:
+        _fn = getattr(helios_lib, f'getObjectData{_n}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p] + [ctypes.POINTER(_ct)] * _count
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    # Utilities
+    helios_lib.getObjectDataType.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.getObjectDataType.restype = ctypes.c_int
+    helios_lib.getObjectDataType.errcheck = _check_error
+
+    helios_lib.getObjectDataSize.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.getObjectDataSize.restype = ctypes.c_int
+    helios_lib.getObjectDataSize.errcheck = _check_error
+
+    helios_lib.doesObjectDataExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.doesObjectDataExist.restype = ctypes.c_bool
+    helios_lib.doesObjectDataExist.errcheck = _check_error
+
+    helios_lib.clearObjectData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.clearObjectData.restype = None
+    helios_lib.clearObjectData.errcheck = _check_error
+
+    helios_lib.clearObjectDataBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.clearObjectDataBatch.restype = None
+    helios_lib.clearObjectDataBatch.errcheck = _check_error
+
+    helios_lib.listObjectData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.listObjectData.restype = ctypes.POINTER(ctypes.c_char_p)
+    helios_lib.listObjectData.errcheck = _check_error
+
+    helios_lib.listAllObjectDataLabels.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.listAllObjectDataLabels.restype = ctypes.POINTER(ctypes.c_char_p)
+    helios_lib.listAllObjectDataLabels.errcheck = _check_error
+
+    helios_lib.duplicateObjectData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.duplicateObjectData.restype = None
+    helios_lib.duplicateObjectData.errcheck = _check_error
+
+    helios_lib.renameObjectData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.renameObjectData.restype = None
+    helios_lib.renameObjectData.errcheck = _check_error
+
+    # Filters
+    for _t, _ct in [('Float', ctypes.c_float), ('Double', ctypes.c_double), ('Int', ctypes.c_int), ('UInt', ctypes.c_uint)]:
+        _fn = getattr(helios_lib, f'filterObjectsByData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, _ct, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+        _fn.restype = ctypes.POINTER(ctypes.c_uint)
+        _fn.errcheck = _check_error
+
+    helios_lib.filterObjectsByDataString.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.filterObjectsByDataString.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.filterObjectsByDataString.errcheck = _check_error
+
+    _OBJECT_DATA_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _OBJECT_DATA_FUNCTIONS_AVAILABLE = False
+
+_BROADCAST_OBJECT_DATA_AVAILABLE = False
+try:
+    for _t, _ct in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint), ('Float', ctypes.c_float), ('Double', ctypes.c_double)]:
+        _fn = getattr(helios_lib, f'setBroadcastObjectData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, _ct]
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    helios_lib.setBroadcastObjectDataString.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setBroadcastObjectDataString.restype = None
+    helios_lib.setBroadcastObjectDataString.errcheck = _check_error
+
+    for _n, _cts in [('Vec2', [ctypes.c_float]*2), ('Vec3', [ctypes.c_float]*3), ('Vec4', [ctypes.c_float]*4),
+                     ('Int2', [ctypes.c_int]*2), ('Int3', [ctypes.c_int]*3), ('Int4', [ctypes.c_int]*4)]:
+        _fn = getattr(helios_lib, f'setBroadcastObjectData{_n}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t, ctypes.c_char_p] + _cts
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    _BROADCAST_OBJECT_DATA_AVAILABLE = True
+except AttributeError:
+    _BROADCAST_OBJECT_DATA_AVAILABLE = False
+
+_NOT_AVAILABLE_OBJDATA_MSG = (
+    "Object data functions not available in current Helios library. "
+    "Rebuild PyHelios with updated C++ wrapper implementation."
+)
+_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG = (
+    "Broadcast object data functions not available. "
+    "Rebuild native library with updated version."
+)
+
+
+# --- Object data wrapper functions ---
+
+def setObjectDataInt(context, objID: int, label: str, value: int):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataInt(context, objID, label.encode('utf-8'), value)
+
+def setObjectDataUInt(context, objID: int, label: str, value: int):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataUInt(context, objID, label.encode('utf-8'), value)
+
+def setObjectDataFloat(context, objID: int, label: str, value: float):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataFloat(context, objID, label.encode('utf-8'), value)
+
+def setObjectDataDouble(context, objID: int, label: str, value: float):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataDouble(context, objID, label.encode('utf-8'), value)
+
+def setObjectDataString(context, objID: int, label: str, value: str):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataString(context, objID, label.encode('utf-8'), value.encode('utf-8'))
+
+def setObjectDataVec2(context, objID: int, label: str, x: float, y: float):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataVec2(context, objID, label.encode('utf-8'), x, y)
+
+def setObjectDataVec3(context, objID: int, label: str, x: float, y: float, z: float):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataVec3(context, objID, label.encode('utf-8'), x, y, z)
+
+def setObjectDataVec4(context, objID: int, label: str, x: float, y: float, z: float, w: float):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataVec4(context, objID, label.encode('utf-8'), x, y, z, w)
+
+def setObjectDataInt2(context, objID: int, label: str, x: int, y: int):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataInt2(context, objID, label.encode('utf-8'), x, y)
+
+def setObjectDataInt3(context, objID: int, label: str, x: int, y: int, z: int):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataInt3(context, objID, label.encode('utf-8'), x, y, z)
+
+def setObjectDataInt4(context, objID: int, label: str, x: int, y: int, z: int, w: int):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.setObjectDataInt4(context, objID, label.encode('utf-8'), x, y, z, w)
+
+# Getters
+
+def getObjectDataInt(context, objID: int, label: str) -> int:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.getObjectDataInt(context, objID, label.encode('utf-8'))
+
+def getObjectDataUInt(context, objID: int, label: str) -> int:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.getObjectDataUInt(context, objID, label.encode('utf-8'))
+
+def getObjectDataFloat(context, objID: int, label: str) -> float:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.getObjectDataFloat(context, objID, label.encode('utf-8'))
+
+def getObjectDataDouble(context, objID: int, label: str) -> float:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.getObjectDataDouble(context, objID, label.encode('utf-8'))
+
+def getObjectDataString(context, objID: int, label: str) -> str:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    buffer = ctypes.create_string_buffer(1024)
+    helios_lib.getObjectDataString(context, objID, label.encode('utf-8'), buffer, 1024)
+    return buffer.value.decode('utf-8')
+
+def getObjectDataVec2(context, objID: int, label: str) -> List[float]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    x, y = ctypes.c_float(), ctypes.c_float()
+    helios_lib.getObjectDataVec2(context, objID, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y))
+    return [x.value, y.value]
+
+def getObjectDataVec3(context, objID: int, label: str) -> List[float]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    x, y, z = ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.getObjectDataVec3(context, objID, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return [x.value, y.value, z.value]
+
+def getObjectDataVec4(context, objID: int, label: str) -> List[float]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    x, y, z, w = ctypes.c_float(), ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.getObjectDataVec4(context, objID, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z), ctypes.byref(w))
+    return [x.value, y.value, z.value, w.value]
+
+def getObjectDataInt2(context, objID: int, label: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    x, y = ctypes.c_int(), ctypes.c_int()
+    helios_lib.getObjectDataInt2(context, objID, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y))
+    return [x.value, y.value]
+
+def getObjectDataInt3(context, objID: int, label: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    x, y, z = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    helios_lib.getObjectDataInt3(context, objID, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return [x.value, y.value, z.value]
+
+def getObjectDataInt4(context, objID: int, label: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    x, y, z, w = ctypes.c_int(), ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    helios_lib.getObjectDataInt4(context, objID, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z), ctypes.byref(w))
+    return [x.value, y.value, z.value, w.value]
+
+# Utilities
+
+def getObjectDataTypeWrapper(context, objID: int, label: str) -> int:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.getObjectDataType(context, objID, label.encode('utf-8'))
+
+def getObjectDataSizeWrapper(context, objID: int, label: str) -> int:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.getObjectDataSize(context, objID, label.encode('utf-8'))
+
+def doesObjectDataExistWrapper(context, objID: int, label: str) -> bool:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    return helios_lib.doesObjectDataExist(context, objID, label.encode('utf-8'))
+
+def clearObjectDataWrapper(context, objID: int, label: str):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.clearObjectData(context, objID, label.encode('utf-8'))
+
+def clearObjectDataBatchWrapper(context, objIDs: List[int], label: str):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    if not objIDs:
+        return
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.clearObjectDataBatch(context, ids_array, len(objIDs), label.encode('utf-8'))
+
+def listObjectDataWrapper(context, objID: int) -> List[str]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    count = ctypes.c_uint()
+    result_ptr = helios_lib.listObjectData(context, objID, ctypes.byref(count))
+    if count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i].decode('utf-8') for i in range(count.value)]
+
+def listAllObjectDataLabelsWrapper(context) -> List[str]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    count = ctypes.c_uint()
+    result_ptr = helios_lib.listAllObjectDataLabels(context, ctypes.byref(count))
+    if count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i].decode('utf-8') for i in range(count.value)]
+
+def duplicateObjectDataWrapper(context, objID: int, old_label: str, new_label: str):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.duplicateObjectData(context, objID, old_label.encode('utf-8'), new_label.encode('utf-8'))
+
+def renameObjectDataWrapper(context, objID: int, old_label: str, new_label: str):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.renameObjectData(context, objID, old_label.encode('utf-8'), new_label.encode('utf-8'))
+
+# Broadcast setters
+
+def setBroadcastObjectDataInt(context, objIDs: List[int], label: str, value: int):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataInt(context, ids_array, len(objIDs), label.encode('utf-8'), value)
+
+def setBroadcastObjectDataUInt(context, objIDs: List[int], label: str, value: int):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataUInt(context, ids_array, len(objIDs), label.encode('utf-8'), value)
+
+def setBroadcastObjectDataFloat(context, objIDs: List[int], label: str, value: float):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataFloat(context, ids_array, len(objIDs), label.encode('utf-8'), value)
+
+def setBroadcastObjectDataDouble(context, objIDs: List[int], label: str, value: float):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataDouble(context, ids_array, len(objIDs), label.encode('utf-8'), value)
+
+def setBroadcastObjectDataString(context, objIDs: List[int], label: str, value: str):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataString(context, ids_array, len(objIDs), label.encode('utf-8'), value.encode('utf-8'))
+
+def setBroadcastObjectDataVec2(context, objIDs: List[int], label: str, x: float, y: float):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataVec2(context, ids_array, len(objIDs), label.encode('utf-8'), x, y)
+
+def setBroadcastObjectDataVec3(context, objIDs: List[int], label: str, x: float, y: float, z: float):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataVec3(context, ids_array, len(objIDs), label.encode('utf-8'), x, y, z)
+
+def setBroadcastObjectDataVec4(context, objIDs: List[int], label: str, x: float, y: float, z: float, w: float):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataVec4(context, ids_array, len(objIDs), label.encode('utf-8'), x, y, z, w)
+
+def setBroadcastObjectDataInt2(context, objIDs: List[int], label: str, x: int, y: int):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataInt2(context, ids_array, len(objIDs), label.encode('utf-8'), x, y)
+
+def setBroadcastObjectDataInt3(context, objIDs: List[int], label: str, x: int, y: int, z: int):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataInt3(context, ids_array, len(objIDs), label.encode('utf-8'), x, y, z)
+
+def setBroadcastObjectDataInt4(context, objIDs: List[int], label: str, x: int, y: int, z: int, w: int):
+    if not _BROADCAST_OBJECT_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_BROADCAST_OBJDATA_MSG)
+    if not objIDs:
+        raise ValueError("Object IDs list cannot be empty")
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    helios_lib.setBroadcastObjectDataInt4(context, ids_array, len(objIDs), label.encode('utf-8'), x, y, z, w)
+
+# Filters
+
+def filterObjectsByDataFloatWrapper(context, objIDs: List[int], label: str, value: float, comparator: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    result_count = ctypes.c_uint()
+    result_ptr = helios_lib.filterObjectsByDataFloat(context, ids_array, len(objIDs), label.encode('utf-8'), value, comparator.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i] for i in range(result_count.value)]
+
+def filterObjectsByDataDoubleWrapper(context, objIDs: List[int], label: str, value: float, comparator: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    result_count = ctypes.c_uint()
+    result_ptr = helios_lib.filterObjectsByDataDouble(context, ids_array, len(objIDs), label.encode('utf-8'), value, comparator.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i] for i in range(result_count.value)]
+
+def filterObjectsByDataIntWrapper(context, objIDs: List[int], label: str, value: int, comparator: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    result_count = ctypes.c_uint()
+    result_ptr = helios_lib.filterObjectsByDataInt(context, ids_array, len(objIDs), label.encode('utf-8'), value, comparator.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i] for i in range(result_count.value)]
+
+def filterObjectsByDataUIntWrapper(context, objIDs: List[int], label: str, value: int, comparator: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    result_count = ctypes.c_uint()
+    result_ptr = helios_lib.filterObjectsByDataUInt(context, ids_array, len(objIDs), label.encode('utf-8'), value, comparator.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i] for i in range(result_count.value)]
+
+def filterObjectsByDataStringWrapper(context, objIDs: List[int], label: str, value: str) -> List[int]:
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
+    result_count = ctypes.c_uint()
+    result_ptr = helios_lib.filterObjectsByDataString(context, ids_array, len(objIDs), label.encode('utf-8'), value.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i] for i in range(result_count.value)]
+
+# Auto-detecting getter (mirrors getPrimitiveDataAuto pattern)
+
+def getObjectDataAuto(context, objID: int, label: str):
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    dtype = getObjectDataTypeWrapper(context, objID, label)
+    # HeliosDataType enum: 0=INT, 1=UINT, 2=FLOAT, 3=DOUBLE, 4=VEC2, 5=VEC3, 6=VEC4,
+    #                      7=INT2, 8=INT3, 9=INT4, 10=STRING
+    if dtype == 0:
+        return getObjectDataInt(context, objID, label)
+    elif dtype == 1:
+        return getObjectDataUInt(context, objID, label)
+    elif dtype == 2:
+        return getObjectDataFloat(context, objID, label)
+    elif dtype == 3:
+        return getObjectDataDouble(context, objID, label)
+    elif dtype == 4:
+        return getObjectDataVec2(context, objID, label)
+    elif dtype == 5:
+        return getObjectDataVec3(context, objID, label)
+    elif dtype == 6:
+        return getObjectDataVec4(context, objID, label)
+    elif dtype == 7:
+        return getObjectDataInt2(context, objID, label)
+    elif dtype == 8:
+        return getObjectDataInt3(context, objID, label)
+    elif dtype == 9:
+        return getObjectDataInt4(context, objID, label)
+    elif dtype == 10:
+        return getObjectDataString(context, objID, label)
+    else:
+        raise ValueError(f"Unknown object data type code: {dtype}")
+
+
+# ==================== Global Data Functions ====================
+
+_GLOBAL_DATA_FUNCTIONS_AVAILABLE = False
+try:
+    for _t, _ct in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint), ('Float', ctypes.c_float), ('Double', ctypes.c_double)]:
+        _fn = getattr(helios_lib, f'setGlobalData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, _ct]
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    helios_lib.setGlobalDataString.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setGlobalDataString.restype = None
+    helios_lib.setGlobalDataString.errcheck = _check_error
+
+    helios_lib.setGlobalDataVec2.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_float, ctypes.c_float]
+    helios_lib.setGlobalDataVec2.restype = None
+    helios_lib.setGlobalDataVec2.errcheck = _check_error
+    helios_lib.setGlobalDataVec3.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setGlobalDataVec3.restype = None
+    helios_lib.setGlobalDataVec3.errcheck = _check_error
+    helios_lib.setGlobalDataVec4.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setGlobalDataVec4.restype = None
+    helios_lib.setGlobalDataVec4.errcheck = _check_error
+    helios_lib.setGlobalDataInt2.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    helios_lib.setGlobalDataInt2.restype = None
+    helios_lib.setGlobalDataInt2.errcheck = _check_error
+    helios_lib.setGlobalDataInt3.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setGlobalDataInt3.restype = None
+    helios_lib.setGlobalDataInt3.errcheck = _check_error
+    helios_lib.setGlobalDataInt4.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setGlobalDataInt4.restype = None
+    helios_lib.setGlobalDataInt4.errcheck = _check_error
+
+    for _t, _ct in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint), ('Float', ctypes.c_float), ('Double', ctypes.c_double)]:
+        _fn = getattr(helios_lib, f'getGlobalData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+        _fn.restype = _ct
+        _fn.errcheck = _check_error
+
+    helios_lib.getGlobalDataString.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getGlobalDataString.restype = ctypes.c_int
+    helios_lib.getGlobalDataString.errcheck = _check_error
+
+    for _n, _ct, _count in [('Vec2', ctypes.c_float, 2), ('Vec3', ctypes.c_float, 3), ('Vec4', ctypes.c_float, 4),
+                             ('Int2', ctypes.c_int, 2), ('Int3', ctypes.c_int, 3), ('Int4', ctypes.c_int, 4)]:
+        _fn = getattr(helios_lib, f'getGlobalData{_n}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p] + [ctypes.POINTER(_ct)] * _count
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    helios_lib.getGlobalDataType.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getGlobalDataType.restype = ctypes.c_int
+    helios_lib.getGlobalDataType.errcheck = _check_error
+    helios_lib.getGlobalDataSize.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getGlobalDataSize.restype = ctypes.c_int
+    helios_lib.getGlobalDataSize.errcheck = _check_error
+    helios_lib.doesGlobalDataExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.doesGlobalDataExist.restype = ctypes.c_bool
+    helios_lib.doesGlobalDataExist.errcheck = _check_error
+    helios_lib.clearGlobalData.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.clearGlobalData.restype = None
+    helios_lib.clearGlobalData.errcheck = _check_error
+    helios_lib.renameGlobalData.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.renameGlobalData.restype = None
+    helios_lib.renameGlobalData.errcheck = _check_error
+    helios_lib.duplicateGlobalData.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.duplicateGlobalData.restype = None
+    helios_lib.duplicateGlobalData.errcheck = _check_error
+    helios_lib.listGlobalData.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.listGlobalData.restype = ctypes.POINTER(ctypes.c_char_p)
+    helios_lib.listGlobalData.errcheck = _check_error
+
+    for _t, _ct in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint), ('Float', ctypes.c_float), ('Double', ctypes.c_double)]:
+        _fn = getattr(helios_lib, f'incrementGlobalData{_t}')
+        _fn.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, _ct]
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    _GLOBAL_DATA_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _GLOBAL_DATA_FUNCTIONS_AVAILABLE = False
+
+_NOT_AVAILABLE_GLOBALDATA_MSG = (
+    "Global data functions not available in current Helios library. "
+    "Rebuild PyHelios with updated C++ wrapper implementation."
+)
+
+
+def setGlobalDataInt(context, label: str, value: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataInt(context, label.encode('utf-8'), value)
+
+def setGlobalDataUInt(context, label: str, value: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataUInt(context, label.encode('utf-8'), value)
+
+def setGlobalDataFloat(context, label: str, value: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataFloat(context, label.encode('utf-8'), value)
+
+def setGlobalDataDouble(context, label: str, value: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataDouble(context, label.encode('utf-8'), value)
+
+def setGlobalDataString(context, label: str, value: str):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataString(context, label.encode('utf-8'), value.encode('utf-8'))
+
+def setGlobalDataVec2(context, label: str, x: float, y: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataVec2(context, label.encode('utf-8'), x, y)
+
+def setGlobalDataVec3(context, label: str, x: float, y: float, z: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataVec3(context, label.encode('utf-8'), x, y, z)
+
+def setGlobalDataVec4(context, label: str, x: float, y: float, z: float, w: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataVec4(context, label.encode('utf-8'), x, y, z, w)
+
+def setGlobalDataInt2(context, label: str, x: int, y: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataInt2(context, label.encode('utf-8'), x, y)
+
+def setGlobalDataInt3(context, label: str, x: int, y: int, z: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataInt3(context, label.encode('utf-8'), x, y, z)
+
+def setGlobalDataInt4(context, label: str, x: int, y: int, z: int, w: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.setGlobalDataInt4(context, label.encode('utf-8'), x, y, z, w)
+
+def getGlobalDataInt(context, label: str) -> int:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.getGlobalDataInt(context, label.encode('utf-8'))
+
+def getGlobalDataUInt(context, label: str) -> int:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.getGlobalDataUInt(context, label.encode('utf-8'))
+
+def getGlobalDataFloat(context, label: str) -> float:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.getGlobalDataFloat(context, label.encode('utf-8'))
+
+def getGlobalDataDouble(context, label: str) -> float:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.getGlobalDataDouble(context, label.encode('utf-8'))
+
+def getGlobalDataString(context, label: str) -> str:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    buffer = ctypes.create_string_buffer(1024)
+    helios_lib.getGlobalDataString(context, label.encode('utf-8'), buffer, 1024)
+    return buffer.value.decode('utf-8')
+
+def getGlobalDataVec2(context, label: str) -> List[float]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    x, y = ctypes.c_float(), ctypes.c_float()
+    helios_lib.getGlobalDataVec2(context, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y))
+    return [x.value, y.value]
+
+def getGlobalDataVec3(context, label: str) -> List[float]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    x, y, z = ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.getGlobalDataVec3(context, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return [x.value, y.value, z.value]
+
+def getGlobalDataVec4(context, label: str) -> List[float]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    x, y, z, w = ctypes.c_float(), ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.getGlobalDataVec4(context, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z), ctypes.byref(w))
+    return [x.value, y.value, z.value, w.value]
+
+def getGlobalDataInt2(context, label: str) -> List[int]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    x, y = ctypes.c_int(), ctypes.c_int()
+    helios_lib.getGlobalDataInt2(context, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y))
+    return [x.value, y.value]
+
+def getGlobalDataInt3(context, label: str) -> List[int]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    x, y, z = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    helios_lib.getGlobalDataInt3(context, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return [x.value, y.value, z.value]
+
+def getGlobalDataInt4(context, label: str) -> List[int]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    x, y, z, w = ctypes.c_int(), ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    helios_lib.getGlobalDataInt4(context, label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z), ctypes.byref(w))
+    return [x.value, y.value, z.value, w.value]
+
+def getGlobalDataTypeWrapper(context, label: str) -> int:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.getGlobalDataType(context, label.encode('utf-8'))
+
+def getGlobalDataSizeWrapper(context, label: str) -> int:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.getGlobalDataSize(context, label.encode('utf-8'))
+
+def doesGlobalDataExistWrapper(context, label: str) -> bool:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    return helios_lib.doesGlobalDataExist(context, label.encode('utf-8'))
+
+def clearGlobalDataWrapper(context, label: str):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.clearGlobalData(context, label.encode('utf-8'))
+
+def renameGlobalDataWrapper(context, old_label: str, new_label: str):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.renameGlobalData(context, old_label.encode('utf-8'), new_label.encode('utf-8'))
+
+def duplicateGlobalDataWrapper(context, old_label: str, new_label: str):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.duplicateGlobalData(context, old_label.encode('utf-8'), new_label.encode('utf-8'))
+
+def listGlobalDataWrapper(context) -> List[str]:
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    count = ctypes.c_uint()
+    result_ptr = helios_lib.listGlobalData(context, ctypes.byref(count))
+    if count.value == 0 or not result_ptr:
+        return []
+    return [result_ptr[i].decode('utf-8') for i in range(count.value)]
+
+def incrementGlobalDataIntWrapper(context, label: str, increment: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.incrementGlobalDataInt(context, label.encode('utf-8'), increment)
+
+def incrementGlobalDataUIntWrapper(context, label: str, increment: int):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.incrementGlobalDataUInt(context, label.encode('utf-8'), increment)
+
+def incrementGlobalDataFloatWrapper(context, label: str, increment: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.incrementGlobalDataFloat(context, label.encode('utf-8'), increment)
+
+def incrementGlobalDataDoubleWrapper(context, label: str, increment: float):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    helios_lib.incrementGlobalDataDouble(context, label.encode('utf-8'), increment)
+
+def getGlobalDataAuto(context, label: str):
+    if not _GLOBAL_DATA_FUNCTIONS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_GLOBALDATA_MSG)
+    dtype = getGlobalDataTypeWrapper(context, label)
+    _dispatch = {0: getGlobalDataInt, 1: getGlobalDataUInt, 2: getGlobalDataFloat, 3: getGlobalDataDouble,
+                 4: getGlobalDataVec2, 5: getGlobalDataVec3, 6: getGlobalDataVec4,
+                 7: getGlobalDataInt2, 8: getGlobalDataInt3, 9: getGlobalDataInt4, 10: getGlobalDataString}
+    if dtype in _dispatch:
+        return _dispatch[dtype](context, label)
+    raise ValueError(f"Unknown global data type code: {dtype}")
+
+
+# ==================== Primitive Data Statistics & Filtering ====================
+
+_PRIMITIVE_DATA_STATS_AVAILABLE = False
+try:
+    _uuid_arr_label = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p]
+
+    helios_lib.calculatePrimitiveDataMeanFloat.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataMeanFloat.restype = ctypes.c_float
+    helios_lib.calculatePrimitiveDataMeanFloat.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataMeanDouble.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataMeanDouble.restype = ctypes.c_double
+    helios_lib.calculatePrimitiveDataMeanDouble.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataMeanVec2.argtypes = _uuid_arr_label + [ctypes.POINTER(ctypes.c_float)]*2
+    helios_lib.calculatePrimitiveDataMeanVec2.restype = None
+    helios_lib.calculatePrimitiveDataMeanVec2.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataMeanVec3.argtypes = _uuid_arr_label + [ctypes.POINTER(ctypes.c_float)]*3
+    helios_lib.calculatePrimitiveDataMeanVec3.restype = None
+    helios_lib.calculatePrimitiveDataMeanVec3.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataMeanVec4.argtypes = _uuid_arr_label + [ctypes.POINTER(ctypes.c_float)]*4
+    helios_lib.calculatePrimitiveDataMeanVec4.restype = None
+    helios_lib.calculatePrimitiveDataMeanVec4.errcheck = _check_error
+
+    helios_lib.calculatePrimitiveDataAreaWeightedMeanFloat.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataAreaWeightedMeanFloat.restype = ctypes.c_float
+    helios_lib.calculatePrimitiveDataAreaWeightedMeanFloat.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataAreaWeightedMeanDouble.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataAreaWeightedMeanDouble.restype = ctypes.c_double
+    helios_lib.calculatePrimitiveDataAreaWeightedMeanDouble.errcheck = _check_error
+
+    helios_lib.calculatePrimitiveDataSumFloat.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataSumFloat.restype = ctypes.c_float
+    helios_lib.calculatePrimitiveDataSumFloat.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataSumDouble.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataSumDouble.restype = ctypes.c_double
+    helios_lib.calculatePrimitiveDataSumDouble.errcheck = _check_error
+
+    helios_lib.calculatePrimitiveDataAreaWeightedSumFloat.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataAreaWeightedSumFloat.restype = ctypes.c_float
+    helios_lib.calculatePrimitiveDataAreaWeightedSumFloat.errcheck = _check_error
+    helios_lib.calculatePrimitiveDataAreaWeightedSumDouble.argtypes = _uuid_arr_label
+    helios_lib.calculatePrimitiveDataAreaWeightedSumDouble.restype = ctypes.c_double
+    helios_lib.calculatePrimitiveDataAreaWeightedSumDouble.errcheck = _check_error
+
+    helios_lib.scalePrimitiveDataWithUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float]
+    helios_lib.scalePrimitiveDataWithUUIDs.restype = None
+    helios_lib.scalePrimitiveDataWithUUIDs.errcheck = _check_error
+    helios_lib.scalePrimitiveDataAll.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.scalePrimitiveDataAll.restype = None
+    helios_lib.scalePrimitiveDataAll.errcheck = _check_error
+
+    helios_lib.incrementPrimitiveDataInt.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.incrementPrimitiveDataInt.restype = None
+    helios_lib.incrementPrimitiveDataInt.errcheck = _check_error
+    helios_lib.incrementPrimitiveDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float]
+    helios_lib.incrementPrimitiveDataFloat.restype = None
+    helios_lib.incrementPrimitiveDataFloat.errcheck = _check_error
+
+    helios_lib.aggregatePrimitiveDataSum.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.aggregatePrimitiveDataSum.restype = None
+    helios_lib.aggregatePrimitiveDataSum.errcheck = _check_error
+    helios_lib.aggregatePrimitiveDataProduct.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.aggregatePrimitiveDataProduct.restype = None
+    helios_lib.aggregatePrimitiveDataProduct.errcheck = _check_error
+
+    helios_lib.sumPrimitiveSurfaceArea.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.sumPrimitiveSurfaceArea.restype = ctypes.c_float
+    helios_lib.sumPrimitiveSurfaceArea.errcheck = _check_error
+
+    helios_lib.filterPrimitivesByDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.filterPrimitivesByDataFloat.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.filterPrimitivesByDataFloat.errcheck = _check_error
+    helios_lib.filterPrimitivesByDataInt.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.filterPrimitivesByDataInt.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.filterPrimitivesByDataInt.errcheck = _check_error
+    helios_lib.filterPrimitivesByDataString.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.filterPrimitivesByDataString.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.filterPrimitivesByDataString.errcheck = _check_error
+
+    _PRIMITIVE_DATA_STATS_AVAILABLE = True
+except AttributeError:
+    _PRIMITIVE_DATA_STATS_AVAILABLE = False
+
+_NOT_AVAILABLE_STATS_MSG = (
+    "Primitive data statistics functions not available in current Helios library. "
+    "Rebuild PyHelios with updated C++ wrapper implementation."
+)
+
+
+def _make_uuid_array(uuids):
+    return (ctypes.c_uint * len(uuids))(*uuids) if not isinstance(uuids, ctypes.Array) else uuids
+
+
+def calculatePrimitiveDataMeanFloatWrapper(context, uuids: List[int], label: str) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.calculatePrimitiveDataMeanFloat(context, arr, len(uuids), label.encode('utf-8'))
+
+def calculatePrimitiveDataMeanDoubleWrapper(context, uuids: List[int], label: str) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.calculatePrimitiveDataMeanDouble(context, arr, len(uuids), label.encode('utf-8'))
+
+def calculatePrimitiveDataMeanVec3Wrapper(context, uuids: List[int], label: str) -> List[float]:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    x, y, z = ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.calculatePrimitiveDataMeanVec3(context, arr, len(uuids), label.encode('utf-8'), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return [x.value, y.value, z.value]
+
+def calculatePrimitiveDataAreaWeightedMeanFloatWrapper(context, uuids: List[int], label: str) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.calculatePrimitiveDataAreaWeightedMeanFloat(context, arr, len(uuids), label.encode('utf-8'))
+
+def calculatePrimitiveDataSumFloatWrapper(context, uuids: List[int], label: str) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.calculatePrimitiveDataSumFloat(context, arr, len(uuids), label.encode('utf-8'))
+
+def calculatePrimitiveDataSumDoubleWrapper(context, uuids: List[int], label: str) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.calculatePrimitiveDataSumDouble(context, arr, len(uuids), label.encode('utf-8'))
+
+def calculatePrimitiveDataAreaWeightedSumFloatWrapper(context, uuids: List[int], label: str) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.calculatePrimitiveDataAreaWeightedSumFloat(context, arr, len(uuids), label.encode('utf-8'))
+
+def scalePrimitiveDataWithUUIDsWrapper(context, uuids: List[int], label: str, factor: float):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.scalePrimitiveDataWithUUIDs(context, arr, len(uuids), label.encode('utf-8'), factor)
+
+def scalePrimitiveDataAllWrapper(context, label: str, factor: float):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    helios_lib.scalePrimitiveDataAll(context, label.encode('utf-8'), factor)
+
+def incrementPrimitiveDataIntWrapper(context, uuids: List[int], label: str, increment: int):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.incrementPrimitiveDataInt(context, arr, len(uuids), label.encode('utf-8'), increment)
+
+def incrementPrimitiveDataFloatWrapper(context, uuids: List[int], label: str, increment: float):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.incrementPrimitiveDataFloat(context, arr, len(uuids), label.encode('utf-8'), increment)
+
+def aggregatePrimitiveDataSumWrapper(context, uuids: List[int], labels: List[str], result_label: str):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    encoded_labels = [l.encode('utf-8') for l in labels]
+    labels_arr = (ctypes.c_char_p * len(labels))(*encoded_labels)
+    helios_lib.aggregatePrimitiveDataSum(context, arr, len(uuids), labels_arr, len(labels), result_label.encode('utf-8'))
+
+def aggregatePrimitiveDataProductWrapper(context, uuids: List[int], labels: List[str], result_label: str):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    encoded_labels = [l.encode('utf-8') for l in labels]
+    labels_arr = (ctypes.c_char_p * len(labels))(*encoded_labels)
+    helios_lib.aggregatePrimitiveDataProduct(context, arr, len(uuids), labels_arr, len(labels), result_label.encode('utf-8'))
+
+def sumPrimitiveSurfaceAreaWrapper(context, uuids: List[int]) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    return helios_lib.sumPrimitiveSurfaceArea(context, arr, len(uuids))
+
+def filterPrimitivesByDataFloatWrapper(context, uuids: List[int], label: str, value: float, comparator: str) -> List[int]:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    result_count = ctypes.c_uint()
+    ptr = helios_lib.filterPrimitivesByDataFloat(context, arr, len(uuids), label.encode('utf-8'), value, comparator.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not ptr: return []
+    return [ptr[i] for i in range(result_count.value)]
+
+def filterPrimitivesByDataIntWrapper(context, uuids: List[int], label: str, value: int, comparator: str) -> List[int]:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    result_count = ctypes.c_uint()
+    ptr = helios_lib.filterPrimitivesByDataInt(context, arr, len(uuids), label.encode('utf-8'), value, comparator.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not ptr: return []
+    return [ptr[i] for i in range(result_count.value)]
+
+def filterPrimitivesByDataStringWrapper(context, uuids: List[int], label: str, value: str) -> List[int]:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    result_count = ctypes.c_uint()
+    ptr = helios_lib.filterPrimitivesByDataString(context, arr, len(uuids), label.encode('utf-8'), value.encode('utf-8'), ctypes.byref(result_count))
+    if result_count.value == 0 or not ptr: return []
+    return [ptr[i] for i in range(result_count.value)]

@@ -933,6 +933,23 @@ PYHELIOS_API float* getPrimitiveColorRGBA(helios::Context* context, unsigned int
 PYHELIOS_API unsigned int getPrimitiveCount(helios::Context* context);
 
 /**
+ * @brief Check if a primitive exists for a given UUID
+ * @param context Pointer to the Context
+ * @param uuid Primitive UUID to check
+ * @return true if the primitive exists, false otherwise
+ */
+PYHELIOS_API bool doesPrimitiveExist(helios::Context* context, unsigned int uuid);
+
+/**
+ * @brief Check if all primitives exist for a list of UUIDs
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs to check
+ * @param count Number of UUIDs in the array
+ * @return true if ALL primitives exist, false otherwise (including for empty arrays)
+ */
+PYHELIOS_API bool doesPrimitiveExistBatch(helios::Context* context, unsigned int* uuids, unsigned int count);
+
+/**
  * @brief Get all primitive UUIDs in the context
  * @param context Pointer to the Context
  * @param size Pointer to store the number of UUIDs
@@ -1936,6 +1953,199 @@ PYHELIOS_API const char* getBatchPrimitiveTextureFiles(void* context, unsigned i
 
 /** @brief Get material labels for multiple primitives as concatenated string. offsets_out must be caller-allocated with count+1 elements. */
 PYHELIOS_API const char* getBatchPrimitiveMaterialLabels(void* context, unsigned int* uuids, unsigned int count, unsigned int* offsets_out, unsigned int* total_chars);
+
+/** @brief Resolve material texture suppression for batch export. Modifies colors_inout in-place, returns concatenated resolved texture file strings. */
+PYHELIOS_API const char* resolveMaterialTextures(
+    void* context, unsigned int* uuids, unsigned int count,
+    float* colors_inout, unsigned int* tex_offsets_out, unsigned int* total_chars_out);
+
+/**
+ * @brief Pack GPU-ready geometry buffers for a set of primitives in a single pass.
+ *
+ * Produces a binary blob containing contiguous typed arrays that can be loaded
+ * directly into Three.js BufferGeometry attributes with zero JS-side conversion.
+ *
+ * Wire format (all little-endian):
+ *   Header (16 bytes):
+ *     uint8  version (2)
+ *     uint8  flags (reserved)
+ *     uint16 group_count
+ *     uint32 total_vertices
+ *     uint32 total_triangles
+ *     uint32 total_primitives
+ *   Per-group descriptor (repeated group_count times):
+ *     uint32 vertex_start, vertex_count, triangle_start, triangle_count
+ *     uint16 texture_path_length
+ *     uint8  flags (bit 0: mask_mode, bit 1: has_uvs, bit 2: has_colors)
+ *     [texture_path_length bytes] UTF-8 texture path
+ *   Contiguous typed arrays:
+ *     float32[total_vertices * 3]   positions
+ *     float32[total_vertices * 3]   colors
+ *     float32[total_vertices * 2]   uvs
+ *     uint32[total_triangles * 3]   indices
+ *     uint32[total_triangles]       faceToUuid
+ *
+ * @param context Context pointer
+ * @param uuids Array of primitive UUIDs to pack
+ * @param count Number of UUIDs
+ * @param out_size Output: total byte size of the returned buffer
+ * @return Pointer to the packed buffer (thread_local, valid until next call)
+ */
+PYHELIOS_API unsigned char* packGPUBuffers(
+    void* context, unsigned int* uuids, unsigned int count,
+    unsigned int* out_size);
+
+// ==================== Visibility Functions ====================
+
+PYHELIOS_API void hidePrimitive(helios::Context* context, unsigned int uuid);
+PYHELIOS_API void hidePrimitives(helios::Context* context, unsigned int* uuids, unsigned int count);
+PYHELIOS_API void showPrimitive(helios::Context* context, unsigned int uuid);
+PYHELIOS_API void showPrimitives(helios::Context* context, unsigned int* uuids, unsigned int count);
+PYHELIOS_API bool isPrimitiveHidden(helios::Context* context, unsigned int uuid);
+
+PYHELIOS_API void hideObject(helios::Context* context, unsigned int objID);
+PYHELIOS_API void hideObjects(helios::Context* context, unsigned int* objIDs, unsigned int count);
+PYHELIOS_API void showObject(helios::Context* context, unsigned int objID);
+PYHELIOS_API void showObjects(helios::Context* context, unsigned int* objIDs, unsigned int count);
+PYHELIOS_API bool isObjectHidden(helios::Context* context, unsigned int objID);
+
+// ==================== Object Data Functions ====================
+
+// Setters (single object)
+PYHELIOS_API void setObjectDataInt(helios::Context* context, unsigned int objID, const char* label, int value);
+PYHELIOS_API void setObjectDataUInt(helios::Context* context, unsigned int objID, const char* label, unsigned int value);
+PYHELIOS_API void setObjectDataFloat(helios::Context* context, unsigned int objID, const char* label, float value);
+PYHELIOS_API void setObjectDataDouble(helios::Context* context, unsigned int objID, const char* label, double value);
+PYHELIOS_API void setObjectDataString(helios::Context* context, unsigned int objID, const char* label, const char* value);
+PYHELIOS_API void setObjectDataVec2(helios::Context* context, unsigned int objID, const char* label, float x, float y);
+PYHELIOS_API void setObjectDataVec3(helios::Context* context, unsigned int objID, const char* label, float x, float y, float z);
+PYHELIOS_API void setObjectDataVec4(helios::Context* context, unsigned int objID, const char* label, float x, float y, float z, float w);
+PYHELIOS_API void setObjectDataInt2(helios::Context* context, unsigned int objID, const char* label, int x, int y);
+PYHELIOS_API void setObjectDataInt3(helios::Context* context, unsigned int objID, const char* label, int x, int y, int z);
+PYHELIOS_API void setObjectDataInt4(helios::Context* context, unsigned int objID, const char* label, int x, int y, int z, int w);
+
+// Broadcast setters (multiple objects, same value)
+PYHELIOS_API void setBroadcastObjectDataInt(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int value);
+PYHELIOS_API void setBroadcastObjectDataUInt(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, unsigned int value);
+PYHELIOS_API void setBroadcastObjectDataFloat(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float value);
+PYHELIOS_API void setBroadcastObjectDataDouble(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, double value);
+PYHELIOS_API void setBroadcastObjectDataString(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, const char* value);
+PYHELIOS_API void setBroadcastObjectDataVec2(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float x, float y);
+PYHELIOS_API void setBroadcastObjectDataVec3(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float x, float y, float z);
+PYHELIOS_API void setBroadcastObjectDataVec4(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, float x, float y, float z, float w);
+PYHELIOS_API void setBroadcastObjectDataInt2(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int x, int y);
+PYHELIOS_API void setBroadcastObjectDataInt3(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int x, int y, int z);
+PYHELIOS_API void setBroadcastObjectDataInt4(helios::Context* context, unsigned int* objIDs, size_t count, const char* label, int x, int y, int z, int w);
+
+// Getters
+PYHELIOS_API int getObjectDataInt(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API unsigned int getObjectDataUInt(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API float getObjectDataFloat(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API double getObjectDataDouble(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API int getObjectDataString(helios::Context* context, unsigned int objID, const char* label, char* buffer, int buffer_size);
+PYHELIOS_API void getObjectDataVec2(helios::Context* context, unsigned int objID, const char* label, float* x, float* y);
+PYHELIOS_API void getObjectDataVec3(helios::Context* context, unsigned int objID, const char* label, float* x, float* y, float* z);
+PYHELIOS_API void getObjectDataVec4(helios::Context* context, unsigned int objID, const char* label, float* x, float* y, float* z, float* w);
+PYHELIOS_API void getObjectDataInt2(helios::Context* context, unsigned int objID, const char* label, int* x, int* y);
+PYHELIOS_API void getObjectDataInt3(helios::Context* context, unsigned int objID, const char* label, int* x, int* y, int* z);
+PYHELIOS_API void getObjectDataInt4(helios::Context* context, unsigned int objID, const char* label, int* x, int* y, int* z, int* w);
+
+// Utilities
+PYHELIOS_API int getObjectDataType(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API int getObjectDataSize(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API bool doesObjectDataExist(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API void clearObjectData(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API void clearObjectDataBatch(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label);
+PYHELIOS_API const char** listObjectData(helios::Context* context, unsigned int objID, unsigned int* count);
+PYHELIOS_API const char** listAllObjectDataLabels(helios::Context* context, unsigned int* count);
+PYHELIOS_API void duplicateObjectData(helios::Context* context, unsigned int objID, const char* old_label, const char* new_label);
+PYHELIOS_API void renameObjectData(helios::Context* context, unsigned int objID, const char* old_label, const char* new_label);
+
+// Filters
+PYHELIOS_API unsigned int* filterObjectsByDataFloat(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count);
+PYHELIOS_API unsigned int* filterObjectsByDataDouble(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, double value, const char* comparator, unsigned int* result_count);
+PYHELIOS_API unsigned int* filterObjectsByDataInt(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, int value, const char* comparator, unsigned int* result_count);
+PYHELIOS_API unsigned int* filterObjectsByDataUInt(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, unsigned int value, const char* comparator, unsigned int* result_count);
+PYHELIOS_API unsigned int* filterObjectsByDataString(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label, const char* value, unsigned int* result_count);
+
+// ==================== Global Data Functions ====================
+
+// Setters
+PYHELIOS_API void setGlobalDataInt(helios::Context* context, const char* label, int value);
+PYHELIOS_API void setGlobalDataUInt(helios::Context* context, const char* label, unsigned int value);
+PYHELIOS_API void setGlobalDataFloat(helios::Context* context, const char* label, float value);
+PYHELIOS_API void setGlobalDataDouble(helios::Context* context, const char* label, double value);
+PYHELIOS_API void setGlobalDataString(helios::Context* context, const char* label, const char* value);
+PYHELIOS_API void setGlobalDataVec2(helios::Context* context, const char* label, float x, float y);
+PYHELIOS_API void setGlobalDataVec3(helios::Context* context, const char* label, float x, float y, float z);
+PYHELIOS_API void setGlobalDataVec4(helios::Context* context, const char* label, float x, float y, float z, float w);
+PYHELIOS_API void setGlobalDataInt2(helios::Context* context, const char* label, int x, int y);
+PYHELIOS_API void setGlobalDataInt3(helios::Context* context, const char* label, int x, int y, int z);
+PYHELIOS_API void setGlobalDataInt4(helios::Context* context, const char* label, int x, int y, int z, int w);
+
+// Getters
+PYHELIOS_API int getGlobalDataInt(helios::Context* context, const char* label);
+PYHELIOS_API unsigned int getGlobalDataUInt(helios::Context* context, const char* label);
+PYHELIOS_API float getGlobalDataFloat(helios::Context* context, const char* label);
+PYHELIOS_API double getGlobalDataDouble(helios::Context* context, const char* label);
+PYHELIOS_API int getGlobalDataString(helios::Context* context, const char* label, char* buffer, int buffer_size);
+PYHELIOS_API void getGlobalDataVec2(helios::Context* context, const char* label, float* x, float* y);
+PYHELIOS_API void getGlobalDataVec3(helios::Context* context, const char* label, float* x, float* y, float* z);
+PYHELIOS_API void getGlobalDataVec4(helios::Context* context, const char* label, float* x, float* y, float* z, float* w);
+PYHELIOS_API void getGlobalDataInt2(helios::Context* context, const char* label, int* x, int* y);
+PYHELIOS_API void getGlobalDataInt3(helios::Context* context, const char* label, int* x, int* y, int* z);
+PYHELIOS_API void getGlobalDataInt4(helios::Context* context, const char* label, int* x, int* y, int* z, int* w);
+
+// Utilities
+PYHELIOS_API int getGlobalDataType(helios::Context* context, const char* label);
+PYHELIOS_API int getGlobalDataSize(helios::Context* context, const char* label);
+PYHELIOS_API bool doesGlobalDataExist(helios::Context* context, const char* label);
+PYHELIOS_API void clearGlobalData(helios::Context* context, const char* label);
+PYHELIOS_API void renameGlobalData(helios::Context* context, const char* old_label, const char* new_label);
+PYHELIOS_API void duplicateGlobalData(helios::Context* context, const char* old_label, const char* new_label);
+PYHELIOS_API const char** listGlobalData(helios::Context* context, unsigned int* count);
+
+// Increment
+PYHELIOS_API void incrementGlobalDataInt(helios::Context* context, const char* label, int increment);
+PYHELIOS_API void incrementGlobalDataUInt(helios::Context* context, const char* label, unsigned int increment);
+PYHELIOS_API void incrementGlobalDataFloat(helios::Context* context, const char* label, float increment);
+PYHELIOS_API void incrementGlobalDataDouble(helios::Context* context, const char* label, double increment);
+
+// ==================== Primitive Data Statistics & Filtering ====================
+
+// Statistics (float and double return scalars; vec types use output pointers)
+PYHELIOS_API float calculatePrimitiveDataMeanFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+PYHELIOS_API double calculatePrimitiveDataMeanDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+PYHELIOS_API void calculatePrimitiveDataMeanVec2(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float* x, float* y);
+PYHELIOS_API void calculatePrimitiveDataMeanVec3(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float* x, float* y, float* z);
+PYHELIOS_API void calculatePrimitiveDataMeanVec4(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float* x, float* y, float* z, float* w);
+
+PYHELIOS_API float calculatePrimitiveDataAreaWeightedMeanFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+PYHELIOS_API double calculatePrimitiveDataAreaWeightedMeanDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+
+PYHELIOS_API float calculatePrimitiveDataSumFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+PYHELIOS_API double calculatePrimitiveDataSumDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+
+PYHELIOS_API float calculatePrimitiveDataAreaWeightedSumFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+PYHELIOS_API double calculatePrimitiveDataAreaWeightedSumDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+
+// Scale & Increment
+PYHELIOS_API void scalePrimitiveDataWithUUIDs(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float factor);
+PYHELIOS_API void scalePrimitiveDataAll(helios::Context* context, const char* label, float factor);
+PYHELIOS_API void incrementPrimitiveDataInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, int increment);
+PYHELIOS_API void incrementPrimitiveDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float increment);
+
+// Aggregate
+PYHELIOS_API void aggregatePrimitiveDataSum(helios::Context* context, unsigned int* uuids, unsigned int count, const char** labels, unsigned int label_count, const char* result_label);
+PYHELIOS_API void aggregatePrimitiveDataProduct(helios::Context* context, unsigned int* uuids, unsigned int count, const char** labels, unsigned int label_count, const char* result_label);
+
+// Surface area
+PYHELIOS_API float sumPrimitiveSurfaceArea(helios::Context* context, unsigned int* uuids, unsigned int count);
+
+// Filter
+PYHELIOS_API unsigned int* filterPrimitivesByDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count);
+PYHELIOS_API unsigned int* filterPrimitivesByDataInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, int value, const char* comparator, unsigned int* result_count);
+PYHELIOS_API unsigned int* filterPrimitivesByDataString(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, const char* value, unsigned int* result_count);
 
 #ifdef __cplusplus
 }

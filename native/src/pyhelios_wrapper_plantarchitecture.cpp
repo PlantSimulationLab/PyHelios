@@ -405,7 +405,7 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+    PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, bool include_hidden, int* count) {
         try {
             clearError();
             if (!plantarch) {
@@ -418,7 +418,7 @@ extern "C" {
                 return nullptr;
             }
 
-            std::vector<uint> uuids = plantarch->getAllPlantUUIDs(plantID);
+            std::vector<uint> uuids = plantarch->getAllPlantUUIDs(plantID, include_hidden);
 
             // Convert vector to static array for return
             static thread_local std::vector<unsigned int> static_result;

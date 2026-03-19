@@ -154,7 +154,10 @@ def mock_context():
 @pytest.fixture
 def weber_penn_tree(basic_context):
     """Fixture providing a WeberPennTree instance."""
-    wpt = WeberPennTree(basic_context)
+    try:
+        wpt = WeberPennTree(basic_context)
+    except NotImplementedError:
+        pytest.skip("WeberPennTree plugin not available in current build")
     yield wpt
     wpt.__exit__(None, None, None)
 

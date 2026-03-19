@@ -441,6 +441,16 @@ elseif(APPLE)
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         OUTPUT_NAME "helios"
     )
+    # MoltenVK (Vulkan on macOS) requires these system frameworks
+    if("radiation" IN_LIST PLUGINS)
+        target_link_libraries(pyhelios_shared PUBLIC
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface"
+            "-framework IOKit"
+            "-framework Foundation"
+        )
+    endif()
 else() # Linux
     set_target_properties(pyhelios_shared PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
