@@ -436,6 +436,14 @@ if(WIN32)
         "/NODEFAULTLIB:msvcrt.lib"
         "/NODEFAULTLIB:msvcrtd.lib"
     )
+
+    # Delay-load GPU driver DLLs so the library can be loaded on systems
+    # without GPU drivers (e.g. headless CI). The DLL is only needed when
+    # GPU-accelerated features (radiation, etc.) are actually called.
+    target_link_libraries(pyhelios_shared PRIVATE delayimp.lib)
+    target_link_options(pyhelios_shared PRIVATE
+        "/DELAYLOAD:vulkan-1.dll"
+    )
 elseif(APPLE)
     set_target_properties(pyhelios_shared PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"

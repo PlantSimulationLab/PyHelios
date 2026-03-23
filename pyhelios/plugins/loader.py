@@ -228,7 +228,7 @@ class CrossPlatformLibraryLoader:
                 return self.library
             except Exception as e:
                 logger.warning(f"Failed to load primary library {primary_path}: {e}")
-        
+
         # Try alternative libraries
         for key, alt_path in paths.items():
             if key.startswith('alt_') and os.path.exists(alt_path):
@@ -238,7 +238,7 @@ class CrossPlatformLibraryLoader:
                     return self.library
                 except Exception as e:
                     logger.warning(f"Failed to load alternative library {alt_path}: {e}")
-        
+
         # No library could be loaded - raise error
         available_files = [f for f in os.listdir(self.plugin_dir) if f.endswith(('.dll', '.dylib', '.so'))] if os.path.exists(self.plugin_dir) else []
         

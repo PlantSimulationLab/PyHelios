@@ -40,12 +40,12 @@ def validate_library(lib_path):
             lib = ctypes.WinDLL(str(lib_path))
         else:
             lib = ctypes.CDLL(str(lib_path))
-            
+
         # Basic library loading is sufficient validation - don't check internal symbols
         # which may not be consistently exported across all PyHelios plugins
         print(f"[OK] Library validated: {lib_path.name}")
         return True
-            
+
     except OSError as e:
         print(f"[ERROR] Cannot load library {lib_path.name}: {e}")
         return False

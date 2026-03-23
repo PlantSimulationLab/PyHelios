@@ -894,11 +894,16 @@ class HeliosBuilder:
                             # Check if this is a system DLL that should be available
                             system_dlls = {
                                 'kernel32.dll', 'user32.dll', 'gdi32.dll', 'advapi32.dll',
-                                'msvcrt.dll', 'vcruntime140.dll', 'msvcp140.dll', 'ucrtbase.dll'
+                                'msvcrt.dll', 'vcruntime140.dll', 'msvcp140.dll', 'ucrtbase.dll',
+                                'opengl32.dll', 'cfgmgr32.dll', 'shell32.dll',
+                            }
+                            # DLLs provided by GPU drivers - not present on headless CI
+                            gpu_driver_dlls = {
+                                'vulkan-1.dll', 'nvcuda.dll', 'nvoptix.dll',
                             }
                             
-                            if dep_name in system_dlls:
-                                dependencies[dep_name] = True  # Assume system DLLs are available
+                            if dep_name in system_dlls or dep_name in gpu_driver_dlls:
+                                dependencies[dep_name] = True  # System/GPU driver DLLs
                             else:
                                 # Check if the DLL exists in system paths
                                 try:
@@ -943,11 +948,10 @@ class HeliosBuilder:
                 print(f"Checking Windows DLL dependencies for: {library_path.name}")
                 dependencies = self._check_windows_dll_dependencies(library_path)
                 missing_deps = [dep for dep, found in dependencies.items() if not found]
-                
                 if missing_deps:
                     print(f"WARNING: Missing dependencies detected: {missing_deps}")
                     print("This may cause ctypes loading to fail")
-                
+
                 # Test Windows DLL loading
                 test_lib = ctypes.WinDLL(str(library_path))
             else:
@@ -960,7 +964,6 @@ class HeliosBuilder:
         except Exception as e:
             # FAIL-FAST: Library cannot be loaded by ctypes
             if self.platform_name == 'Windows':
-                # Windows-specific error handling and dependency checking
                 error_msg = (
                     f"CRITICAL: Built Windows DLL cannot be loaded by ctypes: {library_path}\n"
                     f"Load error: {e}\n\n"
@@ -978,7 +981,6 @@ class HeliosBuilder:
                     f"The built DLL has missing dependencies and cannot be used."
                 )
             else:
-                # Unix error handling
                 error_msg = (
                     f"CRITICAL: Built library cannot be loaded by ctypes: {library_path}\n"
                     f"Load error: {e}\n\n"

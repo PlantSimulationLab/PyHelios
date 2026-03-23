@@ -180,25 +180,22 @@ jobs:
               if [ ! -e /usr/bin/sh ]; then ln -s /bin/bash /usr/bin/sh; fi && \
               # Make sure containers launched without a login shell still see /bin and /usr/bin
               echo 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' > /etc/environment
-          # Install Vulkan headers for radiation plugin build
-          # The radiation plugin's selfTest.cpp unconditionally includes vulkan/vulkan.h
-          # (via test_helpers.h -> VulkanDevice.h). The CUDA container already has OptiX
-          # so the Vulkan backend is not needed, but the headers must be present for
-          # compilation. We download them directly from the Khronos GitHub release.
+          # Install Vulkan headers AND loader for radiation plugin build.
+          # The radiation plugin links directly against Vulkan symbols (vkCreateImage, etc.)
+          # so a real libvulkan.so is required. The Vulkan-Loader CMake build requires
+          # VulkanHeadersConfig.cmake, so headers must be installed via CMake (not just copied).
           RUN yum install -y wget && \
               VULKAN_HEADERS_VERSION="1.3.290" && \
               cd /tmp && \
               wget -q "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v${VULKAN_HEADERS_VERSION}.tar.gz" && \
               tar xzf "v${VULKAN_HEADERS_VERSION}.tar.gz" && \
-              mkdir -p /usr/include/vulkan /usr/include/vk_video && \
-              cp -r "Vulkan-Headers-${VULKAN_HEADERS_VERSION}/include/vulkan/"* /usr/include/vulkan/ && \
-              cp -r "Vulkan-Headers-${VULKAN_HEADERS_VERSION}/include/vk_video/"* /usr/include/vk_video/ && \
-              rm -rf /tmp/v${VULKAN_HEADERS_VERSION}.tar.gz /tmp/Vulkan-Headers-${VULKAN_HEADERS_VERSION} && \
+              cd "Vulkan-Headers-${VULKAN_HEADERS_VERSION}" && \
+              mkdir build && cd build && \
+              cmake .. -DCMAKE_INSTALL_PREFIX=/usr && \
+              make install && \
+              cd /tmp && rm -rf "v${VULKAN_HEADERS_VERSION}.tar.gz" "Vulkan-Headers-${VULKAN_HEADERS_VERSION}" && \
               ls /usr/include/vulkan/vulkan.h && \
-              echo "Vulkan headers installed and verified"
-          # Build and install the Vulkan loader (libvulkan.so) from source.
-          # The radiation plugin links directly against Vulkan symbols (vkCreateImage, etc.)
-          # so a real loader is required — a stub with only vkGetInstanceProcAddr is not enough.
+              echo "Vulkan headers installed via CMake"
           RUN VULKAN_HEADERS_VERSION="1.3.290" && \
               cd /tmp && \
               wget -q "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/v${VULKAN_HEADERS_VERSION}.tar.gz" -O vulkan-loader.tar.gz && \
@@ -206,7 +203,6 @@ jobs:
               cd "Vulkan-Loader-${VULKAN_HEADERS_VERSION}" && \
               mkdir build && cd build && \
               cmake .. -DCMAKE_BUILD_TYPE=Release \
-                -DVULKAN_HEADERS_INSTALL_DIR=/usr \
                 -DCMAKE_INSTALL_PREFIX=/usr \
                 -DCMAKE_INSTALL_LIBDIR=lib64 \
                 -DBUILD_WSI_XCB_SUPPORT=OFF \
@@ -593,17 +589,17 @@ jobs:
                 else:
                     lib_path = info.get('library_path', 'Unknown')
                     print(f'[SUCCESS] Native library loaded: {lib_path}')
-            
+
                     # Test Windows testable plugins (CI containers don't have GPU for radiation/energybalance testing)
                     # We build GPU plugins but can't test them in CI environment
                     available_plugins = info.get('available_plugins', [])
                     testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture']
                     built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation', 'plantarchitecture']
-            
+
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
                     print(f'[INFO] Testable plugins (in CI): {sorted(testable_plugins)}')
-            
+
                     # Check that we have at least the testable plugins (GPU plugins may not be testable in CI)
                     missing_testable = set(testable_plugins) - set(available_plugins)
                     if missing_testable:
@@ -611,7 +607,7 @@ jobs:
                         raise RuntimeError(f'Missing testable plugins: {missing_testable}')
                     else:
                         print(f'[SUCCESS] All {len(testable_plugins)} testable plugins are available')
-            
+
                     # Report on GPU plugins (built but may not be testable in CI)
                     gpu_plugins = ['energybalance', 'radiation']
                     available_gpu = [p for p in gpu_plugins if p in available_plugins]
@@ -619,7 +615,7 @@ jobs:
                         print(f'[INFO] GPU plugins available for testing: {sorted(available_gpu)}')
                     else:
                         print(f'[INFO] GPU plugins not available for CI testing (expected in containerized environment)')
-            
+
                 # Asset validation (non-critical, allow failure)
                 try:
                     from pyhelios.assets import get_asset_manager
@@ -631,21 +627,21 @@ jobs:
                         print('[INFO] HELIOS_BUILD assets not found (acceptable in wheel testing)')
                 except Exception as e:
                     print(f'[INFO] Asset validation skipped: {e}')
-            
+
                 # Critical test: primitive data operations that fail in CI
                 print('[CRITICAL-TEST] Testing primitive data operations...')
                 from pyhelios import Context
                 ctx = Context()
                 patch_uuid = ctx.addPatch()
                 print(f'[CRITICAL-TEST] Created patch UUID: {patch_uuid}')
-            
-                ctx.setPrimitiveDataInt(patch_uuid, 'test_int', 42)
-                print('[CRITICAL-TEST] setPrimitiveDataInt completed')
-            
-                exists = ctx.doesPrimitiveDataExist(patch_uuid, 'test_int')
-                print(f'[CRITICAL-TEST] doesPrimitiveDataExist: {exists}')
-            
-                if not exists:
+
+                    ctx.setPrimitiveDataInt(patch_uuid, 'test_int', 42)
+                    print('[CRITICAL-TEST] setPrimitiveDataInt completed')
+
+                    exists = ctx.doesPrimitiveDataExist(patch_uuid, 'test_int')
+                    print(f'[CRITICAL-TEST] doesPrimitiveDataExist: {exists}')
+
+                    if not exists:
                     print('[CRITICAL-TEST] REPRODUCED: Primitive data does not exist after setting!')
                     print('[CRITICAL-TEST] This is the bug that causes CI test failures')
                     print('[CRITICAL-TEST] Running comprehensive diagnostic...')
