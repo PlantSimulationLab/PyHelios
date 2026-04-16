@@ -324,6 +324,58 @@ class TestPlantArchitectureValidation:
 
 
 @pytest.mark.cross_platform
+class TestPlantArchitectureUSDValidation:
+    """Validation tests for the new USD/growth-frame methods that work without native libs."""
+
+    def _stub_plantarch(self):
+        """Build a PlantArchitecture instance with a dummy pointer for validation tests.
+
+        We bypass __init__ because availability checks would otherwise prevent us
+        from constructing the object in mock mode. The validation tested here
+        runs before any C call, so the dummy pointer is never dereferenced.
+        """
+        plantarch = PlantArchitecture.__new__(PlantArchitecture)
+        plantarch._plantarch_ptr = None
+        plantarch.context = None
+        return plantarch
+
+    def test_write_plant_structure_usd_negative_id(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.writePlantStructureUSD(-1, "out.usda")
+
+    def test_write_plant_structure_usd_empty_filename(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="empty"):
+            plantarch.writePlantStructureUSD(0, "")
+
+    def test_register_growth_frame_negative_id(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.registerGrowthFrame(-1)
+
+    def test_write_plant_growth_usd_negative_id(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.writePlantGrowthUSD(-1, "out.usda")
+
+    def test_write_plant_growth_usd_empty_filename(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="empty"):
+            plantarch.writePlantGrowthUSD(0, "")
+
+    def test_clear_growth_frames_negative_id(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.clearGrowthFrames(-1)
+
+    def test_get_growth_frame_count_negative_id(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.getGrowthFrameCount(-1)
+
+
+@pytest.mark.cross_platform
 class TestPlantArchitectureAssets:
     """Test PlantArchitecture asset management"""
 
@@ -1043,6 +1095,88 @@ class TestPlantArchitectureFileIO:
         except PlantArchitectureError:
             # C++ loading limitation - test passed because Path was accepted
             pass
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureUSDExport:
+    """Test PlantArchitecture USD export and growth animation methods (v1.3.71+)."""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        try:
+            instance = PlantArchitecture(context)
+            yield instance
+            instance.__exit__(None, None, None)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+
+    def _build_plant(self, plantarch):
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+        plantarch.loadPlantModelFromLibrary(models[0])
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=15.0)
+
+    def test_write_plant_structure_usd_default_params(self, plantarch, tmp_path):
+        plant_id = self._build_plant(plantarch)
+        out = tmp_path / "plant.usda"
+        plantarch.writePlantStructureUSD(plant_id, str(out))
+        assert out.exists()
+        assert out.stat().st_size > 0
+        # USDA files start with the "#usda" magic header
+        with open(out, 'r') as f:
+            assert f.read(64).lstrip().startswith("#usda")
+
+    def test_write_plant_structure_usd_custom_params(self, plantarch, tmp_path):
+        plant_id = self._build_plant(plantarch)
+        out = tmp_path / "plant_custom.usda"
+        plantarch.writePlantStructureUSD(
+            plant_id, str(out),
+            elastic_modulus=8e9,
+            wood_density=750.0,
+            damping_ratio=0.2,
+            leaf_mass_per_area=0.04,
+            fruit_mass=0.005,
+            flower_mass=0.001,
+        )
+        assert out.exists()
+        assert out.stat().st_size > 0
+
+    def test_growth_frame_lifecycle(self, plantarch):
+        plant_id = self._build_plant(plantarch)
+
+        # Initially zero frames
+        assert plantarch.getGrowthFrameCount(plant_id) == 0
+
+        plantarch.registerGrowthFrame(plant_id)
+        assert plantarch.getGrowthFrameCount(plant_id) == 1
+
+        plantarch.advanceTime(2.0)
+        plantarch.registerGrowthFrame(plant_id)
+        assert plantarch.getGrowthFrameCount(plant_id) == 2
+
+        plantarch.clearGrowthFrames(plant_id)
+        assert plantarch.getGrowthFrameCount(plant_id) == 0
+
+    def test_write_plant_growth_usd(self, plantarch, tmp_path):
+        plant_id = self._build_plant(plantarch)
+
+        for _ in range(3):
+            plantarch.registerGrowthFrame(plant_id)
+            plantarch.advanceTime(1.0)
+
+        out = tmp_path / "growth.usda"
+        plantarch.writePlantGrowthUSD(plant_id, str(out), seconds_per_frame=0.5)
+        assert out.exists()
+        assert out.stat().st_size > 0
 
 
 @pytest.mark.native_only

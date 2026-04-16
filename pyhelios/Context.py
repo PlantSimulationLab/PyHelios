@@ -3077,6 +3077,41 @@ class Context:
             time.hour, time.minute, time.second
         )
 
+    def updateTimeseriesData(self, label: str, date: 'Date', time: 'Time', new_value: float):
+        """
+        Update the value of an existing timeseries data point.
+
+        Args:
+            label: Name of the timeseries variable (must already exist)
+            date: Date of the existing point (must match exactly)
+            time: Time of the existing point (must match exactly)
+            new_value: Replacement value
+
+        Raises:
+            ValueError: If label is empty, or date/time are wrong types
+            HeliosRuntimeError: If the variable does not exist or no point matches the (date, time)
+            NotImplementedError: If timeseries functions not available
+
+        Example:
+            >>> from pyhelios.types import Date, Time
+            >>> context.addTimeseriesData("temperature", 25.3, Date(2024, 6, 15), Time(12, 0, 0))
+            >>> context.updateTimeseriesData("temperature", Date(2024, 6, 15), Time(12, 0, 0), 26.5)
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+        if not isinstance(date, Date):
+            raise ValueError(f"date must be a Date instance, got {type(date).__name__}")
+        if not isinstance(time, Time):
+            raise ValueError(f"time must be a Time instance, got {type(time).__name__}")
+
+        context_wrapper.updateTimeseriesData(
+            self.context, label,
+            date.day, date.month, date.year,
+            time.hour, time.minute, time.second,
+            float(new_value)
+        )
+
     def setCurrentTimeseriesPoint(self, label: str, index: int):
         """
         Set the Context date and time from a timeseries data point index.
@@ -4418,4 +4453,355 @@ class Context:
             return context_wrapper.filterPrimitivesByDataIntWrapper(self.context, uuids, label, value, comparator)
         else:
             raise ValueError(f"Unsupported filter value type: {type(value).__name__}")
+
+    # ==================== Object Geometry Queries ====================
+
+    def getObjectType(self, objID: int) -> int:
+        """Return the integer-coded `helios::ObjectType` of a compound object.
+
+        Values follow the C++ `helios::ObjectType` enum
+        (0=tile, 1=sphere, 2=tube, 3=box, 4=disk, 5=polymesh, 6=cone).
+        """
+        self._check_context_available()
+        return context_wrapper.getObjectTypeWrapper(self.context, objID)
+
+    def getObjectCenter(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getObjectCenterWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getObjectBoundingBox(self, objIDs):
+        """Get axis-aligned bounding box for one object or a list of objects.
+
+        Args:
+            objIDs: Single object ID (int) or list of object IDs.
+
+        Returns:
+            Tuple of (min_corner: vec3, max_corner: vec3).
+        """
+        self._check_context_available()
+        if isinstance(objIDs, (list, tuple)):
+            mn, mx = context_wrapper.getObjectBoundingBoxBatchWrapper(self.context, list(objIDs))
+        else:
+            mn, mx = context_wrapper.getObjectBoundingBoxWrapper(self.context, objIDs)
+        return (vec3(mn[0], mn[1], mn[2]), vec3(mx[0], mx[1], mx[2]))
+
+    def getObjectPrimitiveUUIDs(self, objIDs) -> List[int]:
+        """Get flattened primitive UUIDs for one object, a list of objects, or a list-of-lists.
+
+        Args:
+            objIDs: int, List[int], or List[List[int]].
+
+        Returns:
+            Flat list of primitive UUIDs (union across all objects).
+        """
+        self._check_context_available()
+        if isinstance(objIDs, (list, tuple)) and objIDs and isinstance(objIDs[0], (list, tuple)):
+            return context_wrapper.getObjectPrimitiveUUIDsNestedWrapper(self.context, [list(x) for x in objIDs])
+        if isinstance(objIDs, (list, tuple)):
+            return context_wrapper.getObjectPrimitiveUUIDsBatchWrapper(self.context, list(objIDs))
+        return context_wrapper.getObjectPrimitiveUUIDs(self.context, int(objIDs))
+
+    # Tile
+    def getTileObjectAreaRatio(self, objIDs):
+        """Get tile-object area ratio for one or multiple tile objects."""
+        self._check_context_available()
+        if isinstance(objIDs, (list, tuple)):
+            return context_wrapper.getTileObjectAreaRatioBatchWrapper(self.context, list(objIDs))
+        return context_wrapper.getTileObjectAreaRatioWrapper(self.context, objIDs)
+
+    def getTileObjectCenter(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getTileObjectCenterWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getTileObjectSize(self, objID: int) -> vec2:
+        self._check_context_available()
+        x, y = context_wrapper.getTileObjectSizeWrapper(self.context, objID)
+        return vec2(x, y)
+
+    def getTileObjectSubdivisionCount(self, objID: int) -> int2:
+        self._check_context_available()
+        x, y = context_wrapper.getTileObjectSubdivisionCountWrapper(self.context, objID)
+        return int2(x, y)
+
+    def getTileObjectNormal(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getTileObjectNormalWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getTileObjectTextureUV(self, objID: int) -> List[vec2]:
+        self._check_context_available()
+        pairs = context_wrapper.getTileObjectTextureUVWrapper(self.context, objID)
+        return [vec2(u, v) for u, v in pairs]
+
+    def getTileObjectVertices(self, objID: int) -> List[vec3]:
+        self._check_context_available()
+        triples = context_wrapper.getTileObjectVerticesWrapper(self.context, objID)
+        return [vec3(x, y, z) for x, y, z in triples]
+
+    # Sphere
+    def getSphereObjectCenter(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getSphereObjectCenterWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getSphereObjectRadius(self, objID: int) -> vec3:
+        """Get per-axis radii of a sphere object.
+
+        Note: Helios spheres are spheroids with three independent radii (rx, ry, rz).
+        Returns a vec3 (not a scalar).
+        """
+        self._check_context_available()
+        x, y, z = context_wrapper.getSphereObjectRadiusWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getSphereObjectSubdivisionCount(self, objID: int) -> int:
+        self._check_context_available()
+        return context_wrapper.getSphereObjectSubdivisionCountWrapper(self.context, objID)
+
+    def getSphereObjectVolume(self, objID: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getSphereObjectVolumeWrapper(self.context, objID)
+
+    # Box
+    def getBoxObjectCenter(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getBoxObjectCenterWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getBoxObjectSize(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getBoxObjectSizeWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getBoxObjectSubdivisionCount(self, objID: int) -> int3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getBoxObjectSubdivisionCountWrapper(self.context, objID)
+        return int3(x, y, z)
+
+    def getBoxObjectVolume(self, objID: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getBoxObjectVolumeWrapper(self.context, objID)
+
+    # Disk
+    def getDiskObjectCenter(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getDiskObjectCenterWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getDiskObjectSize(self, objID: int) -> vec2:
+        self._check_context_available()
+        x, y = context_wrapper.getDiskObjectSizeWrapper(self.context, objID)
+        return vec2(x, y)
+
+    def getDiskObjectSubdivisionCount(self, objID: int) -> int:
+        self._check_context_available()
+        return context_wrapper.getDiskObjectSubdivisionCountWrapper(self.context, objID)
+
+    # Tube
+    def getTubeObjectSubdivisionCount(self, objID: int) -> int:
+        self._check_context_available()
+        return context_wrapper.getTubeObjectSubdivisionCountWrapper(self.context, objID)
+
+    def getTubeObjectNodeCount(self, objID: int) -> int:
+        self._check_context_available()
+        return context_wrapper.getTubeObjectNodeCountWrapper(self.context, objID)
+
+    def getTubeObjectNodes(self, objID: int) -> List[vec3]:
+        self._check_context_available()
+        triples = context_wrapper.getTubeObjectNodesWrapper(self.context, objID)
+        return [vec3(x, y, z) for x, y, z in triples]
+
+    def getTubeObjectNodeRadii(self, objID: int) -> List[float]:
+        self._check_context_available()
+        return context_wrapper.getTubeObjectNodeRadiiWrapper(self.context, objID)
+
+    def getTubeObjectNodeColors(self, objID: int) -> List[RGBcolor]:
+        self._check_context_available()
+        triples = context_wrapper.getTubeObjectNodeColorsWrapper(self.context, objID)
+        return [RGBcolor(r, g, b) for r, g, b in triples]
+
+    def getTubeObjectVolume(self, objID: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getTubeObjectVolumeWrapper(self.context, objID)
+
+    def getTubeObjectSegmentVolume(self, objID: int, segment_index: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getTubeObjectSegmentVolumeWrapper(self.context, objID, segment_index)
+
+    # Cone
+    def getConeObjectSubdivisionCount(self, objID: int) -> int:
+        self._check_context_available()
+        return context_wrapper.getConeObjectSubdivisionCountWrapper(self.context, objID)
+
+    def getConeObjectNodes(self, objID: int) -> List[vec3]:
+        self._check_context_available()
+        triples = context_wrapper.getConeObjectNodesWrapper(self.context, objID)
+        return [vec3(x, y, z) for x, y, z in triples]
+
+    def getConeObjectNodeRadii(self, objID: int) -> List[float]:
+        self._check_context_available()
+        return context_wrapper.getConeObjectNodeRadiiWrapper(self.context, objID)
+
+    def getConeObjectNode(self, objID: int, number: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getConeObjectNodeWrapper(self.context, objID, number)
+        return vec3(x, y, z)
+
+    def getConeObjectNodeRadius(self, objID: int, number: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getConeObjectNodeRadiusWrapper(self.context, objID, number)
+
+    def getConeObjectAxisUnitVector(self, objID: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getConeObjectAxisUnitVectorWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def getConeObjectLength(self, objID: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getConeObjectLengthWrapper(self.context, objID)
+
+    def getConeObjectVolume(self, objID: int) -> float:
+        self._check_context_available()
+        return context_wrapper.getConeObjectVolumeWrapper(self.context, objID)
+
+    # ==================== Primitive Geometry Queries ====================
+
+    def getPatchCenter(self, uuid: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getPatchCenterWrapper(self.context, uuid)
+        return vec3(x, y, z)
+
+    def getPatchSize(self, uuid: int) -> vec2:
+        self._check_context_available()
+        x, y = context_wrapper.getPatchSizeWrapper(self.context, uuid)
+        return vec2(x, y)
+
+    def getTriangleVertex(self, uuid: int, number: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getTriangleVertexWrapper(self.context, uuid, number)
+        return vec3(x, y, z)
+
+    def getVoxelCenter(self, uuid: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getVoxelCenterWrapper(self.context, uuid)
+        return vec3(x, y, z)
+
+    def getVoxelSize(self, uuid: int) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getVoxelSizeWrapper(self.context, uuid)
+        return vec3(x, y, z)
+
+    def getPatchCount(self, include_hidden: bool = True) -> int:
+        self._check_context_available()
+        return context_wrapper.getPatchCountWrapper(self.context, include_hidden)
+
+    def getTriangleCount(self, include_hidden: bool = True) -> int:
+        self._check_context_available()
+        return context_wrapper.getTriangleCountWrapper(self.context, include_hidden)
+
+    def getPrimitiveBoundingBox(self, uuids):
+        """Get axis-aligned bounding box for one primitive or a list of primitives.
+
+        Args:
+            uuids: Single UUID (int) or list of UUIDs.
+
+        Returns:
+            Tuple of (min_corner: vec3, max_corner: vec3).
+        """
+        self._check_context_available()
+        if isinstance(uuids, (list, tuple)):
+            mn, mx = context_wrapper.getPrimitiveBoundingBoxBatchWrapper(self.context, list(uuids))
+        else:
+            mn, mx = context_wrapper.getPrimitiveBoundingBoxWrapper(self.context, uuids)
+        return (vec3(mn[0], mn[1], mn[2]), vec3(mx[0], mx[1], mx[2]))
+
+    # ==================== Primitive Color Mutation ====================
+
+    def setPrimitiveColor(self, uuids, color) -> None:
+        """Set the RGB or RGBA color of one primitive or a list of primitives.
+
+        Args:
+            uuids: Single UUID (int) or list of UUIDs.
+            color: RGBcolor or RGBAcolor.
+        """
+        self._check_context_available()
+        if isinstance(color, RGBAcolor):
+            rgba = [color.r, color.g, color.b, color.a]
+            if isinstance(uuids, (list, tuple)):
+                context_wrapper.setPrimitiveColorRGBABatchWrapper(self.context, list(uuids), rgba)
+            else:
+                context_wrapper.setPrimitiveColorRGBAWrapper(self.context, uuids, rgba)
+        elif isinstance(color, RGBcolor):
+            rgb = [color.r, color.g, color.b]
+            if isinstance(uuids, (list, tuple)):
+                context_wrapper.setPrimitiveColorBatchWrapper(self.context, list(uuids), rgb)
+            else:
+                context_wrapper.setPrimitiveColorWrapper(self.context, uuids, rgb)
+        else:
+            raise ValueError(f"color must be RGBcolor or RGBAcolor, got {type(color).__name__}")
+
+    # ==================== Primitive Data Introspection / Cleanup ====================
+
+    def clearPrimitiveData(self, uuids, label: str) -> None:
+        """Remove a named data field from one primitive or a list of primitives."""
+        self._check_context_available()
+        if isinstance(uuids, (list, tuple)):
+            context_wrapper.clearPrimitiveDataByLabelBatchWrapper(self.context, list(uuids), label)
+        else:
+            context_wrapper.clearPrimitiveDataByLabelWrapper(self.context, uuids, label)
+
+    def listPrimitiveData(self, uuid: int) -> List[str]:
+        """List all data labels attached to a primitive."""
+        self._check_context_available()
+        return context_wrapper.listPrimitiveDataWrapper(self.context, uuid)
+
+    # ==================== Domain Cropping ====================
+
+    def cropDomainX(self, xbounds: vec2) -> None:
+        self._check_context_available()
+        if not isinstance(xbounds, vec2):
+            raise ValueError(f"xbounds must be a vec2, got {type(xbounds).__name__}")
+        context_wrapper.cropDomainXWrapper(self.context, xbounds.to_list())
+
+    def cropDomainY(self, ybounds: vec2) -> None:
+        self._check_context_available()
+        if not isinstance(ybounds, vec2):
+            raise ValueError(f"ybounds must be a vec2, got {type(ybounds).__name__}")
+        context_wrapper.cropDomainYWrapper(self.context, ybounds.to_list())
+
+    def cropDomainZ(self, zbounds: vec2) -> None:
+        self._check_context_available()
+        if not isinstance(zbounds, vec2):
+            raise ValueError(f"zbounds must be a vec2, got {type(zbounds).__name__}")
+        context_wrapper.cropDomainZWrapper(self.context, zbounds.to_list())
+
+    def cropDomain(self, *args) -> Optional[List[int]]:
+        """Crop the context domain to the given XYZ bounds.
+
+        Two call forms:
+            cropDomain(xbounds: vec2, ybounds: vec2, zbounds: vec2)
+                -> crop ALL primitives; returns None.
+            cropDomain(uuids: List[int], xbounds: vec2, ybounds: vec2, zbounds: vec2)
+                -> crop only the given primitives; returns the list of primitives
+                   that survived (in-bounds UUIDs). The input list is NOT mutated.
+        """
+        self._check_context_available()
+        if len(args) == 3:
+            xb, yb, zb = args
+            for name, b in (("xbounds", xb), ("ybounds", yb), ("zbounds", zb)):
+                if not isinstance(b, vec2):
+                    raise ValueError(f"{name} must be a vec2, got {type(b).__name__}")
+            context_wrapper.cropDomainXYZWrapper(self.context, xb.to_list(), yb.to_list(), zb.to_list())
+            return None
+        if len(args) == 4:
+            uuids, xb, yb, zb = args
+            if not isinstance(uuids, (list, tuple)):
+                raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+            for name, b in (("xbounds", xb), ("ybounds", yb), ("zbounds", zb)):
+                if not isinstance(b, vec2):
+                    raise ValueError(f"{name} must be a vec2, got {type(b).__name__}")
+            return context_wrapper.cropDomainByUUIDsWrapper(self.context, list(uuids), xb.to_list(), yb.to_list(), zb.to_list())
+        raise TypeError(f"cropDomain() takes 3 or 4 positional arguments, got {len(args)}")
 

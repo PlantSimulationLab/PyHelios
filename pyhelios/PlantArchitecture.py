@@ -1417,6 +1417,165 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to write QSM cylinder file to {filename}: {e}")
 
+    def writePlantStructureUSD(self, plant_id: int, filename: Union[str, Path],
+                               elastic_modulus: float = 5e9,
+                               wood_density: float = 800.0,
+                               damping_ratio: float = 0.1,
+                               static_friction: float = 0.5,
+                               dynamic_friction: float = 0.3,
+                               restitution: float = 0.1,
+                               organ_spring_stiffness: float = 10.0,
+                               organ_spring_damping: float = 1.0,
+                               leaf_mass_per_area: float = 0.05,
+                               fruit_mass: float = 0.01,
+                               flower_mass: float = 0.002,
+                               solver_position_iterations: int = 32,
+                               min_segment_length: float = 0.001) -> None:
+        """
+        Export plant structure as a USD articulated rigid body for NVIDIA IsaacSim physics.
+
+        Each tube segment becomes a capsule-shaped rigid link connected by spherical joints.
+        Spring/damper drives are derived from beam bending stiffness (E*I/L). Leaves, fruits,
+        and flowers are represented as mass bodies attached by spring links.
+
+        Args:
+            plant_id: ID of the plant instance to export
+            filename: Output file path (should have .usda extension)
+            elastic_modulus: Young's modulus (Pa) for joint stiffness, K = E*I/L
+            wood_density: Wood density (kg/m^3) used to compute mass from capsule volume
+            damping_ratio: Joint damping ratio (dimensionless)
+            static_friction: Static friction coefficient for collision material
+            dynamic_friction: Dynamic friction coefficient for collision material
+            restitution: Restitution (bounciness) for collision material
+            organ_spring_stiffness: Spring stiffness (N*m/rad) for organ attachment joints
+            organ_spring_damping: Damping (N*m*s/rad) for organ attachment joints
+            leaf_mass_per_area: Leaf mass per unit area (kg/m^2)
+            fruit_mass: Mass per fruit (kg)
+            flower_mass: Mass per flower (kg)
+            solver_position_iterations: PhysX articulation solver position iteration count
+            min_segment_length: Minimum segment length (m); shorter segments are skipped
+
+        Raises:
+            ValueError: If plant_id is negative or filename is empty
+            PlantArchitectureError: If plant doesn't exist or file cannot be written
+
+        Example:
+            >>> plantarch.writePlantStructureUSD(plant_id, "plant.usda")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        if not filename:
+            raise ValueError("Filename cannot be empty")
+
+        absolute_path = _resolve_user_path(filename)
+
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.writePlantStructureUSD(
+                    self._plantarch_ptr, plant_id, absolute_path,
+                    elastic_modulus, wood_density, damping_ratio,
+                    static_friction, dynamic_friction, restitution,
+                    organ_spring_stiffness, organ_spring_damping,
+                    leaf_mass_per_area, fruit_mass, flower_mass,
+                    solver_position_iterations, min_segment_length
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to write plant structure USD to {filename}: {e}")
+
+    def registerGrowthFrame(self, plant_id: int, min_segment_length: float = 0.001) -> None:
+        """
+        Capture a snapshot of the plant's geometry as a growth animation frame.
+
+        Call this after each :meth:`advanceTime` step to record the plant state for later
+        animation export via :meth:`writePlantGrowthUSD`.
+
+        Args:
+            plant_id: ID of the plant instance to capture
+            min_segment_length: Minimum segment length (m); shorter segments are skipped
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If plant doesn't exist
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            plantarch_wrapper.registerGrowthFrame(self._plantarch_ptr, plant_id, min_segment_length)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to register growth frame for plant {plant_id}: {e}")
+
+    def writePlantGrowthUSD(self, plant_id: int, filename: Union[str, Path],
+                            seconds_per_frame: float = 1.0) -> None:
+        """
+        Export all registered growth frames as a time-sampled USD animation file.
+
+        The resulting file can be imported directly into Blender. This is a visual-only
+        export — no physics prims, joints, or collision shapes are written.
+
+        Args:
+            plant_id: ID of the plant instance to export
+            filename: Output file path (should have .usda extension)
+            seconds_per_frame: Duration in seconds each growth frame occupies (default: 1.0)
+
+        Raises:
+            ValueError: If plant_id is negative or filename is empty
+            PlantArchitectureError: If plant doesn't exist or file cannot be written
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        if not filename:
+            raise ValueError("Filename cannot be empty")
+
+        absolute_path = _resolve_user_path(filename)
+
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.writePlantGrowthUSD(
+                    self._plantarch_ptr, plant_id, absolute_path, seconds_per_frame
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to write plant growth USD to {filename}: {e}")
+
+    def clearGrowthFrames(self, plant_id: int) -> None:
+        """
+        Clear stored growth animation frames for a plant.
+
+        Args:
+            plant_id: ID of the plant instance whose frames should be cleared
+
+        Raises:
+            ValueError: If plant_id is negative
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            plantarch_wrapper.clearGrowthFrames(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to clear growth frames for plant {plant_id}: {e}")
+
+    def getGrowthFrameCount(self, plant_id: int) -> int:
+        """
+        Get the number of registered growth frames for a plant.
+
+        Args:
+            plant_id: ID of the plant instance to query
+
+        Returns:
+            Number of frames registered via :meth:`registerGrowthFrame`
+
+        Raises:
+            ValueError: If plant_id is negative
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        try:
+            return plantarch_wrapper.getGrowthFrameCount(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get growth frame count for plant {plant_id}: {e}")
+
     def readPlantStructureXML(self, filename: Union[str, Path], quiet: bool = False) -> List[int]:
         """
         Load plant structure from XML file.

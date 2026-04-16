@@ -3649,6 +3649,24 @@ if _TIMESERIES_FUNCTIONS_AVAILABLE:
                   'loadTabularTimeseriesData', 'clearTimeseriesData']:
         getattr(helios_lib, fname).errcheck = _check_error_timeseries
 
+# updateTimeseriesData was added in helios-core v1.3.71. Probe separately so that
+# wheels built against older libraries keep the rest of the timeseries API working.
+_TIMESERIES_UPDATE_AVAILABLE = False
+try:
+    helios_lib.updateTimeseriesData.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_float
+    ]
+    helios_lib.updateTimeseriesData.restype = None
+    _TIMESERIES_UPDATE_AVAILABLE = True
+except AttributeError:
+    _TIMESERIES_UPDATE_AVAILABLE = False
+
+if _TIMESERIES_UPDATE_AVAILABLE:
+    helios_lib.updateTimeseriesData.errcheck = _check_error_timeseries
+
 
 _NOT_AVAILABLE_MSG = ("Timeseries functions not available in current Helios library. "
                       "Rebuild PyHelios with updated C++ wrapper implementation.")
@@ -3661,6 +3679,23 @@ def addTimeseriesData(context, label: str, value: float, day: int, month: int, y
         raise NotImplementedError(_NOT_AVAILABLE_MSG)
     helios_lib.addTimeseriesData(context, label.encode('utf-8'), value,
                                  day, month, year, hour, minute, second)
+
+
+def updateTimeseriesData(context, label: str, day: int, month: int, year: int,
+                         hour: int, minute: int, second: int, new_value: float):
+    """Update the value of an existing timeseries data point at the given (date, time).
+
+    Note: parameter order intentionally differs from addTimeseriesData() — value
+    follows date/time here to match the underlying C++ signature
+    `updateTimeseriesData(label, Date, Time, new_value)`.
+    """
+    if not _TIMESERIES_UPDATE_AVAILABLE:
+        raise NotImplementedError(
+            "updateTimeseriesData is not available in the current Helios library. "
+            "It requires helios-core v1.3.71 or later. Rebuild PyHelios."
+        )
+    helios_lib.updateTimeseriesData(context, label.encode('utf-8'),
+                                    day, month, year, hour, minute, second, new_value)
 
 
 def setCurrentTimeseriesPoint(context, label: str, index: int):
@@ -5515,3 +5550,639 @@ def filterPrimitivesByDataStringWrapper(context, uuids: List[int], label: str, v
     ptr = helios_lib.filterPrimitivesByDataString(context, arr, len(uuids), label.encode('utf-8'), value.encode('utf-8'), ctypes.byref(result_count))
     if result_count.value == 0 or not ptr: return []
     return [ptr[i] for i in range(result_count.value)]
+
+# ==================== Object / Primitive Geometry Queries, Color Mutation, Crop Domain ====================
+# These wrappers were added together; availability of the whole group is controlled by a single flag
+# since all require a single fresh native build.
+_CONTEXT_GEOMETRY_EXTENSIONS_AVAILABLE = True
+_NOT_AVAILABLE_CTX_EXT_MSG = (
+    "PyHelios extended Context geometry queries are not available in the loaded native library. "
+    "Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    # Object geometry
+    helios_lib.getObjectType.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getObjectType.restype = ctypes.c_uint
+    helios_lib.getObjectType.errcheck = _check_error
+
+    helios_lib.getObjectCenter.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getObjectCenter.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getObjectCenter.errcheck = _check_error
+
+    helios_lib.getObjectBoundingBox.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getObjectBoundingBox.restype = None
+    helios_lib.getObjectBoundingBox.errcheck = _check_error
+
+    helios_lib.getObjectBoundingBox_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getObjectBoundingBox_batch.restype = None
+    helios_lib.getObjectBoundingBox_batch.errcheck = _check_error
+
+    helios_lib.getObjectPrimitiveUUIDs_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getObjectPrimitiveUUIDs_batch.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getObjectPrimitiveUUIDs_batch.errcheck = _check_error
+
+    helios_lib.getObjectPrimitiveUUIDs_nested.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getObjectPrimitiveUUIDs_nested.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getObjectPrimitiveUUIDs_nested.errcheck = _check_error
+
+    # Tile
+    helios_lib.getTileObjectAreaRatio.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getTileObjectAreaRatio.restype = ctypes.c_float
+    helios_lib.getTileObjectAreaRatio.errcheck = _check_error
+
+    helios_lib.getTileObjectAreaRatio_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getTileObjectAreaRatio_batch.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getTileObjectAreaRatio_batch.errcheck = _check_error
+
+    for _fn in ("getTileObjectCenter", "getTileObjectSize", "getTileObjectNormal"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getTileObjectSubdivisionCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getTileObjectSubdivisionCount.restype = ctypes.POINTER(ctypes.c_int)
+    helios_lib.getTileObjectSubdivisionCount.errcheck = _check_error
+
+    for _fn in ("getTileObjectTextureUV", "getTileObjectVertices"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    # Sphere
+    for _fn in ("getSphereObjectCenter", "getSphereObjectRadius"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getSphereObjectSubdivisionCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getSphereObjectSubdivisionCount.restype = ctypes.c_uint
+    helios_lib.getSphereObjectSubdivisionCount.errcheck = _check_error
+
+    helios_lib.getSphereObjectVolume.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getSphereObjectVolume.restype = ctypes.c_float
+    helios_lib.getSphereObjectVolume.errcheck = _check_error
+
+    # Box
+    for _fn in ("getBoxObjectCenter", "getBoxObjectSize"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getBoxObjectSubdivisionCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getBoxObjectSubdivisionCount.restype = ctypes.POINTER(ctypes.c_int)
+    helios_lib.getBoxObjectSubdivisionCount.errcheck = _check_error
+
+    helios_lib.getBoxObjectVolume.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getBoxObjectVolume.restype = ctypes.c_float
+    helios_lib.getBoxObjectVolume.errcheck = _check_error
+
+    # Disk
+    for _fn in ("getDiskObjectCenter", "getDiskObjectSize"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getDiskObjectSubdivisionCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getDiskObjectSubdivisionCount.restype = ctypes.c_uint
+    helios_lib.getDiskObjectSubdivisionCount.errcheck = _check_error
+
+    # Tube
+    for _fn in ("getTubeObjectSubdivisionCount", "getTubeObjectNodeCount"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.c_uint
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    for _fn in ("getTubeObjectNodes", "getTubeObjectNodeRadii", "getTubeObjectNodeColors"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getTubeObjectVolume.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getTubeObjectVolume.restype = ctypes.c_float
+    helios_lib.getTubeObjectVolume.errcheck = _check_error
+
+    helios_lib.getTubeObjectSegmentVolume.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.getTubeObjectSegmentVolume.restype = ctypes.c_float
+    helios_lib.getTubeObjectSegmentVolume.errcheck = _check_error
+
+    # Cone
+    helios_lib.getConeObjectSubdivisionCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getConeObjectSubdivisionCount.restype = ctypes.c_uint
+    helios_lib.getConeObjectSubdivisionCount.errcheck = _check_error
+
+    for _fn in ("getConeObjectNodes", "getConeObjectNodeRadii"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getConeObjectNode.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_int]
+    helios_lib.getConeObjectNode.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getConeObjectNode.errcheck = _check_error
+
+    helios_lib.getConeObjectNodeRadius.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_int]
+    helios_lib.getConeObjectNodeRadius.restype = ctypes.c_float
+    helios_lib.getConeObjectNodeRadius.errcheck = _check_error
+
+    helios_lib.getConeObjectAxisUnitVector.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getConeObjectAxisUnitVector.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getConeObjectAxisUnitVector.errcheck = _check_error
+
+    for _fn in ("getConeObjectLength", "getConeObjectVolume"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.c_float
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    # Primitive geometry
+    for _fn in ("getPatchCenter", "getVoxelCenter", "getVoxelSize"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getPatchSize.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPatchSize.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getPatchSize.errcheck = _check_error
+
+    helios_lib.getTriangleVertex.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.getTriangleVertex.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getTriangleVertex.errcheck = _check_error
+
+    for _fn in ("getPatchCount", "getTriangleCount"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_bool]
+        getattr(helios_lib, _fn).restype = ctypes.c_uint
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getPrimitiveBoundingBox.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getPrimitiveBoundingBox.restype = None
+    helios_lib.getPrimitiveBoundingBox.errcheck = _check_error
+
+    helios_lib.getPrimitiveBoundingBox_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getPrimitiveBoundingBox_batch.restype = None
+    helios_lib.getPrimitiveBoundingBox_batch.errcheck = _check_error
+
+    # setPrimitiveColor
+    helios_lib.setPrimitiveColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setPrimitiveColor.restype = None
+    helios_lib.setPrimitiveColor.errcheck = _check_error
+
+    helios_lib.setPrimitiveColor_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setPrimitiveColor_batch.restype = None
+    helios_lib.setPrimitiveColor_batch.errcheck = _check_error
+
+    helios_lib.setPrimitiveColorRGBA.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setPrimitiveColorRGBA.restype = None
+    helios_lib.setPrimitiveColorRGBA.errcheck = _check_error
+
+    helios_lib.setPrimitiveColorRGBA_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setPrimitiveColorRGBA_batch.restype = None
+    helios_lib.setPrimitiveColorRGBA_batch.errcheck = _check_error
+
+    # Primitive data introspection
+    helios_lib.clearPrimitiveDataByLabel.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.clearPrimitiveDataByLabel.restype = None
+    helios_lib.clearPrimitiveDataByLabel.errcheck = _check_error
+
+    helios_lib.clearPrimitiveDataByLabel_batch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.clearPrimitiveDataByLabel_batch.restype = None
+    helios_lib.clearPrimitiveDataByLabel_batch.errcheck = _check_error
+
+    helios_lib.listPrimitiveData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.listPrimitiveData.restype = ctypes.POINTER(ctypes.c_char_p)
+    helios_lib.listPrimitiveData.errcheck = _check_error
+
+    # Crop domain
+    for _fn in ("cropDomainX", "cropDomainY", "cropDomainZ"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float)]
+        getattr(helios_lib, _fn).restype = None
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.cropDomainXYZ.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.cropDomainXYZ.restype = None
+    helios_lib.cropDomainXYZ.errcheck = _check_error
+
+    helios_lib.cropDomainByUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.cropDomainByUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.cropDomainByUUIDs.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_GEOMETRY_EXTENSIONS_AVAILABLE = False
+
+
+def _require_ctx_ext():
+    if not _CONTEXT_GEOMETRY_EXTENSIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_CTX_EXT_MSG)
+
+
+def _float3_from_ptr(ptr):
+    return (float(ptr[0]), float(ptr[1]), float(ptr[2]))
+
+
+def _float2_from_ptr(ptr):
+    return (float(ptr[0]), float(ptr[1]))
+
+
+def _int3_from_ptr(ptr):
+    return (int(ptr[0]), int(ptr[1]), int(ptr[2]))
+
+
+def _int2_from_ptr(ptr):
+    return (int(ptr[0]), int(ptr[1]))
+
+
+def getObjectTypeWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getObjectType(context, objID))
+
+
+def getObjectCenterWrapper(context, objID: int):
+    _require_ctx_ext()
+    ptr = helios_lib.getObjectCenter(context, objID)
+    return _float3_from_ptr(ptr)
+
+
+def getObjectBoundingBoxWrapper(context, objID: int):
+    _require_ctx_ext()
+    mn = (ctypes.c_float * 3)()
+    mx = (ctypes.c_float * 3)()
+    helios_lib.getObjectBoundingBox(context, objID, mn, mx)
+    return ((mn[0], mn[1], mn[2]), (mx[0], mx[1], mx[2]))
+
+
+def getObjectBoundingBoxBatchWrapper(context, objIDs: List[int]):
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(objIDs))(*objIDs)
+    mn = (ctypes.c_float * 3)()
+    mx = (ctypes.c_float * 3)()
+    helios_lib.getObjectBoundingBox_batch(context, arr, len(objIDs), mn, mx)
+    return ((mn[0], mn[1], mn[2]), (mx[0], mx[1], mx[2]))
+
+
+def getObjectPrimitiveUUIDsBatchWrapper(context, objIDs: List[int]) -> List[int]:
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(objIDs))(*objIDs)
+    size = ctypes.c_uint()
+    ptr = helios_lib.getObjectPrimitiveUUIDs_batch(context, arr, len(objIDs), ctypes.byref(size))
+    if size.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(size.value)]
+
+
+def getObjectPrimitiveUUIDsNestedWrapper(context, nested: List[List[int]]) -> List[int]:
+    _require_ctx_ext()
+    flat = [u for inner in nested for u in inner]
+    inner_counts = [len(inner) for inner in nested]
+    flat_arr = (ctypes.c_uint * max(len(flat), 1))(*flat)
+    counts_arr = (ctypes.c_uint * max(len(inner_counts), 1))(*inner_counts)
+    size = ctypes.c_uint()
+    ptr = helios_lib.getObjectPrimitiveUUIDs_nested(context, flat_arr, counts_arr, len(inner_counts), ctypes.byref(size))
+    if size.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(size.value)]
+
+
+# Tile
+def getTileObjectAreaRatioWrapper(context, objID: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getTileObjectAreaRatio(context, objID))
+
+
+def getTileObjectAreaRatioBatchWrapper(context, objIDs: List[int]) -> List[float]:
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(objIDs))(*objIDs)
+    size = ctypes.c_uint()
+    ptr = helios_lib.getTileObjectAreaRatio_batch(context, arr, len(objIDs), ctypes.byref(size))
+    if size.value == 0 or not ptr:
+        return []
+    return [float(ptr[i]) for i in range(size.value)]
+
+
+def getTileObjectCenterWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getTileObjectCenter(context, objID))
+
+
+def getTileObjectSizeWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float2_from_ptr(helios_lib.getTileObjectSize(context, objID))
+
+
+def getTileObjectSubdivisionCountWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _int2_from_ptr(helios_lib.getTileObjectSubdivisionCount(context, objID))
+
+
+def getTileObjectNormalWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getTileObjectNormal(context, objID))
+
+
+def _pull_float_array(ptr, size):
+    if size == 0 or not ptr:
+        return []
+    arr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_float * size)).contents
+    return [float(x) for x in arr]
+
+
+def getTileObjectTextureUVWrapper(context, objID: int):
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getTileObjectTextureUV(context, objID, ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1]) for i in range(0, len(vals), 2)]
+
+
+def getTileObjectVerticesWrapper(context, objID: int):
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getTileObjectVertices(context, objID, ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+# Sphere
+def getSphereObjectCenterWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getSphereObjectCenter(context, objID))
+
+
+def getSphereObjectRadiusWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getSphereObjectRadius(context, objID))
+
+
+def getSphereObjectSubdivisionCountWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getSphereObjectSubdivisionCount(context, objID))
+
+
+def getSphereObjectVolumeWrapper(context, objID: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getSphereObjectVolume(context, objID))
+
+
+# Box
+def getBoxObjectCenterWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getBoxObjectCenter(context, objID))
+
+
+def getBoxObjectSizeWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getBoxObjectSize(context, objID))
+
+
+def getBoxObjectSubdivisionCountWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _int3_from_ptr(helios_lib.getBoxObjectSubdivisionCount(context, objID))
+
+
+def getBoxObjectVolumeWrapper(context, objID: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getBoxObjectVolume(context, objID))
+
+
+# Disk
+def getDiskObjectCenterWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getDiskObjectCenter(context, objID))
+
+
+def getDiskObjectSizeWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float2_from_ptr(helios_lib.getDiskObjectSize(context, objID))
+
+
+def getDiskObjectSubdivisionCountWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getDiskObjectSubdivisionCount(context, objID))
+
+
+# Tube
+def getTubeObjectSubdivisionCountWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getTubeObjectSubdivisionCount(context, objID))
+
+
+def getTubeObjectNodeCountWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getTubeObjectNodeCount(context, objID))
+
+
+def getTubeObjectNodesWrapper(context, objID: int):
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getTubeObjectNodes(context, objID, ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getTubeObjectNodeRadiiWrapper(context, objID: int) -> List[float]:
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getTubeObjectNodeRadii(context, objID, ctypes.byref(size))
+    return _pull_float_array(ptr, size.value)
+
+
+def getTubeObjectNodeColorsWrapper(context, objID: int):
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getTubeObjectNodeColors(context, objID, ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getTubeObjectVolumeWrapper(context, objID: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getTubeObjectVolume(context, objID))
+
+
+def getTubeObjectSegmentVolumeWrapper(context, objID: int, segment_index: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getTubeObjectSegmentVolume(context, objID, segment_index))
+
+
+# Cone
+def getConeObjectSubdivisionCountWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getConeObjectSubdivisionCount(context, objID))
+
+
+def getConeObjectNodesWrapper(context, objID: int):
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getConeObjectNodes(context, objID, ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getConeObjectNodeRadiiWrapper(context, objID: int) -> List[float]:
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getConeObjectNodeRadii(context, objID, ctypes.byref(size))
+    return _pull_float_array(ptr, size.value)
+
+
+def getConeObjectNodeWrapper(context, objID: int, number: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getConeObjectNode(context, objID, number))
+
+
+def getConeObjectNodeRadiusWrapper(context, objID: int, number: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getConeObjectNodeRadius(context, objID, number))
+
+
+def getConeObjectAxisUnitVectorWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getConeObjectAxisUnitVector(context, objID))
+
+
+def getConeObjectLengthWrapper(context, objID: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getConeObjectLength(context, objID))
+
+
+def getConeObjectVolumeWrapper(context, objID: int) -> float:
+    _require_ctx_ext()
+    return float(helios_lib.getConeObjectVolume(context, objID))
+
+
+# Primitive geometry
+def getPatchCenterWrapper(context, uuid: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getPatchCenter(context, uuid))
+
+
+def getPatchSizeWrapper(context, uuid: int):
+    _require_ctx_ext()
+    return _float2_from_ptr(helios_lib.getPatchSize(context, uuid))
+
+
+def getTriangleVertexWrapper(context, uuid: int, number: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getTriangleVertex(context, uuid, number))
+
+
+def getVoxelCenterWrapper(context, uuid: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getVoxelCenter(context, uuid))
+
+
+def getVoxelSizeWrapper(context, uuid: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getVoxelSize(context, uuid))
+
+
+def getPatchCountWrapper(context, include_hidden: bool = True) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getPatchCount(context, bool(include_hidden)))
+
+
+def getTriangleCountWrapper(context, include_hidden: bool = True) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getTriangleCount(context, bool(include_hidden)))
+
+
+def getPrimitiveBoundingBoxWrapper(context, uuid: int):
+    _require_ctx_ext()
+    mn = (ctypes.c_float * 3)()
+    mx = (ctypes.c_float * 3)()
+    helios_lib.getPrimitiveBoundingBox(context, uuid, mn, mx)
+    return ((mn[0], mn[1], mn[2]), (mx[0], mx[1], mx[2]))
+
+
+def getPrimitiveBoundingBoxBatchWrapper(context, uuids: List[int]):
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    mn = (ctypes.c_float * 3)()
+    mx = (ctypes.c_float * 3)()
+    helios_lib.getPrimitiveBoundingBox_batch(context, arr, len(uuids), mn, mx)
+    return ((mn[0], mn[1], mn[2]), (mx[0], mx[1], mx[2]))
+
+
+# setPrimitiveColor
+def setPrimitiveColorWrapper(context, uuid: int, color_rgb: List[float]):
+    _require_ctx_ext()
+    arr = (ctypes.c_float * 3)(color_rgb[0], color_rgb[1], color_rgb[2])
+    helios_lib.setPrimitiveColor(context, uuid, arr)
+
+
+def setPrimitiveColorBatchWrapper(context, uuids: List[int], color_rgb: List[float]):
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    color_arr = (ctypes.c_float * 3)(color_rgb[0], color_rgb[1], color_rgb[2])
+    helios_lib.setPrimitiveColor_batch(context, arr, len(uuids), color_arr)
+
+
+def setPrimitiveColorRGBAWrapper(context, uuid: int, color_rgba: List[float]):
+    _require_ctx_ext()
+    arr = (ctypes.c_float * 4)(color_rgba[0], color_rgba[1], color_rgba[2], color_rgba[3])
+    helios_lib.setPrimitiveColorRGBA(context, uuid, arr)
+
+
+def setPrimitiveColorRGBABatchWrapper(context, uuids: List[int], color_rgba: List[float]):
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    color_arr = (ctypes.c_float * 4)(color_rgba[0], color_rgba[1], color_rgba[2], color_rgba[3])
+    helios_lib.setPrimitiveColorRGBA_batch(context, arr, len(uuids), color_arr)
+
+
+# Primitive data introspection
+def clearPrimitiveDataByLabelWrapper(context, uuid: int, label: str):
+    _require_ctx_ext()
+    helios_lib.clearPrimitiveDataByLabel(context, uuid, label.encode('utf-8'))
+
+
+def clearPrimitiveDataByLabelBatchWrapper(context, uuids: List[int], label: str):
+    _require_ctx_ext()
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.clearPrimitiveDataByLabel_batch(context, arr, len(uuids), label.encode('utf-8'))
+
+
+def listPrimitiveDataWrapper(context, uuid: int) -> List[str]:
+    _require_ctx_ext()
+    count = ctypes.c_uint()
+    ptr = helios_lib.listPrimitiveData(context, uuid, ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [ptr[i].decode('utf-8') for i in range(count.value)]
+
+
+# Crop domain
+def cropDomainXWrapper(context, xbounds):
+    _require_ctx_ext()
+    arr = (ctypes.c_float * 2)(float(xbounds[0]), float(xbounds[1]))
+    helios_lib.cropDomainX(context, arr)
+
+
+def cropDomainYWrapper(context, ybounds):
+    _require_ctx_ext()
+    arr = (ctypes.c_float * 2)(float(ybounds[0]), float(ybounds[1]))
+    helios_lib.cropDomainY(context, arr)
+
+
+def cropDomainZWrapper(context, zbounds):
+    _require_ctx_ext()
+    arr = (ctypes.c_float * 2)(float(zbounds[0]), float(zbounds[1]))
+    helios_lib.cropDomainZ(context, arr)
+
+
+def cropDomainXYZWrapper(context, xbounds, ybounds, zbounds):
+    _require_ctx_ext()
+    x_arr = (ctypes.c_float * 2)(float(xbounds[0]), float(xbounds[1]))
+    y_arr = (ctypes.c_float * 2)(float(ybounds[0]), float(ybounds[1]))
+    z_arr = (ctypes.c_float * 2)(float(zbounds[0]), float(zbounds[1]))
+    helios_lib.cropDomainXYZ(context, x_arr, y_arr, z_arr)
+
+
+def cropDomainByUUIDsWrapper(context, uuids: List[int], xbounds, ybounds, zbounds) -> List[int]:
+    _require_ctx_ext()
+    uuid_arr = (ctypes.c_uint * max(len(uuids), 1))(*uuids)
+    x_arr = (ctypes.c_float * 2)(float(xbounds[0]), float(xbounds[1]))
+    y_arr = (ctypes.c_float * 2)(float(ybounds[0]), float(ybounds[1]))
+    z_arr = (ctypes.c_float * 2)(float(zbounds[0]), float(zbounds[1]))
+    out_size = ctypes.c_uint()
+    ptr = helios_lib.cropDomainByUUIDs(context, uuid_arr, len(uuids), x_arr, y_arr, z_arr, ctypes.byref(out_size))
+    if out_size.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(out_size.value)]

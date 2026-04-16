@@ -3349,3 +3349,350 @@ class TestPrimitiveDataStatistics:
         basic_context.setPrimitiveDataString(uuids[3], "tag", "trunk")
         result = basic_context.filterPrimitivesByData(uuids, "tag", "leaf")
         assert len(result) == 2
+
+
+# ============================================================================
+# Extended Context geometry queries (object/primitive introspection, color,
+# data cleanup, domain cropping)
+# ============================================================================
+
+# helios::ObjectType enum values (from helios-core Context.h)
+_OBJ_TYPE_TILE = 0
+_OBJ_TYPE_SPHERE = 1
+_OBJ_TYPE_TUBE = 2
+_OBJ_TYPE_BOX = 3
+_OBJ_TYPE_DISK = 4
+_OBJ_TYPE_POLYMESH = 5
+_OBJ_TYPE_CONE = 6
+
+
+@pytest.mark.native_only
+class TestObjectGeometryQueries:
+    def test_get_object_type_for_each_compound(self, basic_context):
+        tile_id = basic_context.addTileObject(
+            center=vec3(0, 0, 0), size=vec2(1, 1), subdiv=int2(1, 1))
+        sphere_id = basic_context.addSphereObject(
+            ndivs=5, center=vec3(5, 0, 0), radius=0.5)
+        box_id = basic_context.addBoxObject(
+            center=vec3(0, 5, 0), size=vec3(1, 1, 1), subdiv=int3(1, 1, 1))
+        disk_id = basic_context.addDiskObject(
+            ndivs=8, center=vec3(0, 0, 5), size=vec2(0.5, 0.5))
+        tube_id = basic_context.addTubeObject(
+            ndivs=6, nodes=[vec3(0, 0, 10), vec3(0, 0, 11), vec3(0, 0, 12)],
+            radii=[0.1, 0.08, 0.05])
+        cone_id = basic_context.addConeObject(
+            ndivs=6, node0=vec3(0, 10, 0), node1=vec3(0, 10, 1),
+            radius0=0.2, radius1=0.1)
+
+        assert basic_context.getObjectType(tile_id) == _OBJ_TYPE_TILE
+        assert basic_context.getObjectType(sphere_id) == _OBJ_TYPE_SPHERE
+        assert basic_context.getObjectType(box_id) == _OBJ_TYPE_BOX
+        assert basic_context.getObjectType(disk_id) == _OBJ_TYPE_DISK
+        assert basic_context.getObjectType(tube_id) == _OBJ_TYPE_TUBE
+        assert basic_context.getObjectType(cone_id) == _OBJ_TYPE_CONE
+
+    def test_get_object_center_and_bounding_box(self, basic_context):
+        box_id = basic_context.addBoxObject(
+            center=vec3(2, 3, 4), size=vec3(2, 4, 6), subdiv=int3(1, 1, 1))
+        c = basic_context.getObjectCenter(box_id)
+        assert c.x == pytest.approx(2.0)
+        assert c.y == pytest.approx(3.0)
+        assert c.z == pytest.approx(4.0)
+
+        mn, mx = basic_context.getObjectBoundingBox(box_id)
+        assert mn.x == pytest.approx(1.0)
+        assert mn.y == pytest.approx(1.0)
+        assert mn.z == pytest.approx(1.0)
+        assert mx.x == pytest.approx(3.0)
+        assert mx.y == pytest.approx(5.0)
+        assert mx.z == pytest.approx(7.0)
+
+    def test_get_object_primitive_uuids_single_batch_nested(self, basic_context):
+        a = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1), subdiv=int2(2, 2))
+        b = basic_context.addTileObject(center=vec3(5, 0, 0), size=vec2(1, 1), subdiv=int2(3, 1))
+
+        a_uuids = basic_context.getObjectPrimitiveUUIDs(a)
+        b_uuids = basic_context.getObjectPrimitiveUUIDs(b)
+        assert len(a_uuids) == 4
+        assert len(b_uuids) == 3
+
+        batch = basic_context.getObjectPrimitiveUUIDs([a, b])
+        assert set(batch) == set(a_uuids) | set(b_uuids)
+
+        nested = basic_context.getObjectPrimitiveUUIDs([[a], [b]])
+        assert set(nested) == set(a_uuids) | set(b_uuids)
+
+    def test_tile_object_queries(self, basic_context):
+        obj_id = basic_context.addTileObject(
+            center=vec3(1, 2, 3), size=vec2(4, 5),
+            rotation=SphericalCoord(1, 0, 0), subdiv=int2(2, 3))
+        c = basic_context.getTileObjectCenter(obj_id)
+        assert c.x == pytest.approx(1.0)
+        assert c.y == pytest.approx(2.0)
+        assert c.z == pytest.approx(3.0)
+
+        s = basic_context.getTileObjectSize(obj_id)
+        assert s.x == pytest.approx(4.0)
+        assert s.y == pytest.approx(5.0)
+
+        sd = basic_context.getTileObjectSubdivisionCount(obj_id)
+        assert sd.x == 2
+        assert sd.y == 3
+
+        n = basic_context.getTileObjectNormal(obj_id)
+        assert isinstance(n, vec3)
+
+        verts = basic_context.getTileObjectVertices(obj_id)
+        assert len(verts) > 0
+        assert all(isinstance(v, vec3) for v in verts)
+
+    def test_sphere_object_queries(self, basic_context):
+        obj_id = basic_context.addSphereObject(ndivs=6, center=vec3(0, 0, 0), radius=0.75)
+        c = basic_context.getSphereObjectCenter(obj_id)
+        assert c.x == pytest.approx(0.0)
+        r = basic_context.getSphereObjectRadius(obj_id)
+        # Returns vec3 (per-axis radii); for a uniform sphere all three should match
+        assert isinstance(r, vec3)
+        assert r.x == pytest.approx(0.75)
+        assert r.y == pytest.approx(0.75)
+        assert r.z == pytest.approx(0.75)
+        assert basic_context.getSphereObjectSubdivisionCount(obj_id) == 6
+        v = basic_context.getSphereObjectVolume(obj_id)
+        assert v > 0
+
+    def test_box_object_queries(self, basic_context):
+        obj_id = basic_context.addBoxObject(
+            center=vec3(0, 0, 0), size=vec3(2, 3, 4), subdiv=int3(1, 1, 1))
+        c = basic_context.getBoxObjectCenter(obj_id)
+        assert c.x == pytest.approx(0.0)
+        s = basic_context.getBoxObjectSize(obj_id)
+        assert s.x == pytest.approx(2.0)
+        assert s.y == pytest.approx(3.0)
+        assert s.z == pytest.approx(4.0)
+        sd = basic_context.getBoxObjectSubdivisionCount(obj_id)
+        assert isinstance(sd, int3)
+        v = basic_context.getBoxObjectVolume(obj_id)
+        assert v == pytest.approx(2 * 3 * 4)
+
+    def test_disk_object_queries(self, basic_context):
+        obj_id = basic_context.addDiskObject(
+            ndivs=8, center=vec3(0, 0, 0), size=vec2(0.5, 0.5))
+        c = basic_context.getDiskObjectCenter(obj_id)
+        assert c.x == pytest.approx(0.0)
+        s = basic_context.getDiskObjectSize(obj_id)
+        assert isinstance(s, vec2)
+        sd = basic_context.getDiskObjectSubdivisionCount(obj_id)
+        assert sd > 0
+
+    def test_tube_object_queries(self, basic_context):
+        nodes = [vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 0, 2)]
+        radii = [0.1, 0.08, 0.05]
+        obj_id = basic_context.addTubeObject(ndivs=6, nodes=nodes, radii=radii)
+
+        assert basic_context.getTubeObjectSubdivisionCount(obj_id) == 6
+        assert basic_context.getTubeObjectNodeCount(obj_id) == len(nodes)
+
+        got_nodes = basic_context.getTubeObjectNodes(obj_id)
+        assert len(got_nodes) == len(nodes)
+        for g, n in zip(got_nodes, nodes):
+            assert g.x == pytest.approx(n.x)
+            assert g.y == pytest.approx(n.y)
+            assert g.z == pytest.approx(n.z)
+
+        got_radii = basic_context.getTubeObjectNodeRadii(obj_id)
+        assert len(got_radii) == len(radii)
+        for g, r in zip(got_radii, radii):
+            assert g == pytest.approx(r)
+
+        colors = basic_context.getTubeObjectNodeColors(obj_id)
+        assert len(colors) == len(nodes)
+        assert all(isinstance(c, RGBcolor) for c in colors)
+
+        v = basic_context.getTubeObjectVolume(obj_id)
+        assert v > 0
+        seg_v = basic_context.getTubeObjectSegmentVolume(obj_id, 0)
+        assert seg_v > 0
+
+    def test_cone_object_queries(self, basic_context):
+        obj_id = basic_context.addConeObject(
+            ndivs=8, node0=vec3(0, 0, 0), node1=vec3(0, 0, 2),
+            radius0=0.3, radius1=0.1)
+        assert basic_context.getConeObjectSubdivisionCount(obj_id) == 8
+        got_nodes = basic_context.getConeObjectNodes(obj_id)
+        assert len(got_nodes) == 2
+        got_radii = basic_context.getConeObjectNodeRadii(obj_id)
+        assert len(got_radii) == 2
+        assert got_radii[0] == pytest.approx(0.3)
+        assert got_radii[1] == pytest.approx(0.1)
+
+        node0 = basic_context.getConeObjectNode(obj_id, 0)
+        assert node0.z == pytest.approx(0.0)
+        assert basic_context.getConeObjectNodeRadius(obj_id, 1) == pytest.approx(0.1)
+
+        axis = basic_context.getConeObjectAxisUnitVector(obj_id)
+        assert isinstance(axis, vec3)
+        length = basic_context.getConeObjectLength(obj_id)
+        assert length == pytest.approx(2.0)
+        vol = basic_context.getConeObjectVolume(obj_id)
+        assert vol > 0
+
+
+@pytest.mark.native_only
+class TestPrimitiveGeometryQueries:
+    def test_patch_center_and_size(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(1, 2, 3), size=vec2(4, 5))
+        c = basic_context.getPatchCenter(uuid)
+        assert c.x == pytest.approx(1.0)
+        assert c.y == pytest.approx(2.0)
+        assert c.z == pytest.approx(3.0)
+        s = basic_context.getPatchSize(uuid)
+        assert s.x == pytest.approx(4.0)
+        assert s.y == pytest.approx(5.0)
+
+    def test_triangle_vertex(self, basic_context):
+        v0 = vec3(0, 0, 0)
+        v1 = vec3(1, 0, 0)
+        v2 = vec3(0, 1, 0)
+        uuid = basic_context.addTriangle(v0, v1, v2)
+        got_v0 = basic_context.getTriangleVertex(uuid, 0)
+        assert got_v0.x == pytest.approx(0.0)
+        got_v1 = basic_context.getTriangleVertex(uuid, 1)
+        assert got_v1.x == pytest.approx(1.0)
+        got_v2 = basic_context.getTriangleVertex(uuid, 2)
+        assert got_v2.y == pytest.approx(1.0)
+
+    def test_patch_and_triangle_counts(self, basic_context):
+        assert basic_context.getPatchCount() == 0
+        assert basic_context.getTriangleCount() == 0
+        basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.addPatch(center=vec3(1, 0, 0), size=vec2(1, 1))
+        basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+        assert basic_context.getPatchCount() == 2
+        assert basic_context.getTriangleCount() == 1
+
+    def test_primitive_bounding_box_single_and_batch(self, basic_context):
+        u1 = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(2, 2))
+        u2 = basic_context.addPatch(center=vec3(5, 0, 0), size=vec2(2, 2))
+        mn, mx = basic_context.getPrimitiveBoundingBox(u1)
+        assert mn.x == pytest.approx(-1.0)
+        assert mx.x == pytest.approx(1.0)
+
+        mn_b, mx_b = basic_context.getPrimitiveBoundingBox([u1, u2])
+        assert mn_b.x == pytest.approx(-1.0)
+        assert mx_b.x == pytest.approx(6.0)
+
+
+@pytest.mark.native_only
+class TestSetPrimitiveColor:
+    def test_set_primitive_color_rgb_single(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.setPrimitiveColor(uuid, RGBcolor(0.1, 0.2, 0.3))
+        c = basic_context.getPrimitiveColor(uuid)
+        assert c.r == pytest.approx(0.1)
+        assert c.g == pytest.approx(0.2)
+        assert c.b == pytest.approx(0.3)
+
+    def test_set_primitive_color_rgb_batch(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                 for i in range(3)]
+        basic_context.setPrimitiveColor(uuids, RGBcolor(0.4, 0.5, 0.6))
+        for u in uuids:
+            c = basic_context.getPrimitiveColor(u)
+            assert c.r == pytest.approx(0.4)
+            assert c.g == pytest.approx(0.5)
+            assert c.b == pytest.approx(0.6)
+
+    def test_set_primitive_color_rgba_single(self, basic_context):
+        from pyhelios.wrappers import UContextWrapper as _cw
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.setPrimitiveColor(uuid, RGBAcolor(0.1, 0.2, 0.3, 0.5))
+        # Round-trip via raw RGBA getter from the ctypes wrapper
+        ptr = _cw.getPrimitiveColorRGBA(basic_context.context, uuid)
+        assert ptr[0] == pytest.approx(0.1)
+        assert ptr[1] == pytest.approx(0.2)
+        assert ptr[2] == pytest.approx(0.3)
+        assert ptr[3] == pytest.approx(0.5)
+
+    def test_set_primitive_color_rgba_batch(self, basic_context):
+        from pyhelios.wrappers import UContextWrapper as _cw
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                 for i in range(2)]
+        basic_context.setPrimitiveColor(uuids, RGBAcolor(0.7, 0.8, 0.9, 0.2))
+        for u in uuids:
+            ptr = _cw.getPrimitiveColorRGBA(basic_context.context, u)
+            assert ptr[0] == pytest.approx(0.7)
+            assert ptr[3] == pytest.approx(0.2)
+
+
+@pytest.mark.cross_platform
+class TestSetPrimitiveColorValidation:
+    def test_rejects_non_color_types(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        with pytest.raises(ValueError):
+            basic_context.setPrimitiveColor(uuid, vec3(1, 0, 0))
+        with pytest.raises(ValueError):
+            basic_context.setPrimitiveColor(uuid, (1, 0, 0))
+
+
+@pytest.mark.native_only
+class TestPrimitiveDataIntrospection:
+    def test_list_and_clear_primitive_data(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.setPrimitiveDataFloat(uuid, "temp", 25.5)
+        basic_context.setPrimitiveDataFloat(uuid, "humidity", 80.0)
+        labels = basic_context.listPrimitiveData(uuid)
+        assert "temp" in labels
+        assert "humidity" in labels
+
+        basic_context.clearPrimitiveData(uuid, "temp")
+        labels_after = basic_context.listPrimitiveData(uuid)
+        assert "temp" not in labels_after
+        assert "humidity" in labels_after
+
+    def test_clear_primitive_data_batch(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                 for i in range(3)]
+        for u in uuids:
+            basic_context.setPrimitiveDataFloat(u, "x", 1.0)
+        basic_context.clearPrimitiveData(uuids, "x")
+        for u in uuids:
+            assert "x" not in basic_context.listPrimitiveData(u)
+
+
+@pytest.mark.native_only
+class TestCropDomain:
+    def test_crop_domain_x_all_primitives(self, basic_context):
+        for x in range(-5, 6):
+            basic_context.addPatch(center=vec3(x, 0, 0), size=vec2(0.5, 0.5))
+        assert basic_context.getPrimitiveCount() == 11
+        basic_context.cropDomainX(vec2(-2, 2))
+        remaining = basic_context.getAllUUIDs()
+        # cropDomainX removes primitives whose AABB is not fully inside.
+        # Each patch has half-size 0.25 in x; centers -1, 0, 1 fully fit in [-2, 2].
+        assert len(remaining) == 3
+
+    def test_crop_domain_xyz_all_primitives(self, basic_context):
+        basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(0.5, 0.5))
+        basic_context.addPatch(center=vec3(10, 0, 0), size=vec2(0.5, 0.5))
+        basic_context.cropDomain(vec2(-1, 1), vec2(-1, 1), vec2(-1, 1))
+        assert basic_context.getPrimitiveCount() == 1
+
+    def test_crop_domain_by_uuids_returns_filtered(self, basic_context):
+        in_range = [basic_context.addPatch(center=vec3(x, 0, 0), size=vec2(0.1, 0.1))
+                    for x in (-0.5, 0.0, 0.5)]
+        out_of_range = [basic_context.addPatch(center=vec3(x, 0, 0), size=vec2(0.1, 0.1))
+                        for x in (-5.0, 5.0)]
+        all_uuids = in_range + out_of_range
+        survivors = basic_context.cropDomain(all_uuids, vec2(-1, 1), vec2(-1, 1), vec2(-1, 1))
+        assert set(survivors) == set(in_range)
+        # Original list not mutated
+        assert len(all_uuids) == len(in_range) + len(out_of_range)
+
+
+@pytest.mark.cross_platform
+class TestCropDomainValidation:
+    def test_rejects_non_vec2_bounds(self, basic_context):
+        with pytest.raises(ValueError):
+            basic_context.cropDomainX((0, 1))
+        with pytest.raises(ValueError):
+            basic_context.cropDomain(vec2(0, 1), vec2(0, 1), (0, 1))

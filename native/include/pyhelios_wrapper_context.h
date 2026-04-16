@@ -1673,6 +1673,25 @@ PYHELIOS_API void addTimeseriesData(helios::Context* context, const char* label,
                                      int day, int month, int year, int hour, int minute, int second);
 
 /**
+ * @brief Update the value of an existing timeseries data point
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable
+ * @param day Day of month (1-31) of the existing point
+ * @param month Month (1-12) of the existing point
+ * @param year Year of the existing point
+ * @param hour Hour of day (0-23) of the existing point
+ * @param minute Minute of hour (0-59) of the existing point
+ * @param second Second of minute (0-59) of the existing point
+ * @param new_value Replacement value to assign at the specified timestamp
+ *
+ * Throws a runtime error if the variable does not exist or if no point with the
+ * specified (date, time) is found. Use addTimeseriesData() to append a new point.
+ */
+PYHELIOS_API void updateTimeseriesData(helios::Context* context, const char* label,
+                                        int day, int month, int year, int hour, int minute, int second,
+                                        float new_value);
+
+/**
  * @brief Set the Context date and time from a timeseries data point index
  * @param context Pointer to the Context
  * @param label Name of the timeseries variable
@@ -2146,6 +2165,89 @@ PYHELIOS_API float sumPrimitiveSurfaceArea(helios::Context* context, unsigned in
 PYHELIOS_API unsigned int* filterPrimitivesByDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count);
 PYHELIOS_API unsigned int* filterPrimitivesByDataInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, int value, const char* comparator, unsigned int* result_count);
 PYHELIOS_API unsigned int* filterPrimitivesByDataString(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, const char* value, unsigned int* result_count);
+
+// ==================== Object Geometry Queries ====================
+PYHELIOS_API unsigned int getObjectType(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getObjectCenter(helios::Context* context, unsigned int objID);
+PYHELIOS_API void getObjectBoundingBox(helios::Context* context, unsigned int objID, float* min_corner, float* max_corner);
+PYHELIOS_API void getObjectBoundingBox_batch(helios::Context* context, unsigned int* objIDs, unsigned int count, float* min_corner, float* max_corner);
+PYHELIOS_API unsigned int* getObjectPrimitiveUUIDs_batch(helios::Context* context, unsigned int* objIDs, unsigned int count, unsigned int* size);
+PYHELIOS_API unsigned int* getObjectPrimitiveUUIDs_nested(helios::Context* context, unsigned int* flat_objIDs, unsigned int* inner_counts, unsigned int outer_count, unsigned int* size);
+
+// Tile
+PYHELIOS_API float getTileObjectAreaRatio(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getTileObjectAreaRatio_batch(helios::Context* context, unsigned int* objIDs, unsigned int count, unsigned int* size);
+PYHELIOS_API float* getTileObjectCenter(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getTileObjectSize(helios::Context* context, unsigned int objID);
+PYHELIOS_API int* getTileObjectSubdivisionCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getTileObjectNormal(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getTileObjectTextureUV(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API float* getTileObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size);
+
+// Sphere
+PYHELIOS_API float* getSphereObjectCenter(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getSphereObjectRadius(helios::Context* context, unsigned int objID);
+PYHELIOS_API unsigned int getSphereObjectSubdivisionCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API float getSphereObjectVolume(helios::Context* context, unsigned int objID);
+
+// Box
+PYHELIOS_API float* getBoxObjectCenter(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getBoxObjectSize(helios::Context* context, unsigned int objID);
+PYHELIOS_API int* getBoxObjectSubdivisionCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API float getBoxObjectVolume(helios::Context* context, unsigned int objID);
+
+// Disk
+PYHELIOS_API float* getDiskObjectCenter(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getDiskObjectSize(helios::Context* context, unsigned int objID);
+PYHELIOS_API unsigned int getDiskObjectSubdivisionCount(helios::Context* context, unsigned int objID);
+
+// Tube
+PYHELIOS_API unsigned int getTubeObjectSubdivisionCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API unsigned int getTubeObjectNodeCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getTubeObjectNodes(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API float* getTubeObjectNodeRadii(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API float* getTubeObjectNodeColors(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API float getTubeObjectVolume(helios::Context* context, unsigned int objID);
+PYHELIOS_API float getTubeObjectSegmentVolume(helios::Context* context, unsigned int objID, unsigned int segment_index);
+
+// Cone
+PYHELIOS_API unsigned int getConeObjectSubdivisionCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getConeObjectNodes(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API float* getConeObjectNodeRadii(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API float* getConeObjectNode(helios::Context* context, unsigned int objID, int number);
+PYHELIOS_API float getConeObjectNodeRadius(helios::Context* context, unsigned int objID, int number);
+PYHELIOS_API float* getConeObjectAxisUnitVector(helios::Context* context, unsigned int objID);
+PYHELIOS_API float getConeObjectLength(helios::Context* context, unsigned int objID);
+PYHELIOS_API float getConeObjectVolume(helios::Context* context, unsigned int objID);
+
+// ==================== Primitive Geometry Queries ====================
+PYHELIOS_API float* getPatchCenter(helios::Context* context, unsigned int uuid);
+PYHELIOS_API float* getPatchSize(helios::Context* context, unsigned int uuid);
+PYHELIOS_API float* getTriangleVertex(helios::Context* context, unsigned int uuid, unsigned int number);
+PYHELIOS_API float* getVoxelCenter(helios::Context* context, unsigned int uuid);
+PYHELIOS_API float* getVoxelSize(helios::Context* context, unsigned int uuid);
+PYHELIOS_API unsigned int getPatchCount(helios::Context* context, bool include_hidden);
+PYHELIOS_API unsigned int getTriangleCount(helios::Context* context, bool include_hidden);
+PYHELIOS_API void getPrimitiveBoundingBox(helios::Context* context, unsigned int uuid, float* min_corner, float* max_corner);
+PYHELIOS_API void getPrimitiveBoundingBox_batch(helios::Context* context, unsigned int* uuids, unsigned int count, float* min_corner, float* max_corner);
+
+// ==================== Primitive Color Mutation ====================
+PYHELIOS_API void setPrimitiveColor(helios::Context* context, unsigned int uuid, float* color);
+PYHELIOS_API void setPrimitiveColor_batch(helios::Context* context, unsigned int* uuids, unsigned int count, float* color);
+PYHELIOS_API void setPrimitiveColorRGBA(helios::Context* context, unsigned int uuid, float* color);
+PYHELIOS_API void setPrimitiveColorRGBA_batch(helios::Context* context, unsigned int* uuids, unsigned int count, float* color);
+
+// ==================== Primitive Data Introspection / Cleanup ====================
+PYHELIOS_API void clearPrimitiveDataByLabel(helios::Context* context, unsigned int uuid, const char* label);
+PYHELIOS_API void clearPrimitiveDataByLabel_batch(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+PYHELIOS_API const char** listPrimitiveData(helios::Context* context, unsigned int uuid, unsigned int* count);
+
+// ==================== Domain Cropping ====================
+PYHELIOS_API void cropDomainX(helios::Context* context, float* xbounds);
+PYHELIOS_API void cropDomainY(helios::Context* context, float* ybounds);
+PYHELIOS_API void cropDomainZ(helios::Context* context, float* zbounds);
+PYHELIOS_API void cropDomainXYZ(helios::Context* context, float* xbounds, float* ybounds, float* zbounds);
+PYHELIOS_API unsigned int* cropDomainByUUIDs(helios::Context* context, unsigned int* uuids, unsigned int count, float* xbounds, float* ybounds, float* zbounds, unsigned int* out_size);
 
 #ifdef __cplusplus
 }

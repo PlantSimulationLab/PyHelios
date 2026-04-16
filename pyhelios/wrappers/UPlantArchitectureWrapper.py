@@ -239,6 +239,53 @@ try:
     ]
     helios_lib.writeQSMCylinderFile.restype = ctypes.c_int
 
+    helios_lib.writePlantStructureUSD.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_char_p,  # filename
+        ctypes.c_float,   # elastic_modulus
+        ctypes.c_float,   # wood_density
+        ctypes.c_float,   # damping_ratio
+        ctypes.c_float,   # static_friction
+        ctypes.c_float,   # dynamic_friction
+        ctypes.c_float,   # restitution
+        ctypes.c_float,   # organ_spring_stiffness
+        ctypes.c_float,   # organ_spring_damping
+        ctypes.c_float,   # leaf_mass_per_area
+        ctypes.c_float,   # fruit_mass
+        ctypes.c_float,   # flower_mass
+        ctypes.c_uint,    # solver_position_iterations
+        ctypes.c_float    # min_segment_length
+    ]
+    helios_lib.writePlantStructureUSD.restype = ctypes.c_int
+
+    helios_lib.registerGrowthFrame.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_float    # min_segment_length
+    ]
+    helios_lib.registerGrowthFrame.restype = ctypes.c_int
+
+    helios_lib.writePlantGrowthUSD.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_char_p,  # filename
+        ctypes.c_float    # seconds_per_frame
+    ]
+    helios_lib.writePlantGrowthUSD.restype = ctypes.c_int
+
+    helios_lib.clearGrowthFrames.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint     # plantID
+    ]
+    helios_lib.clearGrowthFrames.restype = ctypes.c_int
+
+    helios_lib.getGrowthFrameCount.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint     # plantID
+    ]
+    helios_lib.getGrowthFrameCount.restype = ctypes.c_uint
+
     helios_lib.readPlantStructureXML.argtypes = [
         ctypes.POINTER(UPlantArchitecture),
         ctypes.c_char_p,                            # filename
@@ -348,6 +395,11 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.writePlantMeshVertices.errcheck = _check_error
     helios_lib.writePlantStructureXML.errcheck = _check_error
     helios_lib.writeQSMCylinderFile.errcheck = _check_error
+    helios_lib.writePlantStructureUSD.errcheck = _check_error
+    helios_lib.registerGrowthFrame.errcheck = _check_error
+    helios_lib.writePlantGrowthUSD.errcheck = _check_error
+    helios_lib.clearGrowthFrames.errcheck = _check_error
+    helios_lib.getGrowthFrameCount.errcheck = _check_error
     helios_lib.readPlantStructureXML.errcheck = _check_error
     # Progress callback error checking
     helios_lib.plantarch_setProgressCallback.errcheck = _check_error
@@ -992,6 +1044,103 @@ def writeQSMCylinderFile(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
     result = helios_lib.writeQSMCylinderFile(plantarch_ptr, plant_id, filename_bytes)
     if result != 0:
         raise RuntimeError(f"Failed to write QSM cylinder file to {filename}")
+
+def writePlantStructureUSD(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                           plant_id: int, filename: str,
+                           elastic_modulus: float = 5e9,
+                           wood_density: float = 800.0,
+                           damping_ratio: float = 0.1,
+                           static_friction: float = 0.5,
+                           dynamic_friction: float = 0.3,
+                           restitution: float = 0.1,
+                           organ_spring_stiffness: float = 10.0,
+                           organ_spring_damping: float = 1.0,
+                           leaf_mass_per_area: float = 0.05,
+                           fruit_mass: float = 0.01,
+                           flower_mass: float = 0.002,
+                           solver_position_iterations: int = 32,
+                           min_segment_length: float = 0.001) -> None:
+    """Write plant structure as a USD articulated rigid body file for IsaacSim physics."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+
+    filename_bytes = filename.encode('utf-8')
+    result = helios_lib.writePlantStructureUSD(
+        plantarch_ptr, plant_id, filename_bytes,
+        elastic_modulus, wood_density, damping_ratio,
+        static_friction, dynamic_friction, restitution,
+        organ_spring_stiffness, organ_spring_damping,
+        leaf_mass_per_area, fruit_mass, flower_mass,
+        solver_position_iterations, min_segment_length
+    )
+    if result != 0:
+        raise RuntimeError(f"Failed to write plant structure USD to {filename}")
+
+def registerGrowthFrame(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                        plant_id: int, min_segment_length: float = 0.001) -> None:
+    """Register the current plant state as a growth animation frame."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.registerGrowthFrame(plantarch_ptr, plant_id, min_segment_length)
+    if result != 0:
+        raise RuntimeError(f"Failed to register growth frame for plant {plant_id}")
+
+def writePlantGrowthUSD(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                        plant_id: int, filename: str, seconds_per_frame: float = 1.0) -> None:
+    """Write all registered growth frames as a time-sampled USD animation file."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+
+    filename_bytes = filename.encode('utf-8')
+    result = helios_lib.writePlantGrowthUSD(plantarch_ptr, plant_id, filename_bytes, seconds_per_frame)
+    if result != 0:
+        raise RuntimeError(f"Failed to write plant growth USD to {filename}")
+
+def clearGrowthFrames(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> None:
+    """Clear stored growth animation frames for a plant."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.clearGrowthFrames(plantarch_ptr, plant_id)
+    if result != 0:
+        raise RuntimeError(f"Failed to clear growth frames for plant {plant_id}")
+
+def getGrowthFrameCount(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> int:
+    """Get the number of registered growth frames for a plant."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    return int(helios_lib.getGrowthFrameCount(plantarch_ptr, plant_id))
 
 def readPlantStructureXML(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
                          filename: str, quiet: bool = False) -> List[int]:

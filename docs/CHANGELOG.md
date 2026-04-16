@@ -1,5 +1,21 @@
 # Changelog
 
+# [v0.1.19] 2026-04-16
+
+- Updated helios-core to v1.3.71
+
+## Plant Architecture
+- Added `writePlantStructureUSD()` to export a plant as a USD articulated rigid body for NVIDIA IsaacSim physics (capsule links, spherical joints with E*I/L spring/damper drives, organ mass bodies)
+- Added growth animation export via `registerGrowthFrame()`, `writePlantGrowthUSD()`, `clearGrowthFrames()`, and `getGrowthFrameCount()` for time-sampled USD animations importable into Blender
+
+## Context
+- Added `updateTimeseriesData()` method to replace the value of an existing timeseries data point at a specified (date, time)
+- Added compound-object geometry queries: `getObjectType()`, `getObjectCenter()`, `getObjectBoundingBox()`, `getObjectPrimitiveUUIDs()` (single/list/nested), plus per-type getters for tile, sphere, box, disk, tube, and cone objects (center, size, subdivision count, normal, vertices, radius, node/radius data, axis, length, volume)
+- Added primitive geometry queries: `getPatchCenter()`, `getPatchSize()`, `getTriangleVertex()`, `getVoxelCenter()`, `getVoxelSize()`, `getPatchCount()`, `getTriangleCount()`, `getPrimitiveBoundingBox()` (single UUID or list)
+- Added `setPrimitiveColor()` for mutating the color of one primitive or a list of primitives, accepting either `RGBcolor` or `RGBAcolor`
+- Added `clearPrimitiveData()` and `listPrimitiveData()` for removing and inspecting per-primitive data fields
+- Added domain cropping: `cropDomainX()`, `cropDomainY()`, `cropDomainZ()`, and `cropDomain()` to restrict all primitives (or a supplied UUID list) to given XYZ bounds
+
 # [v0.1.18] 2026-03-18
 
 - Updated helios-core to v1.3.70

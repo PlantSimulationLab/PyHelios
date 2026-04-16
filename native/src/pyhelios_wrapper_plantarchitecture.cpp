@@ -696,6 +696,124 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API int writePlantStructureUSD(PlantArchitecture* plantarch, unsigned int plantID, const char* filename,
+                                             float elastic_modulus, float wood_density, float damping_ratio,
+                                             float static_friction, float dynamic_friction, float restitution,
+                                             float organ_spring_stiffness, float organ_spring_damping,
+                                             float leaf_mass_per_area, float fruit_mass, float flower_mass,
+                                             unsigned int solver_position_iterations, float min_segment_length) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!filename || std::strlen(filename) == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename cannot be null or empty");
+                return -1;
+            }
+
+            USDExportParameters params;
+            params.elastic_modulus = elastic_modulus;
+            params.wood_density = wood_density;
+            params.damping_ratio = damping_ratio;
+            params.static_friction = static_friction;
+            params.dynamic_friction = dynamic_friction;
+            params.restitution = restitution;
+            params.organ_spring_stiffness = organ_spring_stiffness;
+            params.organ_spring_damping = organ_spring_damping;
+            params.leaf_mass_per_area = leaf_mass_per_area;
+            params.fruit_mass = fruit_mass;
+            params.flower_mass = flower_mass;
+            params.solver_position_iterations = solver_position_iterations;
+            params.min_segment_length = min_segment_length;
+
+            plantarch->writePlantStructureUSD(plantID, std::string(filename), params);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::writePlantStructureUSD): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::writePlantStructureUSD): Unknown error writing USD file.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int registerGrowthFrame(PlantArchitecture* plantarch, unsigned int plantID, float min_segment_length) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            plantarch->registerGrowthFrame(plantID, min_segment_length);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::registerGrowthFrame): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::registerGrowthFrame): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int writePlantGrowthUSD(PlantArchitecture* plantarch, unsigned int plantID, const char* filename, float seconds_per_frame) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!filename || std::strlen(filename) == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename cannot be null or empty");
+                return -1;
+            }
+            plantarch->writePlantGrowthUSD(plantID, std::string(filename), seconds_per_frame);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::writePlantGrowthUSD): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::writePlantGrowthUSD): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int clearGrowthFrames(PlantArchitecture* plantarch, unsigned int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            plantarch->clearGrowthFrames(plantID);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::clearGrowthFrames): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::clearGrowthFrames): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API unsigned int getGrowthFrameCount(PlantArchitecture* plantarch, unsigned int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return 0;
+            }
+            return plantarch->getGrowthFrameCount(plantID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getGrowthFrameCount): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getGrowthFrameCount): Unknown error.");
+            return 0;
+        }
+    }
+
     PYHELIOS_API int readPlantStructureXML(PlantArchitecture* plantarch, const char* filename, bool quiet, unsigned int** plant_ids, int* num_plants) {
         try {
             clearError();

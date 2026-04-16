@@ -4597,6 +4597,33 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void updateTimeseriesData(helios::Context* context, const char* label,
+                                           int day, int month, int year, int hour, int minute, int second,
+                                           float new_value) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+
+            helios::Date date(day, month, year);
+            helios::Time time(hour, minute, second);
+            context->updateTimeseriesData(label, date, time, new_value);
+
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (updateTimeseriesData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (updateTimeseriesData): Unknown error");
+        }
+    }
+
     PYHELIOS_API void setCurrentTimeseriesPoint(helios::Context* context, const char* label, unsigned int index) {
         try {
             clearError();
@@ -8149,6 +8176,671 @@ extern "C" {
             return static_result.empty() ? nullptr : static_result.data();
         } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); if (result_count) *result_count = 0; return nullptr; }
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); if (result_count) *result_count = 0; return nullptr; }
+    }
+
+    // ==================== Object Geometry Queries ====================
+
+    PYHELIOS_API unsigned int getObjectType(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            return static_cast<unsigned int>(context->getObjectType(objID));
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectType): Unknown error."); return 0;
+        }
+    }
+
+    PYHELIOS_API float* getObjectCenter(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 c = context->getObjectCenter(objID);
+            static float result[3];
+            result[0] = c.x; result[1] = c.y; result[2] = c.z;
+            return result;
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what());
+            static float err[3] = {0.0f, 0.0f, 0.0f}; return err;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            static float err[3] = {0.0f, 0.0f, 0.0f}; return err;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectCenter): Unknown error.");
+            static float err[3] = {0.0f, 0.0f, 0.0f}; return err;
+        }
+    }
+
+    PYHELIOS_API void getObjectBoundingBox(helios::Context* context, unsigned int objID, float* min_corner, float* max_corner) {
+        try {
+            clearError();
+            if (!min_corner || !max_corner) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output corner pointer is null"); return; }
+            helios::vec3 mn, mx;
+            context->getObjectBoundingBox(objID, mn, mx);
+            min_corner[0] = mn.x; min_corner[1] = mn.y; min_corner[2] = mn.z;
+            max_corner[0] = mx.x; max_corner[1] = mx.y; max_corner[2] = mx.z;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectBoundingBox): Unknown error."); }
+    }
+
+    PYHELIOS_API void getObjectBoundingBox_batch(helios::Context* context, unsigned int* objIDs, unsigned int count, float* min_corner, float* max_corner) {
+        try {
+            clearError();
+            if (!min_corner || !max_corner) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output corner pointer is null"); return; }
+            std::vector<unsigned int> ids(objIDs, objIDs + count);
+            helios::vec3 mn, mx;
+            context->getObjectBoundingBox(ids, mn, mx);
+            min_corner[0] = mn.x; min_corner[1] = mn.y; min_corner[2] = mn.z;
+            max_corner[0] = mx.x; max_corner[1] = mx.y; max_corner[2] = mx.z;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectBoundingBox_batch): Unknown error."); }
+    }
+
+    PYHELIOS_API unsigned int* getObjectPrimitiveUUIDs_batch(helios::Context* context, unsigned int* objIDs, unsigned int count, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<unsigned int> ids(objIDs, objIDs + count);
+            static thread_local std::vector<unsigned int> buf;
+            buf = context->getObjectPrimitiveUUIDs(ids);
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveUUIDs_batch): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API unsigned int* getObjectPrimitiveUUIDs_nested(helios::Context* context, unsigned int* flat_objIDs, unsigned int* inner_counts, unsigned int outer_count, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<std::vector<unsigned int>> nested;
+            nested.reserve(outer_count);
+            unsigned int offset = 0;
+            for (unsigned int i = 0; i < outer_count; ++i) {
+                unsigned int ic = inner_counts[i];
+                nested.emplace_back(flat_objIDs + offset, flat_objIDs + offset + ic);
+                offset += ic;
+            }
+            static thread_local std::vector<unsigned int> buf;
+            buf = context->getObjectPrimitiveUUIDs(nested);
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveUUIDs_nested): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    // ---- Tile ----
+    PYHELIOS_API float getTileObjectAreaRatio(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getTileObjectAreaRatio(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectAreaRatio): Unknown error."); return 0.0f; }
+    }
+
+    PYHELIOS_API float* getTileObjectAreaRatio_batch(helios::Context* context, unsigned int* objIDs, unsigned int count, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<unsigned int> ids(objIDs, objIDs + count);
+            static thread_local std::vector<float> buf;
+            buf = context->getTileObjectAreaRatio(ids);
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectAreaRatio_batch): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getTileObjectCenter(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getTileObjectCenter(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectCenter): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getTileObjectSize(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec2 v = context->getTileObjectSize(objID);
+            static float r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectSize): Unknown error."); static float e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API int* getTileObjectSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::int2 v = context->getTileObjectSubdivisionCount(objID);
+            static int r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static int e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static int e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectSubdivisionCount): Unknown error."); static int e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getTileObjectNormal(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getTileObjectNormal(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectNormal): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getTileObjectTextureUV(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<helios::vec2> uvs = context->getTileObjectTextureUV(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(uvs.size()*2);
+            for (const auto& u : uvs) { buf.push_back(u.x); buf.push_back(u.y); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectTextureUV): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getTileObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<helios::vec3> vs = context->getTileObjectVertices(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(vs.size()*3);
+            for (const auto& v : vs) { buf.push_back(v.x); buf.push_back(v.y); buf.push_back(v.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectVertices): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    // ---- Sphere ----
+    PYHELIOS_API float* getSphereObjectCenter(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getSphereObjectCenter(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSphereObjectCenter): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getSphereObjectRadius(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getSphereObjectRadius(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSphereObjectRadius): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API unsigned int getSphereObjectSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getSphereObjectSubdivisionCount(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSphereObjectSubdivisionCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API float getSphereObjectVolume(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getSphereObjectVolume(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSphereObjectVolume): Unknown error."); return 0.0f; }
+    }
+
+    // ---- Box ----
+    PYHELIOS_API float* getBoxObjectCenter(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getBoxObjectCenter(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBoxObjectCenter): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getBoxObjectSize(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getBoxObjectSize(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBoxObjectSize): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API int* getBoxObjectSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::int3 v = context->getBoxObjectSubdivisionCount(objID);
+            static int r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static int e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static int e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBoxObjectSubdivisionCount): Unknown error."); static int e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float getBoxObjectVolume(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getBoxObjectVolume(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getBoxObjectVolume): Unknown error."); return 0.0f; }
+    }
+
+    // ---- Disk ----
+    PYHELIOS_API float* getDiskObjectCenter(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getDiskObjectCenter(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getDiskObjectCenter): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getDiskObjectSize(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec2 v = context->getDiskObjectSize(objID);
+            static float r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getDiskObjectSize): Unknown error."); static float e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API unsigned int getDiskObjectSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getDiskObjectSubdivisionCount(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getDiskObjectSubdivisionCount): Unknown error."); return 0; }
+    }
+
+    // ---- Tube ----
+    PYHELIOS_API unsigned int getTubeObjectSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getTubeObjectSubdivisionCount(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectSubdivisionCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API unsigned int getTubeObjectNodeCount(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getTubeObjectNodeCount(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectNodeCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API float* getTubeObjectNodes(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<helios::vec3> ns = context->getTubeObjectNodes(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(ns.size()*3);
+            for (const auto& n : ns) { buf.push_back(n.x); buf.push_back(n.y); buf.push_back(n.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectNodes): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getTubeObjectNodeRadii(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            static thread_local std::vector<float> buf;
+            buf = context->getTubeObjectNodeRadii(objID);
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectNodeRadii): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getTubeObjectNodeColors(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<helios::RGBcolor> cs = context->getTubeObjectNodeColors(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(cs.size()*3);
+            for (const auto& c : cs) { buf.push_back(c.r); buf.push_back(c.g); buf.push_back(c.b); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectNodeColors): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float getTubeObjectVolume(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getTubeObjectVolume(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectVolume): Unknown error."); return 0.0f; }
+    }
+
+    PYHELIOS_API float getTubeObjectSegmentVolume(helios::Context* context, unsigned int objID, unsigned int segment_index) {
+        try { clearError(); return context->getTubeObjectSegmentVolume(objID, segment_index); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTubeObjectSegmentVolume): Unknown error."); return 0.0f; }
+    }
+
+    // ---- Cone ----
+    PYHELIOS_API unsigned int getConeObjectSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getConeObjectSubdivisionCount(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectSubdivisionCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API float* getConeObjectNodes(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<helios::vec3> ns = context->getConeObjectNodes(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(ns.size()*3);
+            for (const auto& n : ns) { buf.push_back(n.x); buf.push_back(n.y); buf.push_back(n.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectNodes): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getConeObjectNodeRadii(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            static thread_local std::vector<float> buf;
+            buf = context->getConeObjectNodeRadii(objID);
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectNodeRadii): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getConeObjectNode(helios::Context* context, unsigned int objID, int number) {
+        try {
+            clearError();
+            helios::vec3 v = context->getConeObjectNode(objID, number);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectNode): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float getConeObjectNodeRadius(helios::Context* context, unsigned int objID, int number) {
+        try { clearError(); return context->getConeObjectNodeRadius(objID, number); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectNodeRadius): Unknown error."); return 0.0f; }
+    }
+
+    PYHELIOS_API float* getConeObjectAxisUnitVector(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getConeObjectAxisUnitVector(objID);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectAxisUnitVector): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float getConeObjectLength(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getConeObjectLength(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectLength): Unknown error."); return 0.0f; }
+    }
+
+    PYHELIOS_API float getConeObjectVolume(helios::Context* context, unsigned int objID) {
+        try { clearError(); return context->getConeObjectVolume(objID); }
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getConeObjectVolume): Unknown error."); return 0.0f; }
+    }
+
+    // ==================== Primitive Geometry Queries ====================
+
+    PYHELIOS_API float* getPatchCenter(helios::Context* context, unsigned int uuid) {
+        try {
+            clearError();
+            helios::vec3 v = context->getPatchCenter(uuid);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPatchCenter): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getPatchSize(helios::Context* context, unsigned int uuid) {
+        try {
+            clearError();
+            helios::vec2 v = context->getPatchSize(uuid);
+            static float r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPatchSize): Unknown error."); static float e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getTriangleVertex(helios::Context* context, unsigned int uuid, unsigned int number) {
+        try {
+            clearError();
+            helios::vec3 v = context->getTriangleVertex(uuid, number);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTriangleVertex): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getVoxelCenter(helios::Context* context, unsigned int uuid) {
+        try {
+            clearError();
+            helios::vec3 v = context->getVoxelCenter(uuid);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getVoxelCenter): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getVoxelSize(helios::Context* context, unsigned int uuid) {
+        try {
+            clearError();
+            helios::vec3 v = context->getVoxelSize(uuid);
+            static float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getVoxelSize): Unknown error."); static float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API unsigned int getPatchCount(helios::Context* context, bool include_hidden) {
+        try { clearError(); return static_cast<unsigned int>(context->getPatchCount(include_hidden)); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPatchCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API unsigned int getTriangleCount(helios::Context* context, bool include_hidden) {
+        try { clearError(); return static_cast<unsigned int>(context->getTriangleCount(include_hidden)); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTriangleCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API void getPrimitiveBoundingBox(helios::Context* context, unsigned int uuid, float* min_corner, float* max_corner) {
+        try {
+            clearError();
+            if (!min_corner || !max_corner) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output corner pointer is null"); return; }
+            helios::vec3 mn, mx;
+            context->getPrimitiveBoundingBox(uuid, mn, mx);
+            min_corner[0]=mn.x; min_corner[1]=mn.y; min_corner[2]=mn.z;
+            max_corner[0]=mx.x; max_corner[1]=mx.y; max_corner[2]=mx.z;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveBoundingBox): Unknown error."); }
+    }
+
+    PYHELIOS_API void getPrimitiveBoundingBox_batch(helios::Context* context, unsigned int* uuids, unsigned int count, float* min_corner, float* max_corner) {
+        try {
+            clearError();
+            if (!min_corner || !max_corner) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output corner pointer is null"); return; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            helios::vec3 mn, mx;
+            context->getPrimitiveBoundingBox(v, mn, mx);
+            min_corner[0]=mn.x; min_corner[1]=mn.y; min_corner[2]=mn.z;
+            max_corner[0]=mx.x; max_corner[1]=mx.y; max_corner[2]=mx.z;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveBoundingBox_batch): Unknown error."); }
+    }
+
+    // ==================== Primitive Color Mutation ====================
+
+    PYHELIOS_API void setPrimitiveColor(helios::Context* context, unsigned int uuid, float* color) {
+        try {
+            clearError();
+            if (!color) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null"); return; }
+            helios::RGBcolor c(color[0], color[1], color[2]);
+            context->setPrimitiveColor(uuid, c);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveColor): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveColor_batch(helios::Context* context, unsigned int* uuids, unsigned int count, float* color) {
+        try {
+            clearError();
+            if (!color) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null"); return; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            helios::RGBcolor c(color[0], color[1], color[2]);
+            context->setPrimitiveColor(v, c);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveColor_batch): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveColorRGBA(helios::Context* context, unsigned int uuid, float* color) {
+        try {
+            clearError();
+            if (!color) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null"); return; }
+            helios::RGBAcolor c(color[0], color[1], color[2], color[3]);
+            context->setPrimitiveColor(uuid, c);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveColorRGBA): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveColorRGBA_batch(helios::Context* context, unsigned int* uuids, unsigned int count, float* color) {
+        try {
+            clearError();
+            if (!color) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null"); return; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            helios::RGBAcolor c(color[0], color[1], color[2], color[3]);
+            context->setPrimitiveColor(v, c);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveColorRGBA_batch): Unknown error."); }
+    }
+
+    // ==================== Primitive Data Introspection / Cleanup ====================
+
+    PYHELIOS_API void clearPrimitiveDataByLabel(helios::Context* context, unsigned int uuid, const char* label) {
+        try {
+            clearError();
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->clearPrimitiveData(uuid, label);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::clearPrimitiveDataByLabel): Unknown error."); }
+    }
+
+    PYHELIOS_API void clearPrimitiveDataByLabel_batch(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label) {
+        try {
+            clearError();
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            context->clearPrimitiveData(v, label);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::clearPrimitiveDataByLabel_batch): Unknown error."); }
+    }
+
+    PYHELIOS_API const char** listPrimitiveData(helios::Context* context, unsigned int uuid, unsigned int* count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (count) *count = 0; return nullptr; }
+            if (!count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count output parameter is null"); return nullptr; }
+            static thread_local std::vector<std::string> static_strings;
+            static thread_local std::vector<const char*> static_ptrs;
+            static_strings = context->listPrimitiveData(uuid);
+            static_ptrs.clear();
+            static_ptrs.reserve(static_strings.size());
+            for (auto& s : static_strings) { static_ptrs.push_back(s.c_str()); }
+            *count = static_strings.size();
+            return static_ptrs.empty() ? nullptr : static_ptrs.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (count) *count = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (listPrimitiveData): ") + e.what()); if (count) *count = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (listPrimitiveData): Unknown error."); if (count) *count = 0; return nullptr; }
+    }
+
+    // ==================== Domain Cropping ====================
+
+    PYHELIOS_API void cropDomainX(helios::Context* context, float* xbounds) {
+        try {
+            clearError();
+            if (!xbounds) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "xbounds is null"); return; }
+            context->cropDomainX(helios::vec2(xbounds[0], xbounds[1]));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::cropDomainX): Unknown error."); }
+    }
+
+    PYHELIOS_API void cropDomainY(helios::Context* context, float* ybounds) {
+        try {
+            clearError();
+            if (!ybounds) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ybounds is null"); return; }
+            context->cropDomainY(helios::vec2(ybounds[0], ybounds[1]));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::cropDomainY): Unknown error."); }
+    }
+
+    PYHELIOS_API void cropDomainZ(helios::Context* context, float* zbounds) {
+        try {
+            clearError();
+            if (!zbounds) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "zbounds is null"); return; }
+            context->cropDomainZ(helios::vec2(zbounds[0], zbounds[1]));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::cropDomainZ): Unknown error."); }
+    }
+
+    PYHELIOS_API void cropDomainXYZ(helios::Context* context, float* xbounds, float* ybounds, float* zbounds) {
+        try {
+            clearError();
+            if (!xbounds || !ybounds || !zbounds) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Bounds pointer is null"); return; }
+            context->cropDomain(helios::vec2(xbounds[0], xbounds[1]),
+                                helios::vec2(ybounds[0], ybounds[1]),
+                                helios::vec2(zbounds[0], zbounds[1]));
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::cropDomainXYZ): Unknown error."); }
+    }
+
+    PYHELIOS_API unsigned int* cropDomainByUUIDs(helios::Context* context, unsigned int* uuids, unsigned int count, float* xbounds, float* ybounds, float* zbounds, unsigned int* out_size) {
+        try {
+            clearError();
+            if (!xbounds || !ybounds || !zbounds) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Bounds pointer is null"); if (out_size) *out_size = 0; return nullptr; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            context->cropDomain(v,
+                                helios::vec2(xbounds[0], xbounds[1]),
+                                helios::vec2(ybounds[0], ybounds[1]),
+                                helios::vec2(zbounds[0], zbounds[1]));
+            static thread_local std::vector<unsigned int> buf;
+            buf = v;
+            *out_size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (out_size) *out_size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::cropDomainByUUIDs): Unknown error."); if (out_size) *out_size = 0; return nullptr; }
     }
 
 } //extern "C"

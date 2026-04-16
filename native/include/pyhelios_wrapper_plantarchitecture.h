@@ -54,6 +54,16 @@ PYHELIOS_API unsigned int* getPlantCollisionRelevantObjectIDs(PlantArchitecture*
 PYHELIOS_API int writePlantMeshVertices(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
 PYHELIOS_API int writePlantStructureXML(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
 PYHELIOS_API int writeQSMCylinderFile(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
+PYHELIOS_API int writePlantStructureUSD(PlantArchitecture* plantarch, unsigned int plantID, const char* filename,
+                                         float elastic_modulus, float wood_density, float damping_ratio,
+                                         float static_friction, float dynamic_friction, float restitution,
+                                         float organ_spring_stiffness, float organ_spring_damping,
+                                         float leaf_mass_per_area, float fruit_mass, float flower_mass,
+                                         unsigned int solver_position_iterations, float min_segment_length);
+PYHELIOS_API int registerGrowthFrame(PlantArchitecture* plantarch, unsigned int plantID, float min_segment_length);
+PYHELIOS_API int writePlantGrowthUSD(PlantArchitecture* plantarch, unsigned int plantID, const char* filename, float seconds_per_frame);
+PYHELIOS_API int clearGrowthFrames(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API unsigned int getGrowthFrameCount(PlantArchitecture* plantarch, unsigned int plantID);
 PYHELIOS_API int readPlantStructureXML(PlantArchitecture* plantarch, const char* filename, bool quiet, unsigned int** plant_ids, int* num_plants);
 
 // Parameter management functions

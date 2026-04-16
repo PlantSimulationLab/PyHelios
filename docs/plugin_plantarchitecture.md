@@ -728,12 +728,14 @@ PlantArchitecture provides comprehensive file I/O capabilities to save and load 
 
 ### Overview
 
-Four file I/O methods are available:
+The following file I/O methods are available:
 
 1. **`writePlantStructureXML()`**: Save complete plant structure to XML for later loading
 2. **`readPlantStructureXML()`**: Load saved plant structures from XML files
 3. **`writePlantMeshVertices()`**: Export all mesh vertices for external processing
 4. **`writeQSMCylinderFile()`**: Export to TreeQSM format for biomechanical analysis
+5. **`writePlantStructureUSD()`**: Export plant structure as a USD articulated rigid body for NVIDIA IsaacSim physics simulation
+6. **`registerGrowthFrame()`** / **`writePlantGrowthUSD()`** / **`clearGrowthFrames()`** / **`getGrowthFrameCount()`**: Capture and export per-step growth snapshots as a time-sampled USD animation file (importable into Blender)
 
 All methods work with both string paths and `pathlib.Path` objects, and correctly handle relative/absolute paths.
 
@@ -886,6 +888,66 @@ The exported file contains tab-separated values with the following information f
 - Carbon storage estimation
 - Tree architecture studies
 - Integration with TreeQSM analysis tools
+
+### Export USD Articulated Rigid Body (IsaacSim Physics)
+
+Export the plant structure as a PhysX articulation in USDA (ASCII USD) format for NVIDIA IsaacSim physics simulation. Each tube segment becomes a capsule-shaped rigid link connected by spherical joints whose local frames encode the rest-pose orientation. Spring/damper drives are derived from beam bending stiffness (`K = E*I/L`). Leaves, fruits, and flowers are represented as mass bodies attached by spring links.
+
+**Basic Usage:**
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.types import *
+
+with Context() as context:
+    with PlantArchitecture(context) as plantarch:
+        plantarch.loadPlantModelFromLibrary("almond")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=50.0)
+
+        # Default physics parameters
+        plantarch.writePlantStructureUSD(plant_id, "almond.usda")
+
+        # Custom physics parameters
+        plantarch.writePlantStructureUSD(
+            plant_id, "almond_custom.usda",
+            elastic_modulus=8e9,         # Young's modulus (Pa)
+            wood_density=750.0,          # kg/m^3
+            damping_ratio=0.15,
+            leaf_mass_per_area=0.04,     # kg/m^2
+            fruit_mass=0.005,            # kg
+        )
+```
+
+### Growth Animation Export (USD for Blender)
+
+Capture per-step plant geometry snapshots during a growth simulation and export them as a time-sampled USDA animation that imports directly into Blender. Organs that appear during growth are toggled visible at the appropriate frame.
+
+**Basic Usage:**
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.types import *
+
+with Context() as context:
+    with PlantArchitecture(context) as plantarch:
+        plantarch.loadPlantModelFromLibrary("bean")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=5.0)
+
+        # Capture a frame after each growth step
+        for _ in range(10):
+            plantarch.advanceTime(2.0)
+            plantarch.registerGrowthFrame(plant_id)
+
+        print(f"Captured {plantarch.getGrowthFrameCount(plant_id)} frames")
+
+        # Export as a 1-second-per-frame animation
+        plantarch.writePlantGrowthUSD(plant_id, "bean_growth.usda", seconds_per_frame=1.0)
+
+        # Reset frame storage when done
+        plantarch.clearGrowthFrames(plant_id)
+```
+
+This export is visual-only — no physics prims, joints, or collision shapes are written. For physics simulation, use `writePlantStructureUSD()` instead.
 
 ### Path Handling
 
