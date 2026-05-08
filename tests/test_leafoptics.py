@@ -142,18 +142,35 @@ class TestLeafOpticsInterface:
             assert props.protein == 0.0
             assert props.carbonconstituents == 0.0
 
-            # Test to_list conversion
+            # SIF parameters default to (V2Z=0, fqe=1) — inert for PROSPECT.
+            assert props.V2Z == 0.0
+            assert props.fqe == 1.0
+
+            # Test to_list conversion (extended to 11 entries in v0.1.21)
             props_list = props.to_list()
-            assert len(props_list) == 9
+            assert len(props_list) == 11
             assert props_list[0] == 1.5  # numberlayers
             assert props_list[2] == 30.0  # chlorophyllcontent
+            assert props_list[9] == 0.0  # V2Z
+            assert props_list[10] == 1.0  # fqe
 
-            # Test from_list conversion
-            custom_values = [2.0, 0.1, 40.0, 10.0, 2.0, 0.02, 0.1, 0.001, 0.005]
+            # Test from_list conversion with the 11-element layout
+            custom_values = [2.0, 0.1, 40.0, 10.0, 2.0, 0.02, 0.1, 0.001, 0.005, 0.5, 0.8]
             custom_props = LeafOpticsProperties.from_list(custom_values)
             assert custom_props.numberlayers == 2.0
             assert custom_props.chlorophyllcontent == 40.0
             assert custom_props.protein == 0.001
+            assert custom_props.V2Z == 0.5
+            assert custom_props.fqe == 0.8
+
+            # Backwards-compatible: legacy 9-float arrays still load with SIF defaults,
+            # but should emit a DeprecationWarning to nudge callers to the 11-element layout.
+            legacy_values = [2.0, 0.1, 40.0, 10.0, 2.0, 0.02, 0.1, 0.001, 0.005]
+            with pytest.warns(DeprecationWarning):
+                legacy_props = LeafOpticsProperties.from_list(legacy_values)
+            assert legacy_props.numberlayers == 2.0
+            assert legacy_props.V2Z == 0.0
+            assert legacy_props.fqe == 1.0
 
         except ImportError:
             # Expected when plugin not built

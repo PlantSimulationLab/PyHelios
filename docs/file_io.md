@@ -257,3 +257,17 @@ context = Context()
 # The context will now contain a default patch, with primitive data "somedata" equal to 10.2
 context.loadXML("file.xml")
 ```
+
+To export only a subset of primitives, pass a list of UUIDs to `writeXML()`:
+
+```python
+context.writeXML("subset.xml", uuids=[uuid1, uuid2], quiet=True)
+```
+
+To export a list of compound objects (and the primitives they contain), use `writeXML_byobject()`:
+
+```python
+context.writeXML_byobject("objects.xml", [objID1, objID2], quiet=True)
+```
+
+The `quiet` flag (defaults to `False`) suppresses informational console output during export.

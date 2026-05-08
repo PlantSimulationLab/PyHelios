@@ -91,6 +91,8 @@ extern "C" {
             leafprops.drymass = properties[6];
             leafprops.protein = properties[7];
             leafprops.carbonconstituents = properties[8];
+            leafprops.V2Z = properties[9];
+            leafprops.fqe = properties[10];
 
             leafoptics->run(uuid_vector, leafprops, std::string(label));
 
@@ -128,6 +130,8 @@ extern "C" {
             leafprops.drymass = properties[6];
             leafprops.protein = properties[7];
             leafprops.carbonconstituents = properties[8];
+            leafprops.V2Z = properties[9];
+            leafprops.fqe = properties[10];
 
             leafoptics->run(leafprops, std::string(label));
 
@@ -178,6 +182,8 @@ extern "C" {
             leafprops.drymass = properties[6];
             leafprops.protein = properties[7];
             leafprops.carbonconstituents = properties[8];
+            leafprops.V2Z = properties[9];
+            leafprops.fqe = properties[10];
 
             // Get spectra from LeafOptics
             std::vector<helios::vec2> refl_vec, trans_vec;
@@ -241,6 +247,8 @@ extern "C" {
             leafprops.drymass = properties[6];
             leafprops.protein = properties[7];
             leafprops.carbonconstituents = properties[8];
+            leafprops.V2Z = properties[9];
+            leafprops.fqe = properties[10];
 
             leafoptics->setProperties(uuid_vector, leafprops);
 
@@ -322,7 +330,8 @@ extern "C" {
 
             // Pack into output array
             // Order: [numberlayers, brownpigments, chlorophyllcontent, carotenoidcontent,
-            //         anthocyancontent, watermass, drymass, protein, carbonconstituents]
+            //         anthocyancontent, watermass, drymass, protein, carbonconstituents,
+            //         V2Z, fqe]
             properties[0] = leafprops.numberlayers;
             properties[1] = leafprops.brownpigments;
             properties[2] = leafprops.chlorophyllcontent;
@@ -332,6 +341,8 @@ extern "C" {
             properties[6] = leafprops.drymass;
             properties[7] = leafprops.protein;
             properties[8] = leafprops.carbonconstituents;
+            properties[9] = leafprops.V2Z;
+            properties[10] = leafprops.fqe;
 
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (LeafOptics::getPropertiesFromLibrary): ") + e.what());

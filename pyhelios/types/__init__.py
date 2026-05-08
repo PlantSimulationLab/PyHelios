@@ -25,9 +25,11 @@ __all__ = [
     # Standard geometric types (imported from DataTypes)
     'vec2', 'vec3', 'vec4', 'int2', 'int3', 'int4',
     'RGBcolor', 'RGBAcolor', 'SphericalCoord', 'Time', 'Date', 'PrimitiveType',
+    'Location',
     'make_vec2', 'make_vec3', 'make_vec4', 'make_int2', 'make_int3', 'make_int4',
     'make_RGBcolor', 'make_RGBAcolor', 'make_SphericalCoord',
-    
+    'make_Location',
+
     # Photosynthesis-specific types
     'PhotosyntheticTemperatureResponseParameters',
     'EmpiricalModelCoefficients',

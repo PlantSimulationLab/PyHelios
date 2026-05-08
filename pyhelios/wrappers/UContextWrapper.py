@@ -3649,6 +3649,17 @@ if _TIMESERIES_FUNCTIONS_AVAILABLE:
                   'loadTabularTimeseriesData', 'clearTimeseriesData']:
         getattr(helios_lib, fname).errcheck = _check_error_timeseries
 
+# deleteTimeseriesVariable was added in helios-core v1.3.72. Probe separately so wheels
+# built against older libraries keep the rest of the timeseries API working.
+_TIMESERIES_DELETE_AVAILABLE = False
+try:
+    helios_lib.deleteTimeseriesVariable.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.deleteTimeseriesVariable.restype = None
+    helios_lib.deleteTimeseriesVariable.errcheck = _check_error_timeseries
+    _TIMESERIES_DELETE_AVAILABLE = True
+except AttributeError:
+    _TIMESERIES_DELETE_AVAILABLE = False
+
 # updateTimeseriesData was added in helios-core v1.3.71. Probe separately so that
 # wheels built against older libraries keep the rest of the timeseries API working.
 _TIMESERIES_UPDATE_AVAILABLE = False
@@ -3804,6 +3815,19 @@ def clearTimeseriesData(context):
     if not _TIMESERIES_FUNCTIONS_AVAILABLE:
         raise NotImplementedError(_NOT_AVAILABLE_MSG)
     helios_lib.clearTimeseriesData(context)
+
+
+def deleteTimeseriesVariable(context, label: str):
+    """Delete a single timeseries variable and all of its data points.
+
+    Requires helios-core v1.3.72 or newer.
+    """
+    if not _TIMESERIES_DELETE_AVAILABLE:
+        raise NotImplementedError(
+            "deleteTimeseriesVariable requires helios-core v1.3.72 or newer. "
+            "Please rebuild PyHelios with `build_scripts/build_helios --clean`."
+        )
+    helios_lib.deleteTimeseriesVariable(context, label.encode('utf-8'))
 
 
 # ============================================================================
@@ -6186,3 +6210,1594 @@ def cropDomainByUUIDsWrapper(context, uuids: List[int], xbounds, ybounds, zbound
     if out_size.value == 0 or not ptr:
         return []
     return [int(ptr[i]) for i in range(out_size.value)]
+
+
+# =============================================================================
+# Scalar Getters / Setters & List-of-String Getters
+# =============================================================================
+
+_CONTEXT_SCALAR_API_AVAILABLE = True
+_NOT_AVAILABLE_SCALAR_API_MSG = (
+    "PyHelios scalar Context wrappers are not available in the loaded native library. "
+    "Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    # ---- Bool getters ----
+    helios_lib.doesObjectExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.doesObjectExist.restype = ctypes.c_bool
+    helios_lib.doesObjectExist.errcheck = _check_error
+
+    helios_lib.doesObjectContainPrimitive.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.doesObjectContainPrimitive.restype = ctypes.c_bool
+    helios_lib.doesObjectContainPrimitive.errcheck = _check_error
+
+    helios_lib.doesMaterialDataExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.doesMaterialDataExist.restype = ctypes.c_bool
+    helios_lib.doesMaterialDataExist.errcheck = _check_error
+
+    helios_lib.objectHasTexture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.objectHasTexture.restype = ctypes.c_bool
+    helios_lib.objectHasTexture.errcheck = _check_error
+
+    helios_lib.isPrimitiveDirty.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.isPrimitiveDirty.restype = ctypes.c_bool
+    helios_lib.isPrimitiveDirty.errcheck = _check_error
+
+    helios_lib.isObjectDataValueCachingEnabled.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.isObjectDataValueCachingEnabled.restype = ctypes.c_bool
+    helios_lib.isObjectDataValueCachingEnabled.errcheck = _check_error
+
+    helios_lib.isPrimitiveDataValueCachingEnabled.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.isPrimitiveDataValueCachingEnabled.restype = ctypes.c_bool
+    helios_lib.isPrimitiveDataValueCachingEnabled.errcheck = _check_error
+
+    helios_lib.areObjectPrimitivesComplete.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.areObjectPrimitivesComplete.restype = ctypes.c_bool
+    helios_lib.areObjectPrimitivesComplete.errcheck = _check_error
+
+    # ---- Numeric scalar getters ----
+    helios_lib.getJulianDate.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.getJulianDate.restype = ctypes.c_int
+    helios_lib.getJulianDate.errcheck = _check_error
+
+    helios_lib.getMaterialCount.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.getMaterialCount.restype = ctypes.c_uint
+    helios_lib.getMaterialCount.errcheck = _check_error
+
+    helios_lib.getObjectArea.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getObjectArea.restype = ctypes.c_float
+    helios_lib.getObjectArea.errcheck = _check_error
+
+    helios_lib.getObjectPrimitiveCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getObjectPrimitiveCount.restype = ctypes.c_uint
+    helios_lib.getObjectPrimitiveCount.errcheck = _check_error
+
+    helios_lib.getPolymeshObjectVolume.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPolymeshObjectVolume.restype = ctypes.c_float
+    helios_lib.getPolymeshObjectVolume.errcheck = _check_error
+
+    helios_lib.getMaterialIDFromLabel.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getMaterialIDFromLabel.restype = ctypes.c_uint
+    helios_lib.getMaterialIDFromLabel.errcheck = _check_error
+
+    helios_lib.getPrimitiveMaterialID.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPrimitiveMaterialID.restype = ctypes.c_uint
+    helios_lib.getPrimitiveMaterialID.errcheck = _check_error
+
+    helios_lib.getGlobalDataVersion.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getGlobalDataVersion.restype = ctypes.c_uint64
+    helios_lib.getGlobalDataVersion.errcheck = _check_error
+
+    helios_lib.getPrimitiveParentObjectID.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPrimitiveParentObjectID.restype = ctypes.c_uint
+    helios_lib.getPrimitiveParentObjectID.errcheck = _check_error
+
+    # ---- String returns (buffer pattern) ----
+    helios_lib.getObjectTextureFile.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getObjectTextureFile.restype = ctypes.c_int
+    helios_lib.getObjectTextureFile.errcheck = _check_error
+
+    # ---- List-of-string returns (count + index getter) ----
+    helios_lib.listAllPrimitiveDataLabelsCount.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.listAllPrimitiveDataLabelsCount.restype = ctypes.c_uint
+    helios_lib.listAllPrimitiveDataLabelsCount.errcheck = _check_error
+
+    helios_lib.listAllPrimitiveDataLabel.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.listAllPrimitiveDataLabel.restype = ctypes.c_int
+    helios_lib.listAllPrimitiveDataLabel.errcheck = _check_error
+
+    helios_lib.getLoadedXMLFileCount.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.getLoadedXMLFileCount.restype = ctypes.c_uint
+    helios_lib.getLoadedXMLFileCount.errcheck = _check_error
+
+    helios_lib.getLoadedXMLFile.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getLoadedXMLFile.restype = ctypes.c_int
+    helios_lib.getLoadedXMLFile.errcheck = _check_error
+
+    # ---- Simple actions ----
+    helios_lib.printObjectInfo.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.printObjectInfo.restype = None
+    helios_lib.printObjectInfo.errcheck = _check_error
+
+    helios_lib.printPrimitiveInfo.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.printPrimitiveInfo.restype = None
+    helios_lib.printPrimitiveInfo.errcheck = _check_error
+
+    helios_lib.enablePrimitiveDataValueCaching.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.enablePrimitiveDataValueCaching.restype = None
+    helios_lib.enablePrimitiveDataValueCaching.errcheck = _check_error
+
+    helios_lib.disablePrimitiveDataValueCaching.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.disablePrimitiveDataValueCaching.restype = None
+    helios_lib.disablePrimitiveDataValueCaching.errcheck = _check_error
+
+    helios_lib.enableObjectDataValueCaching.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.enableObjectDataValueCaching.restype = None
+    helios_lib.enableObjectDataValueCaching.errcheck = _check_error
+
+    helios_lib.disableObjectDataValueCaching.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.disableObjectDataValueCaching.restype = None
+    helios_lib.disableObjectDataValueCaching.errcheck = _check_error
+
+    helios_lib.setObjectDataFromPrimitiveDataMean.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.setObjectDataFromPrimitiveDataMean.restype = None
+    helios_lib.setObjectDataFromPrimitiveDataMean.errcheck = _check_error
+
+    helios_lib.renameMaterial.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.renameMaterial.restype = None
+    helios_lib.renameMaterial.errcheck = _check_error
+
+    helios_lib.renamePrimitiveData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.renamePrimitiveData.restype = None
+    helios_lib.renamePrimitiveData.errcheck = _check_error
+
+    helios_lib.clearMaterialData.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.clearMaterialData.restype = None
+    helios_lib.clearMaterialData.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_SCALAR_API_AVAILABLE = False
+
+
+def _require_ctx_scalar_api():
+    if not _CONTEXT_SCALAR_API_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_SCALAR_API_MSG)
+
+
+def _read_string_buffer(call_fn, *args, initial_size: int = 256) -> str:
+    """Helper: call a C function that fills a char buffer; grow buffer if truncated.
+
+    The C function is expected to take (..., char* buffer, int buffer_size) trailing
+    parameters and return the number of bytes copied (excluding null terminator).
+    """
+    size = initial_size
+    while True:
+        buf = ctypes.create_string_buffer(size)
+        copied = int(call_fn(*args, buf, size))
+        # If copied == size - 1 the value may have been truncated; retry with a larger
+        # buffer to be safe. Otherwise we have the full string.
+        if copied < size - 1:
+            return buf.value.decode('utf-8', errors='replace')
+        size *= 2
+        if size > 1 << 20:  # 1 MiB safety cap
+            return buf.value.decode('utf-8', errors='replace')
+
+
+# ---- Bool getters ----
+
+def doesObjectExistWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.doesObjectExist(context, int(objID)))
+
+
+def doesObjectContainPrimitiveWrapper(context, objID: int, uuid: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.doesObjectContainPrimitive(context, int(objID), int(uuid)))
+
+
+def doesMaterialDataExistWrapper(context, material_label: str, data_label: str) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.doesMaterialDataExist(context, material_label.encode('utf-8'), data_label.encode('utf-8')))
+
+
+def objectHasTextureWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.objectHasTexture(context, int(objID)))
+
+
+def isPrimitiveDirtyWrapper(context, uuid: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.isPrimitiveDirty(context, int(uuid)))
+
+
+def isObjectDataValueCachingEnabledWrapper(context, label: str) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.isObjectDataValueCachingEnabled(context, label.encode('utf-8')))
+
+
+def isPrimitiveDataValueCachingEnabledWrapper(context, label: str) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.isPrimitiveDataValueCachingEnabled(context, label.encode('utf-8')))
+
+
+def areObjectPrimitivesCompleteWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.areObjectPrimitivesComplete(context, int(objID)))
+
+
+# ---- Numeric scalar getters ----
+
+def getJulianDateWrapper(context) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getJulianDate(context))
+
+
+def getMaterialCountWrapper(context) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getMaterialCount(context))
+
+
+def getObjectAreaWrapper(context, objID: int) -> float:
+    _require_ctx_scalar_api()
+    return float(helios_lib.getObjectArea(context, int(objID)))
+
+
+def getObjectPrimitiveCountWrapper(context, objID: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getObjectPrimitiveCount(context, int(objID)))
+
+
+def getPolymeshObjectVolumeWrapper(context, objID: int) -> float:
+    _require_ctx_scalar_api()
+    return float(helios_lib.getPolymeshObjectVolume(context, int(objID)))
+
+
+def getMaterialIDFromLabelWrapper(context, material_label: str) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getMaterialIDFromLabel(context, material_label.encode('utf-8')))
+
+
+def getPrimitiveMaterialIDWrapper(context, uuid: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPrimitiveMaterialID(context, int(uuid)))
+
+
+def getGlobalDataVersionWrapper(context, label: str) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getGlobalDataVersion(context, label.encode('utf-8')))
+
+
+def getPrimitiveParentObjectIDWrapper(context, uuid: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPrimitiveParentObjectID(context, int(uuid)))
+
+
+# ---- String returns ----
+
+def getObjectTextureFileWrapper(context, objID: int) -> str:
+    _require_ctx_scalar_api()
+    return _read_string_buffer(helios_lib.getObjectTextureFile, context, int(objID))
+
+
+# ---- List-of-string returns ----
+
+def listAllPrimitiveDataLabelsWrapper(context) -> List[str]:
+    # The C side caches the snapshot in a thread-local std::vector populated by the
+    # *Count call; the per-index getter then reads from that cache. We materialize the
+    # full list here in one call so callers never observe the intermediate cache.
+    _require_ctx_scalar_api()
+    count = int(helios_lib.listAllPrimitiveDataLabelsCount(context))
+    return [
+        _read_string_buffer(helios_lib.listAllPrimitiveDataLabel, context, i)
+        for i in range(count)
+    ]
+
+
+def getLoadedXMLFilesWrapper(context) -> List[str]:
+    # Same count+index pattern as listAllPrimitiveDataLabelsWrapper — see comment there.
+    _require_ctx_scalar_api()
+    count = int(helios_lib.getLoadedXMLFileCount(context))
+    return [
+        _read_string_buffer(helios_lib.getLoadedXMLFile, context, i)
+        for i in range(count)
+    ]
+
+
+# ---- Simple actions ----
+
+def printObjectInfoWrapper(context, objID: int) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.printObjectInfo(context, int(objID))
+
+
+def printPrimitiveInfoWrapper(context, uuid: int) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.printPrimitiveInfo(context, int(uuid))
+
+
+def enablePrimitiveDataValueCachingWrapper(context, label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.enablePrimitiveDataValueCaching(context, label.encode('utf-8'))
+
+
+def disablePrimitiveDataValueCachingWrapper(context, label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.disablePrimitiveDataValueCaching(context, label.encode('utf-8'))
+
+
+def enableObjectDataValueCachingWrapper(context, label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.enableObjectDataValueCaching(context, label.encode('utf-8'))
+
+
+def disableObjectDataValueCachingWrapper(context, label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.disableObjectDataValueCaching(context, label.encode('utf-8'))
+
+
+def setObjectDataFromPrimitiveDataMeanWrapper(context, objID: int, label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.setObjectDataFromPrimitiveDataMean(context, int(objID), label.encode('utf-8'))
+
+
+def renameMaterialWrapper(context, old_label: str, new_label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.renameMaterial(context, old_label.encode('utf-8'), new_label.encode('utf-8'))
+
+
+def renamePrimitiveDataWrapper(context, uuid: int, old_label: str, new_label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.renamePrimitiveData(context, int(uuid), old_label.encode('utf-8'), new_label.encode('utf-8'))
+
+
+def clearMaterialDataWrapper(context, material_label: str, data_label: str) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.clearMaterialData(context, material_label.encode('utf-8'), data_label.encode('utf-8'))
+
+
+# =============================================================================
+# Vector-return getters & geometry mutators
+# =============================================================================
+
+_CONTEXT_GEOMETRY_MUTATORS_AVAILABLE = True
+_NOT_AVAILABLE_GEOMETRY_MUTATORS_MSG = (
+    "PyHelios geometry-mutator Context wrappers (vector returns + geometry setters) are not "
+    "available in the loaded native library. Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    # ---- Vector<uint> returns ----
+    helios_lib.getDeletedUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getDeletedUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getDeletedUUIDs.errcheck = _check_error
+
+    helios_lib.getDirtyUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.c_bool, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getDirtyUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getDirtyUUIDs.errcheck = _check_error
+
+    helios_lib.getUniquePrimitiveParentObjectIDs.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.c_bool, ctypes.POINTER(ctypes.c_uint)
+    ]
+    helios_lib.getUniquePrimitiveParentObjectIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getUniquePrimitiveParentObjectIDs.errcheck = _check_error
+
+    # ---- Object normal / origin queries & setters ----
+    helios_lib.getObjectAverageNormal.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getObjectAverageNormal.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getObjectAverageNormal.errcheck = _check_error
+
+    helios_lib.setObjectAverageNormal.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.setObjectAverageNormal.restype = None
+    helios_lib.setObjectAverageNormal.errcheck = _check_error
+
+    helios_lib.setObjectOrigin.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.setObjectOrigin.restype = None
+    helios_lib.setObjectOrigin.errcheck = _check_error
+
+    # ---- Primitive azimuth / elevation setters ----
+    helios_lib.setPrimitiveAzimuth.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_float
+    ]
+    helios_lib.setPrimitiveAzimuth.restype = None
+    helios_lib.setPrimitiveAzimuth.errcheck = _check_error
+
+    helios_lib.setPrimitiveElevation.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_float
+    ]
+    helios_lib.setPrimitiveElevation.restype = None
+    helios_lib.setPrimitiveElevation.errcheck = _check_error
+
+    # ---- Geometry mutators ----
+    helios_lib.setTriangleVertices.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.setTriangleVertices.restype = None
+    helios_lib.setTriangleVertices.errcheck = _check_error
+
+    helios_lib.setPrimitiveNormal.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.setPrimitiveNormal.restype = None
+    helios_lib.setPrimitiveNormal.errcheck = _check_error
+
+    helios_lib.setPrimitiveNormalBatch.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.setPrimitiveNormalBatch.restype = None
+    helios_lib.setPrimitiveNormalBatch.errcheck = _check_error
+
+    helios_lib.setPrimitiveParentObjectID.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint
+    ]
+    helios_lib.setPrimitiveParentObjectID.restype = None
+    helios_lib.setPrimitiveParentObjectID.errcheck = _check_error
+
+    helios_lib.setPrimitiveParentObjectIDBatch.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_uint
+    ]
+    helios_lib.setPrimitiveParentObjectIDBatch.restype = None
+    helios_lib.setPrimitiveParentObjectIDBatch.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_GEOMETRY_MUTATORS_AVAILABLE = False
+
+
+def _require_ctx_geometry_mutators():
+    if not _CONTEXT_GEOMETRY_MUTATORS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_GEOMETRY_MUTATORS_MSG)
+
+
+# ---- Vector<uint> returns ----
+
+def getDeletedUUIDsWrapper(context) -> List[int]:
+    _require_ctx_geometry_mutators()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getDeletedUUIDs(context, ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count.value)]
+
+
+def getDirtyUUIDsWrapper(context, include_deleted: bool = True) -> List[int]:
+    _require_ctx_geometry_mutators()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getDirtyUUIDs(context, bool(include_deleted), ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count.value)]
+
+
+def getUniquePrimitiveParentObjectIDsWrapper(context, uuids: List[int], include_zero: bool = True) -> List[int]:
+    _require_ctx_geometry_mutators()
+    n = len(uuids)
+    arr = (ctypes.c_uint * max(n, 1))(*uuids) if n > 0 else (ctypes.c_uint * 1)()
+    out_count = ctypes.c_uint()
+    ptr = helios_lib.getUniquePrimitiveParentObjectIDs(
+        context, arr, n, bool(include_zero), ctypes.byref(out_count)
+    )
+    if out_count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(out_count.value)]
+
+
+# ---- Object normal / origin ----
+
+def getObjectAverageNormalWrapper(context, objID: int):
+    _require_ctx_geometry_mutators()
+    ptr = helios_lib.getObjectAverageNormal(context, int(objID))
+    return (float(ptr[0]), float(ptr[1]), float(ptr[2]))
+
+
+def setObjectAverageNormalWrapper(context, objID: int, origin, new_normal) -> None:
+    _require_ctx_geometry_mutators()
+    o = (ctypes.c_float * 3)(float(origin[0]), float(origin[1]), float(origin[2]))
+    n = (ctypes.c_float * 3)(float(new_normal[0]), float(new_normal[1]), float(new_normal[2]))
+    helios_lib.setObjectAverageNormal(context, int(objID), o, n)
+
+
+def setObjectOriginWrapper(context, objID: int, origin) -> None:
+    _require_ctx_geometry_mutators()
+    o = (ctypes.c_float * 3)(float(origin[0]), float(origin[1]), float(origin[2]))
+    helios_lib.setObjectOrigin(context, int(objID), o)
+
+
+# ---- Primitive azimuth / elevation ----
+
+def setPrimitiveAzimuthWrapper(context, uuid: int, origin, new_azimuth: float) -> None:
+    _require_ctx_geometry_mutators()
+    o = (ctypes.c_float * 3)(float(origin[0]), float(origin[1]), float(origin[2]))
+    helios_lib.setPrimitiveAzimuth(context, int(uuid), o, float(new_azimuth))
+
+
+def setPrimitiveElevationWrapper(context, uuid: int, origin, new_elevation: float) -> None:
+    _require_ctx_geometry_mutators()
+    o = (ctypes.c_float * 3)(float(origin[0]), float(origin[1]), float(origin[2]))
+    helios_lib.setPrimitiveElevation(context, int(uuid), o, float(new_elevation))
+
+
+# ---- Geometry mutators ----
+
+def setTriangleVerticesWrapper(context, uuid: int, v0, v1, v2) -> None:
+    _require_ctx_geometry_mutators()
+    a0 = (ctypes.c_float * 3)(float(v0[0]), float(v0[1]), float(v0[2]))
+    a1 = (ctypes.c_float * 3)(float(v1[0]), float(v1[1]), float(v1[2]))
+    a2 = (ctypes.c_float * 3)(float(v2[0]), float(v2[1]), float(v2[2]))
+    helios_lib.setTriangleVertices(context, int(uuid), a0, a1, a2)
+
+
+def setPrimitiveNormalWrapper(context, uuid: int, origin, new_normal) -> None:
+    _require_ctx_geometry_mutators()
+    o = (ctypes.c_float * 3)(float(origin[0]), float(origin[1]), float(origin[2]))
+    n = (ctypes.c_float * 3)(float(new_normal[0]), float(new_normal[1]), float(new_normal[2]))
+    helios_lib.setPrimitiveNormal(context, int(uuid), o, n)
+
+
+def setPrimitiveNormalBatchWrapper(context, uuids: List[int], origin, new_normal) -> None:
+    _require_ctx_geometry_mutators()
+    n_uuids = len(uuids)
+    if n_uuids == 0:
+        return
+    arr = (ctypes.c_uint * n_uuids)(*uuids)
+    o = (ctypes.c_float * 3)(float(origin[0]), float(origin[1]), float(origin[2]))
+    n = (ctypes.c_float * 3)(float(new_normal[0]), float(new_normal[1]), float(new_normal[2]))
+    helios_lib.setPrimitiveNormalBatch(context, arr, n_uuids, o, n)
+
+
+def setPrimitiveParentObjectIDWrapper(context, uuid: int, objID: int) -> None:
+    _require_ctx_geometry_mutators()
+    helios_lib.setPrimitiveParentObjectID(context, int(uuid), int(objID))
+
+
+def setPrimitiveParentObjectIDBatchWrapper(context, uuids: List[int], objID: int) -> None:
+    _require_ctx_geometry_mutators()
+    n_uuids = len(uuids)
+    if n_uuids == 0:
+        return
+    arr = (ctypes.c_uint * n_uuids)(*uuids)
+    helios_lib.setPrimitiveParentObjectIDBatch(context, arr, n_uuids, int(objID))
+
+
+# =============================================================================
+# Material data API + unique data values
+# =============================================================================
+
+_CONTEXT_MATERIAL_DATA_AVAILABLE = True
+_NOT_AVAILABLE_MATERIAL_DATA_MSG = (
+    "PyHelios material-data Context wrappers (material data API + unique data values) are "
+    "not available in the loaded native library. Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    # ---- setMaterialData<T> ----
+    helios_lib.setMaterialDataInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.setMaterialDataInt.restype = None
+    helios_lib.setMaterialDataInt.errcheck = _check_error
+
+    helios_lib.setMaterialDataUInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+    helios_lib.setMaterialDataUInt.restype = None
+    helios_lib.setMaterialDataUInt.errcheck = _check_error
+
+    helios_lib.setMaterialDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float]
+    helios_lib.setMaterialDataFloat.restype = None
+    helios_lib.setMaterialDataFloat.errcheck = _check_error
+
+    helios_lib.setMaterialDataDouble.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_double]
+    helios_lib.setMaterialDataDouble.restype = None
+    helios_lib.setMaterialDataDouble.errcheck = _check_error
+
+    helios_lib.setMaterialDataString.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setMaterialDataString.restype = None
+    helios_lib.setMaterialDataString.errcheck = _check_error
+
+    helios_lib.setMaterialDataVec2.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float]
+    helios_lib.setMaterialDataVec2.restype = None
+    helios_lib.setMaterialDataVec2.errcheck = _check_error
+
+    helios_lib.setMaterialDataVec3.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setMaterialDataVec3.restype = None
+    helios_lib.setMaterialDataVec3.errcheck = _check_error
+
+    helios_lib.setMaterialDataVec4.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setMaterialDataVec4.restype = None
+    helios_lib.setMaterialDataVec4.errcheck = _check_error
+
+    helios_lib.setMaterialDataInt2.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    helios_lib.setMaterialDataInt2.restype = None
+    helios_lib.setMaterialDataInt2.errcheck = _check_error
+
+    helios_lib.setMaterialDataInt3.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setMaterialDataInt3.restype = None
+    helios_lib.setMaterialDataInt3.errcheck = _check_error
+
+    helios_lib.setMaterialDataInt4.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.setMaterialDataInt4.restype = None
+    helios_lib.setMaterialDataInt4.errcheck = _check_error
+
+    # ---- getMaterialData<T> ----
+    helios_lib.getMaterialDataInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.getMaterialDataInt.restype = ctypes.c_int
+    helios_lib.getMaterialDataInt.errcheck = _check_error
+
+    helios_lib.getMaterialDataUInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.getMaterialDataUInt.restype = ctypes.c_uint
+    helios_lib.getMaterialDataUInt.errcheck = _check_error
+
+    helios_lib.getMaterialDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.getMaterialDataFloat.restype = ctypes.c_float
+    helios_lib.getMaterialDataFloat.errcheck = _check_error
+
+    helios_lib.getMaterialDataDouble.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.getMaterialDataDouble.restype = ctypes.c_double
+    helios_lib.getMaterialDataDouble.errcheck = _check_error
+
+    helios_lib.getMaterialDataString.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getMaterialDataString.restype = ctypes.c_int
+    helios_lib.getMaterialDataString.errcheck = _check_error
+
+    helios_lib.getMaterialDataVec2.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getMaterialDataVec2.restype = None
+    helios_lib.getMaterialDataVec2.errcheck = _check_error
+
+    helios_lib.getMaterialDataVec3.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getMaterialDataVec3.restype = None
+    helios_lib.getMaterialDataVec3.errcheck = _check_error
+
+    helios_lib.getMaterialDataVec4.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getMaterialDataVec4.restype = None
+    helios_lib.getMaterialDataVec4.errcheck = _check_error
+
+    helios_lib.getMaterialDataInt2.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.getMaterialDataInt2.restype = None
+    helios_lib.getMaterialDataInt2.errcheck = _check_error
+
+    helios_lib.getMaterialDataInt3.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.getMaterialDataInt3.restype = None
+    helios_lib.getMaterialDataInt3.errcheck = _check_error
+
+    helios_lib.getMaterialDataInt4.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.getMaterialDataInt4.restype = None
+    helios_lib.getMaterialDataInt4.errcheck = _check_error
+
+    # ---- Material data type query ----
+    helios_lib.getMaterialDataType.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.getMaterialDataType.restype = ctypes.c_int
+    helios_lib.getMaterialDataType.errcheck = _check_error
+
+    # ---- Unique data values ----
+    helios_lib.getUniquePrimitiveDataValuesInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getUniquePrimitiveDataValuesInt.restype = ctypes.POINTER(ctypes.c_int)
+    helios_lib.getUniquePrimitiveDataValuesInt.errcheck = _check_error
+
+    helios_lib.getUniquePrimitiveDataValuesUInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getUniquePrimitiveDataValuesUInt.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getUniquePrimitiveDataValuesUInt.errcheck = _check_error
+
+    helios_lib.getUniquePrimitiveDataValuesStringCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getUniquePrimitiveDataValuesStringCount.restype = ctypes.c_uint
+    helios_lib.getUniquePrimitiveDataValuesStringCount.errcheck = _check_error
+
+    helios_lib.getUniquePrimitiveDataValuesString.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getUniquePrimitiveDataValuesString.restype = ctypes.c_int
+    helios_lib.getUniquePrimitiveDataValuesString.errcheck = _check_error
+
+    helios_lib.getUniqueObjectDataValuesInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getUniqueObjectDataValuesInt.restype = ctypes.POINTER(ctypes.c_int)
+    helios_lib.getUniqueObjectDataValuesInt.errcheck = _check_error
+
+    helios_lib.getUniqueObjectDataValuesUInt.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getUniqueObjectDataValuesUInt.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getUniqueObjectDataValuesUInt.errcheck = _check_error
+
+    helios_lib.getUniqueObjectDataValuesStringCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getUniqueObjectDataValuesStringCount.restype = ctypes.c_uint
+    helios_lib.getUniqueObjectDataValuesStringCount.errcheck = _check_error
+
+    helios_lib.getUniqueObjectDataValuesString.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getUniqueObjectDataValuesString.restype = ctypes.c_int
+    helios_lib.getUniqueObjectDataValuesString.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_MATERIAL_DATA_AVAILABLE = False
+
+
+def _require_ctx_material_data():
+    if not _CONTEXT_MATERIAL_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_MATERIAL_DATA_MSG)
+
+
+def _enc(s: str) -> bytes:
+    return s.encode('utf-8')
+
+
+# ---- setMaterialData<T> Python wrappers ----
+
+def setMaterialDataIntWrapper(context, material_label: str, data_label: str, value: int) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataInt(context, _enc(material_label), _enc(data_label), int(value))
+
+
+def setMaterialDataUIntWrapper(context, material_label: str, data_label: str, value: int) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataUInt(context, _enc(material_label), _enc(data_label), int(value))
+
+
+def setMaterialDataFloatWrapper(context, material_label: str, data_label: str, value: float) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataFloat(context, _enc(material_label), _enc(data_label), float(value))
+
+
+def setMaterialDataDoubleWrapper(context, material_label: str, data_label: str, value: float) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataDouble(context, _enc(material_label), _enc(data_label), float(value))
+
+
+def setMaterialDataStringWrapper(context, material_label: str, data_label: str, value: str) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataString(context, _enc(material_label), _enc(data_label), _enc(value))
+
+
+def setMaterialDataVec2Wrapper(context, material_label: str, data_label: str, x: float, y: float) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataVec2(context, _enc(material_label), _enc(data_label), float(x), float(y))
+
+
+def setMaterialDataVec3Wrapper(context, material_label: str, data_label: str, x: float, y: float, z: float) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataVec3(context, _enc(material_label), _enc(data_label), float(x), float(y), float(z))
+
+
+def setMaterialDataVec4Wrapper(context, material_label: str, data_label: str, x: float, y: float, z: float, w: float) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataVec4(context, _enc(material_label), _enc(data_label), float(x), float(y), float(z), float(w))
+
+
+def setMaterialDataInt2Wrapper(context, material_label: str, data_label: str, x: int, y: int) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataInt2(context, _enc(material_label), _enc(data_label), int(x), int(y))
+
+
+def setMaterialDataInt3Wrapper(context, material_label: str, data_label: str, x: int, y: int, z: int) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataInt3(context, _enc(material_label), _enc(data_label), int(x), int(y), int(z))
+
+
+def setMaterialDataInt4Wrapper(context, material_label: str, data_label: str, x: int, y: int, z: int, w: int) -> None:
+    _require_ctx_material_data()
+    helios_lib.setMaterialDataInt4(context, _enc(material_label), _enc(data_label), int(x), int(y), int(z), int(w))
+
+
+# ---- getMaterialData<T> Python wrappers ----
+
+def getMaterialDataIntWrapper(context, material_label: str, data_label: str) -> int:
+    _require_ctx_material_data()
+    return int(helios_lib.getMaterialDataInt(context, _enc(material_label), _enc(data_label)))
+
+
+def getMaterialDataUIntWrapper(context, material_label: str, data_label: str) -> int:
+    _require_ctx_material_data()
+    return int(helios_lib.getMaterialDataUInt(context, _enc(material_label), _enc(data_label)))
+
+
+def getMaterialDataFloatWrapper(context, material_label: str, data_label: str) -> float:
+    _require_ctx_material_data()
+    return float(helios_lib.getMaterialDataFloat(context, _enc(material_label), _enc(data_label)))
+
+
+def getMaterialDataDoubleWrapper(context, material_label: str, data_label: str) -> float:
+    _require_ctx_material_data()
+    return float(helios_lib.getMaterialDataDouble(context, _enc(material_label), _enc(data_label)))
+
+
+def getMaterialDataStringWrapper(context, material_label: str, data_label: str) -> str:
+    _require_ctx_material_data()
+    return _read_string_buffer(helios_lib.getMaterialDataString, context, _enc(material_label), _enc(data_label))
+
+
+def getMaterialDataVec2Wrapper(context, material_label: str, data_label: str):
+    _require_ctx_material_data()
+    x, y = ctypes.c_float(), ctypes.c_float()
+    helios_lib.getMaterialDataVec2(context, _enc(material_label), _enc(data_label), ctypes.byref(x), ctypes.byref(y))
+    return (float(x.value), float(y.value))
+
+
+def getMaterialDataVec3Wrapper(context, material_label: str, data_label: str):
+    _require_ctx_material_data()
+    x, y, z = ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.getMaterialDataVec3(context, _enc(material_label), _enc(data_label), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return (float(x.value), float(y.value), float(z.value))
+
+
+def getMaterialDataVec4Wrapper(context, material_label: str, data_label: str):
+    _require_ctx_material_data()
+    x, y, z, w = ctypes.c_float(), ctypes.c_float(), ctypes.c_float(), ctypes.c_float()
+    helios_lib.getMaterialDataVec4(context, _enc(material_label), _enc(data_label), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z), ctypes.byref(w))
+    return (float(x.value), float(y.value), float(z.value), float(w.value))
+
+
+def getMaterialDataInt2Wrapper(context, material_label: str, data_label: str):
+    _require_ctx_material_data()
+    x, y = ctypes.c_int(), ctypes.c_int()
+    helios_lib.getMaterialDataInt2(context, _enc(material_label), _enc(data_label), ctypes.byref(x), ctypes.byref(y))
+    return (int(x.value), int(y.value))
+
+
+def getMaterialDataInt3Wrapper(context, material_label: str, data_label: str):
+    _require_ctx_material_data()
+    x, y, z = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    helios_lib.getMaterialDataInt3(context, _enc(material_label), _enc(data_label), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z))
+    return (int(x.value), int(y.value), int(z.value))
+
+
+def getMaterialDataInt4Wrapper(context, material_label: str, data_label: str):
+    _require_ctx_material_data()
+    x, y, z, w = ctypes.c_int(), ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    helios_lib.getMaterialDataInt4(context, _enc(material_label), _enc(data_label), ctypes.byref(x), ctypes.byref(y), ctypes.byref(z), ctypes.byref(w))
+    return (int(x.value), int(y.value), int(z.value), int(w.value))
+
+
+def getMaterialDataTypeWrapper(context, material_label: str, data_label: str) -> int:
+    _require_ctx_material_data()
+    return int(helios_lib.getMaterialDataType(context, _enc(material_label), _enc(data_label)))
+
+
+# ---- Unique data values ----
+
+def getUniquePrimitiveDataValuesIntWrapper(context, label: str) -> List[int]:
+    _require_ctx_material_data()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getUniquePrimitiveDataValuesInt(context, _enc(label), ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count.value)]
+
+
+def getUniquePrimitiveDataValuesUIntWrapper(context, label: str) -> List[int]:
+    _require_ctx_material_data()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getUniquePrimitiveDataValuesUInt(context, _enc(label), ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count.value)]
+
+
+def getUniquePrimitiveDataValuesStringWrapper(context, label: str) -> List[str]:
+    # Same count+index pattern as listAllPrimitiveDataLabelsWrapper —
+    # the C side caches the snapshot in a thread-local std::vector<std::string>.
+    _require_ctx_material_data()
+    label_b = _enc(label)
+    count = int(helios_lib.getUniquePrimitiveDataValuesStringCount(context, label_b))
+    return [
+        _read_string_buffer(helios_lib.getUniquePrimitiveDataValuesString, context, label_b, i)
+        for i in range(count)
+    ]
+
+
+def getUniqueObjectDataValuesIntWrapper(context, label: str) -> List[int]:
+    _require_ctx_material_data()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getUniqueObjectDataValuesInt(context, _enc(label), ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count.value)]
+
+
+def getUniqueObjectDataValuesUIntWrapper(context, label: str) -> List[int]:
+    _require_ctx_material_data()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getUniqueObjectDataValuesUInt(context, _enc(label), ctypes.byref(count))
+    if count.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count.value)]
+
+
+def getUniqueObjectDataValuesStringWrapper(context, label: str) -> List[str]:
+    _require_ctx_material_data()
+    label_b = _enc(label)
+    count = int(helios_lib.getUniqueObjectDataValuesStringCount(context, label_b))
+    return [
+        _read_string_buffer(helios_lib.getUniqueObjectDataValuesString, context, label_b, i)
+        for i in range(count)
+    ]
+
+
+# =============================================================================
+# 4x4 transformation matrices + domain bounds
+# =============================================================================
+
+_CONTEXT_TRANSFORM_MATRIX_AVAILABLE = True
+_NOT_AVAILABLE_TRANSFORM_MATRIX_MSG = (
+    "PyHelios transform-matrix Context wrappers (4x4 transforms + domain bounds) are not "
+    "available in the loaded native library. Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    # ---- 4x4 transformation matrices ----
+    helios_lib.getObjectTransformationMatrix.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getObjectTransformationMatrix.restype = None
+    helios_lib.getObjectTransformationMatrix.errcheck = _check_error
+
+    helios_lib.setObjectTransformationMatrix.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setObjectTransformationMatrix.restype = None
+    helios_lib.setObjectTransformationMatrix.errcheck = _check_error
+
+    helios_lib.setObjectTransformationMatrixBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setObjectTransformationMatrixBatch.restype = None
+    helios_lib.setObjectTransformationMatrixBatch.errcheck = _check_error
+
+    helios_lib.getPrimitiveTransformationMatrix.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getPrimitiveTransformationMatrix.restype = None
+    helios_lib.getPrimitiveTransformationMatrix.errcheck = _check_error
+
+    helios_lib.setPrimitiveTransformationMatrix.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setPrimitiveTransformationMatrix.restype = None
+    helios_lib.setPrimitiveTransformationMatrix.errcheck = _check_error
+
+    helios_lib.setPrimitiveTransformationMatrixBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setPrimitiveTransformationMatrixBatch.restype = None
+    helios_lib.setPrimitiveTransformationMatrixBatch.errcheck = _check_error
+
+    # ---- Domain bounds ----
+    helios_lib.getDomainBoundingBox.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getDomainBoundingBox.restype = None
+    helios_lib.getDomainBoundingBox.errcheck = _check_error
+
+    helios_lib.getDomainBoundingBoxFiltered.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getDomainBoundingBoxFiltered.restype = None
+    helios_lib.getDomainBoundingBoxFiltered.errcheck = _check_error
+
+    helios_lib.getDomainBoundingSphere.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getDomainBoundingSphere.restype = None
+    helios_lib.getDomainBoundingSphere.errcheck = _check_error
+
+    helios_lib.getDomainBoundingSphereFiltered.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getDomainBoundingSphereFiltered.restype = None
+    helios_lib.getDomainBoundingSphereFiltered.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_TRANSFORM_MATRIX_AVAILABLE = False
+
+
+def _require_ctx_transform_matrix():
+    if not _CONTEXT_TRANSFORM_MATRIX_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_TRANSFORM_MATRIX_MSG)
+
+
+def _alloc_mat4_buffer():
+    """Allocate a (ctypes.c_float * 16) buffer for transformation matrix I/O."""
+    return (ctypes.c_float * 16)()
+
+
+# ---- Transformation matrices ----
+
+def getObjectTransformationMatrixWrapper(context, objID: int) -> List[float]:
+    """Return the 16 floats of the object's transformation matrix in row-major order."""
+    _require_ctx_transform_matrix()
+    buf = _alloc_mat4_buffer()
+    helios_lib.getObjectTransformationMatrix(context, int(objID), buf)
+    return [float(buf[i]) for i in range(16)]
+
+
+def setObjectTransformationMatrixWrapper(context, objID: int, T_flat: List[float]) -> None:
+    _require_ctx_transform_matrix()
+    if len(T_flat) != 16:
+        raise ValueError(f"Matrix must have 16 elements, got {len(T_flat)}")
+    buf = (ctypes.c_float * 16)(*[float(v) for v in T_flat])
+    helios_lib.setObjectTransformationMatrix(context, int(objID), buf)
+
+
+def setObjectTransformationMatrixBatchWrapper(context, objIDs: List[int], T_flat: List[float]) -> None:
+    _require_ctx_transform_matrix()
+    if len(T_flat) != 16:
+        raise ValueError(f"Matrix must have 16 elements, got {len(T_flat)}")
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    buf = (ctypes.c_float * 16)(*[float(v) for v in T_flat])
+    helios_lib.setObjectTransformationMatrixBatch(context, arr, n, buf)
+
+
+def getPrimitiveTransformationMatrixWrapper(context, uuid: int) -> List[float]:
+    _require_ctx_transform_matrix()
+    buf = _alloc_mat4_buffer()
+    helios_lib.getPrimitiveTransformationMatrix(context, int(uuid), buf)
+    return [float(buf[i]) for i in range(16)]
+
+
+def setPrimitiveTransformationMatrixWrapper(context, uuid: int, T_flat: List[float]) -> None:
+    _require_ctx_transform_matrix()
+    if len(T_flat) != 16:
+        raise ValueError(f"Matrix must have 16 elements, got {len(T_flat)}")
+    buf = (ctypes.c_float * 16)(*[float(v) for v in T_flat])
+    helios_lib.setPrimitiveTransformationMatrix(context, int(uuid), buf)
+
+
+def setPrimitiveTransformationMatrixBatchWrapper(context, uuids: List[int], T_flat: List[float]) -> None:
+    _require_ctx_transform_matrix()
+    if len(T_flat) != 16:
+        raise ValueError(f"Matrix must have 16 elements, got {len(T_flat)}")
+    n = len(uuids)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*uuids)
+    buf = (ctypes.c_float * 16)(*[float(v) for v in T_flat])
+    helios_lib.setPrimitiveTransformationMatrixBatch(context, arr, n, buf)
+
+
+# ---- Domain bounds ----
+
+def getDomainBoundingBoxWrapper(context):
+    """Return ((xmin, xmax), (ymin, ymax), (zmin, zmax))."""
+    _require_ctx_transform_matrix()
+    buf = (ctypes.c_float * 6)()
+    helios_lib.getDomainBoundingBox(context, buf)
+    return ((float(buf[0]), float(buf[1])),
+            (float(buf[2]), float(buf[3])),
+            (float(buf[4]), float(buf[5])))
+
+
+def getDomainBoundingBoxFilteredWrapper(context, uuids: List[int]):
+    _require_ctx_transform_matrix()
+    n = len(uuids)
+    arr = (ctypes.c_uint * max(n, 1))(*uuids) if n > 0 else (ctypes.c_uint * 1)()
+    buf = (ctypes.c_float * 6)()
+    helios_lib.getDomainBoundingBoxFiltered(context, arr, n, buf)
+    return ((float(buf[0]), float(buf[1])),
+            (float(buf[2]), float(buf[3])),
+            (float(buf[4]), float(buf[5])))
+
+
+def getDomainBoundingSphereWrapper(context):
+    """Return ((cx, cy, cz), radius)."""
+    _require_ctx_transform_matrix()
+    center = (ctypes.c_float * 3)()
+    radius = ctypes.c_float()
+    helios_lib.getDomainBoundingSphere(context, center, ctypes.byref(radius))
+    return ((float(center[0]), float(center[1]), float(center[2])), float(radius.value))
+
+
+def getDomainBoundingSphereFilteredWrapper(context, uuids: List[int]):
+    _require_ctx_transform_matrix()
+    n = len(uuids)
+    arr = (ctypes.c_uint * max(n, 1))(*uuids) if n > 0 else (ctypes.c_uint * 1)()
+    center = (ctypes.c_float * 3)()
+    radius = ctypes.c_float()
+    helios_lib.getDomainBoundingSphereFiltered(context, arr, n, center, ctypes.byref(radius))
+    return ((float(center[0]), float(center[1]), float(center[2])), float(radius.value))
+
+
+# =============================================================================
+# Tube/polymesh + object color/dirty/tile mutators
+# =============================================================================
+
+_CONTEXT_TUBE_OBJECT_AVAILABLE = True
+_NOT_AVAILABLE_TUBE_OBJECT_MSG = (
+    "PyHelios tube-object Context wrappers (tube/polymesh + object color/dirty/tile mutators) "
+    "are not available in the loaded native library. Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    # Tube object mutators
+    helios_lib.setTubeNodes.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+    helios_lib.setTubeNodes.restype = None
+    helios_lib.setTubeNodes.errcheck = _check_error
+
+    helios_lib.setTubeRadii.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+    helios_lib.setTubeRadii.restype = None
+    helios_lib.setTubeRadii.errcheck = _check_error
+
+    helios_lib.scaleTubeGirth.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float]
+    helios_lib.scaleTubeGirth.restype = None
+    helios_lib.scaleTubeGirth.errcheck = _check_error
+
+    helios_lib.scaleTubeLength.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float]
+    helios_lib.scaleTubeLength.restype = None
+    helios_lib.scaleTubeLength.errcheck = _check_error
+
+    helios_lib.pruneTubeNodes.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.pruneTubeNodes.restype = None
+    helios_lib.pruneTubeNodes.errcheck = _check_error
+
+    helios_lib.appendTubeSegmentColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.appendTubeSegmentColor.restype = None
+    helios_lib.appendTubeSegmentColor.errcheck = _check_error
+
+    helios_lib.appendTubeSegmentTexture.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.appendTubeSegmentTexture.restype = None
+    helios_lib.appendTubeSegmentTexture.errcheck = _check_error
+
+    helios_lib.addPolymeshObject.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.addPolymeshObject.restype = ctypes.c_uint
+    helios_lib.addPolymeshObject.errcheck = _check_error
+
+    # Object color
+    helios_lib.setObjectColorRGB.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setObjectColorRGB.restype = None
+    helios_lib.setObjectColorRGB.errcheck = _check_error
+
+    helios_lib.setObjectColorRGBBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setObjectColorRGBBatch.restype = None
+    helios_lib.setObjectColorRGBBatch.errcheck = _check_error
+
+    helios_lib.setObjectColorRGBA.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setObjectColorRGBA.restype = None
+    helios_lib.setObjectColorRGBA.errcheck = _check_error
+
+    helios_lib.setObjectColorRGBABatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.setObjectColorRGBABatch.restype = None
+    helios_lib.setObjectColorRGBABatch.errcheck = _check_error
+
+    helios_lib.overrideObjectTextureColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.overrideObjectTextureColor.restype = None
+    helios_lib.overrideObjectTextureColor.errcheck = _check_error
+
+    helios_lib.overrideObjectTextureColorBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.overrideObjectTextureColorBatch.restype = None
+    helios_lib.overrideObjectTextureColorBatch.errcheck = _check_error
+
+    helios_lib.useObjectTextureColor.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.useObjectTextureColor.restype = None
+    helios_lib.useObjectTextureColor.errcheck = _check_error
+
+    helios_lib.useObjectTextureColorBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.useObjectTextureColorBatch.restype = None
+    helios_lib.useObjectTextureColorBatch.errcheck = _check_error
+
+    # Mark dirty/clean
+    helios_lib.markPrimitiveDirty.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.markPrimitiveDirty.restype = None
+    helios_lib.markPrimitiveDirty.errcheck = _check_error
+
+    helios_lib.markPrimitiveDirtyBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.markPrimitiveDirtyBatch.restype = None
+    helios_lib.markPrimitiveDirtyBatch.errcheck = _check_error
+
+    helios_lib.markPrimitiveClean.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.markPrimitiveClean.restype = None
+    helios_lib.markPrimitiveClean.errcheck = _check_error
+
+    helios_lib.markPrimitiveCleanBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.markPrimitiveCleanBatch.restype = None
+    helios_lib.markPrimitiveCleanBatch.errcheck = _check_error
+
+    # Tile subdivision
+    helios_lib.setTileObjectSubdivisionCount.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_int, ctypes.c_int]
+    helios_lib.setTileObjectSubdivisionCount.restype = None
+    helios_lib.setTileObjectSubdivisionCount.errcheck = _check_error
+
+    helios_lib.setTileObjectSubdivisionByAreaRatio.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float]
+    helios_lib.setTileObjectSubdivisionByAreaRatio.restype = None
+    helios_lib.setTileObjectSubdivisionByAreaRatio.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_TUBE_OBJECT_AVAILABLE = False
+
+
+def _require_ctx_tube_object():
+    if not _CONTEXT_TUBE_OBJECT_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_TUBE_OBJECT_MSG)
+
+
+# ---- Tube object mutators ----
+
+def setTubeNodesWrapper(context, objID: int, nodes_xyz_flat: List[float]) -> None:
+    _require_ctx_tube_object()
+    if len(nodes_xyz_flat) % 3 != 0:
+        raise ValueError(f"nodes_xyz_flat length must be a multiple of 3, got {len(nodes_xyz_flat)}")
+    n = len(nodes_xyz_flat) // 3
+    if n == 0:
+        return
+    buf = (ctypes.c_float * len(nodes_xyz_flat))(*[float(v) for v in nodes_xyz_flat])
+    helios_lib.setTubeNodes(context, int(objID), buf, n)
+
+
+def setTubeRadiiWrapper(context, objID: int, radii: List[float]) -> None:
+    _require_ctx_tube_object()
+    n = len(radii)
+    if n == 0:
+        return
+    buf = (ctypes.c_float * n)(*[float(v) for v in radii])
+    helios_lib.setTubeRadii(context, int(objID), buf, n)
+
+
+def scaleTubeGirthWrapper(context, objID: int, scale_factor: float) -> None:
+    _require_ctx_tube_object()
+    helios_lib.scaleTubeGirth(context, int(objID), float(scale_factor))
+
+
+def scaleTubeLengthWrapper(context, objID: int, scale_factor: float) -> None:
+    _require_ctx_tube_object()
+    helios_lib.scaleTubeLength(context, int(objID), float(scale_factor))
+
+
+def pruneTubeNodesWrapper(context, objID: int, node_index: int) -> None:
+    _require_ctx_tube_object()
+    helios_lib.pruneTubeNodes(context, int(objID), int(node_index))
+
+
+def appendTubeSegmentColorWrapper(context, objID: int, node_position, node_radius: float, color_rgb) -> None:
+    _require_ctx_tube_object()
+    pos = (ctypes.c_float * 3)(float(node_position[0]), float(node_position[1]), float(node_position[2]))
+    col = (ctypes.c_float * 3)(float(color_rgb[0]), float(color_rgb[1]), float(color_rgb[2]))
+    helios_lib.appendTubeSegmentColor(context, int(objID), pos, float(node_radius), col)
+
+
+def appendTubeSegmentTextureWrapper(context, objID: int, node_position, node_radius: float, texture_file: str, uv) -> None:
+    _require_ctx_tube_object()
+    pos = (ctypes.c_float * 3)(float(node_position[0]), float(node_position[1]), float(node_position[2]))
+    uv_buf = (ctypes.c_float * 2)(float(uv[0]), float(uv[1]))
+    helios_lib.appendTubeSegmentTexture(context, int(objID), pos, float(node_radius), texture_file.encode('utf-8'), uv_buf)
+
+
+def addPolymeshObjectWrapper(context, uuids: List[int]) -> int:
+    _require_ctx_tube_object()
+    n = len(uuids)
+    if n == 0:
+        raise ValueError("addPolymeshObject requires at least one UUID")
+    arr = (ctypes.c_uint * n)(*uuids)
+    return int(helios_lib.addPolymeshObject(context, arr, n))
+
+
+# ---- Object color ----
+
+def setObjectColorRGBWrapper(context, objID: int, color_rgb) -> None:
+    _require_ctx_tube_object()
+    col = (ctypes.c_float * 3)(float(color_rgb[0]), float(color_rgb[1]), float(color_rgb[2]))
+    helios_lib.setObjectColorRGB(context, int(objID), col)
+
+
+def setObjectColorRGBBatchWrapper(context, objIDs: List[int], color_rgb) -> None:
+    _require_ctx_tube_object()
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    col = (ctypes.c_float * 3)(float(color_rgb[0]), float(color_rgb[1]), float(color_rgb[2]))
+    helios_lib.setObjectColorRGBBatch(context, arr, n, col)
+
+
+def setObjectColorRGBAWrapper(context, objID: int, color_rgba) -> None:
+    _require_ctx_tube_object()
+    col = (ctypes.c_float * 4)(float(color_rgba[0]), float(color_rgba[1]), float(color_rgba[2]), float(color_rgba[3]))
+    helios_lib.setObjectColorRGBA(context, int(objID), col)
+
+
+def setObjectColorRGBABatchWrapper(context, objIDs: List[int], color_rgba) -> None:
+    _require_ctx_tube_object()
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    col = (ctypes.c_float * 4)(float(color_rgba[0]), float(color_rgba[1]), float(color_rgba[2]), float(color_rgba[3]))
+    helios_lib.setObjectColorRGBABatch(context, arr, n, col)
+
+
+def overrideObjectTextureColorWrapper(context, objID: int) -> None:
+    _require_ctx_tube_object()
+    helios_lib.overrideObjectTextureColor(context, int(objID))
+
+
+def overrideObjectTextureColorBatchWrapper(context, objIDs: List[int]) -> None:
+    _require_ctx_tube_object()
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    helios_lib.overrideObjectTextureColorBatch(context, arr, n)
+
+
+def useObjectTextureColorWrapper(context, objID: int) -> None:
+    _require_ctx_tube_object()
+    helios_lib.useObjectTextureColor(context, int(objID))
+
+
+def useObjectTextureColorBatchWrapper(context, objIDs: List[int]) -> None:
+    _require_ctx_tube_object()
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    helios_lib.useObjectTextureColorBatch(context, arr, n)
+
+
+# ---- Mark dirty/clean ----
+
+def markPrimitiveDirtyWrapper(context, uuid: int) -> None:
+    _require_ctx_tube_object()
+    helios_lib.markPrimitiveDirty(context, int(uuid))
+
+
+def markPrimitiveDirtyBatchWrapper(context, uuids: List[int]) -> None:
+    _require_ctx_tube_object()
+    n = len(uuids)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*uuids)
+    helios_lib.markPrimitiveDirtyBatch(context, arr, n)
+
+
+def markPrimitiveCleanWrapper(context, uuid: int) -> None:
+    _require_ctx_tube_object()
+    helios_lib.markPrimitiveClean(context, int(uuid))
+
+
+def markPrimitiveCleanBatchWrapper(context, uuids: List[int]) -> None:
+    _require_ctx_tube_object()
+    n = len(uuids)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*uuids)
+    helios_lib.markPrimitiveCleanBatch(context, arr, n)
+
+
+# ---- Tile subdivision ----
+
+def setTileObjectSubdivisionCountWrapper(context, objIDs: List[int], subdiv_x: int, subdiv_y: int) -> None:
+    _require_ctx_tube_object()
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    helios_lib.setTileObjectSubdivisionCount(context, arr, n, int(subdiv_x), int(subdiv_y))
+
+
+def setTileObjectSubdivisionByAreaRatioWrapper(context, objIDs: List[int], area_ratio: float) -> None:
+    _require_ctx_tube_object()
+    n = len(objIDs)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*objIDs)
+    helios_lib.setTileObjectSubdivisionByAreaRatio(context, arr, n, float(area_ratio))
+
+
+# =============================================================================
+# Cleanup, XML write, RNG, Location
+# =============================================================================
+
+_CONTEXT_XML_RNG_LOC_AVAILABLE = True
+_NOT_AVAILABLE_XML_RNG_LOC_MSG = (
+    "PyHelios cleanup/XML/RNG/Location Context wrappers are not available "
+    "in the loaded native library. Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    helios_lib.cleanDeletedUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.cleanDeletedUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.cleanDeletedUUIDs.errcheck = _check_error
+
+    helios_lib.cleanDeletedObjectIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.cleanDeletedObjectIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.cleanDeletedObjectIDs.errcheck = _check_error
+
+    helios_lib.writeXML.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_bool]
+    helios_lib.writeXML.restype = None
+    helios_lib.writeXML.errcheck = _check_error
+
+    helios_lib.writeXMLFiltered.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_bool]
+    helios_lib.writeXMLFiltered.restype = None
+    helios_lib.writeXMLFiltered.errcheck = _check_error
+
+    helios_lib.writeXML_byobject.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_bool]
+    helios_lib.writeXML_byobject.restype = None
+    helios_lib.writeXML_byobject.errcheck = _check_error
+
+    helios_lib.randu_basic.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.randu_basic.restype = ctypes.c_float
+    helios_lib.randu_basic.errcheck = _check_error
+
+    helios_lib.randu_range.argtypes = [ctypes.POINTER(UContext), ctypes.c_float, ctypes.c_float]
+    helios_lib.randu_range.restype = ctypes.c_float
+    helios_lib.randu_range.errcheck = _check_error
+
+    helios_lib.randu_int_range.argtypes = [ctypes.POINTER(UContext), ctypes.c_int, ctypes.c_int]
+    helios_lib.randu_int_range.restype = ctypes.c_int
+    helios_lib.randu_int_range.errcheck = _check_error
+
+    helios_lib.randn_basic.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.randn_basic.restype = ctypes.c_float
+    helios_lib.randn_basic.errcheck = _check_error
+
+    helios_lib.randn_params.argtypes = [ctypes.POINTER(UContext), ctypes.c_float, ctypes.c_float]
+    helios_lib.randn_params.restype = ctypes.c_float
+    helios_lib.randn_params.errcheck = _check_error
+
+    helios_lib.setLocation.argtypes = [ctypes.POINTER(UContext), ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setLocation.restype = None
+    helios_lib.setLocation.errcheck = _check_error
+
+    helios_lib.getLocation.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getLocation.restype = None
+    helios_lib.getLocation.errcheck = _check_error
+
+except AttributeError:
+    _CONTEXT_XML_RNG_LOC_AVAILABLE = False
+
+
+def _require_ctx_xml_rng_loc():
+    if not _CONTEXT_XML_RNG_LOC_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_XML_RNG_LOC_MSG)
+
+
+# ---- Cleanup ----
+
+def cleanDeletedUUIDsWrapper(context, uuids: List[int]) -> List[int]:
+    """Return a new list with deleted UUIDs removed; does NOT mutate the input."""
+    _require_ctx_xml_rng_loc()
+    n = len(uuids)
+    arr_in = (ctypes.c_uint * max(n, 1))(*uuids) if n > 0 else (ctypes.c_uint * 1)()
+    count_out = ctypes.c_uint()
+    ptr = helios_lib.cleanDeletedUUIDs(context, arr_in, n, ctypes.byref(count_out))
+    if count_out.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count_out.value)]
+
+
+def cleanDeletedObjectIDsWrapper(context, objIDs: List[int]) -> List[int]:
+    _require_ctx_xml_rng_loc()
+    n = len(objIDs)
+    arr_in = (ctypes.c_uint * max(n, 1))(*objIDs) if n > 0 else (ctypes.c_uint * 1)()
+    count_out = ctypes.c_uint()
+    ptr = helios_lib.cleanDeletedObjectIDs(context, arr_in, n, ctypes.byref(count_out))
+    if count_out.value == 0 or not ptr:
+        return []
+    return [int(ptr[i]) for i in range(count_out.value)]
+
+
+# ---- XML write ----
+
+def writeXMLWrapper(context, filename: str, quiet: bool = False) -> None:
+    _require_ctx_xml_rng_loc()
+    helios_lib.writeXML(context, filename.encode('utf-8'), bool(quiet))
+
+
+def writeXMLFilteredWrapper(context, filename: str, uuids: List[int], quiet: bool = False) -> None:
+    _require_ctx_xml_rng_loc()
+    n = len(uuids)
+    arr = (ctypes.c_uint * max(n, 1))(*uuids) if n > 0 else (ctypes.c_uint * 1)()
+    helios_lib.writeXMLFiltered(context, filename.encode('utf-8'), arr, n, bool(quiet))
+
+
+def writeXMLByObjectWrapper(context, filename: str, objIDs: List[int], quiet: bool = False) -> None:
+    _require_ctx_xml_rng_loc()
+    n = len(objIDs)
+    arr = (ctypes.c_uint * max(n, 1))(*objIDs) if n > 0 else (ctypes.c_uint * 1)()
+    helios_lib.writeXML_byobject(context, filename.encode('utf-8'), arr, n, bool(quiet))
+
+
+# ---- RNG ----
+
+def randuBasicWrapper(context) -> float:
+    _require_ctx_xml_rng_loc()
+    return float(helios_lib.randu_basic(context))
+
+
+def randuRangeWrapper(context, low: float, high: float) -> float:
+    _require_ctx_xml_rng_loc()
+    return float(helios_lib.randu_range(context, float(low), float(high)))
+
+
+def randuIntRangeWrapper(context, low: int, high: int) -> int:
+    _require_ctx_xml_rng_loc()
+    return int(helios_lib.randu_int_range(context, int(low), int(high)))
+
+
+def randnBasicWrapper(context) -> float:
+    _require_ctx_xml_rng_loc()
+    return float(helios_lib.randn_basic(context))
+
+
+def randnParamsWrapper(context, mean: float, stddev: float) -> float:
+    _require_ctx_xml_rng_loc()
+    return float(helios_lib.randn_params(context, float(mean), float(stddev)))
+
+
+# ---- Location ----
+
+def setLocationWrapper(context, latitude: float, longitude: float, utc_offset: float) -> None:
+    _require_ctx_xml_rng_loc()
+    helios_lib.setLocation(context, float(latitude), float(longitude), float(utc_offset))
+
+
+def getLocationWrapper(context):
+    """Return (latitude, longitude, utc_offset) as a 3-tuple of floats."""
+    _require_ctx_xml_rng_loc()
+    lat = ctypes.c_float()
+    lon = ctypes.c_float()
+    utc = ctypes.c_float()
+    helios_lib.getLocation(context, ctypes.byref(lat), ctypes.byref(lon), ctypes.byref(utc))
+    return (float(lat.value), float(lon.value), float(utc.value))
+
+
+# =============================================================================
+# Colormap helpers + texture transparency
+# =============================================================================
+
+_CONTEXT_COLORMAP_AVAILABLE = True
+_NOT_AVAILABLE_COLORMAP_MSG = (
+    "PyHelios colormap Context wrappers (colormap + texture transparency) are not "
+    "available in the loaded native library. Rebuild with: build_scripts/build_helios --clean"
+)
+
+try:
+    helios_lib.generateColormapNamed.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.generateColormapNamed.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.generateColormapNamed.errcheck = _check_error
+
+    helios_lib.generateTexturesFromColormapCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+    helios_lib.generateTexturesFromColormapCount.restype = ctypes.c_uint
+    helios_lib.generateTexturesFromColormapCount.errcheck = _check_error
+
+    helios_lib.generateTexturesFromColormapPath.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.generateTexturesFromColormapPath.restype = ctypes.c_int
+    helios_lib.generateTexturesFromColormapPath.errcheck = _check_error
+
+    helios_lib.getPrimitiveTextureTransparencyDataInfo.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getPrimitiveTextureTransparencyDataInfo.restype = ctypes.c_int
+    helios_lib.getPrimitiveTextureTransparencyDataInfo.errcheck = _check_error
+
+    helios_lib.getPrimitiveTextureTransparencyDataBuffer.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPrimitiveTextureTransparencyDataBuffer.restype = ctypes.POINTER(ctypes.c_ubyte)
+    # No errcheck on this getter; the Info call already does the heavy lifting.
+
+except AttributeError:
+    _CONTEXT_COLORMAP_AVAILABLE = False
+
+
+def _require_ctx_colormap():
+    if not _CONTEXT_COLORMAP_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_COLORMAP_MSG)
+
+
+def generateColormapNamedWrapper(context, name: str, n_colors: int):
+    """Return a flat list of (n_colors * 3) RGB floats."""
+    _require_ctx_colormap()
+    count = ctypes.c_uint()
+    ptr = helios_lib.generateColormapNamed(context, name.encode('utf-8'), int(n_colors), ctypes.byref(count))
+    n = count.value
+    if n == 0 or not ptr:
+        return []
+    return [float(ptr[i]) for i in range(n * 3)]
+
+
+def generateTexturesFromColormapWrapper(context, texture_file: str, colormap_rgb_flat: List[float]) -> List[str]:
+    """Generate textures from a colormap; return the list of generated file paths."""
+    _require_ctx_colormap()
+    if len(colormap_rgb_flat) % 3 != 0:
+        raise ValueError(f"colormap_rgb_flat length must be a multiple of 3, got {len(colormap_rgb_flat)}")
+    n_colors = len(colormap_rgb_flat) // 3
+    arr = (ctypes.c_float * len(colormap_rgb_flat))(*[float(v) for v in colormap_rgb_flat]) if n_colors > 0 else (ctypes.c_float * 1)()
+    count = int(helios_lib.generateTexturesFromColormapCount(context, texture_file.encode('utf-8'), arr, n_colors))
+    return [
+        _read_string_buffer(helios_lib.generateTexturesFromColormapPath, context, i)
+        for i in range(count)
+    ]
+
+
+def getPrimitiveTextureTransparencyDataWrapper(context, uuid: int):
+    """Return (width, height, flat_byte_list) or None if no transparency channel."""
+    _require_ctx_colormap()
+    width = ctypes.c_uint()
+    height = ctypes.c_uint()
+    has_data = int(helios_lib.getPrimitiveTextureTransparencyDataInfo(
+        context, int(uuid), ctypes.byref(width), ctypes.byref(height)
+    ))
+    if has_data == 0 or width.value == 0 or height.value == 0:
+        return None
+    ptr = helios_lib.getPrimitiveTextureTransparencyDataBuffer(context, int(uuid))
+    if not ptr:
+        return None
+    n = width.value * height.value
+    flat = [int(ptr[i]) for i in range(n)]
+    return (int(width.value), int(height.value), flat)

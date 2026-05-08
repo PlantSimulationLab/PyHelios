@@ -104,6 +104,27 @@ with Context() as context:
 
 The Context is usually passed to plugins, which gives them access to geometry and data.
 
+### Geographic Location {#Location}
+
+The Context stores a geographic location used by plugins such as SolarPosition and RadiationModel for sun-position calculations. Location is represented by the immutable `Location` dataclass with three fields: `latitude` in degrees (+N / -S), `longitude` in degrees (+W / -E per Helios convention), and `utc_offset` in hours (+ moving West).
+
+```python
+from pyhelios import Context
+from pyhelios.types import Location
+
+context = Context()
+
+# Set location explicitly
+context.setLocation(38.55, 121.76, 8.0)             # latitude, longitude, UTC offset
+context.setLocation(Location(38.55, 121.76, 8.0))   # equivalent
+
+# Read it back
+loc = context.getLocation()
+print(loc.latitude, loc.longitude, loc.utc_offset)
+```
+
+Once the Context location is set, downstream plugins can read it instead of taking explicit lat/lon arguments.
+
 ## Coordinate System {#Coord}
 
 Helios uses a right-handed Cartesian coordinate system. (x,y,z) coordinates are typically specified using the 'vec3' data structure (see Vector Types).
@@ -262,6 +283,36 @@ translation = vec3(1, 0, 0)
 context.translatePrimitive(UUID, translation)
 ```
 
+#### Transformation Matrices (Advanced) {#TransformMatrix}
+
+For applications that need direct access to a primitive's or compound object's full 4×4 affine transformation, PyHelios exposes the transformation matrix as a NumPy `(4, 4)` `float32` ndarray in **row-major** order. Element `T[i, j]` is the entry at row `i`, column `j`; the translation column lives at indices `T[0, 3]`, `T[1, 3]`, `T[2, 3]`.
+
+```python
+import numpy as np
+from pyhelios import Context
+from pyhelios.types import vec3, vec2, int2, SphericalCoord
+
+context = Context()
+
+UUID = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                              rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+
+# Read the current transformation matrices (returns (4, 4) float32 ndarrays)
+T_prim = context.getPrimitiveTransformationMatrix(UUID)
+T_obj = context.getObjectTransformationMatrix(objID)
+
+# Set a translation (5, -2, 7) directly via a 4x4 matrix
+T_in = np.eye(4, dtype=np.float32)
+T_in[0, 3], T_in[1, 3], T_in[2, 3] = 5.0, -2.0, 7.0
+context.setObjectTransformationMatrix(objID, T_in)
+
+# The same matrix can be applied to a list of objects in one call
+context.setObjectTransformationMatrix([objID], T_in)
+```
+
+Setters also accept a list of 16 floats or a nested 4×4 list when NumPy is not convenient.
+
 ### Primitive Properties {#PrimProps}
 
 All primitives have a common set of data that can be accessed by the same set of functions, such as the primitive surface area, the primitive vertices, etc.
@@ -416,16 +467,29 @@ context.rotateObject(objID, angle, 'z')
 context.scaleObject(objID, factor)
 ```
 
+#### Domain Bounds {#DomainBounds}
+
+The overall extent of all primitives in the Context (or a filtered subset) can be queried with two helpers. `getDomainBoundingBox()` returns a tuple `(xbounds, ybounds, zbounds)` of three `vec2` values where each `vec2.x` is the minimum and `vec2.y` is the maximum along that axis. `getDomainBoundingSphere()` returns `(center, radius)` as `(vec3, float)`. Both methods accept an optional `uuids` argument to restrict the computation to a subset of primitives.
+
+```python
+xb, yb, zb = context.getDomainBoundingBox()
+center, radius = context.getDomainBoundingSphere()
+
+# Filtered: bounds of just two primitives
+xb, yb, zb = context.getDomainBoundingBox(uuids=[uuid1, uuid2])
+```
+
 ## Data Structures {#Data}
 
-Data structures that are moved in and out of plugins are managed by the Context.  There are two types of Context data structures that serve different purposes:
+Data structures that are moved in and out of plugins are managed by the Context.  There are three types of Context data structures that serve different purposes:
 
 - **Primitive Data** - is a piece of data associated with a given primitive. An example of this may be the reflectivity or temperature of a given primitive. Primitive data is flexible in that it can have different data types, variable lengths, and can be different for different primitives.  For example, voxels could have a data value specifying the attenuation coefficient, but the attenuation coefficient would not be relevant for patches so they would not have this piece of data.  A given primitive could have an array of 10 integers as its data.  However, primitive data is limited to one-dimensional arrays, and mapping to multidimensional data is left to the user.
+- **Material Data** - is a piece of data associated with a named material rather than an individual primitive. Multiple primitives can share the same material, so writing the data once on the material is reflected on every primitive that references it.
 - **Global Data** - is similar to 'primitive data', except that global data is not necessarily associated with any particular primitive. An example of global data might be the solar radiative flux incident on the earth.
 
 Implementation of data structure usage is detailed for each type of structure below.
 
-PyHelios supports primitive and global data of the following types: `int`, `uint`, `float`, `double`, `vec2`, `vec3`, `vec4`, `int2`, `int3`, `int4`, and `str`. Unlike the C++ API which uses type enumeration constants, PyHelios uses type-specific methods (e.g., `setPrimitiveDataFloat()`, `setPrimitiveDataVec3()`) for clearer, more Pythonic code.
+PyHelios supports primitive, material, and global data of the following types: `int`, `uint`, `float`, `double`, `vec2`, `vec3`, `vec4`, `int2`, `int3`, `int4`, and `str`. Unlike the C++ API which uses type enumeration constants, PyHelios uses type-specific methods (e.g., `setPrimitiveDataFloat()`, `setPrimitiveDataVec3()`) for clearer, more Pythonic code.
 
 ## Primitive Data {#PrimData}
 
@@ -521,6 +585,42 @@ if context.doesPrimitiveDataExist(UUID, "emissivity"):
     L = context.getPrimitiveDataSize(UUID, "emissivity")
 ```
 
+## Material Data {#MaterialData}
+
+Material data is similar to primitive data, but is attached to a named *material* rather than a UUID. A material is created with `addMaterial(label)` and can then be assigned to one or more primitives via `assignMaterialToPrimitive(uuid, label)`. Setting a data value on the material is reflected for every primitive that references it, which is useful for storing shared physical properties (e.g., a leaf reflectivity that applies to every leaf).
+
+PyHelios provides per-type setter and getter methods for all 11 supported types: `setMaterialDataInt`, `setMaterialDataUInt`, `setMaterialDataFloat`, `setMaterialDataDouble`, `setMaterialDataString`, `setMaterialDataVec2`, `setMaterialDataVec3`, `setMaterialDataVec4`, `setMaterialDataInt2`, `setMaterialDataInt3`, `setMaterialDataInt4`, and the matching `getMaterialData<Type>` accessors. There is also a unified `setMaterialData(material_label, data_label, value)` that detects the value's type at the call site, and a `getMaterialData(material_label, data_label, dtype=None)` that auto-detects the stored type via `getMaterialDataType()` when `dtype` is omitted.
+
+```python
+from pyhelios import Context
+from pyhelios.types import vec3
+
+context = Context()
+context.addMaterial("leaf")
+
+# Per-type explicit (preferred when the type is known)
+context.setMaterialDataFloat("leaf", "reflectivity", 0.12)
+r = context.getMaterialDataFloat("leaf", "reflectivity")
+
+# Unified dispatch (handy for generic code)
+context.setMaterialData("leaf", "tint", vec3(0.2, 0.7, 0.1))
+tint = context.getMaterialData("leaf", "tint")  # auto-detects vec3
+```
+
+For an entry whose type is unknown at runtime, `getMaterialDataType(material_label, data_label)` returns the `HeliosDataType` enum value (0=INT, 1=UINT, 2=FLOAT, 3=DOUBLE, 4=VEC2, 5=VEC3, 6=VEC4, 7=INT2, 8=INT3, 9=INT4, 10=STRING). Use `doesMaterialDataExist()` to check for presence and `clearMaterialData()` to remove an entry.
+
+### Unique Data Values {#UniqueValues}
+
+For data labels with bounded sets of values (e.g., a categorical "species" string or a small integer ID), PyHelios can pre-cache the unique values seen on primitives or compound objects. Caching must be **enabled before** the data is written:
+
+```python
+context.enablePrimitiveDataValueCaching("species")
+# ... set primitive data with that label ...
+unique = context.getUniquePrimitiveDataValues("species", str)  # ["maple", "oak", ...]
+```
+
+The same pattern applies to objects via `enableObjectDataValueCaching()` and `getUniqueObjectDataValues(label, dtype)`. Supported `dtype` values are `int`, `str`, and the string `"uint"`.
+
 ## Global Data {#GlobalData}
 
 Global data is similar to primitive data, except that it does not correspond to any particular primitive, rather it is a single instance of a certain data structure. The functions used to create global data within the Context are essentially the same as those used to create primitive data, except they do not take a primitive UUID as an argument (because they do not correspond to primitives).
@@ -571,6 +671,12 @@ It is often necessary to get the number of data points in a given timeseries, wh
 
 ```python
 N = context.getTimeseriesLength("temperature")
+```
+
+An entire timeseries variable (with all of its time points) can be removed using `deleteTimeseriesVariable()`. If the variable does not exist a non-fatal warning is issued and the call is otherwise a no-op. To wipe every timeseries variable at once, use `clearTimeseriesData()` instead.
+
+```python
+context.deleteTimeseriesVariable("temperature")  # removes the variable and all of its data points
 ```
 
 ---

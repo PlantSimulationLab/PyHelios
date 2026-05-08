@@ -202,7 +202,17 @@ class FarquharModelCoefficients:
     dH_Gamma: float = 37.83
     dH_Kc: float = 79.43
     dH_Ko: float = 36.38
-    
+
+    # Mesophyll conductance gm (helios-core 1.3.72+). The default math.inf reproduces
+    # the legacy Cc = Ci behaviour (no mesophyll diffusion limitation). When packed into
+    # the flat coefficient array, slots [18..21] are (gm_at_25C, dHa, Topt_C, dHd) using
+    # the same -1 sentinel convention as the C4 model: dHa < 0 → constant gm with no
+    # temperature response.
+    gm_at_25C: float = float('inf')   # mol CO2 / m^2 / s / bar
+    dHa_gm: float = -1.0              # kJ/mol; -1 disables temperature response
+    Topt_gm_C: float = -1.0           # Celsius; -1 → monotonic Arrhenius
+    dHd_gm: float = -1.0              # kJ/mol; -1 → default
+
     # Temperature response parameter containers
     _vcmax_temp_response: Optional[PhotosyntheticTemperatureResponseParameters] = field(default=None, init=False)
     _jmax_temp_response: Optional[PhotosyntheticTemperatureResponseParameters] = field(default=None, init=False)
@@ -330,21 +340,41 @@ class FarquharModelCoefficients:
         return self._theta_temp_response
     
     def to_array(self) -> List[float]:
-        """Convert to float array for C++ interface."""
+        """Convert to float array for C++ interface (22 floats; helios-core 1.3.72+).
+
+        Slots 0..17 are the legacy Farquhar fields (Vcmax/Jmax/alpha/Rd/O/TPU_flag plus
+        the 12 c_*/dH_* temperature constants). Slots 18..21 carry the mesophyll
+        conductance gm temperature response: (gm_at_25C, dHa, Topt_C, dHd) using the
+        -1 sentinel convention (dHa < 0 → constant gm with no temperature response,
+        Topt_C < 0 → monotonic Arrhenius, dHd < 0 → default deactivation energy).
+        Default ``gm_at_25C`` is ``+inf`` which reproduces the legacy ``Cc = Ci`` behaviour.
+        """
         return [
             self.Vcmax, self.Jmax, self.alpha, self.Rd, self.O, float(self.TPU_flag),
             # Temperature scaling factors
             self.c_Vcmax, self.dH_Vcmax, self.c_Jmax, self.dH_Jmax,
             self.c_Rd, self.dH_Rd, self.c_Kc, self.dH_Kc,
-            self.c_Ko, self.dH_Ko, self.c_Gamma, self.dH_Gamma
+            self.c_Ko, self.dH_Ko, self.c_Gamma, self.dH_Gamma,
+            # Mesophyll conductance gm temperature response (1.3.72+)
+            self.gm_at_25C, self.dHa_gm, self.Topt_gm_C, self.dHd_gm,
         ]
-    
+
     @classmethod
     def from_array(cls, coefficients: List[float]) -> 'FarquharModelCoefficients':
-        """Create from float array (from C++ interface)."""
+        """Create from float array (from C++ interface).
+
+        Accepts both the legacy 18-float layout (pre-1.3.72) and the 22-float layout
+        with mesophyll conductance gm in slots 18..21. When the array is 18 floats,
+        gm defaults to +infinity (legacy ``Cc = Ci`` behaviour).
+        """
         if len(coefficients) < 18:
             raise ValueError("Need at least 18 coefficients for Farquhar model")
-        
+
+        gm_at_25C = coefficients[18] if len(coefficients) > 18 else float('inf')
+        dHa_gm = coefficients[19] if len(coefficients) > 19 else -1.0
+        Topt_gm_C = coefficients[20] if len(coefficients) > 20 else -1.0
+        dHd_gm = coefficients[21] if len(coefficients) > 21 else -1.0
+
         return cls(
             Vcmax=coefficients[0], Jmax=coefficients[1], alpha=coefficients[2],
             Rd=coefficients[3], O=coefficients[4], TPU_flag=int(coefficients[5]),
@@ -353,7 +383,8 @@ class FarquharModelCoefficients:
             c_Rd=coefficients[10], dH_Rd=coefficients[11],
             c_Kc=coefficients[12], dH_Kc=coefficients[13],
             c_Ko=coefficients[14], dH_Ko=coefficients[15],
-            c_Gamma=coefficients[16], dH_Gamma=coefficients[17]
+            c_Gamma=coefficients[16], dH_Gamma=coefficients[17],
+            gm_at_25C=gm_at_25C, dHa_gm=dHa_gm, Topt_gm_C=Topt_gm_C, dHd_gm=dHd_gm,
         )
 
 

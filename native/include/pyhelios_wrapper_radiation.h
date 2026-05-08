@@ -809,6 +809,70 @@ PYHELIOS_API void addRadiationCameraSpherical(RadiationModel* radiation_model, c
                                               float radius, float elevation, float azimuth,
                                               const float* camera_properties, unsigned int antialiasing_samples);
 
+/**
+ * @brief Add a solar-induced chlorophyll fluorescence (SIF) camera with vec3 lookat
+ *
+ * Each emission band must already exist (added via addRadiationBand). The bands are
+ * flagged internally as SIF-emitting and use the Fluspect-B leaf-fluorescence kernel
+ * for emission instead of Stefan-Boltzmann. Helios auto-creates internal radiation
+ * bands covering 400-750 nm at the requested excitation_bin_width_nm.
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label string
+ * @param band_labels Array of emission band label strings
+ * @param band_count Number of band labels
+ * @param position_x Camera position X coordinate
+ * @param position_y Camera position Y coordinate
+ * @param position_z Camera position Z coordinate
+ * @param lookat_x Lookat point X coordinate
+ * @param lookat_y Lookat point Y coordinate
+ * @param lookat_z Lookat point Z coordinate
+ * @param camera_properties Camera properties array of 10 floats (same format as addRadiationCameraVec3)
+ * @param excitation_bin_width_nm Excitation wavelength bin width in nm (must be > 0)
+ * @param excitation_scattering_depth Scattering depth for excitation bands (0 = no scatter)
+ * @param antialiasing_samples Number of antialiasing samples (>= 1)
+ */
+PYHELIOS_API void addSIFCameraVec3(RadiationModel* radiation_model, const char* camera_label,
+                                   const char** band_labels, size_t band_count,
+                                   float position_x, float position_y, float position_z,
+                                   float lookat_x, float lookat_y, float lookat_z,
+                                   const float* camera_properties,
+                                   float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
+                                   unsigned int antialiasing_samples);
+
+/**
+ * @brief Add a solar-induced chlorophyll fluorescence (SIF) camera with spherical viewing direction
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label string
+ * @param band_labels Array of emission band label strings
+ * @param band_count Number of band labels
+ * @param position_x Camera position X coordinate
+ * @param position_y Camera position Y coordinate
+ * @param position_z Camera position Z coordinate
+ * @param radius Spherical viewing radius
+ * @param elevation Spherical viewing elevation
+ * @param azimuth Spherical viewing azimuth
+ * @param camera_properties Camera properties array of 10 floats
+ * @param excitation_bin_width_nm Excitation wavelength bin width in nm (must be > 0)
+ * @param excitation_scattering_depth Scattering depth for excitation bands (0 = no scatter)
+ * @param antialiasing_samples Number of antialiasing samples (>= 1)
+ */
+PYHELIOS_API void addSIFCameraSpherical(RadiationModel* radiation_model, const char* camera_label,
+                                        const char** band_labels, size_t band_count,
+                                        float position_x, float position_y, float position_z,
+                                        float radius, float elevation, float azimuth,
+                                        const float* camera_properties,
+                                        float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
+                                        unsigned int antialiasing_samples);
+
+/**
+ * @brief Check whether a camera was added via addSIFCamera (vs. addRadiationCamera)
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @return 1 if the camera exists and is a SIF camera, 0 otherwise
+ */
+PYHELIOS_API int isSIFCamera(RadiationModel* radiation_model, const char* camera_label);
+
 //=============================================================================
 // Camera Management Functions
 //=============================================================================

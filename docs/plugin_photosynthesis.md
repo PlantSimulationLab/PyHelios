@@ -100,27 +100,135 @@ with Context() as context:
  <table>
  <tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
  <tr><td>Ci</td><td>\f$C_i\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Intercellular CO<sub>2</sub> concentration.</td></tr>
-  <tr><td>Gamma\_CO2</td><td>\f$\Gamma\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Photosynthetic CO<sub>2</sub> compensation point (including "dark respiration").</td></tr>
- <tr><td>limitation\_state</td><td>N/A</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Photosynthesis limitation state. limitation_state=0 if photosynthesis is Rubisco-limited, limitation_state=1 if photosynthesis is electron transport limited.</td></tr>
+  <tr><td>Gamma\_CO2</td><td>\f$\Gamma\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/mol</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Photosynthetic CO<sub>2</sub> compensation point (including "dark respiration"). FvCB model only.</td></tr>
+ <tr><td>limitation\_state</td><td>N/A</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Photosynthesis limitation state. FvCB (C3): 0 = Rubisco-limited, 1 = electron-transport-limited. C4 (von Caemmerer 2021): 1 = enzyme-limited, 2 = electron-transport-limited.</td></tr>
+ <tr><td>Cm</td><td>\f$C_m\f$</td><td>\f$\mu\f$bar</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Mesophyll cytosolic CO<sub>2</sub> partial pressure. C4 model only (helios-core v1.3.72+).</td></tr>
+ <tr><td>Vp</td><td>\f$V_p\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/m<sup>2</sup>-sec</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>PEP carboxylation rate. C4 model only (helios-core v1.3.72+).</td></tr>
  </table>
+
+## C4 Model (von Caemmerer 2021) {#C4Description}
+
+PyHelios v0.1.21+ exposes the <a href="https://doi.org/10.1093/jxb/erab266">von Caemmerer (2021)</a> steady-state C4 photosynthesis model (helios-core v1.3.72+). Activate it with `setModelTypeC4()`, then load species defaults from the C4 library or apply your own parameter array:
+
+```python
+from pyhelios import Context, PhotosynthesisModel
+from pyhelios.PhotosynthesisModel import AVAILABLE_C4_SPECIES
+
+with Context() as context:
+    # ... add geometry, set inputs ...
+    with PhotosynthesisModel(context) as photo:
+        photo.setModelTypeC4()
+        photo.setC4CoefficientsFromLibrary("Maize_Massad2007")
+        photo.run()
+```
+
+### C4 Coefficient Layout {#C4CoefficientLayout}
+
+The 43-float coefficient array returned by `getC4CoefficientsFromLibrary()` / `getC4ModelCoefficients()` (and consumed by `setC4ModelCoefficients()`) is laid out as follows:
+
+| Group | Slots | Fields |
+|---|---|---|
+| Temperature-responsive rates (4 floats each: `value_at_25C`, `dHa`, `Topt_C`, `dHd`) | 0–19 | Vpmax, Vcmax, Jmax, Rd, gm |
+| Rubisco + PEPC kinetic constants at 25 °C | 20–24 | Kc, Ko, Kp, γ\*, Om |
+| Activation energies (kJ/mol) | 25–29 | dH_Kc, dH_Ko, dH_Kp, dH_γ\*, dH_Om |
+| User-tunable scalars | 30–42 | α_psII_fraction, x_etr_partition, Vpr, Rm_frac, fcyc, gbs, ao, absorptance, f_spectral, θ_etr, h_protons, H_J, H_Jcyc |
+
+Each temperature-responsive rate uses the same `-1` sentinel convention as `setFarquharMesophyllConductance` — a negative `dHa` means "no temperature response", a negative `Topt_C` means "monotonic Arrhenius", a negative `dHd` means "default deactivation energy".
+
+### C4 Parameter Reference {#C4ParamRef}
+
+| Parameter | Symbol | Units | Default (Setaria) | Description |
+|---|---|---|---|---|
+| **Temperature-responsive rates** | | | | |
+| Vpmax | V<sub>pmax</sub> | μmol/m²/s | 200 (dHa=50.1) | Maximum PEPC activity. Boyd et al. (2015). |
+| Vcmax | V<sub>cmax</sub> | μmol/m²/s | 40 (dHa=78.0) | Maximum Rubisco activity. Boyd et al. (2015). |
+| Jmax | J<sub>max</sub> | μmol/m²/s | 247.69 (peaked, Topt=43, dHd=260) | Maximum linear ETR. Re-fit from von Caemmerer (2021) Gaussian. |
+| Rd | R<sub>d</sub> | μmol/m²/s | 1.0 (dHa=66.4) | Mitochondrial respiration. |
+| gm | g<sub>m</sub> | mol/m²/s/bar | 1.0 (dHa=49.8) | Mesophyll conductance. Ubierna et al. (2017). |
+| **Kinetic constants (simple Arrhenius, edit struct fields directly)** | | | | |
+| Kc_25, dH_Kc | K<sub>c</sub> | μbar | 1210 / Ea=64.2 | Rubisco Michaelis constant for CO₂. |
+| Ko_25, dH_Ko | K<sub>o</sub> | μbar | 292 000 / Ea=10.5 | Rubisco Michaelis constant for O₂ (=292 mbar). |
+| Kp_25, dH_Kp | K<sub>p</sub> | μbar | 82 / Ea=38.3 | PEPC Michaelis constant for CO₂. |
+| gamma_star_25, dH_gamma_star | γ\* | unitless | 3.8168×10⁻⁴ / Ea=**+31.1** | 0.5 / S<sub>Rubisco</sub>. **Positive Ea** — γ\* increases with T because Rubisco specificity decreases. The von Caemmerer (2021) Setaria spreadsheet lists −31.1 (transcription error: it copied Boyd 2015's Ea for S<sub>c/o</sub> without the required reciprocal sign flip); Woodford et al. (2025) Table 1 silently corrects to +31.1. |
+| Om_25, dH_Om | O<sub>m</sub> | μbar | 210 000 / Ea=0 | Mesophyll O₂ partial pressure (ambient). |
+| **User-tunable scalars** | | | | |
+| alpha_psII_fraction | α | 0..1 | 0 | Fraction of PSII activity in the bundle sheath (0 for NADP-ME; 0.5 recommended for NAD-ME / PCK species per Woodford et al. 2025). |
+| x_etr_partition | x | 0..1 | 0.4 | Fraction of linear ETR partitioned to the mesophyll. |
+| Vpr | V<sub>pr</sub> | μmol/m²/s | 80 | PEP regeneration cap. |
+| Rm_frac | — | unitless | 0.5 | R<sub>m</sub> = Rm_frac · R<sub>d</sub>. |
+| fcyc | f<sub>cyc</sub> | 0..1 | 0.45 | Cyclic electron flow fraction. Updated from 0.3 (vC2021) to 0.45 (Woodford et al. 2025) reflecting NDH-dominated cyclic flow. |
+| H_J | H<sub>J</sub> | H⁺/e⁻ | 3 | Protons per electron, linear ETR (Woodford et al. 2025). |
+| H_Jcyc | H<sub>J,cyc</sub> | H⁺/e⁻ | 3.4 | Protons per electron, cyclic ETR (NDH-dominated). |
+| gbs | g<sub>bs</sub> | mol/m²/s/bar | 0.003 | Bundle-sheath conductance to CO₂. |
+| ao | a<sub>o</sub> | unitless | 0.047 | O₂/CO₂ solubility-diffusivity ratio. |
+| absorptance | — | unitless | 0.85 | Leaf PAR absorptance. |
+| f_spectral | f | unitless | 0.15 | Spectral-quality correction to absorbed PAR. |
+| theta_etr | θ | unitless | 0.7 | Curvature of the J ~ I₂ non-rectangular hyperbola. |
+| h_protons | — | H⁺/ATP | 4 | Protons required per ATP synthesized. |
+
+### C4 Species Library {#C4Library}
+
+PyHelios ships three published C4 parameter sets accessible via `setC4CoefficientsFromLibrary()` and `getC4CoefficientsFromLibrary()`. Each entry specifies **every** parameter the model reads — including the "complementary" kinetic constants (K<sub>c</sub>, K<sub>o</sub>, K<sub>p</sub>) and scalar structural parameters that the source paper held fixed while fitting the headline rate constants. **Mixing the headline values from one entry with the fixed-parameter assumptions of another will produce biased predictions**, so treat each entry as atomic. Unknown species keys raise `RuntimeError`; key matching is case-insensitive.
+
+| Species key | Subtype | Vcmax(25) | Vpmax(25) | Jmax(25) | Rd(25) | gm(25) | T-response | Source |
+|---|---|---|---|---|---|---|---|---|
+| `SetariaViridis_vC2021` | NADP-ME | 40 | 200 | 247.69 | 0.4 | 1.0 | Arrhenius (Jmax peaked) | von Caemmerer (2021) Table 1; kinetics Boyd et al. (2015); gm Ubierna et al. (2017); fcyc / H_Jcyc per Woodford et al. (2025). |
+| `GenericC4_vC2000` | NADP-ME | 60 | 120 | 400 | 1.0 | ∞ (10⁴) | Q10≈2.3 → Arrhenius Ea≈61.6 | von Caemmerer (2000) *Biochemical Models of Leaf Photosynthesis*; plantecophys AciC4 defaults. |
+| `Maize_Massad2007` | NADP-ME | 60 | 120 | 400 | 0.6 | ∞ (10⁴) | Peaked Arrhenius | Massad et al. (2007) *Plant Cell Environ.* 30:1191; plantecophys defaults at 25 °C. |
+
+Units: μmol CO₂ / m² / s for all rate constants; mol CO₂ / m² / s / bar for gm.
+
+**Per-entry caveats:**
+
+- **`SetariaViridis_vC2021`** — the C4 struct's default constructor also carries this parameterization, except R<sub>d</sub>: the library entry uses R<sub>d</sub> = 0.01 · V<sub>cmax</sub> = 0.4 μmol/m²/s per the original paper's convention, while the struct constructor sets R<sub>d</sub> = 1.0 for historical compatibility.
+- **`GenericC4_vC2000`** — the original parameterization uses Q10 temperature responses. Helios approximates these with Arrhenius (E<sub>a</sub> = R · T<sub>ref</sub>² · ln(Q₁₀)/10 with T<sub>ref</sub> = 298.15 K), matching Q10 behaviour within ~1 % over 15–40 °C. `fcyc=0` recovers the linear-electron-flow ATP stoichiometry of the original vC2000 model.
+- **`Maize_Massad2007`** — Massad fitted the headline rate constants against Bernacchi (2001) C3-derived K<sub>c</sub>/K<sub>o</sub> (much smaller than the Boyd 2015 C4 values used for Setaria). **Do not substitute Setaria's K<sub>c</sub>/K<sub>o</sub> into this entry** — the V<sub>cmax</sub> value is only internally consistent with the Bernacchi values. The paper assumed infinite mesophyll conductance, so the entry sets g<sub>m</sub> = 10⁴ mol/m²/s/bar as effectively infinite. The K<sub>p</sub> temperature response is from Boyd (2015) rather than Massad's own Q10=2.1 (Massad's value overestimates K<sub>p</sub> temperature sensitivity). The 0.6 μmol/m²/s default for R<sub>d</sub> is a library convention (0.01 · V<sub>cmax</sub>) — Massad themselves used R<sub>d</sub> = 0 and reported results as insensitive to the R<sub>d</sub> choice.
+
+> **Implementation notes (vs. the paper's supplementary spreadsheet):**
+> 1. The Jmax temperature response uses peaked Arrhenius (same API as C3) rather than the paper's Gaussian — Jmax(25 °C) = 247.69 matches the Gaussian at 25 °C; users who need exact Gaussian behaviour at other temperatures should fit peaked-Arrhenius parameters or set Jmax as a constant.
+> 2. The V<sub>pr</sub> cap in Eq. 19 is always applied; the paper's spreadsheet omits it, so Helios gives slightly lower A at high C<sub>m</sub> when V<sub>p,MM</sub> > V<sub>pr</sub>.
+
+### Manual Override of Mesophyll Cytosolic CO₂ (Testing) {#C4ManualCm}
+
+For testing or validation against the von Caemmerer (2021) reference spreadsheet, `setCm()` lets you bypass the iterative `Cm = Ci - A/gm` solve and prescribe the mesophyll cytosolic CO₂ directly. The stomatal balance on Ci is also bypassed (Ci is back-computed from `Ci = Cm + A/gm`):
+
+```python
+photo.setCm(150.0, [uuid])  # ubar
+photo.run()
+```
+
+### Per-Material C4 Setters {#C4ByMaterial}
+
+Both `setC4CoefficientsFromLibrary()` and `setC4ModelCoefficients()` accept a `material_label=` keyword to apply coefficients to every primitive sharing a material rather than to a UUID list. `material_label` and `uuids` are mutually exclusive:
+
+```python
+context.addMaterial("leaf_c4")
+context.assignMaterialToPrimitive(uuid, "leaf_c4")
+
+with PhotosynthesisModel(context) as photo:
+    photo.setModelTypeC4()
+    photo.setC4CoefficientsFromLibrary("Maize_Massad2007", material_label="leaf_c4")
+```
 
 ## Introduction {#PhotoDescription}
 
-The \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in implements two types of models: the biochemical model of <a href="https://link.springer.com/article/10.1007/BF00386231">Farquhar, von Caemmerer, and Berry (1980)</a>, and an empirical model similar to that of <a href="../../plugins/photosynthesis/doc/Johnson_2010_PlantMod.pdf">Johnson (2010)</a>, which are described separately below.
+The \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in implements three types of models: the C<sub>3</sub> biochemical model of <a href="https://link.springer.com/article/10.1007/BF00386231">Farquhar, von Caemmerer, and Berry (1980)</a>, the C<sub>4</sub> biochemical model of <a href="https://doi.org/10.1093/jxb/erab266">von Caemmerer (2021)</a>, and an empirical model similar to that of <a href="../../plugins/photosynthesis/doc/Johnson_2010_PlantMod.pdf">Johnson (2010)</a>. Each is described separately below.
 
-By default, the plug-in uses the biochemical model. The model can either be set explicitly, as illustrated in the code below, or the model type will be inferred based on the model coefficients that are set (see descriptions below).
+By default, the plug-in uses the C<sub>3</sub> Farquhar model. The model can either be set explicitly, as illustrated in the code below, or the model type will be inferred based on the model coefficients that are set (see descriptions below).
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
 
 with Context() as context:
     with PhotosynthesisModel(context) as photo:
-        # Use the Farquhar-von Caemmerer-Berry model
+        # Use the C3 Farquhar-von Caemmerer-Berry model
         photo.setModelTypeFarquhar()
-
         photo.run()
 
-        # Switch back to the empirical model
+        # Switch to the C4 von Caemmerer (2021) model
+        photo.setModelTypeC4()
+
+        # Switch to the empirical model
         photo.setModelTypeEmpirical()
 ```
 
@@ -177,6 +285,30 @@ The \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" 
  \f$\zeta=\dfrac{D_{upper}}{D_{lower}+D_{upper}}\f$
 
  is the stomatal sidedness, which is the ratio of the stomatal density of the upper leaf surface to the sum of the upper and lower leaf surface densities, which is set by the primitive data value "stomatal_sidedness". For leaves, \f$\zeta=0\f$ corresponds to hypostomatous leaves (stomata on one side), and \f$\zeta=0.5\f$ to amphistomatous leaves (stomata equally on both sides). It is important to note that if \f$n_s=1\f$, then the value of \f$\zeta\f$ will be overridden and set to 0.
+
+
+### Mesophyll Conductance (optional) {#FvCBmesophyll}
+
+By default the implementation assumes the chloroplast CO<sub>2</sub> concentration equals the intercellular value, \f$C_c \equiv C_i\f$ (infinite mesophyll conductance). A finite mesophyll conductance \f$g_m\f$ (mol CO<sub>2</sub> m<sup>-2</sup> s<sup>-1</sup> bar<sup>-1</sup>) can be supplied to model diffusion from the intercellular airspace to the sites of carboxylation:
+
+\f[ C_c = C_i - \dfrac{A}{g_m}. \f]
+
+Substituting \f$C_c\f$ into the Rubisco-limited and electron-transport-limited forms of \f$A\f$ gives two quadratic equations in the net assimilation, one per branch, that are solved analytically following <a href="https://onlinelibrary.wiley.com/doi/10.1111/j.1365-3040.2004.01140.x">Ethier & Livingston (2004)</a> and <a href="https://onlinelibrary.wiley.com/doi/full/10.1111/j.1365-3040.2007.01710.x">Sharkey et al. (2007)</a>. The physically meaningful (smaller) root is selected and combined with \f$A_p = 3 \cdot TPU - R_d\f$ via the same smooth-min used elsewhere.
+
+`gm` has the same temperature-response options as every other rate parameter: constant, Arrhenius, peaked-Arrhenius (with default `dHd`), and peaked-Arrhenius with explicit `dHd`. The Python wrapper collapses the four C++ overloads into a single method whose unused arguments default to the `-1` sentinel:
+
+```python
+# Constant gm with no temperature response
+photo.setFarquharMesophyllConductance(0.4, uuids=[uuid])
+
+# Arrhenius (Ubierna et al. 2017): gm(25 C) = 0.4, dHa = 49.8 kJ/mol
+photo.setFarquharMesophyllConductance(0.4, dha=49.8, uuids=[uuid])
+
+# Peaked Arrhenius with optimum at 35 C
+photo.setFarquharMesophyllConductance(0.4, dha=49.8, topt=35.0, uuids=[uuid])
+```
+
+The default value `gm = +∞` reproduces the legacy Farquhar `Cc = Ci` behaviour bit-for-bit, so existing parameter libraries that do not set `gm` are unaffected.
 
 
 ### Temperature response of model parameters {#FvCBtemperature}

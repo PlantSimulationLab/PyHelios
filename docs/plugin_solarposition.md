@@ -68,7 +68,17 @@ This plugin calculates the position of the sun, and also implements other models
  <tr><td>\ref pyhelios.SolarPosition.SolarPosition "SolarPosition(context, utc_offset, latitude, longitude)"</td></tr>
  </table>
 
- The \ref pyhelios.SolarPosition.SolarPosition "SolarPosition" class can be initialized by simply passing a Helios context as an argument to the constructor. This gives the class access to the time and date currently set in the Context. The model must also know certain parameters about the simulated location, in particular the offset from UTC time, latitude, and longitude. A description of these parameters are given in the table below. These can be supplied using the second constructor listed in the table above. If only the Context is supplied to the constructor, the plugin uses Context location settings (if configured).
+ The \ref pyhelios.SolarPosition.SolarPosition "SolarPosition" class can be initialized by simply passing a Helios context as an argument to the constructor. This gives the class access to the time and date currently set in the Context. The model must also know certain parameters about the simulated location, in particular the offset from UTC time, latitude, and longitude. A description of these parameters are given in the table below. These can be supplied using the second constructor listed in the table above. If only the Context is supplied to the constructor, the plugin uses the Context's currently configured location.
+
+ The Context's location can be set ahead of time with `context.setLocation(latitude, longitude, utc_offset)` or with the immutable `Location` dataclass from `pyhelios.types`. See [Geographic Location](user_guide.html#Location) in the user guide for details. With this approach, location is configured once and shared across plugins:
+
+ ```python
+ from pyhelios import Context, SolarPosition
+
+ context = Context()
+ context.setLocation(38.55, 121.76, 8.0)   # latitude, longitude, UTC offset
+ solar = SolarPosition(context)            # picks up the Context location
+ ```
 
  <table>
  <caption>SolarPosition constructor inputs</caption>

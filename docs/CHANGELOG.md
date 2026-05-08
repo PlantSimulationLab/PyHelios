@@ -1,5 +1,31 @@
 # Changelog
 
+# [v0.1.20] 2026-05-08
+
+- Updated helios-core to v1.3.72
+
+## Context
+- Added scalar existence and metadata queries: `doesObjectExist()`, `doesObjectContainPrimitive()`, `doesMaterialDataExist()`, `objectHasTexture()`, `isPrimitiveDirty()`, `areObjectPrimitivesComplete()`, `getJulianDate()`, `getMaterialCount()`, `getObjectArea()`, `getObjectPrimitiveCount()`, `getPolymeshObjectVolume()`, `getMaterialIDFromLabel()`, `getPrimitiveMaterialID()`, `getGlobalDataVersion()`, `getPrimitiveParentObjectID()`, `getObjectTextureFile()`, `listAllPrimitiveDataLabels()`, `getLoadedXMLFiles()`, `printObjectInfo()`, `printPrimitiveInfo()`, `setObjectDataFromPrimitiveDataMean()`, `renameMaterial()`, `renamePrimitiveData()`, `clearMaterialData()`, plus `enable/disablePrimitiveDataValueCaching()` and `enable/disableObjectDataValueCaching()`
+- Added vector-return queries and geometry mutators: `getDeletedUUIDs()`, `getDirtyUUIDs()`, `getUniquePrimitiveParentObjectIDs()`, `getObjectAverageNormal()`, plus `setObjectAverageNormal()`, `setObjectOrigin()`, `setPrimitiveAzimuth()`, `setPrimitiveElevation()`, `setTriangleVertices()`, `setPrimitiveNormal()` (single/batch), and `setPrimitiveParentObjectID()` (single/batch)
+- Added a complete material-data API spanning all 11 Helios data types (`int`, `uint`, `float`, `double`, `string`, `vec2`, `vec3`, `vec4`, `int2`, `int3`, `int4`): per-type explicit `setMaterialData<Type>()` and `getMaterialData<Type>()` methods, a unified `setMaterialData()`/`getMaterialData()` dispatcher with auto-detection via `getMaterialDataType()`, and `getUniquePrimitiveDataValues()`/`getUniqueObjectDataValues()` (`int`/`uint`/`str`)
+- Added 4×4 transformation matrix accessors as numpy `(4,4) float32` ndarrays (also accepting nested lists or flat 16-float lists): `get/setObjectTransformationMatrix()` and `get/setPrimitiveTransformationMatrix()` with single/batch dispatch, plus domain-level `getDomainBoundingBox()` and `getDomainBoundingSphere()` with optional UUID filtering
+- Added tube/polymesh/object mutators: `setTubeNodes()`, `setTubeRadii()`, `scaleTubeGirth()`, `scaleTubeLength()`, `pruneTubeNodes()`, `appendTubeSegment()` (color or texture+uv kwargs), `addPolymeshObject()`, `setObjectColor()` (RGB/RGBA, single/batch), `overrideObjectTextureColor()`/`useObjectTextureColor()`, `markPrimitiveDirty()`/`markPrimitiveClean()`, `setTileObjectSubdivisionCount()`, and `setTileObjectSubdivisionByAreaRatio()`
+- Added `cleanDeletedUUIDs()` and `cleanDeletedObjectIDs()` (returning new lists, not mutating input), `writeXML()`/`writeXML_byobject()` for XML export with optional UUID filtering, `randu()`/`randn()` random-number draws (uniform with optional float or int range; normal with optional mean/stddev), and geographic `setLocation()`/`getLocation()` returning the new `Location` dataclass (latitude, longitude, UTC offset)
+- Added colormap and texture-transparency helpers: `generateColormap(name, n_colors)` returning an `RGBcolor` list, `generateTexturesFromColormap()` returning generated file paths, and `getPrimitiveTextureTransparencyData()` returning an `Optional[np.ndarray]` 2D bool mask
+- Added `deleteTimeseriesVariable(label)` to remove a single timeseries variable and all of its data points (complements the existing `clearTimeseriesData()` and `updateTimeseriesData()`).
+
+## LeafOptics
+- Extended `LeafOpticsProperties` with two optional Fluspect-B SIF parameters: `V2Z` (violaxanthin↔zeaxanthin de-epoxidation state, default 0.0) and `fqe` (intrinsic fluorescence quantum-efficiency scalar, default 1.0). They are ignored by the pure PROSPECT reflectance/transmittance calculation; the radiation plugin's SIF pipeline reads them when active. The flat float-array layout grew from 9 to 11 entries; `LeafOpticsProperties.from_list()` still accepts both lengths for backward compatibility with serialized data.
+
+## Photosynthesis
+- Added `setModelTypeC4()` and the von Caemmerer (2021) steady-state C4 model — `setC4CoefficientsFromLibrary()` / `getC4CoefficientsFromLibrary()` (species: `SetariaViridis_vC2021`, `GenericC4_vC2000`, `Maize_Massad2007`), `setC4ModelCoefficients()` / `getC4ModelCoefficients()` over a 43-float coefficient array (5 temperature-responsive rates × 4 floats: Vpmax/Vcmax/Jmax/Rd/gm; 5 K-25 + 5 dH kinetic constants; 13 user-tunable scalars), and `setCm()` for direct mesophyll CO₂ prescription (testing/validation). Both `setC4CoefficientsFromLibrary()` and `setC4ModelCoefficients()` accept a `material_label` keyword to apply coefficients per-material rather than per-UUID.
+- Added `setFarquharMesophyllConductance()` to configure C3 mesophyll conductance `gm` (mol CO₂ / m² / s / bar) with optional temperature response. Default behaviour unchanged: `gm = +∞` reduces `Cc` to `Ci` (legacy Farquhar).
+- `FarquharModelCoefficients` flat array round-trip (`to_array()` / `from_array()` and the corresponding `getFarquharModelCoefficients` / `setFarquharModelCoefficients` C wrappers) grew from 18 to 22 floats: slots 18–21 carry `(gm_at_25C, dHa, Topt_C, dHd)` for the gm temperature response. `from_array` still accepts the legacy 18-float layout for back-compat (gm defaults to `+∞`); the C wrapper still accepts 18-float buffers and only consumes the gm slots when the buffer is at least 22 elements.
+- C4 `limitation_state` uses the convention `1 = enzyme-limited`, `2 = electron-transport-limited` (vs. C3's `0/1`). New optional output primitive data labels for the C4 model: `Cm` (mesophyll cytosolic CO₂) and `Vp` (PEP carboxylation rate).
+
+## Radiation
+- Added `addSIFCamera()` (vec3 lookat and SphericalCoord overloads) plus the new `SIFCameraProperties` (extends `CameraProperties` with `excitation_bin_width_nm` and `excitation_scattering_depth`) and the `isSIFCamera()` query. SIF cameras source per-band emission from the Fluspect-B kernel rather than Stefan-Boltzmann; Helios auto-creates internal excitation bands covering 400–750 nm at the requested bin width.
+
 # [v0.1.19] 2026-04-16
 
 - Updated helios-core to v1.3.71

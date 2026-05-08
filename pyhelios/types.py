@@ -22,6 +22,9 @@ from .wrappers.DataTypes import (
     # Time and Date types
     Time, Date,
 
+    # Geographic location
+    Location,
+
     # Primitive type enumeration
     PrimitiveType,
 
@@ -31,7 +34,8 @@ from .wrappers.DataTypes import (
     make_RGBcolor, make_RGBAcolor,
     make_SphericalCoord,
     make_AxisRotation,
-    make_Time, make_Date
+    make_Time, make_Date,
+    make_Location,
 )
 
 # Export all for star imports
@@ -50,6 +54,9 @@ __all__ = [
     # Time and Date types
     'Time', 'Date',
 
+    # Geographic location
+    'Location',
+
     # Primitive type enumeration
     'PrimitiveType',
 
@@ -59,5 +66,6 @@ __all__ = [
     'make_RGBcolor', 'make_RGBAcolor',
     'make_SphericalCoord',
     'make_AxisRotation',
-    'make_Time', 'make_Date'
+    'make_Time', 'make_Date',
+    'make_Location',
 ]

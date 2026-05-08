@@ -31,6 +31,16 @@ class PhotosynthesisModelError(Exception):
     pass
 
 
+#: Species available in the helios-core C4 photosynthesis library (von Caemmerer 2021).
+#: Lookups via :meth:`PhotosynthesisModel.setC4CoefficientsFromLibrary` are case-insensitive
+#: but otherwise exact — unknown species raise ``helios_runtime_error`` from the C++ side.
+AVAILABLE_C4_SPECIES = [
+    "SetariaViridis_vC2021",
+    "GenericC4_vC2000",
+    "Maize_Massad2007",
+]
+
+
 class PhotosynthesisModel:
     """
     High-level interface for Helios photosynthesis modeling.
@@ -148,11 +158,147 @@ class PhotosynthesisModel:
     def setModelTypeFarquhar(self):
         """
         Set the photosynthesis model type to Farquhar-von Caemmerer-Berry.
-        
-        The FvCB model is a mechanistic model accounting for biochemical 
+
+        The FvCB model is a mechanistic model accounting for biochemical
         limitations of C3 photosynthesis.
         """
         photosynthesis_wrapper.setModelTypeFarquhar(self._native_ptr)
+
+    def setModelTypeC4(self):
+        """
+        Set the photosynthesis model type to the von Caemmerer (2021) steady-state C4 model.
+
+        Pair with :meth:`setC4CoefficientsFromLibrary` (e.g. ``"SetariaViridis_vC2021"``,
+        ``"Maize_Massad2007"``) or :meth:`setC4ModelCoefficients` to populate parameters.
+
+        Note:
+            Requires helios-core v1.3.72 or newer.
+
+        Raises:
+            NotImplementedError: If running against an older helios-core that does not
+                support the C4 bindings — rebuild with ``build_scripts/build_helios --clean``.
+        """
+        photosynthesis_wrapper.setModelTypeC4(self._native_ptr)
+
+    def setFarquharMesophyllConductance(self, gm_at_25c: float,
+                                        dha: float = -1.0,
+                                        topt: float = -1.0,
+                                        dhd: float = -1.0,
+                                        uuids: Optional[List[int]] = None):
+        """
+        Set Farquhar mesophyll conductance ``gm`` (mol CO2 / m² / s / bar) for selected primitives.
+
+        Pass ``dha`` < 0 (the default) to apply ``gm`` with no temperature response. Pass a
+        positive ``dha`` and leave ``topt``/``dhd`` at -1 to use a monotonic Arrhenius response.
+        Set ``topt`` (in °C) for a peaked Arrhenius response, and ``dhd`` to override the
+        deactivation energy (defaults to ``10*dha``).
+
+        Args:
+            gm_at_25c: ``gm`` at the 25 °C reference, mol CO2 / m² / s / bar.
+            dha: Activation energy (kJ/mol). -1 disables temperature response.
+            topt: Optimum temperature in °C. -1 keeps Arrhenius monotonic.
+            dhd: Deactivation energy (kJ/mol). -1 picks a default.
+            uuids: Primitive UUIDs to update. ``None`` is rejected; the underlying
+                wrapper requires explicit UUIDs (matching ``setVcmax`` etc.).
+
+        Raises:
+            ValueError: If ``uuids`` is None or empty.
+            NotImplementedError: If running against helios-core older than v1.3.72.
+        """
+        if not uuids:
+            raise ValueError(
+                "setFarquharMesophyllConductance requires explicit UUIDs. "
+                "To configure all primitives use setFarquharModelCoefficients() with a populated coefficient set."
+            )
+        photosynthesis_wrapper.setFarquharMesophyllConductance(
+            self._native_ptr, gm_at_25c, dha, topt, dhd, uuids,
+        )
+
+    def setC4CoefficientsFromLibrary(self, species: str, uuids: Optional[List[int]] = None,
+                                     material_label: Optional[str] = None):
+        """
+        Set C4 model coefficients from the von Caemmerer (2021) species library.
+
+        Args:
+            species: Species name (case-insensitive). See :data:`AVAILABLE_C4_SPECIES`.
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives in the Context.
+            material_label: Optional material label. When set, applies the coefficients
+                to every primitive that references this material at run() time. Mutually
+                exclusive with ``uuids``.
+
+        Raises:
+            ValueError: If both ``uuids`` and ``material_label`` are provided.
+            NotImplementedError: If running against helios-core older than v1.3.72.
+        """
+        if uuids is not None and material_label is not None:
+            raise ValueError("setC4CoefficientsFromLibrary: pass either uuids or material_label, not both.")
+        if material_label is not None:
+            photosynthesis_wrapper.setC4CoefficientsFromLibraryForMaterial(
+                self._native_ptr, species, material_label,
+            )
+        else:
+            photosynthesis_wrapper.setC4CoefficientsFromLibrary(self._native_ptr, species, uuids)
+
+    def getC4CoefficientsFromLibrary(self, species: str) -> List[float]:
+        """
+        Return the 43-float C4 coefficient array for ``species``.
+
+        See ``native/include/pyhelios_wrapper_photosynthesis.h`` for the per-index meaning.
+        """
+        return photosynthesis_wrapper.getC4CoefficientsFromLibrary(self._native_ptr, species)
+
+    def setC4ModelCoefficients(self, coefficients: List[float],
+                               uuids: Optional[List[int]] = None,
+                               material_label: Optional[str] = None):
+        """
+        Apply a 43-float C4 coefficient array.
+
+        Pair with :meth:`getC4CoefficientsFromLibrary` to round-trip a species' defaults.
+
+        Args:
+            coefficients: 43-float C4 coefficient array.
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives in the Context.
+            material_label: Optional material label. When set, applies the coefficients
+                to every primitive that references this material at run() time. Mutually
+                exclusive with ``uuids``.
+
+        Raises:
+            ValueError: If both ``uuids`` and ``material_label`` are provided.
+        """
+        if uuids is not None and material_label is not None:
+            raise ValueError("setC4ModelCoefficients: pass either uuids or material_label, not both.")
+        if material_label is not None:
+            photosynthesis_wrapper.setC4ModelCoefficientsForMaterial(
+                self._native_ptr, material_label, coefficients,
+            )
+        else:
+            photosynthesis_wrapper.setC4ModelCoefficients(self._native_ptr, coefficients, uuids)
+
+    def getC4ModelCoefficients(self, uuid: int) -> List[float]:
+        """Return the 43-float C4 coefficient array for a single primitive."""
+        return photosynthesis_wrapper.getC4ModelCoefficients(self._native_ptr, uuid)
+
+    def setCm(self, cm: float, uuids: List[int]):
+        """
+        Manually prescribe the mesophyll cytosolic CO2 partial pressure (Cm) for the C4 model.
+
+        Bypasses the ``Cm = Ci - A/gm`` fixed-point iteration and the stomatal balance
+        on Ci. Primarily intended for testing and validation against the von Caemmerer 2021
+        reference spreadsheet.
+
+        Args:
+            cm: Mesophyll cytosolic CO2 partial pressure in ubar.
+            uuids: Primitive UUIDs to set. Must be non-empty.
+
+        Raises:
+            ValueError: If ``uuids`` is empty.
+            NotImplementedError: If running against helios-core older than v1.3.72.
+        """
+        if not uuids:
+            raise ValueError("setCm requires a non-empty list of UUIDs.")
+        photosynthesis_wrapper.setCm(self._native_ptr, cm, uuids)
 
     # Model Execution
     def run(self):

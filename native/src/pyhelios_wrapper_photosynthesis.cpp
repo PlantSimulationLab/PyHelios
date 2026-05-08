@@ -12,8 +12,128 @@
 #include "../include/pyhelios_wrapper_photosynthesis.h"
 #include "PhotosynthesisModel.h"
 
+// =============================================================================
+// C4 helpers (must have C++ linkage — kept outside the extern "C" block below).
+// =============================================================================
+
+namespace pyhelios_photosynthesis_internal {
+
+constexpr unsigned int C4_COEFF_COUNT = 43;
+// Sentinel: PhotosyntheticTemperatureResponseParameters initializes Topt = 10000 K when no
+// optimum is set. After K → C conversion this is ~9726.85 — far above any realistic Topt.
+// Helios's own validation (validateOptimalTemperature in PhotosynthesisModel.h) rejects
+// Topt > 100 °C as biologically unrealistic, so any value at or above 200 °C must be the
+// "no optimum" sentinel rather than user-supplied data. We expose it as -1 in the flat
+// coefficient array.
+constexpr float C4_NO_OPTIMUM_TOPT_C = 200.f;
+
+// Apply 4 floats (val_at_25C, dHa, Topt_C, dHd) to a temperature-response member.
+// Selects the appropriate ctor by sentinels (-1) following the existing Farquhar convention.
+template <typename SetterT>
+inline void applyTempResponse(SetterT &&setter, float val, float dHa, float Topt_C, float dHd) {
+    if (dHa < 0) {
+        setter(val);
+    } else if (Topt_C < 0) {
+        setter(val, dHa);
+    } else if (dHd < 0) {
+        setter(val, dHa, Topt_C);
+    } else {
+        setter(val, dHa, Topt_C, dHd);
+    }
+}
+
+// Pack a PhotosyntheticTemperatureResponseParameters into 4 floats at out[0..3].
+// Topt is converted from Kelvin (internal) to Celsius and replaced with -1 if it indicates "no optimum".
+inline void packTempResponse(const PhotosyntheticTemperatureResponseParameters &p, float *out) {
+    out[0] = p.value_at_25C;
+    out[1] = p.dHa;
+    float topt_c = p.Topt - 273.15f;
+    out[2] = (topt_c >= C4_NO_OPTIMUM_TOPT_C) ? -1.f : topt_c;
+    out[3] = p.dHd;
+}
+
+// Unpack a 43-float coefficient array into a C4ModelCoefficients struct.
+inline C4ModelCoefficients unpackC4Coefficients(const float *coefficients) {
+    C4ModelCoefficients c;
+
+    applyTempResponse([&](auto... a) { c.setVpmax(a...); }, coefficients[0], coefficients[1], coefficients[2], coefficients[3]);
+    applyTempResponse([&](auto... a) { c.setVcmax(a...); }, coefficients[4], coefficients[5], coefficients[6], coefficients[7]);
+    applyTempResponse([&](auto... a) { c.setJmax(a...); }, coefficients[8], coefficients[9], coefficients[10], coefficients[11]);
+    applyTempResponse([&](auto... a) { c.setRd(a...); }, coefficients[12], coefficients[13], coefficients[14], coefficients[15]);
+    applyTempResponse([&](auto... a) { c.setMesophyllConductance_gm(a...); }, coefficients[16], coefficients[17], coefficients[18], coefficients[19]);
+
+    c.Kc_25 = coefficients[20];
+    c.Ko_25 = coefficients[21];
+    c.Kp_25 = coefficients[22];
+    c.gamma_star_25 = coefficients[23];
+    c.Om_25 = coefficients[24];
+
+    c.dH_Kc = coefficients[25];
+    c.dH_Ko = coefficients[26];
+    c.dH_Kp = coefficients[27];
+    c.dH_gamma_star = coefficients[28];
+    c.dH_Om = coefficients[29];
+
+    c.alpha_psII_fraction = coefficients[30];
+    c.x_etr_partition = coefficients[31];
+    c.Vpr = coefficients[32];
+    c.Rm_frac = coefficients[33];
+    c.fcyc = coefficients[34];
+    c.gbs = coefficients[35];
+    c.ao = coefficients[36];
+    c.absorptance = coefficients[37];
+    c.f_spectral = coefficients[38];
+    c.theta_etr = coefficients[39];
+    c.h_protons = coefficients[40];
+    c.H_J = coefficients[41];
+    c.H_Jcyc = coefficients[42];
+
+    return c;
+}
+
+// Pack a C4ModelCoefficients struct into a 43-float coefficient array.
+inline void packC4Coefficients(const C4ModelCoefficients &c, float *out) {
+    packTempResponse(c.getVpmaxTempResponse(), &out[0]);
+    packTempResponse(c.getVcmaxTempResponse(), &out[4]);
+    packTempResponse(c.getJmaxTempResponse(), &out[8]);
+    packTempResponse(c.getRdTempResponse(), &out[12]);
+    packTempResponse(c.getMesophyllConductance_gmTempResponse(), &out[16]);
+
+    out[20] = c.Kc_25;
+    out[21] = c.Ko_25;
+    out[22] = c.Kp_25;
+    out[23] = c.gamma_star_25;
+    out[24] = c.Om_25;
+
+    out[25] = c.dH_Kc;
+    out[26] = c.dH_Ko;
+    out[27] = c.dH_Kp;
+    out[28] = c.dH_gamma_star;
+    out[29] = c.dH_Om;
+
+    out[30] = c.alpha_psII_fraction;
+    out[31] = c.x_etr_partition;
+    out[32] = c.Vpr;
+    out[33] = c.Rm_frac;
+    out[34] = c.fcyc;
+    out[35] = c.gbs;
+    out[36] = c.ao;
+    out[37] = c.absorptance;
+    out[38] = c.f_spectral;
+    out[39] = c.theta_etr;
+    out[40] = c.h_protons;
+    out[41] = c.H_J;
+    out[42] = c.H_Jcyc;
+}
+
+} // namespace pyhelios_photosynthesis_internal
+
 extern "C" {
-    
+
+using pyhelios_photosynthesis_internal::C4_COEFF_COUNT;
+using pyhelios_photosynthesis_internal::packC4Coefficients;
+using pyhelios_photosynthesis_internal::unpackC4Coefficients;
+
     //=============================================================================
     // PhotosynthesisModel Lifecycle
     //=============================================================================
@@ -74,13 +194,30 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
                 return;
             }
-            
+
             photosynthesis_model->setModelType_Farquhar();
-            
+
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setModelType_Farquhar): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setModelType_Farquhar): Unknown error setting Farquhar model type.");
+        }
+    }
+
+    PYHELIOS_API void setPhotosynthesisModelTypeC4(PhotosynthesisModel* photosynthesis_model) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+
+            photosynthesis_model->setModelType_C4();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setModelType_C4): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setModelType_C4): Unknown error setting C4 model type.");
         }
     }
     
@@ -376,16 +513,24 @@ extern "C" {
                 farquhar_coeffs.c_Gamma = coefficients[16];
                 farquhar_coeffs.dH_Gamma = coefficients[17];
             }
-            
+
+            // Mesophyll conductance gm temperature response (helios-core 1.3.72+).
+            // Slots 18..21 only consumed when present so legacy 18-float callers keep working.
+            if (coeff_count >= 22) {
+                pyhelios_photosynthesis_internal::applyTempResponse(
+                    [&](auto... a) { farquhar_coeffs.setMesophyllConductance_gm(a...); },
+                    coefficients[18], coefficients[19], coefficients[20], coefficients[21]);
+            }
+
             photosynthesis_model->setModelCoefficients(farquhar_coeffs);
-            
+
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setModelCoefficients): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setModelCoefficients): Unknown error setting Farquhar model coefficients.");
         }
     }
-    
+
     PYHELIOS_API void setFarquharModelCoefficientsForUUIDs(PhotosynthesisModel* photosynthesis_model, const float* coefficients, unsigned int coeff_count, const unsigned int* uuids, unsigned int uuid_count) {
         try {
             clearError();
@@ -434,7 +579,14 @@ extern "C" {
                 farquhar_coeffs.c_Gamma = coefficients[16];
                 farquhar_coeffs.dH_Gamma = coefficients[17];
             }
-            
+
+            // Mesophyll conductance gm temperature response (helios-core 1.3.72+).
+            if (coeff_count >= 22) {
+                pyhelios_photosynthesis_internal::applyTempResponse(
+                    [&](auto... a) { farquhar_coeffs.setMesophyllConductance_gm(a...); },
+                    coefficients[18], coefficients[19], coefficients[20], coefficients[21]);
+            }
+
             std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
             photosynthesis_model->setModelCoefficients(farquhar_coeffs, uuid_vector);
             
@@ -756,9 +908,9 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array size must be at least 18");
                 return;
             }
-            
+
             FarquharModelCoefficients farquhar_coeffs = photosynthesis_model->getFarquharModelCoefficients(uuid);
-            
+
             // Pack into float array [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
             coefficients[0] = farquhar_coeffs.Vcmax;
             coefficients[1] = farquhar_coeffs.Jmax;
@@ -766,7 +918,7 @@ extern "C" {
             coefficients[3] = farquhar_coeffs.Rd;
             coefficients[4] = farquhar_coeffs.O;
             coefficients[5] = static_cast<float>(farquhar_coeffs.TPU_flag);
-            
+
             // Temperature parameters
             coefficients[6] = farquhar_coeffs.c_Vcmax;
             coefficients[7] = farquhar_coeffs.dH_Vcmax;
@@ -780,12 +932,21 @@ extern "C" {
             coefficients[15] = farquhar_coeffs.dH_Ko;
             coefficients[16] = farquhar_coeffs.c_Gamma;
             coefficients[17] = farquhar_coeffs.dH_Gamma;
-            
-            // Fill remaining with zeros if array is larger
-            for (unsigned int i = 18; i < coeff_size; ++i) {
+
+            // Mesophyll conductance gm temperature response (helios-core 1.3.72+).
+            // Slots 18..21 only populated if the buffer is large enough; older 18-float
+            // callers continue to work without seeing gm.
+            if (coeff_size >= 22) {
+                pyhelios_photosynthesis_internal::packTempResponse(
+                    farquhar_coeffs.getMesophyllConductance_gmTempResponse(),
+                    &coefficients[18]);
+            }
+
+            // Fill remaining with zeros if array is even larger
+            for (unsigned int i = (coeff_size >= 22 ? 22u : 18u); i < coeff_size; ++i) {
                 coefficients[i] = 0.0f;
             }
-            
+
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::getFarquharModelCoefficients): ") + e.what());
         } catch (...) {
@@ -884,17 +1045,327 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID count must be greater than 0");
                 return;
             }
-            
+
             std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
             photosynthesis_model->printDefaultValueReport(uuid_vector);
-            
+
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::printDefaultValueReport): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::printDefaultValueReport): Unknown error printing default value report for UUIDs.");
         }
     }
-    
+
+    //=============================================================================
+    // Farquhar Mesophyll Conductance (gm)
+    //=============================================================================
+
+    PYHELIOS_API void setFarquharMesophyllConductance(PhotosynthesisModel* photosynthesis_model, float gm_at_25c, float dha, float topt, float dhd, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+
+            if (uuids == nullptr || uuid_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Individual parameter setters require explicit UUIDs. Use setFarquharModelCoefficients() for all primitives.");
+                return;
+            }
+
+            std::vector<uint> target_uuids(uuids, uuids + uuid_count);
+
+            for (uint uuid : target_uuids) {
+                try {
+                    FarquharModelCoefficients existing_coeffs = photosynthesis_model->getFarquharModelCoefficients(uuid);
+
+                    if (dha < 0) {
+                        existing_coeffs.setMesophyllConductance_gm(gm_at_25c);
+                    } else if (topt < 0) {
+                        existing_coeffs.setMesophyllConductance_gm(gm_at_25c, dha);
+                    } else if (dhd < 0) {
+                        existing_coeffs.setMesophyllConductance_gm(gm_at_25c, dha, topt);
+                    } else {
+                        existing_coeffs.setMesophyllConductance_gm(gm_at_25c, dha, topt, dhd);
+                    }
+
+                    std::vector<uint> single_uuid = {uuid};
+                    photosynthesis_model->setModelCoefficients(existing_coeffs, single_uuid);
+
+                } catch (const std::exception&) {
+                    // Skip UUIDs without photosynthesis data (matches setFarquharVcmax convention).
+                    continue;
+                }
+            }
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setMesophyllConductance_gm): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setMesophyllConductance_gm): Unknown error setting mesophyll conductance.");
+        }
+    }
+
+    //=============================================================================
+    // C4 Model (von Caemmerer 2021) Coefficient Configuration
+    //=============================================================================
+
+    PYHELIOS_API void setC4CoefficientsFromLibrary(PhotosynthesisModel* photosynthesis_model, const char* species) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!species) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Species name is null");
+                return;
+            }
+
+            photosynthesis_model->setC4CoefficientsFromLibrary(species);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setC4CoefficientsFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setC4CoefficientsFromLibrary): Unknown error setting C4 coefficients from library.");
+        }
+    }
+
+    PYHELIOS_API void setC4CoefficientsFromLibraryForUUIDs(PhotosynthesisModel* photosynthesis_model, const char* species, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!species) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Species name is null");
+                return;
+            }
+            if (!uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null");
+                return;
+            }
+            if (uuid_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID count must be greater than 0");
+                return;
+            }
+
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+            photosynthesis_model->setC4CoefficientsFromLibrary(species, uuid_vector);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setC4CoefficientsFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setC4CoefficientsFromLibrary): Unknown error setting C4 coefficients from library for UUIDs.");
+        }
+    }
+
+    PYHELIOS_API void getC4CoefficientsFromLibrary(PhotosynthesisModel* photosynthesis_model, const char* species, float* coefficients, unsigned int coeff_size) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!species) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Species name is null");
+                return;
+            }
+            if (!coefficients) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
+                return;
+            }
+            if (coeff_size < C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 coefficients array must have at least 43 elements");
+                return;
+            }
+
+            C4ModelCoefficients c = photosynthesis_model->getC4CoefficientsFromLibrary(species);
+            packC4Coefficients(c, coefficients);
+
+            for (unsigned int i = C4_COEFF_COUNT; i < coeff_size; ++i) {
+                coefficients[i] = 0.f;
+            }
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::getC4CoefficientsFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::getC4CoefficientsFromLibrary): Unknown error getting C4 coefficients from library.");
+        }
+    }
+
+    PYHELIOS_API void setC4ModelCoefficients(PhotosynthesisModel* photosynthesis_model, const float* coefficients, unsigned int coeff_count) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!coefficients) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
+                return;
+            }
+            if (coeff_count < C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have at least 43 elements");
+                return;
+            }
+
+            C4ModelCoefficients c = unpackC4Coefficients(coefficients);
+            photosynthesis_model->setModelCoefficients(c);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setModelCoefficients (C4)): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setModelCoefficients (C4)): Unknown error setting C4 model coefficients.");
+        }
+    }
+
+    PYHELIOS_API void setC4ModelCoefficientsForMaterial(PhotosynthesisModel* photosynthesis_model, const char* material_label, const float* coefficients, unsigned int coeff_count) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!material_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null");
+                return;
+            }
+            if (!coefficients) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
+                return;
+            }
+            if (coeff_count < pyhelios_photosynthesis_internal::C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have at least 43 elements");
+                return;
+            }
+
+            C4ModelCoefficients c = pyhelios_photosynthesis_internal::unpackC4Coefficients(coefficients);
+            photosynthesis_model->setModelCoefficients(std::string(material_label), c);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setModelCoefficients (C4 by material)): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setModelCoefficients (C4 by material)): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setC4CoefficientsFromLibraryForMaterial(PhotosynthesisModel* photosynthesis_model, const char* species, const char* material_label) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!species) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Species name is null");
+                return;
+            }
+            if (!material_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null");
+                return;
+            }
+
+            photosynthesis_model->setC4CoefficientsFromLibrary(std::string(species), std::string(material_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setC4CoefficientsFromLibrary (by material)): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setC4CoefficientsFromLibrary (by material)): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void setC4ModelCoefficientsForUUIDs(PhotosynthesisModel* photosynthesis_model, const float* coefficients, unsigned int coeff_count, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!coefficients) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
+                return;
+            }
+            if (coeff_count < C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have at least 43 elements");
+                return;
+            }
+            if (!uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null");
+                return;
+            }
+            if (uuid_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID count must be greater than 0");
+                return;
+            }
+
+            C4ModelCoefficients c = unpackC4Coefficients(coefficients);
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+            photosynthesis_model->setModelCoefficients(c, uuid_vector);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setModelCoefficients (C4)): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setModelCoefficients (C4)): Unknown error setting C4 model coefficients for UUIDs.");
+        }
+    }
+
+    PYHELIOS_API void getC4ModelCoefficients(PhotosynthesisModel* photosynthesis_model, unsigned int uuid, float* coefficients, unsigned int coeff_size) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!coefficients) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
+                return;
+            }
+            if (coeff_size < C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 coefficients array must have at least 43 elements");
+                return;
+            }
+
+            C4ModelCoefficients c = photosynthesis_model->getC4ModelCoefficients(uuid);
+            packC4Coefficients(c, coefficients);
+
+            for (unsigned int i = C4_COEFF_COUNT; i < coeff_size; ++i) {
+                coefficients[i] = 0.f;
+            }
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::getC4ModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::getC4ModelCoefficients): Unknown error getting C4 model coefficients.");
+        }
+    }
+
+    PYHELIOS_API void setPhotosynthesisCm(PhotosynthesisModel* photosynthesis_model, float cm, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!photosynthesis_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PhotosynthesisModel pointer is null");
+                return;
+            }
+            if (!uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null");
+                return;
+            }
+            if (uuid_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID count must be greater than 0");
+                return;
+            }
+
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+            photosynthesis_model->setCm(cm, uuid_vector);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::setCm): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhotosynthesisModel::setCm): Unknown error setting Cm.");
+        }
+    }
+
 } // extern "C"
 
 #endif // PHOTOSYNTHESIS_PLUGIN_AVAILABLE

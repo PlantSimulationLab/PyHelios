@@ -6,7 +6,7 @@ from enum import Enum
 import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
-from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time
+from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
 from .validation.geometry import (
@@ -3335,6 +3335,34 @@ class Context:
         self._check_context_available()
         context_wrapper.clearTimeseriesData(self.context)
 
+    def deleteTimeseriesVariable(self, label: str):
+        """Delete a single timeseries variable and all of its data points.
+
+        Complements :meth:`clearTimeseriesData` (which removes all variables) and
+        :meth:`updateTimeseriesData` (which modifies a single point).
+
+        Args:
+            label: Name of the timeseries variable to delete.
+
+        Raises:
+            ValueError: If ``label`` is empty.
+            NotImplementedError: If running against helios-core older than v1.3.72.
+
+        Note:
+            If the variable does not exist, the underlying Helios API issues a
+            non-fatal warning to stderr and the call is otherwise a no-op.
+
+        Example:
+            >>> context.addTimeseriesData("temperature", 25.3, Date(2024, 6, 15), Time(12, 0, 0))
+            >>> context.deleteTimeseriesVariable("temperature")
+            >>> context.doesTimeseriesVariableExist("temperature")
+            False
+        """
+        self._check_context_available()
+        if not isinstance(label, str) or not label:
+            raise ValueError("Label must be a non-empty string")
+        context_wrapper.deleteTimeseriesVariable(self.context, label)
+
     def loadTabularTimeseriesData(self, data_file: str, column_labels: List[str],
                                   delimiter: str = ",", date_string_format: str = "YYYYMMDD",
                                   headerlines: int = 0):
@@ -4804,4 +4832,1101 @@ class Context:
                     raise ValueError(f"{name} must be a vec2, got {type(b).__name__}")
             return context_wrapper.cropDomainByUUIDsWrapper(self.context, list(uuids), xb.to_list(), yb.to_list(), zb.to_list())
         raise TypeError(f"cropDomain() takes 3 or 4 positional arguments, got {len(args)}")
+
+    # =========================================================================
+    # Scalar Getters / Setters & List-of-String Getters
+    # =========================================================================
+
+    # ---- Existence / state queries ----
+
+    def doesObjectExist(self, objID: int) -> bool:
+        """Return True if a compound object with the given ID exists."""
+        self._check_context_available()
+        return context_wrapper.doesObjectExistWrapper(self.context, objID)
+
+    def doesObjectContainPrimitive(self, objID: int, uuid: int) -> bool:
+        """Return True if the given primitive UUID belongs to the given object."""
+        self._check_context_available()
+        return context_wrapper.doesObjectContainPrimitiveWrapper(self.context, objID, uuid)
+
+    def doesMaterialDataExist(self, material_label: str, data_label: str) -> bool:
+        """Return True if the named material has data stored under data_label."""
+        self._check_context_available()
+        return context_wrapper.doesMaterialDataExistWrapper(self.context, material_label, data_label)
+
+    def objectHasTexture(self, objID: int) -> bool:
+        """Return True if the compound object has a texture assigned."""
+        self._check_context_available()
+        return context_wrapper.objectHasTextureWrapper(self.context, objID)
+
+    def isPrimitiveDirty(self, uuid: int) -> bool:
+        """Return True if the primitive's geometry has been modified since the last clean mark."""
+        self._check_context_available()
+        return context_wrapper.isPrimitiveDirtyWrapper(self.context, uuid)
+
+    def isObjectDataValueCachingEnabled(self, label: str) -> bool:
+        """Return True if value caching is enabled for the given object-data label."""
+        self._check_context_available()
+        return context_wrapper.isObjectDataValueCachingEnabledWrapper(self.context, label)
+
+    def isPrimitiveDataValueCachingEnabled(self, label: str) -> bool:
+        """Return True if value caching is enabled for the given primitive-data label."""
+        self._check_context_available()
+        return context_wrapper.isPrimitiveDataValueCachingEnabledWrapper(self.context, label)
+
+    def areObjectPrimitivesComplete(self, objID: int) -> bool:
+        """Return True if all primitives originally belonging to this object still exist
+        (i.e., none have been deleted)."""
+        self._check_context_available()
+        return context_wrapper.areObjectPrimitivesCompleteWrapper(self.context, objID)
+
+    # ---- Numeric scalar getters ----
+
+    def getJulianDate(self) -> int:
+        """Get the current simulation date as Julian day (1-366)."""
+        self._check_context_available()
+        return context_wrapper.getJulianDateWrapper(self.context)
+
+    def getMaterialCount(self) -> int:
+        """Return the total number of materials registered in the context."""
+        self._check_context_available()
+        return context_wrapper.getMaterialCountWrapper(self.context)
+
+    def getObjectArea(self, objID: int) -> float:
+        """Return the total surface area (one-sided) of all primitives in the object."""
+        self._check_context_available()
+        return context_wrapper.getObjectAreaWrapper(self.context, objID)
+
+    def getObjectPrimitiveCount(self, objID: int) -> int:
+        """Return the number of primitives currently belonging to the object."""
+        self._check_context_available()
+        return context_wrapper.getObjectPrimitiveCountWrapper(self.context, objID)
+
+    def getPolymeshObjectVolume(self, objID: int) -> float:
+        """Return the enclosed volume of a polymesh object."""
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectVolumeWrapper(self.context, objID)
+
+    def getMaterialIDFromLabel(self, material_label: str) -> int:
+        """Look up a material ID from its human-readable label."""
+        self._check_context_available()
+        return context_wrapper.getMaterialIDFromLabelWrapper(self.context, material_label)
+
+    def getPrimitiveMaterialID(self, uuid: int) -> int:
+        """Return the material ID assigned to the given primitive."""
+        self._check_context_available()
+        return context_wrapper.getPrimitiveMaterialIDWrapper(self.context, uuid)
+
+    def getGlobalDataVersion(self, label: str) -> int:
+        """Return the version counter for a global data entry. Increments on each update;
+        useful for cache invalidation."""
+        self._check_context_available()
+        return context_wrapper.getGlobalDataVersionWrapper(self.context, label)
+
+    def getPrimitiveParentObjectID(self, uuid: int) -> int:
+        """Return the ID of the compound object the primitive belongs to.
+
+        Returns 0 if the primitive is not part of any compound object (the documented
+        "no parent" sentinel). Raises ``HeliosRuntimeError`` if ``uuid`` does not exist.
+        """
+        self._check_context_available()
+        return context_wrapper.getPrimitiveParentObjectIDWrapper(self.context, uuid)
+
+    # ---- String / list-of-string getters ----
+
+    def getObjectTextureFile(self, objID: int) -> str:
+        """Return the filesystem path of the texture assigned to the object, or an
+        empty string if no texture is assigned."""
+        self._check_context_available()
+        return context_wrapper.getObjectTextureFileWrapper(self.context, objID)
+
+    def listAllPrimitiveDataLabels(self) -> List[str]:
+        """Return the union of all primitive-data labels used across every primitive
+        in the context."""
+        self._check_context_available()
+        return context_wrapper.listAllPrimitiveDataLabelsWrapper(self.context)
+
+    def getLoadedXMLFiles(self) -> List[str]:
+        """Return the list of XML file paths that have been loaded into this context."""
+        self._check_context_available()
+        return context_wrapper.getLoadedXMLFilesWrapper(self.context)
+
+    # ---- Simple actions ----
+
+    def printObjectInfo(self, objID: int) -> None:
+        """Print summary info for the object to stdout (for debugging)."""
+        self._check_context_available()
+        context_wrapper.printObjectInfoWrapper(self.context, objID)
+
+    def printPrimitiveInfo(self, uuid: int) -> None:
+        """Print summary info for the primitive to stdout (for debugging)."""
+        self._check_context_available()
+        context_wrapper.printPrimitiveInfoWrapper(self.context, uuid)
+
+    def enablePrimitiveDataValueCaching(self, label: str) -> None:
+        """Enable value caching for the given primitive-data label. Required before
+        using getUniquePrimitiveDataValues for that label."""
+        self._check_context_available()
+        context_wrapper.enablePrimitiveDataValueCachingWrapper(self.context, label)
+
+    def disablePrimitiveDataValueCaching(self, label: str) -> None:
+        """Disable value caching for the given primitive-data label."""
+        self._check_context_available()
+        context_wrapper.disablePrimitiveDataValueCachingWrapper(self.context, label)
+
+    def enableObjectDataValueCaching(self, label: str) -> None:
+        """Enable value caching for the given object-data label. Required before
+        using getUniqueObjectDataValues for that label."""
+        self._check_context_available()
+        context_wrapper.enableObjectDataValueCachingWrapper(self.context, label)
+
+    def disableObjectDataValueCaching(self, label: str) -> None:
+        """Disable value caching for the given object-data label."""
+        self._check_context_available()
+        context_wrapper.disableObjectDataValueCachingWrapper(self.context, label)
+
+    def setObjectDataFromPrimitiveDataMean(self, objID: int, label: str) -> None:
+        """Compute the mean of the given primitive-data label across the object's
+        primitives and store it as object data on the object itself under the
+        same label."""
+        self._check_context_available()
+        context_wrapper.setObjectDataFromPrimitiveDataMeanWrapper(self.context, objID, label)
+
+    def renameMaterial(self, old_label: str, new_label: str) -> None:
+        """Rename an existing material."""
+        self._check_context_available()
+        context_wrapper.renameMaterialWrapper(self.context, old_label, new_label)
+
+    def renamePrimitiveData(self, uuid: int, old_label: str, new_label: str) -> None:
+        """Rename a primitive-data label on a single primitive."""
+        self._check_context_available()
+        context_wrapper.renamePrimitiveDataWrapper(self.context, uuid, old_label, new_label)
+
+    def clearMaterialData(self, material_label: str, data_label: str) -> None:
+        """Clear the named data entry on the given material."""
+        self._check_context_available()
+        context_wrapper.clearMaterialDataWrapper(self.context, material_label, data_label)
+
+    # =========================================================================
+    # Vector-return getters & geometry mutators
+    # =========================================================================
+
+    # ---- Vector<uint> queries ----
+
+    def getDeletedUUIDs(self) -> List[int]:
+        """Return the list of UUIDs that have been deleted from the context.
+
+        These UUIDs are tombstoned and will not appear in getAllUUIDs(), but their
+        IDs are tracked so they can be excluded from external references.
+        """
+        self._check_context_available()
+        return context_wrapper.getDeletedUUIDsWrapper(self.context)
+
+    def getDirtyUUIDs(self, include_deleted: bool = True) -> List[int]:
+        """Return the list of UUIDs whose geometry has been modified since the last
+        markGeometryClean call.
+
+        Args:
+            include_deleted: If True (default), include UUIDs that were deleted while
+                dirty. If False, only return UUIDs that still exist.
+        """
+        self._check_context_available()
+        return context_wrapper.getDirtyUUIDsWrapper(self.context, include_deleted)
+
+    def getUniquePrimitiveParentObjectIDs(self, uuids: List[int],
+                                          include_zero: bool = True) -> List[int]:
+        """Return the unique set of compound-object IDs that the given primitives
+        belong to.
+
+        Args:
+            uuids: List of primitive UUIDs to inspect.
+            include_zero: If True (default), include the sentinel object ID 0
+                (i.e., primitives with no parent object). If False, only return
+                IDs of real compound objects.
+        """
+        self._check_context_available()
+        if not isinstance(uuids, (list, tuple)):
+            raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+        return context_wrapper.getUniquePrimitiveParentObjectIDsWrapper(
+            self.context, list(uuids), include_zero
+        )
+
+    # ---- Object normal / origin ----
+
+    def getObjectAverageNormal(self, objID: int) -> vec3:
+        """Return the area-weighted average normal of all primitives in the object."""
+        self._check_context_available()
+        x, y, z = context_wrapper.getObjectAverageNormalWrapper(self.context, objID)
+        return vec3(x, y, z)
+
+    def setObjectAverageNormal(self, objID: int, origin: vec3, new_normal: vec3) -> None:
+        """Rotate the object so its area-weighted average normal aligns with
+        new_normal. The rotation is applied about the given origin point."""
+        self._check_context_available()
+        if not isinstance(origin, vec3):
+            raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+        if not isinstance(new_normal, vec3):
+            raise ValueError(f"new_normal must be a vec3, got {type(new_normal).__name__}")
+        context_wrapper.setObjectAverageNormalWrapper(
+            self.context, objID, origin.to_list(), new_normal.to_list()
+        )
+
+    def setObjectOrigin(self, objID: int, origin: vec3) -> None:
+        """Translate the object so its origin is moved to the given point."""
+        self._check_context_available()
+        if not isinstance(origin, vec3):
+            raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+        context_wrapper.setObjectOriginWrapper(self.context, objID, origin.to_list())
+
+    # ---- Primitive azimuth / elevation ----
+
+    def setPrimitiveAzimuth(self, uuid: int, origin: vec3, new_azimuth: float) -> None:
+        """Rotate a single primitive about the given origin so its azimuth
+        equals new_azimuth (radians)."""
+        self._check_context_available()
+        if not isinstance(origin, vec3):
+            raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+        context_wrapper.setPrimitiveAzimuthWrapper(
+            self.context, uuid, origin.to_list(), float(new_azimuth)
+        )
+
+    def setPrimitiveElevation(self, uuid: int, origin: vec3, new_elevation: float) -> None:
+        """Rotate a single primitive about the given origin so its elevation
+        equals new_elevation (radians)."""
+        self._check_context_available()
+        if not isinstance(origin, vec3):
+            raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+        context_wrapper.setPrimitiveElevationWrapper(
+            self.context, uuid, origin.to_list(), float(new_elevation)
+        )
+
+    # ---- Geometry mutators ----
+
+    def setTriangleVertices(self, uuid: int, vertex0: vec3, vertex1: vec3, vertex2: vec3) -> None:
+        """Replace the three vertices of an existing triangle primitive."""
+        self._check_context_available()
+        for name, v in (("vertex0", vertex0), ("vertex1", vertex1), ("vertex2", vertex2)):
+            if not isinstance(v, vec3):
+                raise ValueError(f"{name} must be a vec3, got {type(v).__name__}")
+        context_wrapper.setTriangleVerticesWrapper(
+            self.context, uuid, vertex0.to_list(), vertex1.to_list(), vertex2.to_list()
+        )
+
+    def setPrimitiveNormal(self, uuids_or_uuid, origin: vec3, new_normal: vec3) -> None:
+        """Rotate one or more primitives so their normals align with new_normal.
+
+        Accepts either a single UUID (int) or a list/tuple of UUIDs.
+        The rotation is applied about the given origin point.
+        """
+        self._check_context_available()
+        if not isinstance(origin, vec3):
+            raise ValueError(f"origin must be a vec3, got {type(origin).__name__}")
+        if not isinstance(new_normal, vec3):
+            raise ValueError(f"new_normal must be a vec3, got {type(new_normal).__name__}")
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setPrimitiveNormalBatchWrapper(
+                self.context, list(uuids_or_uuid), origin.to_list(), new_normal.to_list()
+            )
+        else:
+            context_wrapper.setPrimitiveNormalWrapper(
+                self.context, uuids_or_uuid, origin.to_list(), new_normal.to_list()
+            )
+
+    def setPrimitiveParentObjectID(self, uuids_or_uuid, objID: int) -> None:
+        """Reassign one or more primitives to belong to the given compound object.
+
+        Accepts either a single UUID (int) or a list/tuple of UUIDs. Pass objID=0
+        to detach primitive(s) from any object.
+        """
+        self._check_context_available()
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setPrimitiveParentObjectIDBatchWrapper(
+                self.context, list(uuids_or_uuid), int(objID)
+            )
+        else:
+            context_wrapper.setPrimitiveParentObjectIDWrapper(
+                self.context, int(uuids_or_uuid), int(objID)
+            )
+
+    # =========================================================================
+    # Material data API + unique data values
+    # =========================================================================
+
+    # ---- Per-type explicit setMaterialData* methods ----
+    # These mirror the existing setPrimitiveData<Type> family for parity.
+
+    def setMaterialDataInt(self, material_label: str, data_label: str, value: int) -> None:
+        """Set int data on a material. Affects all primitives that reference it."""
+        self._check_context_available()
+        context_wrapper.setMaterialDataIntWrapper(self.context, material_label, data_label, int(value))
+
+    def setMaterialDataUInt(self, material_label: str, data_label: str, value: int) -> None:
+        """Set unsigned int data on a material."""
+        self._check_context_available()
+        context_wrapper.setMaterialDataUIntWrapper(self.context, material_label, data_label, int(value))
+
+    def setMaterialDataFloat(self, material_label: str, data_label: str, value: float) -> None:
+        """Set float data on a material."""
+        self._check_context_available()
+        context_wrapper.setMaterialDataFloatWrapper(self.context, material_label, data_label, float(value))
+
+    def setMaterialDataDouble(self, material_label: str, data_label: str, value: float) -> None:
+        """Set double-precision float data on a material."""
+        self._check_context_available()
+        context_wrapper.setMaterialDataDoubleWrapper(self.context, material_label, data_label, float(value))
+
+    def setMaterialDataString(self, material_label: str, data_label: str, value: str) -> None:
+        """Set string data on a material."""
+        self._check_context_available()
+        context_wrapper.setMaterialDataStringWrapper(self.context, material_label, data_label, str(value))
+
+    def setMaterialDataVec2(self, material_label: str, data_label: str, value: vec2) -> None:
+        """Set vec2 data on a material."""
+        self._check_context_available()
+        if not isinstance(value, vec2):
+            raise ValueError(f"value must be a vec2, got {type(value).__name__}")
+        context_wrapper.setMaterialDataVec2Wrapper(self.context, material_label, data_label, value.x, value.y)
+
+    def setMaterialDataVec3(self, material_label: str, data_label: str, value: vec3) -> None:
+        """Set vec3 data on a material."""
+        self._check_context_available()
+        if not isinstance(value, vec3):
+            raise ValueError(f"value must be a vec3, got {type(value).__name__}")
+        context_wrapper.setMaterialDataVec3Wrapper(self.context, material_label, data_label, value.x, value.y, value.z)
+
+    def setMaterialDataVec4(self, material_label: str, data_label: str, value: vec4) -> None:
+        """Set vec4 data on a material."""
+        self._check_context_available()
+        if not isinstance(value, vec4):
+            raise ValueError(f"value must be a vec4, got {type(value).__name__}")
+        context_wrapper.setMaterialDataVec4Wrapper(self.context, material_label, data_label, value.x, value.y, value.z, value.w)
+
+    def setMaterialDataInt2(self, material_label: str, data_label: str, value: int2) -> None:
+        """Set int2 data on a material."""
+        self._check_context_available()
+        if not isinstance(value, int2):
+            raise ValueError(f"value must be an int2, got {type(value).__name__}")
+        context_wrapper.setMaterialDataInt2Wrapper(self.context, material_label, data_label, value.x, value.y)
+
+    def setMaterialDataInt3(self, material_label: str, data_label: str, value: int3) -> None:
+        """Set int3 data on a material."""
+        self._check_context_available()
+        if not isinstance(value, int3):
+            raise ValueError(f"value must be an int3, got {type(value).__name__}")
+        context_wrapper.setMaterialDataInt3Wrapper(self.context, material_label, data_label, value.x, value.y, value.z)
+
+    def setMaterialDataInt4(self, material_label: str, data_label: str, value: int4) -> None:
+        """Set int4 data on a material."""
+        self._check_context_available()
+        if not isinstance(value, int4):
+            raise ValueError(f"value must be an int4, got {type(value).__name__}")
+        context_wrapper.setMaterialDataInt4Wrapper(self.context, material_label, data_label, value.x, value.y, value.z, value.w)
+
+    # ---- Per-type explicit getMaterialData* methods ----
+
+    def getMaterialDataInt(self, material_label: str, data_label: str) -> int:
+        self._check_context_available()
+        return context_wrapper.getMaterialDataIntWrapper(self.context, material_label, data_label)
+
+    def getMaterialDataUInt(self, material_label: str, data_label: str) -> int:
+        self._check_context_available()
+        return context_wrapper.getMaterialDataUIntWrapper(self.context, material_label, data_label)
+
+    def getMaterialDataFloat(self, material_label: str, data_label: str) -> float:
+        self._check_context_available()
+        return context_wrapper.getMaterialDataFloatWrapper(self.context, material_label, data_label)
+
+    def getMaterialDataDouble(self, material_label: str, data_label: str) -> float:
+        self._check_context_available()
+        return context_wrapper.getMaterialDataDoubleWrapper(self.context, material_label, data_label)
+
+    def getMaterialDataString(self, material_label: str, data_label: str) -> str:
+        self._check_context_available()
+        return context_wrapper.getMaterialDataStringWrapper(self.context, material_label, data_label)
+
+    def getMaterialDataVec2(self, material_label: str, data_label: str) -> vec2:
+        self._check_context_available()
+        x, y = context_wrapper.getMaterialDataVec2Wrapper(self.context, material_label, data_label)
+        return vec2(x, y)
+
+    def getMaterialDataVec3(self, material_label: str, data_label: str) -> vec3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getMaterialDataVec3Wrapper(self.context, material_label, data_label)
+        return vec3(x, y, z)
+
+    def getMaterialDataVec4(self, material_label: str, data_label: str) -> vec4:
+        self._check_context_available()
+        x, y, z, w = context_wrapper.getMaterialDataVec4Wrapper(self.context, material_label, data_label)
+        return vec4(x, y, z, w)
+
+    def getMaterialDataInt2(self, material_label: str, data_label: str) -> int2:
+        self._check_context_available()
+        x, y = context_wrapper.getMaterialDataInt2Wrapper(self.context, material_label, data_label)
+        return int2(x, y)
+
+    def getMaterialDataInt3(self, material_label: str, data_label: str) -> int3:
+        self._check_context_available()
+        x, y, z = context_wrapper.getMaterialDataInt3Wrapper(self.context, material_label, data_label)
+        return int3(x, y, z)
+
+    def getMaterialDataInt4(self, material_label: str, data_label: str) -> int4:
+        self._check_context_available()
+        x, y, z, w = context_wrapper.getMaterialDataInt4Wrapper(self.context, material_label, data_label)
+        return int4(x, y, z, w)
+
+    def getMaterialDataType(self, material_label: str, data_label: str) -> int:
+        """Return the HeliosDataType enum value for the given material data entry.
+
+        Encoding (from Helios core): 0=INT, 1=UINT, 2=FLOAT, 3=DOUBLE,
+        4=VEC2, 5=VEC3, 6=VEC4, 7=INT2, 8=INT3, 9=INT4, 10=STRING.
+        """
+        self._check_context_available()
+        return context_wrapper.getMaterialDataTypeWrapper(self.context, material_label, data_label)
+
+    # ---- Unified dispatch setMaterialData / getMaterialData ----
+
+    def setMaterialData(self, material_label: str, data_label: str, value) -> None:
+        """Set material data with type detection from the Python value.
+
+        Dispatches to the correct typed setter based on ``isinstance`` of ``value``.
+        For unambiguous numeric width control (e.g., uint vs int), call the
+        per-type method directly (``setMaterialDataUInt``, etc.).
+        """
+        self._check_context_available()
+        if isinstance(value, bool):
+            # bool is a subclass of int in Python; route to int explicitly.
+            context_wrapper.setMaterialDataIntWrapper(self.context, material_label, data_label, int(value))
+        elif isinstance(value, int):
+            context_wrapper.setMaterialDataIntWrapper(self.context, material_label, data_label, int(value))
+        elif isinstance(value, float):
+            context_wrapper.setMaterialDataFloatWrapper(self.context, material_label, data_label, float(value))
+        elif isinstance(value, str):
+            context_wrapper.setMaterialDataStringWrapper(self.context, material_label, data_label, value)
+        elif isinstance(value, vec2):
+            context_wrapper.setMaterialDataVec2Wrapper(self.context, material_label, data_label, value.x, value.y)
+        elif isinstance(value, vec3):
+            context_wrapper.setMaterialDataVec3Wrapper(self.context, material_label, data_label, value.x, value.y, value.z)
+        elif isinstance(value, vec4):
+            context_wrapper.setMaterialDataVec4Wrapper(self.context, material_label, data_label, value.x, value.y, value.z, value.w)
+        elif isinstance(value, int2):
+            context_wrapper.setMaterialDataInt2Wrapper(self.context, material_label, data_label, value.x, value.y)
+        elif isinstance(value, int3):
+            context_wrapper.setMaterialDataInt3Wrapper(self.context, material_label, data_label, value.x, value.y, value.z)
+        elif isinstance(value, int4):
+            context_wrapper.setMaterialDataInt4Wrapper(self.context, material_label, data_label, value.x, value.y, value.z, value.w)
+        else:
+            raise ValueError(
+                f"Unsupported value type for setMaterialData: {type(value).__name__}. "
+                f"Supported: int, float, str, vec2, vec3, vec4, int2, int3, int4. "
+                f"For uint/double, call setMaterialDataUInt/Double directly."
+            )
+
+    def getMaterialData(self, material_label: str, data_label: str, data_type: type = None):
+        """Get material data, auto-detecting the type from Helios storage if not specified.
+
+        Args:
+            material_label: Name of the material.
+            data_label: Data entry label.
+            data_type: Optional Python type (int, float, str, vec2, vec3, vec4, int2,
+                int3, int4) or string ('uint', 'double'). If ``None``, the type is
+                queried via getMaterialDataType and dispatched automatically.
+        """
+        self._check_context_available()
+        if data_type is None:
+            t = context_wrapper.getMaterialDataTypeWrapper(self.context, material_label, data_label)
+            # Map HeliosDataType enum → typed call
+            if t == 0:
+                return context_wrapper.getMaterialDataIntWrapper(self.context, material_label, data_label)
+            if t == 1:
+                return context_wrapper.getMaterialDataUIntWrapper(self.context, material_label, data_label)
+            if t == 2:
+                return context_wrapper.getMaterialDataFloatWrapper(self.context, material_label, data_label)
+            if t == 3:
+                return context_wrapper.getMaterialDataDoubleWrapper(self.context, material_label, data_label)
+            if t == 4:
+                x, y = context_wrapper.getMaterialDataVec2Wrapper(self.context, material_label, data_label)
+                return vec2(x, y)
+            if t == 5:
+                x, y, z = context_wrapper.getMaterialDataVec3Wrapper(self.context, material_label, data_label)
+                return vec3(x, y, z)
+            if t == 6:
+                x, y, z, w = context_wrapper.getMaterialDataVec4Wrapper(self.context, material_label, data_label)
+                return vec4(x, y, z, w)
+            if t == 7:
+                x, y = context_wrapper.getMaterialDataInt2Wrapper(self.context, material_label, data_label)
+                return int2(x, y)
+            if t == 8:
+                x, y, z = context_wrapper.getMaterialDataInt3Wrapper(self.context, material_label, data_label)
+                return int3(x, y, z)
+            if t == 9:
+                x, y, z, w = context_wrapper.getMaterialDataInt4Wrapper(self.context, material_label, data_label)
+                return int4(x, y, z, w)
+            if t == 10:
+                return context_wrapper.getMaterialDataStringWrapper(self.context, material_label, data_label)
+            raise ValueError(f"Unknown HeliosDataType code: {t}")
+
+        # Explicit type dispatch
+        if data_type == int:
+            return self.getMaterialDataInt(material_label, data_label)
+        if data_type == float:
+            return self.getMaterialDataFloat(material_label, data_label)
+        if data_type == str:
+            return self.getMaterialDataString(material_label, data_label)
+        if data_type == "uint":
+            return self.getMaterialDataUInt(material_label, data_label)
+        if data_type == "double":
+            return self.getMaterialDataDouble(material_label, data_label)
+        if data_type == vec2:
+            return self.getMaterialDataVec2(material_label, data_label)
+        if data_type == vec3:
+            return self.getMaterialDataVec3(material_label, data_label)
+        if data_type == vec4:
+            return self.getMaterialDataVec4(material_label, data_label)
+        if data_type == int2:
+            return self.getMaterialDataInt2(material_label, data_label)
+        if data_type == int3:
+            return self.getMaterialDataInt3(material_label, data_label)
+        if data_type == int4:
+            return self.getMaterialDataInt4(material_label, data_label)
+        raise ValueError(
+            f"Unsupported material data type: {data_type}. Supported: int, float, str, "
+            f"vec2, vec3, vec4, int2, int3, int4, 'uint', 'double'."
+        )
+
+    # ---- Unique data values ----
+
+    def getUniquePrimitiveDataValues(self, label: str, dtype: type) -> List:
+        """Return the unique values stored under ``label`` across all primitives.
+
+        Requires value caching to be enabled for ``label`` first via
+        ``enablePrimitiveDataValueCaching(label)``. Supported ``dtype`` values:
+        ``int``, ``str``, or the string ``'uint'``.
+        """
+        self._check_context_available()
+        if dtype == int:
+            return context_wrapper.getUniquePrimitiveDataValuesIntWrapper(self.context, label)
+        if dtype == "uint":
+            return context_wrapper.getUniquePrimitiveDataValuesUIntWrapper(self.context, label)
+        if dtype == str:
+            return context_wrapper.getUniquePrimitiveDataValuesStringWrapper(self.context, label)
+        raise ValueError(
+            f"Unsupported dtype for getUniquePrimitiveDataValues: {dtype}. "
+            f"Supported: int, str, 'uint'."
+        )
+
+    def getUniqueObjectDataValues(self, label: str, dtype: type) -> List:
+        """Return the unique values stored under ``label`` across all compound objects.
+
+        Requires value caching to be enabled for ``label`` first via
+        ``enableObjectDataValueCaching(label)``. Supported ``dtype`` values:
+        ``int``, ``str``, or the string ``'uint'``.
+        """
+        self._check_context_available()
+        if dtype == int:
+            return context_wrapper.getUniqueObjectDataValuesIntWrapper(self.context, label)
+        if dtype == "uint":
+            return context_wrapper.getUniqueObjectDataValuesUIntWrapper(self.context, label)
+        if dtype == str:
+            return context_wrapper.getUniqueObjectDataValuesStringWrapper(self.context, label)
+        raise ValueError(
+            f"Unsupported dtype for getUniqueObjectDataValues: {dtype}. "
+            f"Supported: int, str, 'uint'."
+        )
+
+    # =========================================================================
+    # 4x4 transformation matrices + domain bounds
+    # =========================================================================
+
+    @staticmethod
+    def _marshal_mat4(value) -> List[float]:
+        """Coerce a 4x4 transformation matrix input into a flat list of 16 floats.
+
+        Accepts: numpy.ndarray of shape (4,4) or (16,), list/tuple of 16 floats,
+        or nested list/tuple of shape (4,4). Helios stores transformation matrices
+        in **row-major** order: T[i*4 + j] = element (i, j). A numpy ndarray of
+        shape (4,4) maps directly via .ravel() since numpy is row-major by default.
+        """
+        # numpy ndarray fast path
+        if isinstance(value, np.ndarray):
+            if value.shape == (4, 4):
+                return [float(v) for v in value.ravel().tolist()]
+            if value.shape == (16,):
+                return [float(v) for v in value.tolist()]
+            raise ValueError(
+                f"Matrix ndarray must have shape (4,4) or (16,), got {value.shape}"
+            )
+        # Nested list/tuple of shape (4,4)
+        if isinstance(value, (list, tuple)) and len(value) == 4 and \
+                all(isinstance(row, (list, tuple)) and len(row) == 4 for row in value):
+            flat = []
+            for row in value:
+                flat.extend(float(v) for v in row)
+            return flat
+        # Flat list/tuple of 16 floats
+        if isinstance(value, (list, tuple)) and len(value) == 16:
+            return [float(v) for v in value]
+        raise ValueError(
+            f"Matrix must be a (4,4) ndarray, (16,) ndarray, list of 16 floats, "
+            f"or nested 4x4 list. Got: {type(value).__name__}"
+        )
+
+    @staticmethod
+    def _mat4_to_ndarray(flat: List[float]) -> 'np.ndarray':
+        """Convert a flat list of 16 floats (row-major) to a (4,4) numpy ndarray."""
+        return np.array(flat, dtype=np.float32).reshape((4, 4))
+
+    # ---- Transformation matrices ----
+
+    def getObjectTransformationMatrix(self, objID: int) -> 'np.ndarray':
+        """Return the object's 4x4 transformation matrix as a (4,4) float32 ndarray.
+
+        Helios stores matrices in row-major order, so element (i, j) is at
+        position [i, j] of the returned ndarray. The translation column is at
+        positions [0, 3], [1, 3], [2, 3].
+        """
+        self._check_context_available()
+        flat = context_wrapper.getObjectTransformationMatrixWrapper(self.context, int(objID))
+        return self._mat4_to_ndarray(flat)
+
+    def setObjectTransformationMatrix(self, objIDs_or_objID, T) -> None:
+        """Set the 4x4 transformation matrix on one or more compound objects.
+
+        Args:
+            objIDs_or_objID: A single object ID (int) or a list/tuple of object IDs.
+            T: A 4x4 matrix as numpy.ndarray((4,4) | (16,) float), list of 16 floats,
+                or a nested 4x4 list. Row-major; T[i, j] is element (i, j).
+        """
+        self._check_context_available()
+        flat = self._marshal_mat4(T)
+        if isinstance(objIDs_or_objID, (list, tuple)):
+            context_wrapper.setObjectTransformationMatrixBatchWrapper(
+                self.context, list(objIDs_or_objID), flat
+            )
+        else:
+            context_wrapper.setObjectTransformationMatrixWrapper(
+                self.context, int(objIDs_or_objID), flat
+            )
+
+    def getPrimitiveTransformationMatrix(self, uuid: int) -> 'np.ndarray':
+        """Return the primitive's 4x4 transformation matrix as a (4,4) float32 ndarray
+        (row-major; see getObjectTransformationMatrix for layout details)."""
+        self._check_context_available()
+        flat = context_wrapper.getPrimitiveTransformationMatrixWrapper(self.context, int(uuid))
+        return self._mat4_to_ndarray(flat)
+
+    def setPrimitiveTransformationMatrix(self, uuids_or_uuid, T) -> None:
+        """Set the 4x4 transformation matrix on one or more primitives.
+
+        Args:
+            uuids_or_uuid: A single UUID (int) or a list/tuple of UUIDs.
+            T: A 4x4 matrix; see setObjectTransformationMatrix for accepted formats.
+        """
+        self._check_context_available()
+        flat = self._marshal_mat4(T)
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.setPrimitiveTransformationMatrixBatchWrapper(
+                self.context, list(uuids_or_uuid), flat
+            )
+        else:
+            context_wrapper.setPrimitiveTransformationMatrixWrapper(
+                self.context, int(uuids_or_uuid), flat
+            )
+
+    # ---- Domain bounds ----
+
+    def getDomainBoundingBox(self, uuids: Optional[List[int]] = None):
+        """Return the axis-aligned bounding box of the domain (or a UUID subset).
+
+        Args:
+            uuids: Optional list of primitive UUIDs to restrict the computation to.
+                If None (default), uses every primitive in the context.
+
+        Returns:
+            ``(xbounds, ybounds, zbounds)`` where each element is a ``vec2(min, max)``.
+        """
+        self._check_context_available()
+        if uuids is None:
+            xb, yb, zb = context_wrapper.getDomainBoundingBoxWrapper(self.context)
+        else:
+            if not isinstance(uuids, (list, tuple)):
+                raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+            xb, yb, zb = context_wrapper.getDomainBoundingBoxFilteredWrapper(self.context, list(uuids))
+        return (vec2(xb[0], xb[1]), vec2(yb[0], yb[1]), vec2(zb[0], zb[1]))
+
+    def getDomainBoundingSphere(self, uuids: Optional[List[int]] = None):
+        """Return the bounding sphere of the domain (or a UUID subset).
+
+        Returns:
+            ``(center, radius)`` where ``center`` is a ``vec3`` and ``radius`` is a float.
+        """
+        self._check_context_available()
+        if uuids is None:
+            center, radius = context_wrapper.getDomainBoundingSphereWrapper(self.context)
+        else:
+            if not isinstance(uuids, (list, tuple)):
+                raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+            center, radius = context_wrapper.getDomainBoundingSphereFilteredWrapper(self.context, list(uuids))
+        return (vec3(center[0], center[1], center[2]), float(radius))
+
+    # =========================================================================
+    # Tube/polymesh + object color/dirty/tile mutators
+    # =========================================================================
+
+    # ---- Tube object mutators ----
+
+    def setTubeNodes(self, objID: int, nodes: List[vec3]) -> None:
+        """Replace the node positions of an existing tube object."""
+        self._check_context_available()
+        if not isinstance(nodes, (list, tuple)):
+            raise ValueError(f"nodes must be a list or tuple, got {type(nodes).__name__}")
+        flat = []
+        for i, n in enumerate(nodes):
+            if not isinstance(n, vec3):
+                raise ValueError(f"nodes[{i}] must be a vec3, got {type(n).__name__}")
+            flat.extend([n.x, n.y, n.z])
+        context_wrapper.setTubeNodesWrapper(self.context, int(objID), flat)
+
+    def setTubeRadii(self, objID: int, radii: List[float]) -> None:
+        """Replace the per-node radii of an existing tube object."""
+        self._check_context_available()
+        if not isinstance(radii, (list, tuple)):
+            raise ValueError(f"radii must be a list or tuple, got {type(radii).__name__}")
+        context_wrapper.setTubeRadiiWrapper(self.context, int(objID), [float(r) for r in radii])
+
+    def scaleTubeGirth(self, objID: int, scale_factor: float) -> None:
+        """Scale the radii of an existing tube object by ``scale_factor``."""
+        self._check_context_available()
+        context_wrapper.scaleTubeGirthWrapper(self.context, int(objID), float(scale_factor))
+
+    def scaleTubeLength(self, objID: int, scale_factor: float) -> None:
+        """Scale the lengths between tube nodes by ``scale_factor``."""
+        self._check_context_available()
+        context_wrapper.scaleTubeLengthWrapper(self.context, int(objID), float(scale_factor))
+
+    def pruneTubeNodes(self, objID: int, node_index: int) -> None:
+        """Remove all tube nodes from index ``node_index`` to the end."""
+        self._check_context_available()
+        context_wrapper.pruneTubeNodesWrapper(self.context, int(objID), int(node_index))
+
+    def appendTubeSegment(self, objID: int, node_position: vec3, radius: float, *,
+                          color: Optional[RGBcolor] = None,
+                          texture_file: Optional[str] = None,
+                          uv: Optional[vec2] = None) -> None:
+        """Append a new segment to an existing tube object.
+
+        Pass exactly one of ``color`` (an RGBcolor) or both ``texture_file`` and
+        ``uv`` (a vec2 of texture u-fractions) to specify how the new segment
+        should be shaded.
+        """
+        self._check_context_available()
+        if not isinstance(node_position, vec3):
+            raise ValueError(f"node_position must be a vec3, got {type(node_position).__name__}")
+        has_color = color is not None
+        has_texture = texture_file is not None or uv is not None
+        if has_color == has_texture:
+            raise ValueError(
+                "appendTubeSegment requires exactly one of (color) or "
+                "(texture_file and uv); cannot mix or omit both."
+            )
+        if has_color:
+            if not isinstance(color, RGBcolor):
+                raise ValueError(f"color must be an RGBcolor, got {type(color).__name__}")
+            context_wrapper.appendTubeSegmentColorWrapper(
+                self.context, int(objID), node_position.to_list(), float(radius),
+                [color.r, color.g, color.b]
+            )
+        else:
+            if texture_file is None or uv is None:
+                raise ValueError(
+                    "appendTubeSegment with texture requires both texture_file and uv."
+                )
+            if not isinstance(uv, vec2):
+                raise ValueError(f"uv must be a vec2, got {type(uv).__name__}")
+            tex_path = self._validate_file_path(
+                texture_file, ['.png', '.jpg', '.jpeg', '.tga', '.bmp']
+            )
+            context_wrapper.appendTubeSegmentTextureWrapper(
+                self.context, int(objID), node_position.to_list(), float(radius),
+                tex_path, [uv.x, uv.y]
+            )
+
+    # ---- Polymesh object ----
+
+    def addPolymeshObject(self, uuids: List[int]) -> int:
+        """Group the given primitives into a new polymesh compound object and return its ID."""
+        self._check_context_available()
+        if not isinstance(uuids, (list, tuple)):
+            raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+        if len(uuids) == 0:
+            raise ValueError("addPolymeshObject requires at least one UUID")
+        return context_wrapper.addPolymeshObjectWrapper(self.context, list(uuids))
+
+    # ---- Object color ----
+
+    def setObjectColor(self, objIDs_or_objID, color) -> None:
+        """Set the color of one or more compound objects.
+
+        Accepts a single object ID or list/tuple of IDs. ``color`` must be an
+        ``RGBcolor`` or ``RGBAcolor``.
+        """
+        self._check_context_available()
+        if isinstance(color, RGBAcolor):
+            comps = [color.r, color.g, color.b, color.a]
+            if isinstance(objIDs_or_objID, (list, tuple)):
+                context_wrapper.setObjectColorRGBABatchWrapper(self.context, list(objIDs_or_objID), comps)
+            else:
+                context_wrapper.setObjectColorRGBAWrapper(self.context, int(objIDs_or_objID), comps)
+        elif isinstance(color, RGBcolor):
+            comps = [color.r, color.g, color.b]
+            if isinstance(objIDs_or_objID, (list, tuple)):
+                context_wrapper.setObjectColorRGBBatchWrapper(self.context, list(objIDs_or_objID), comps)
+            else:
+                context_wrapper.setObjectColorRGBWrapper(self.context, int(objIDs_or_objID), comps)
+        else:
+            raise ValueError(
+                f"color must be an RGBcolor or RGBAcolor, got {type(color).__name__}"
+            )
+
+    def overrideObjectTextureColor(self, objIDs_or_objID) -> None:
+        """Override the texture mapping with the object's vertex color."""
+        self._check_context_available()
+        if isinstance(objIDs_or_objID, (list, tuple)):
+            context_wrapper.overrideObjectTextureColorBatchWrapper(self.context, list(objIDs_or_objID))
+        else:
+            context_wrapper.overrideObjectTextureColorWrapper(self.context, int(objIDs_or_objID))
+
+    def useObjectTextureColor(self, objIDs_or_objID) -> None:
+        """Restore use of the texture color (undoes overrideObjectTextureColor)."""
+        self._check_context_available()
+        if isinstance(objIDs_or_objID, (list, tuple)):
+            context_wrapper.useObjectTextureColorBatchWrapper(self.context, list(objIDs_or_objID))
+        else:
+            context_wrapper.useObjectTextureColorWrapper(self.context, int(objIDs_or_objID))
+
+    # ---- Mark dirty/clean ----
+
+    def markPrimitiveDirty(self, uuids_or_uuid) -> None:
+        """Mark one or more primitives as dirty (geometry has been modified)."""
+        self._check_context_available()
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.markPrimitiveDirtyBatchWrapper(self.context, list(uuids_or_uuid))
+        else:
+            context_wrapper.markPrimitiveDirtyWrapper(self.context, int(uuids_or_uuid))
+
+    def markPrimitiveClean(self, uuids_or_uuid) -> None:
+        """Mark one or more primitives as clean (cancels dirty state)."""
+        self._check_context_available()
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.markPrimitiveCleanBatchWrapper(self.context, list(uuids_or_uuid))
+        else:
+            context_wrapper.markPrimitiveCleanWrapper(self.context, int(uuids_or_uuid))
+
+    # ---- Tile subdivision ----
+
+    def setTileObjectSubdivisionCount(self, objIDs_or_objID, subdiv: int2) -> None:
+        """Set the (Nx, Ny) subdivision count of one or more tile objects.
+
+        The Helios C++ API is batch-only; a single objID is wrapped as a
+        single-element list.
+        """
+        self._check_context_available()
+        if not isinstance(subdiv, int2):
+            raise ValueError(f"subdiv must be an int2, got {type(subdiv).__name__}")
+        if isinstance(objIDs_or_objID, (list, tuple)):
+            ids = list(objIDs_or_objID)
+        else:
+            ids = [int(objIDs_or_objID)]
+        context_wrapper.setTileObjectSubdivisionCountWrapper(
+            self.context, ids, int(subdiv.x), int(subdiv.y)
+        )
+
+    def setTileObjectSubdivisionByAreaRatio(self, objIDs_or_objID, area_ratio: float) -> None:
+        """Set tile object subdivision dynamically based on a target area ratio.
+
+        Each tile is subdivided so that its sub-tile area is approximately
+        ``area_ratio`` times the tile's full area.
+        """
+        self._check_context_available()
+        if isinstance(objIDs_or_objID, (list, tuple)):
+            ids = list(objIDs_or_objID)
+        else:
+            ids = [int(objIDs_or_objID)]
+        context_wrapper.setTileObjectSubdivisionByAreaRatioWrapper(
+            self.context, ids, float(area_ratio)
+        )
+
+    # =========================================================================
+    # Cleanup, XML write, RNG, Location
+    # =========================================================================
+
+    # ---- Cleanup ----
+
+    def cleanDeletedUUIDs(self, uuids: List[int]) -> List[int]:
+        """Return a new list with deleted UUIDs removed; the input list is not mutated.
+
+        This mirrors the convention used by ``cropDomain``, which returns the
+        survivors rather than mutating in place.
+        """
+        self._check_context_available()
+        if not isinstance(uuids, (list, tuple)):
+            raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+        return context_wrapper.cleanDeletedUUIDsWrapper(self.context, list(uuids))
+
+    def cleanDeletedObjectIDs(self, objIDs: List[int]) -> List[int]:
+        """Return a new list with deleted object IDs removed; input is not mutated."""
+        self._check_context_available()
+        if not isinstance(objIDs, (list, tuple)):
+            raise ValueError(f"objIDs must be a list or tuple, got {type(objIDs).__name__}")
+        return context_wrapper.cleanDeletedObjectIDsWrapper(self.context, list(objIDs))
+
+    # ---- XML write ----
+
+    def writeXML(self, filename: str, uuids: Optional[List[int]] = None, quiet: bool = False) -> None:
+        """Write the context (or a UUID subset) to an XML file.
+
+        Args:
+            filename: Output file path. Must end in .xml.
+            uuids: Optional list of primitive UUIDs to restrict the export. If
+                None (default), all primitives are written.
+            quiet: Suppress informational console output.
+        """
+        self._check_context_available()
+        path = self._validate_output_file_path(filename, ['.xml'])
+        if uuids is None:
+            context_wrapper.writeXMLWrapper(self.context, path, bool(quiet))
+        else:
+            if not isinstance(uuids, (list, tuple)):
+                raise ValueError(f"uuids must be a list or tuple, got {type(uuids).__name__}")
+            context_wrapper.writeXMLFilteredWrapper(self.context, path, list(uuids), bool(quiet))
+
+    def writeXML_byobject(self, filename: str, objIDs: List[int], quiet: bool = False) -> None:
+        """Write a subset of compound objects to an XML file."""
+        self._check_context_available()
+        path = self._validate_output_file_path(filename, ['.xml'])
+        if not isinstance(objIDs, (list, tuple)):
+            raise ValueError(f"objIDs must be a list or tuple, got {type(objIDs).__name__}")
+        context_wrapper.writeXMLByObjectWrapper(self.context, path, list(objIDs), bool(quiet))
+
+    # ---- RNG ----
+
+    def randu(self, low=None, high=None):
+        """Draw a uniform random number using the Context's RNG.
+
+        Three forms:
+            ``randu()`` -> float in [0, 1)
+            ``randu(low: float, high: float)`` -> float in [low, high)
+            ``randu(low: int, high: int)`` -> int in [low, high]
+
+        Whether the integer or float overload is invoked is determined by
+        ``isinstance(low, int)``; pass ``low/high`` as Python ints for the
+        integer range form.
+        """
+        self._check_context_available()
+        if low is None and high is None:
+            return context_wrapper.randuBasicWrapper(self.context)
+        if low is None or high is None:
+            raise ValueError("randu requires both low and high, or neither.")
+        if isinstance(low, bool) or isinstance(high, bool):
+            raise ValueError("randu bounds cannot be bool.")
+        # Treat the call as integer-range only when BOTH bounds are Python ints
+        # (and not bools, handled above). Otherwise use the float form.
+        if isinstance(low, int) and isinstance(high, int):
+            return context_wrapper.randuIntRangeWrapper(self.context, low, high)
+        return context_wrapper.randuRangeWrapper(self.context, float(low), float(high))
+
+    def randn(self, mean=None, stddev=None) -> float:
+        """Draw a normal random number using the Context's RNG.
+
+        Two forms:
+            ``randn()`` -> standard normal (mean 0, stddev 1)
+            ``randn(mean: float, stddev: float)`` -> N(mean, stddev**2)
+        """
+        self._check_context_available()
+        if mean is None and stddev is None:
+            return context_wrapper.randnBasicWrapper(self.context)
+        if mean is None or stddev is None:
+            raise ValueError("randn requires both mean and stddev, or neither.")
+        return context_wrapper.randnParamsWrapper(self.context, float(mean), float(stddev))
+
+    # ---- Location ----
+
+    def setLocation(self, location_or_lat, longitude=None, utc_offset=None) -> None:
+        """Set the geographic location used by solar/radiation calculations.
+
+        Two call forms:
+            ``setLocation(loc: Location)``
+            ``setLocation(latitude_deg: float, longitude_deg: float, utc_offset: float)``
+        """
+        self._check_context_available()
+        if isinstance(location_or_lat, Location):
+            if longitude is not None or utc_offset is not None:
+                raise ValueError("When passing a Location, do not also pass longitude/utc_offset.")
+            loc = location_or_lat
+        else:
+            if longitude is None or utc_offset is None:
+                raise ValueError(
+                    "setLocation requires either a Location object or "
+                    "(latitude_deg, longitude_deg, utc_offset) as 3 floats."
+                )
+            loc = Location(float(location_or_lat), float(longitude), float(utc_offset))
+        context_wrapper.setLocationWrapper(self.context, loc.latitude, loc.longitude, loc.utc_offset)
+
+    def getLocation(self) -> Location:
+        """Return the Context's currently-configured geographic location."""
+        self._check_context_available()
+        lat, lon, utc = context_wrapper.getLocationWrapper(self.context)
+        return Location(lat, lon, utc)
+
+    # =========================================================================
+    # Colormap helpers + texture transparency
+    # =========================================================================
+
+    def generateColormap(self, name: str, n_colors: int) -> List[RGBcolor]:
+        """Generate a colormap with ``n_colors`` entries from a named colormap.
+
+        Args:
+            name: Helios colormap name (e.g., "hot", "cool", "lava", "rainbow").
+            n_colors: Number of colors in the returned ramp.
+
+        Returns:
+            A list of ``RGBcolor`` instances of length ``n_colors``.
+        """
+        self._check_context_available()
+        flat = context_wrapper.generateColormapNamedWrapper(self.context, name, int(n_colors))
+        return [RGBcolor(flat[i*3 + 0], flat[i*3 + 1], flat[i*3 + 2]) for i in range(int(n_colors))]
+
+    def generateTexturesFromColormap(self, texture_file: str, colormap: List[RGBcolor]) -> List[str]:
+        """Generate one texture file per color in ``colormap`` derived from
+        ``texture_file``. Returns the list of generated file paths.
+        """
+        self._check_context_available()
+        if not isinstance(colormap, (list, tuple)):
+            raise ValueError(f"colormap must be a list or tuple, got {type(colormap).__name__}")
+        flat = []
+        for i, c in enumerate(colormap):
+            if not isinstance(c, RGBcolor):
+                raise ValueError(f"colormap[{i}] must be an RGBcolor, got {type(c).__name__}")
+            flat.extend([c.r, c.g, c.b])
+        # Validate the input texture exists and looks like an image.
+        validated_path = self._validate_file_path(
+            texture_file, ['.png', '.jpg', '.jpeg', '.tga', '.bmp']
+        )
+        return context_wrapper.generateTexturesFromColormapWrapper(
+            self.context, validated_path, flat
+        )
+
+    def getPrimitiveTextureTransparencyData(self, uuid: int) -> Optional['np.ndarray']:
+        """Return the primitive's texture transparency mask as a 2D bool ndarray.
+
+        Returns None if the primitive has no associated transparency channel
+        (e.g., it is untextured or its texture has no alpha). The returned
+        ndarray has shape (height, width) and dtype ``bool``.
+        """
+        self._check_context_available()
+        result = context_wrapper.getPrimitiveTextureTransparencyDataWrapper(self.context, int(uuid))
+        if result is None:
+            return None
+        width, height, flat = result
+        return np.array(flat, dtype=bool).reshape((height, width))
+
 

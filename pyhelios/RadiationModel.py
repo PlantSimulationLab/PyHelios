@@ -240,6 +240,54 @@ class CameraProperties:
                 f"camera_zoom={self.camera_zoom})")
 
 
+class SIFCameraProperties(CameraProperties):
+    """
+    Camera properties for a solar-induced chlorophyll fluorescence (SIF) camera.
+
+    Extends :class:`CameraProperties` with two SIF-specific fields used by the
+    Fluspect-B emission pipeline introduced in helios-core v1.3.72. Image geometry,
+    resolution, exposure, and spectral-response handling are inherited from
+    :class:`CameraProperties` unchanged.
+
+    Attributes:
+        excitation_bin_width_nm: Excitation wavelength bin width in nm. Helios
+            auto-creates internal radiation bands spanning 400–750 nm at this
+            resolution to compute per-leaf APAR. Must be > 0. Default 10.0.
+        excitation_scattering_depth: Scattering depth for the auto-generated
+            excitation bands. ``0`` (default) treats every leaf hit as fully
+            absorbed. Set to ``>=1`` to include inter-leaf scattering at the
+            cost of additional excitation-band ray traces.
+
+    Note:
+        String fields inherited from :class:`CameraProperties` (``model``,
+        ``lens_make``, ``lens_model``, ``lens_specification``, ``exposure``,
+        ``white_balance``) are currently NOT plumbed through to the C++ camera
+        — the wrapper hard-codes ``"generic"`` / ``"auto"`` defaults. Set them
+        on this dataclass for self-documentation only; they will not affect
+        rendering. This matches the existing ``addRadiationCamera`` behaviour.
+    """
+
+    def __init__(self, excitation_bin_width_nm: float = 10.0,
+                 excitation_scattering_depth: int = 0,
+                 **kwargs):
+        super().__init__(**kwargs)
+        if excitation_bin_width_nm <= 0:
+            raise ValueError("excitation_bin_width_nm must be greater than 0")
+        if excitation_scattering_depth < 0:
+            raise ValueError("excitation_scattering_depth must be >= 0")
+        self.excitation_bin_width_nm = float(excitation_bin_width_nm)
+        self.excitation_scattering_depth = int(excitation_scattering_depth)
+
+    def __repr__(self):
+        base = super().__repr__()
+        # Drop the trailing ')' from the parent repr and append SIF-specific fields.
+        return (
+            base[:-1]
+            + f", excitation_bin_width_nm={self.excitation_bin_width_nm}"
+            + f", excitation_scattering_depth={self.excitation_scattering_depth})"
+        )
+
+
 class CameraMetadata:
     """
     Metadata for radiation camera image export (Helios v1.3.58+).
@@ -1429,11 +1477,11 @@ class RadiationModel:
             if hasattr(validated_direction, 'radius') and hasattr(validated_direction, 'elevation'):
                 # SphericalCoord case
                 direction_coords = validated_direction.to_list()
-                if len(direction_coords) >= 3:
-                    # Use only radius, elevation, azimuth (first 3 elements)
-                    radius, elevation, azimuth = direction_coords[0], direction_coords[1], direction_coords[2]
-                else:
-                    raise ValueError("SphericalCoord must have at least radius, elevation, and azimuth")
+                # SphericalCoord.to_list() returns [radius, elevation, zenith, azimuth]
+                # (4 elements). The native API expects azimuth (index 3), not zenith.
+                if len(direction_coords) < 4:
+                    raise ValueError("SphericalCoord must expose radius, elevation, zenith, and azimuth")
+                radius, elevation, azimuth = direction_coords[0], direction_coords[1], direction_coords[3]
 
                 radiation_wrapper.addRadiationCameraSpherical(
                     self.radiation_model,
@@ -1458,6 +1506,102 @@ class RadiationModel:
 
         except Exception as e:
             raise RadiationModelError(f"Failed to add radiation camera '{validated_label}': {e}")
+
+    @require_plugin('radiation', 'add SIF camera')
+    def addSIFCamera(self, camera_label: str, emission_band_labels: List[str], position,
+                     lookat_or_direction, camera_properties=None, antialiasing_samples: int = 100):
+        """
+        Add a solar-induced chlorophyll fluorescence (SIF) camera.
+
+        Each band in ``emission_band_labels`` must already exist (added via
+        :meth:`addRadiationBand`); those bands are flagged internally as SIF-emitting and
+        use the Fluspect-B leaf-fluorescence kernel for emission instead of Stefan-Boltzmann.
+        Helios auto-creates internal radiation bands covering 400-750 nm at the resolution
+        specified by ``camera_properties.excitation_bin_width_nm``.
+
+        Args:
+            camera_label: Unique label for the camera.
+            emission_band_labels: List of pre-existing radiation band labels to drive
+                with SIF emission.
+            position: Camera position as a ``vec3``.
+            lookat_or_direction: Either a ``vec3`` lookat point or a ``SphericalCoord``
+                viewing direction.
+            camera_properties: :class:`SIFCameraProperties` instance. If ``None`` defaults
+                are used (10 nm excitation bins, no excitation scattering).
+            antialiasing_samples: Antialiasing samples per pixel (>= 1, default 100).
+
+        Raises:
+            RadiationModelError: If the underlying SIF camera cannot be added (e.g.,
+                an emission band was already bound to a different excitation bin width).
+            NotImplementedError: If running against helios-core older than v1.3.72.
+        """
+        from .wrappers import URadiationModelWrapper as radiation_wrapper
+        from .wrappers.DataTypes import SphericalCoord, vec3
+        from .validation.plugins import (
+            validate_camera_label, validate_band_labels_list, validate_antialiasing_samples
+        )
+
+        validated_label = validate_camera_label(camera_label, "camera_label", "addSIFCamera")
+        validated_bands = validate_band_labels_list(emission_band_labels, "emission_band_labels", "addSIFCamera")
+        validated_samples = validate_antialiasing_samples(antialiasing_samples, "antialiasing_samples", "addSIFCamera")
+
+        if not isinstance(position, vec3):
+            raise TypeError("position must be a vec3 object. Use vec3(x, y, z) to create one.")
+
+        if not isinstance(lookat_or_direction, (vec3, SphericalCoord)):
+            raise TypeError("lookat_or_direction must be a vec3 or SphericalCoord object.")
+
+        if camera_properties is None:
+            camera_properties = SIFCameraProperties()
+        elif not isinstance(camera_properties, SIFCameraProperties):
+            raise TypeError(
+                "camera_properties must be a SIFCameraProperties instance "
+                "(use SIFCameraProperties(...) — not the plain CameraProperties)."
+            )
+
+        try:
+            if isinstance(lookat_or_direction, SphericalCoord):
+                # SphericalCoord.to_list() is [radius, elevation, zenith, azimuth];
+                # the C wrapper expects azimuth (index 3), not zenith.
+                direction_coords = lookat_or_direction.to_list()
+                if len(direction_coords) < 4:
+                    raise ValueError("SphericalCoord must expose radius, elevation, zenith, and azimuth")
+                radius, elevation, azimuth = direction_coords[0], direction_coords[1], direction_coords[3]
+                radiation_wrapper.addSIFCameraSpherical(
+                    self.radiation_model,
+                    validated_label,
+                    validated_bands,
+                    position.x, position.y, position.z,
+                    radius, elevation, azimuth,
+                    camera_properties.to_array(),
+                    camera_properties.excitation_bin_width_nm,
+                    camera_properties.excitation_scattering_depth,
+                    validated_samples,
+                )
+            else:
+                radiation_wrapper.addSIFCameraVec3(
+                    self.radiation_model,
+                    validated_label,
+                    validated_bands,
+                    position.x, position.y, position.z,
+                    lookat_or_direction.x, lookat_or_direction.y, lookat_or_direction.z,
+                    camera_properties.to_array(),
+                    camera_properties.excitation_bin_width_nm,
+                    camera_properties.excitation_scattering_depth,
+                    validated_samples,
+                )
+        except Exception as e:
+            raise RadiationModelError(f"Failed to add SIF camera '{validated_label}': {e}")
+
+    @require_plugin('radiation', 'check SIF camera registration')
+    def isSIFCamera(self, camera_label: str) -> bool:
+        """
+        Return True if the camera was registered via :meth:`addSIFCamera` (vs. ``addRadiationCamera``).
+        """
+        from .wrappers import URadiationModelWrapper as radiation_wrapper
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        return radiation_wrapper.isSIFCamera(self.radiation_model, camera_label)
 
     @require_plugin('radiation', 'manage camera position')
     def setCameraPosition(self, camera_label: str, position):

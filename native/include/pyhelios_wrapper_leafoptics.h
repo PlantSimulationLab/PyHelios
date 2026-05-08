@@ -48,8 +48,13 @@ PYHELIOS_API void destroyLeafOptics(LeafOptics* leafoptics);
  * @param leafoptics Pointer to the LeafOptics instance
  * @param uuids Array of primitive UUIDs to assign spectra to
  * @param uuid_count Number of UUIDs in the array
- * @param properties Array of 9 floats: [numberlayers, brownpigments, chlorophyllcontent,
- *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents]
+ * @param properties Array of 11 floats: [numberlayers, brownpigments, chlorophyllcontent,
+ *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents,
+ *                   V2Z, fqe]
+ *                   V2Z (default 0.0) is the violaxanthin↔zeaxanthin de-epoxidation state used by the
+ *                   radiation plugin's SIF pipeline (ignored by the pure PROSPECT calculation).
+ *                   fqe (default 1.0) is the intrinsic fluorescence quantum-efficiency scalar applied
+ *                   on top of the per-leaf Phi_F at SIF emission time (also ignored by PROSPECT).
  * @param label Label for the spectra (appended to "leaf_reflectivity_" and "leaf_transmissivity_")
  */
 PYHELIOS_API void leafOpticsRun(LeafOptics* leafoptics, const unsigned int* uuids, unsigned int uuid_count,
@@ -58,8 +63,13 @@ PYHELIOS_API void leafOpticsRun(LeafOptics* leafoptics, const unsigned int* uuid
 /**
  * @brief Run LeafOptics model without assigning to primitives
  * @param leafoptics Pointer to the LeafOptics instance
- * @param properties Array of 9 floats: [numberlayers, brownpigments, chlorophyllcontent,
- *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents]
+ * @param properties Array of 11 floats: [numberlayers, brownpigments, chlorophyllcontent,
+ *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents,
+ *                   V2Z, fqe]
+ *                   V2Z (default 0.0) is the violaxanthin↔zeaxanthin de-epoxidation state used by the
+ *                   radiation plugin's SIF pipeline (ignored by the pure PROSPECT calculation).
+ *                   fqe (default 1.0) is the intrinsic fluorescence quantum-efficiency scalar applied
+ *                   on top of the per-leaf Phi_F at SIF emission time (also ignored by PROSPECT).
  * @param label Label for the spectra (appended to "leaf_reflectivity_" and "leaf_transmissivity_")
  */
 PYHELIOS_API void leafOpticsRunNoUUIDs(LeafOptics* leafoptics, const float* properties, const char* label);
@@ -71,8 +81,13 @@ PYHELIOS_API void leafOpticsRunNoUUIDs(LeafOptics* leafoptics, const float* prop
 /**
  * @brief Get leaf reflectance and transmittance spectra
  * @param leafoptics Pointer to the LeafOptics instance
- * @param properties Array of 9 floats: [numberlayers, brownpigments, chlorophyllcontent,
- *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents]
+ * @param properties Array of 11 floats: [numberlayers, brownpigments, chlorophyllcontent,
+ *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents,
+ *                   V2Z, fqe]
+ *                   V2Z (default 0.0) is the violaxanthin↔zeaxanthin de-epoxidation state used by the
+ *                   radiation plugin's SIF pipeline (ignored by the pure PROSPECT calculation).
+ *                   fqe (default 1.0) is the intrinsic fluorescence quantum-efficiency scalar applied
+ *                   on top of the per-leaf Phi_F at SIF emission time (also ignored by PROSPECT).
  * @param reflectivities Output array for reflectivity values (must be at least 2101 floats)
  * @param transmissivities Output array for transmissivity values (must be at least 2101 floats)
  * @param wavelengths Output array for wavelength values in nm (must be at least 2101 floats)
@@ -91,8 +106,13 @@ PYHELIOS_API void leafOpticsGetLeafSpectra(LeafOptics* leafoptics, const float* 
  * @param leafoptics Pointer to the LeafOptics instance
  * @param uuids Array of primitive UUIDs
  * @param uuid_count Number of UUIDs in the array
- * @param properties Array of 9 floats: [numberlayers, brownpigments, chlorophyllcontent,
- *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents]
+ * @param properties Array of 11 floats: [numberlayers, brownpigments, chlorophyllcontent,
+ *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents,
+ *                   V2Z, fqe]
+ *                   V2Z (default 0.0) is the violaxanthin↔zeaxanthin de-epoxidation state used by the
+ *                   radiation plugin's SIF pipeline (ignored by the pure PROSPECT calculation).
+ *                   fqe (default 1.0) is the intrinsic fluorescence quantum-efficiency scalar applied
+ *                   on top of the per-leaf Phi_F at SIF emission time (also ignored by PROSPECT).
  */
 PYHELIOS_API void leafOpticsSetProperties(LeafOptics* leafoptics, const unsigned int* uuids, unsigned int uuid_count,
                                            const float* properties);
@@ -125,8 +145,12 @@ PYHELIOS_API void leafOpticsGetPropertiesFromSpectrumSingle(LeafOptics* leafopti
  *                "default", "garden_lettuce", "alfalfa", "corn", "sunflower",
  *                "english_walnut", "rice", "soybean", "wine_grape", "tomato",
  *                "common_bean", "cowpea"
- * @param properties Output array for 9 floats: [numberlayers, brownpigments, chlorophyllcontent,
- *                   carotenoidcontent, anthocyancontent, watermass, drymass, protein, carbonconstituents]
+ * @param properties Output array. Caller MUST allocate at least 11 floats; the function writes the
+ *                   full layout: [numberlayers, brownpigments, chlorophyllcontent, carotenoidcontent,
+ *                   anthocyancontent, watermass, drymass, protein, carbonconstituents, V2Z, fqe].
+ *                   Allocating fewer than 11 floats is undefined behaviour (buffer overflow).
+ *                   V2Z (default 0.0) and fqe (default 1.0) are inert for PROSPECT and used by the
+ *                   radiation plugin's SIF pipeline.
  * @note If species is not found, default properties are used and a warning is issued
  */
 PYHELIOS_API void leafOpticsGetPropertiesFromLibrary(LeafOptics* leafoptics, const char* species, float* properties);

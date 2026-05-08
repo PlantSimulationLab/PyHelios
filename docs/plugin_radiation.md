@@ -646,6 +646,42 @@ cameras = radiation.getAllCameraLabels()
 print(f"Available cameras: {cameras}")
 ```
 
+### Solar-Induced Fluorescence (SIF) Camera (helios-core v1.3.72+)
+
+PyHelios v0.1.21+ exposes the Fluspect-B-driven SIF camera type. Each user-defined emission band must already exist via `addRadiationBand()`; those bands are flagged internally as SIF-emitting and use the Fluspect-B leaf-fluorescence kernel for emission instead of Stefan-Boltzmann. Helios auto-creates internal radiation bands covering 400–750 nm at the requested `excitation_bin_width_nm` and reuses them across cameras with matching bin widths. Per-band emission is computed as the Fluspect-B excitation→emission kernel scaled by the van der Tol (2014) rate-coefficient quantum yield Φ_F, and injected into the standard `runBand()` emission loop so that escape probability and canopy reabsorption emerge naturally from the 3D ray tracer. Per-leaf biochemistry is authored via the LeafOptics plug-in — see [LeafOptics → Radiation SIF integration](plugin_leafoptics.md#LOSIFIntegration).
+
+```python
+from pyhelios import RadiationModel, SIFCameraProperties
+from pyhelios.types import vec3
+
+with RadiationModel(context) as radiation:
+    radiation.addRadiationBand("F687", 685.0, 690.0)   # SIF red peak
+    radiation.addRadiationBand("F760", 758.0, 762.0)   # SIF far-red peak
+
+    sif_props = SIFCameraProperties(
+        camera_resolution=(512, 512),
+        excitation_bin_width_nm=10.0,        # 10 nm excitation bins (default)
+        excitation_scattering_depth=0,        # 0 = no inter-leaf scatter
+    )
+
+    radiation.addSIFCamera(
+        "sif_cam",
+        emission_band_labels=["F687", "F760"],
+        position=vec3(0, 0, 5),
+        lookat_or_direction=vec3(0, 0, 0),
+        camera_properties=sif_props,
+        antialiasing_samples=64,
+    )
+
+    assert radiation.isSIFCamera("sif_cam")
+```
+
+Each emission band is locked to a single excitation bin width — re-flagging the same band from a second camera with a different bin width is an error. Set `excitation_scattering_depth >= 1` to include inter-leaf scattering in the per-leaf APAR calculation; this captures NIR reflectance/transmittance contributions at the cost of additional excitation-band ray traces.
+
+> Per-leaf APAR storage scales as `O(N_leaves * N_excitation_bands)` where
+> `N_excitation_bands = ceil(350 / excitation_bin_width_nm)`. For very large
+> canopies prefer a coarser bin width (e.g., 20 nm) to keep memory bounded.
+
 ### Camera Spectral Response
 
 ```python

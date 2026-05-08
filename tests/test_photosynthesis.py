@@ -524,5 +524,185 @@ class TestPhotosynthesisParameterValidation:
         assert coeffs.Vcmax == -1.0  # Uninitialized default
 
 
+# ============================================================================
+# C4 Photosynthesis Bindings (helios-core v1.3.72+)
+# ============================================================================
+
+
+@pytest.mark.cross_platform
+class TestC4ConstantsAndImports:
+    """Cross-platform sanity checks that the C4 + gm bindings are exposed."""
+
+    def test_c4_species_constant_exposed(self):
+        from pyhelios import AVAILABLE_C4_SPECIES
+        assert AVAILABLE_C4_SPECIES == [
+            "SetariaViridis_vC2021",
+            "GenericC4_vC2000",
+            "Maize_Massad2007",
+        ]
+
+    def test_c4_methods_present_on_class(self):
+        # The high-level methods should be visible on PhotosynthesisModel even when
+        # the native library is mocked, so callers see a NotImplementedError rather
+        # than AttributeError.
+        for name in (
+            "setModelTypeC4",
+            "setC4CoefficientsFromLibrary",
+            "getC4CoefficientsFromLibrary",
+            "setC4ModelCoefficients",
+            "getC4ModelCoefficients",
+            "setCm",
+            "setFarquharMesophyllConductance",
+        ):
+            assert hasattr(PhotosynthesisModel, name), f"Missing PhotosynthesisModel.{name}"
+
+
+@pytest.mark.native_only
+class TestC4PhotosynthesisNative:
+    """End-to-end checks for the C4 + Farquhar gm bindings (require native build)."""
+
+    C4_COEFF_LEN = 43
+
+    def test_get_c4_library_returns_43_floats(self):
+        context = Context()
+        with PhotosynthesisModel(context) as photo:
+            coeffs = photo.getC4CoefficientsFromLibrary("SetariaViridis_vC2021")
+            assert isinstance(coeffs, list)
+            assert len(coeffs) == self.C4_COEFF_LEN
+            # Vpmax_at_25C (index 0) must be positive for Setaria — paper Table 1: 200.
+            assert coeffs[0] > 0.0
+            # Vcmax_at_25C (index 4): paper value 40
+            assert coeffs[4] > 0.0
+            # gm_at_25C (index 16): paper value 1
+            assert coeffs[16] > 0.0
+            # Kc_25 (index 20): 1210 ubar
+            assert coeffs[20] > 100.0
+
+    def test_set_model_type_c4_then_run(self):
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                 color=RGBcolor(0.3, 0.7, 0.2))
+        # Required inputs for the C4 solver (matching the existing FvCB tests):
+        context.setPrimitiveDataFloat(uuid, "radiation_flux_PAR", 1.5e-3)  # W/m^2
+        context.setPrimitiveDataFloat(uuid, "air_temperature", 298.0)
+        context.setPrimitiveDataFloat(uuid, "air_CO2", 400.0)
+        context.setPrimitiveDataFloat(uuid, "moisture_conductance", 0.4)
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeC4()
+            photo.setC4CoefficientsFromLibrary("Maize_Massad2007")
+            photo.run()
+            # net_photosynthesis is a default output; just confirm it was written.
+            assert context.doesPrimitiveDataExist(uuid, "net_photosynthesis")
+
+    def test_round_trip_c4_coefficients_via_array(self):
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                 color=RGBcolor(0.3, 0.7, 0.2))
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeC4()
+            library_coeffs = photo.getC4CoefficientsFromLibrary("SetariaViridis_vC2021")
+            photo.setC4ModelCoefficients(library_coeffs, [uuid])
+            roundtrip = photo.getC4ModelCoefficients(uuid)
+            assert len(roundtrip) == self.C4_COEFF_LEN
+            # Per-rate value_at_25C must round-trip exactly (slots 0, 4, 8, 12, 16).
+            for idx in (0, 4, 8, 12, 16):
+                assert roundtrip[idx] == pytest.approx(library_coeffs[idx], rel=1e-5)
+
+    def test_set_cm_bypasses_iteration(self):
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                 color=RGBcolor(0.3, 0.7, 0.2))
+        context.setPrimitiveDataFloat(uuid, "radiation_flux_PAR", 1.5e-3)
+        context.setPrimitiveDataFloat(uuid, "air_temperature", 298.0)
+        context.setPrimitiveDataFloat(uuid, "air_CO2", 400.0)
+        context.setPrimitiveDataFloat(uuid, "moisture_conductance", 0.4)
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeC4()
+            photo.setC4CoefficientsFromLibrary("SetariaViridis_vC2021")
+            photo.setCm(150.0, [uuid])
+            # Should run without raising.
+            photo.run()
+
+    def test_set_c4_coefficients_by_material(self):
+        """Verify the per-material C4 setter (helios-core 1.3.72)."""
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                 color=RGBcolor(0.3, 0.7, 0.2))
+        # Tag the primitive with a material label so the per-material setter has a target.
+        material = "leaf_c4"
+        context.addMaterial(material)
+        context.assignMaterialToPrimitive(uuid, material)
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeC4()
+            photo.setC4CoefficientsFromLibrary("Maize_Massad2007", material_label=material)
+
+            # Mutually exclusive: passing both uuids and material_label must raise.
+            with pytest.raises(ValueError):
+                photo.setC4CoefficientsFromLibrary("Maize_Massad2007",
+                                                    uuids=[uuid], material_label=material)
+
+            # Round-trip via the array API also accepts material_label.
+            arr = photo.getC4CoefficientsFromLibrary("SetariaViridis_vC2021")
+            photo.setC4ModelCoefficients(arr, material_label=material)
+
+    def test_set_farquhar_mesophyll_conductance(self):
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                 color=RGBcolor(0.3, 0.7, 0.2))
+        context.setPrimitiveDataFloat(uuid, "radiation_flux_PAR", 1.5e-3)
+        context.setPrimitiveDataFloat(uuid, "air_temperature", 298.0)
+        context.setPrimitiveDataFloat(uuid, "air_CO2", 400.0)
+        context.setPrimitiveDataFloat(uuid, "moisture_conductance", 0.4)
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeFarquhar()
+            photo.setFarquharCoefficientsFromLibrary("APPLE", uuids=[uuid])
+            # gm only (no temperature response).
+            photo.setFarquharMesophyllConductance(0.4, uuids=[uuid])
+            photo.run()
+
+    def test_farquhar_gm_roundtrip_through_array(self):
+        """Verify the 22-float array round-trip preserves the mesophyll-conductance gm.
+
+        Regression test: prior to v0.1.21 the flat array was 18 floats and silently
+        dropped gm on round-trip, resetting it to +infinity each time
+        ``setFarquharModelCoefficients`` was called with a buffer fetched via
+        ``getFarquharModelCoefficients``.
+        """
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                 color=RGBcolor(0.3, 0.7, 0.2))
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeFarquhar()
+            photo.setFarquharCoefficientsFromLibrary("APPLE", uuids=[uuid])
+            # Set a finite gm with a small dHa so it travels through the array layout.
+            photo.setFarquharMesophyllConductance(0.4, dha=49.6, uuids=[uuid])
+
+            # 22-element layout: slots 18..21 are (gm_at_25C, dHa, Topt_C, dHd).
+            arr = photo.getFarquharModelCoefficients(uuid)
+            assert len(arr) == 22
+            assert arr[18] == pytest.approx(0.4, abs=1e-4)
+            assert arr[19] == pytest.approx(49.6, abs=1e-4)
+            # Topt was not set, so it must round-trip as the "no optimum" sentinel (-1).
+            assert arr[20] < 0.0
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

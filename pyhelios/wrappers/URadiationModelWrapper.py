@@ -650,6 +650,45 @@ except AttributeError:
     # RadiationModel functions not available in current native library
     _RADIATION_MODEL_FUNCTIONS_AVAILABLE = False
 
+
+# SIF (solar-induced fluorescence) camera bindings (helios-core v1.3.72+).
+# Probe separately so wheels built against older libraries keep the rest of the
+# RadiationModel API working.
+_SIF_CAMERA_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.addSIFCameraVec3.argtypes = [
+        ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_float, ctypes.c_uint,
+        ctypes.c_uint,
+    ]
+    helios_lib.addSIFCameraVec3.restype = None
+    helios_lib.addSIFCameraVec3.errcheck = _check_error
+
+    helios_lib.addSIFCameraSpherical.argtypes = [
+        ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_float, ctypes.c_uint,
+        ctypes.c_uint,
+    ]
+    helios_lib.addSIFCameraSpherical.restype = None
+    helios_lib.addSIFCameraSpherical.errcheck = _check_error
+
+    helios_lib.isSIFCamera.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.isSIFCamera.restype = ctypes.c_int
+    helios_lib.isSIFCamera.errcheck = _check_error
+
+    _SIF_CAMERA_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _SIF_CAMERA_FUNCTIONS_AVAILABLE = False
+
+
 # Python wrapper functions
 
 #=============================================================================
@@ -1713,7 +1752,7 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     if len(props_array) != 10:
         raise ValueError(f"Camera properties must have 10 elements, got {len(props_array)}")
 
-    props_c = (ctypes.c_float * 9)(*props_array)
+    props_c = (ctypes.c_float * 10)(*props_array)
     helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c)
 
 def enableCameraMetadata(radiation_model, camera_labels):
@@ -2064,8 +2103,8 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
 
     if not band_labels:
         raise ValueError("At least one band label is required")
-    if len(camera_properties) != 9:
-        raise ValueError("camera_properties must contain exactly 9 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed]")
+    if len(camera_properties) != 10:
+        raise ValueError("camera_properties must contain exactly 10 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]")
 
     # Encode camera label
     camera_encoded = camera_label.encode('utf-8')
@@ -2082,6 +2121,107 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
                                           ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
                                           ctypes.c_float(radius), ctypes.c_float(elevation), ctypes.c_float(azimuth),
                                           props_array, ctypes.c_uint(antialiasing_samples))
+
+
+def _require_sif_camera_available():
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if not _SIF_CAMERA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "SIF camera bindings require helios-core v1.3.72 or newer. "
+            "Please rebuild PyHelios with `build_scripts/build_helios --clean --plugins radiation`."
+        )
+
+
+def addSIFCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
+                     position_x: float, position_y: float, position_z: float,
+                     lookat_x: float, lookat_y: float, lookat_z: float,
+                     camera_properties: List[float],
+                     excitation_bin_width_nm: float, excitation_scattering_depth: int,
+                     antialiasing_samples: int):
+    """Add a SIF camera with position and lookat vectors.
+
+    ``camera_properties`` uses the same 10-float layout as ``addRadiationCameraVec3``.
+    Each emission band in ``band_labels`` must already exist via ``addRadiationBand``.
+    """
+    _require_sif_camera_available()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot add SIF camera.")
+    if not band_labels:
+        raise ValueError("At least one emission band label is required")
+    if len(camera_properties) != 10:
+        raise ValueError(
+            "camera_properties must contain exactly 10 values: "
+            "[resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, "
+            "FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]"
+        )
+    if excitation_bin_width_nm <= 0.0:
+        raise ValueError("excitation_bin_width_nm must be > 0")
+    if excitation_scattering_depth < 0:
+        raise ValueError("excitation_scattering_depth must be >= 0")
+
+    camera_encoded = camera_label.encode('utf-8')
+    band_array = (ctypes.c_char_p * len(band_labels))()
+    for i, label in enumerate(band_labels):
+        band_array[i] = label.encode('utf-8')
+    props_array = (ctypes.c_float * len(camera_properties))(*camera_properties)
+
+    helios_lib.addSIFCameraVec3(
+        radiation_model, camera_encoded, band_array, len(band_labels),
+        ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
+        ctypes.c_float(lookat_x), ctypes.c_float(lookat_y), ctypes.c_float(lookat_z),
+        props_array,
+        ctypes.c_float(excitation_bin_width_nm), ctypes.c_uint(excitation_scattering_depth),
+        ctypes.c_uint(antialiasing_samples),
+    )
+
+
+def addSIFCameraSpherical(radiation_model, camera_label: str, band_labels: List[str],
+                          position_x: float, position_y: float, position_z: float,
+                          radius: float, elevation: float, azimuth: float,
+                          camera_properties: List[float],
+                          excitation_bin_width_nm: float, excitation_scattering_depth: int,
+                          antialiasing_samples: int):
+    """Add a SIF camera with position and spherical viewing direction."""
+    _require_sif_camera_available()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot add SIF camera.")
+    if not band_labels:
+        raise ValueError("At least one emission band label is required")
+    if len(camera_properties) != 10:
+        raise ValueError(
+            "camera_properties must contain exactly 10 values: "
+            "[resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, "
+            "FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]"
+        )
+    if excitation_bin_width_nm <= 0.0:
+        raise ValueError("excitation_bin_width_nm must be > 0")
+    if excitation_scattering_depth < 0:
+        raise ValueError("excitation_scattering_depth must be >= 0")
+
+    camera_encoded = camera_label.encode('utf-8')
+    band_array = (ctypes.c_char_p * len(band_labels))()
+    for i, label in enumerate(band_labels):
+        band_array[i] = label.encode('utf-8')
+    props_array = (ctypes.c_float * len(camera_properties))(*camera_properties)
+
+    helios_lib.addSIFCameraSpherical(
+        radiation_model, camera_encoded, band_array, len(band_labels),
+        ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
+        ctypes.c_float(radius), ctypes.c_float(elevation), ctypes.c_float(azimuth),
+        props_array,
+        ctypes.c_float(excitation_bin_width_nm), ctypes.c_uint(excitation_scattering_depth),
+        ctypes.c_uint(antialiasing_samples),
+    )
+
+
+def isSIFCamera(radiation_model, camera_label: str) -> bool:
+    """Return True if ``camera_label`` was registered via ``addSIFCamera``."""
+    _require_sif_camera_available()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    return bool(helios_lib.isSIFCamera(radiation_model, camera_label.encode('utf-8')))
+
 
 #=============================================================================
 # EXR Image Export Functions (v1.3.66+)

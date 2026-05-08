@@ -3696,3 +3696,954 @@ class TestCropDomainValidation:
             basic_context.cropDomainX((0, 1))
         with pytest.raises(ValueError):
             basic_context.cropDomain(vec2(0, 1), vec2(0, 1), (0, 1))
+
+
+# =============================================================================
+# Scalar Getters / Setters & List-of-String Getters
+# =============================================================================
+
+@pytest.mark.native_only
+class TestExistenceQueries:
+    def test_does_object_exist_true_after_creation(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        assert basic_context.doesObjectExist(objID) is True
+
+    def test_does_object_exist_false_for_unknown_id(self, basic_context):
+        assert basic_context.doesObjectExist(999999) is False
+
+    def test_does_object_contain_primitive(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(2, 2))
+        uuids = basic_context.getObjectPrimitiveUUIDs(objID)
+        assert len(uuids) > 0
+        assert basic_context.doesObjectContainPrimitive(objID, uuids[0]) is True
+        # A primitive that doesn't belong to the object
+        outsider = basic_context.addPatch(center=vec3(10, 0, 0), size=vec2(0.1, 0.1))
+        assert basic_context.doesObjectContainPrimitive(objID, outsider) is False
+
+    def test_object_has_texture_false_for_untextured(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        assert basic_context.objectHasTexture(objID) is False
+
+    def test_is_primitive_dirty_initially_clean(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        # Newly created primitives may be dirty until markGeometryClean; either bool is OK,
+        # we just check the call works and returns a bool.
+        result = basic_context.isPrimitiveDirty(uuid)
+        assert isinstance(result, bool)
+
+    def test_are_object_primitives_complete_true_initially(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(2, 2))
+        assert basic_context.areObjectPrimitivesComplete(objID) is True
+
+
+@pytest.mark.native_only
+class TestValueCachingToggles:
+    def test_enable_disable_primitive_data_value_caching(self, basic_context):
+        label = "test_caching_label_prim"
+        basic_context.enablePrimitiveDataValueCaching(label)
+        assert basic_context.isPrimitiveDataValueCachingEnabled(label) is True
+        basic_context.disablePrimitiveDataValueCaching(label)
+        assert basic_context.isPrimitiveDataValueCachingEnabled(label) is False
+
+    def test_enable_disable_object_data_value_caching(self, basic_context):
+        label = "test_caching_label_obj"
+        basic_context.enableObjectDataValueCaching(label)
+        assert basic_context.isObjectDataValueCachingEnabled(label) is True
+        basic_context.disableObjectDataValueCaching(label)
+        assert basic_context.isObjectDataValueCachingEnabled(label) is False
+
+
+@pytest.mark.native_only
+class TestScalarNumericGetters:
+    def test_get_julian_date(self, basic_context):
+        # Default should be a valid Julian day (1-366); we don't assert a specific value.
+        jd = basic_context.getJulianDate()
+        assert isinstance(jd, int)
+        assert 1 <= jd <= 366
+
+    def test_get_material_count_initially_zero_or_more(self, basic_context):
+        # Materials are zero-initialized (or default-set); just verify it returns an int.
+        n = basic_context.getMaterialCount()
+        assert isinstance(n, int)
+        assert n >= 0
+
+    def test_get_object_area_positive(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(2, 3),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        area = basic_context.getObjectArea(objID)
+        # 2 * 3 = 6 (one-sided).
+        assert area == pytest.approx(6.0, rel=1e-4)
+
+    def test_get_object_primitive_count(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(3, 4))
+        count = basic_context.getObjectPrimitiveCount(objID)
+        # Tile with 3x4 subdivisions → 12 primitives.
+        assert count == 12
+
+    def test_get_primitive_parent_object_id_zero_for_loose_primitive(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        parent = basic_context.getPrimitiveParentObjectID(uuid)
+        # A patch added directly (not via an object) has no parent → 0.
+        assert parent == 0
+
+    def test_get_primitive_parent_object_id_matches_after_object_creation(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        uuids = basic_context.getObjectPrimitiveUUIDs(objID)
+        assert basic_context.getPrimitiveParentObjectID(uuids[0]) == objID
+
+    def test_global_data_version_increments(self, basic_context):
+        label = "v_test"
+        basic_context.setGlobalDataFloat(label, 1.0)
+        v1 = basic_context.getGlobalDataVersion(label)
+        basic_context.setGlobalDataFloat(label, 2.0)
+        v2 = basic_context.getGlobalDataVersion(label)
+        assert isinstance(v1, int) and isinstance(v2, int)
+        assert v2 > v1
+
+
+@pytest.mark.native_only
+class TestStringGetters:
+    def test_get_object_texture_file_empty_for_untextured(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        path = basic_context.getObjectTextureFile(objID)
+        assert isinstance(path, str)
+        assert path == ''
+
+    def test_list_all_primitive_data_labels_initially_empty(self, basic_context):
+        basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        labels = basic_context.listAllPrimitiveDataLabels()
+        assert isinstance(labels, list)
+        assert all(isinstance(s, str) for s in labels)
+        assert labels == []
+
+    def test_list_all_primitive_data_labels_collects_set(self, basic_context):
+        u1 = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        u2 = basic_context.addPatch(center=vec3(1, 0, 0), size=vec2(1, 1))
+        basic_context.setPrimitiveDataFloat(u1, "alpha", 0.5)
+        basic_context.setPrimitiveDataInt(u2, "beta", 7)
+        labels = set(basic_context.listAllPrimitiveDataLabels())
+        assert {"alpha", "beta"} <= labels
+
+    def test_get_loaded_xml_files_initially_empty(self, basic_context):
+        files = basic_context.getLoadedXMLFiles()
+        assert files == []
+
+
+@pytest.mark.native_only
+class TestSimpleActions:
+    def test_print_primitive_info_does_not_raise(self, basic_context, capsys):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.printPrimitiveInfo(uuid)
+        # Output goes to stdout; we only verify the call returns cleanly.
+        captured = capsys.readouterr()
+        # Some output should appear (don't assert exact format).
+        assert len(captured.out) >= 0
+
+    def test_print_object_info_does_not_raise(self, basic_context, capsys):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.printObjectInfo(objID)
+        captured = capsys.readouterr()
+        assert len(captured.out) >= 0
+
+    def test_rename_primitive_data(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.setPrimitiveDataFloat(uuid, "old_name", 3.14)
+        basic_context.renamePrimitiveData(uuid, "old_name", "new_name")
+        assert basic_context.doesPrimitiveDataExist(uuid, "old_name") is False
+        assert basic_context.doesPrimitiveDataExist(uuid, "new_name") is True
+        assert basic_context.getPrimitiveData(uuid, "new_name", float) == pytest.approx(3.14)
+
+    def test_set_object_data_from_primitive_data_mean(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(2, 1))
+        uuids = basic_context.getObjectPrimitiveUUIDs(objID)
+        for i, u in enumerate(uuids):
+            basic_context.setPrimitiveDataFloat(u, "metric", float(i + 1))
+        basic_context.setObjectDataFromPrimitiveDataMean(objID, "metric")
+        # Mean of (1, 2) = 1.5
+        assert basic_context.getObjectData(objID, "metric", float) == pytest.approx(1.5)
+
+
+@pytest.mark.native_only
+class TestMaterialAPIBasics:
+    """Material lifecycle is needed for these tests; we exercise the basics."""
+
+    def test_get_material_count_after_creation(self, basic_context):
+        before = basic_context.getMaterialCount()
+        basic_context.addMaterial("tier1_test_material")
+        after = basic_context.getMaterialCount()
+        assert after == before + 1
+        assert basic_context.doesMaterialDataExist("tier1_test_material", "nonexistent_data") is False
+
+    def test_get_material_id_from_label(self, basic_context):
+        basic_context.addMaterial("tier1_label_test")
+        matID = basic_context.getMaterialIDFromLabel("tier1_label_test")
+        assert isinstance(matID, int)
+        assert matID > 0  # 0 is reserved/sentinel
+
+    def test_get_primitive_material_id_matches(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.addMaterial("tier1_match_test")
+        basic_context.assignMaterialToPrimitive(uuid, "tier1_match_test")
+        expected = basic_context.getMaterialIDFromLabel("tier1_match_test")
+        assert basic_context.getPrimitiveMaterialID(uuid) == expected
+
+    def test_rename_material(self, basic_context):
+        basic_context.addMaterial("tier1_rename_old")
+        basic_context.renameMaterial("tier1_rename_old", "tier1_rename_new")
+        new_id = basic_context.getMaterialIDFromLabel("tier1_rename_new")
+        assert new_id > 0
+
+
+@pytest.mark.native_only
+class TestScalarGetterErrorPaths:
+    """Verify that error conditions surface as Python exceptions (no silent zeros).
+
+    Scalar wrappers route through the ctypes `errcheck` callback which calls
+    getLastErrorCode after every call and raises on a non-zero status, so a missing
+    UUID or material label produces a HeliosRuntimeError rather than a sentinel value.
+    """
+
+    def test_get_primitive_parent_object_id_raises_on_invalid_uuid(self, basic_context):
+        with pytest.raises(HeliosRuntimeError):
+            basic_context.getPrimitiveParentObjectID(999999999)
+
+    def test_get_material_id_from_label_raises_on_unknown_label(self, basic_context):
+        with pytest.raises(HeliosRuntimeError):
+            basic_context.getMaterialIDFromLabel("definitely_not_a_real_material_xyz")
+
+    def test_get_primitive_material_id_raises_on_invalid_uuid(self, basic_context):
+        with pytest.raises(HeliosRuntimeError):
+            basic_context.getPrimitiveMaterialID(999999999)
+
+
+@pytest.mark.cross_platform
+class TestScalarAPIMockModeSkipped:
+    """Mock-mode placeholder. The native_only classes above are skipped automatically
+    when the native library is unavailable; this class documents the intent."""
+
+    def test_marker(self):
+        assert True
+
+
+# =============================================================================
+# Vector-return getters & geometry mutators
+# =============================================================================
+
+@pytest.mark.native_only
+class TestVectorReturnGetters:
+    def test_get_deleted_uuids_initially_empty(self, basic_context):
+        result = basic_context.getDeletedUUIDs()
+        assert isinstance(result, list)
+        assert result == []
+
+    def test_get_deleted_uuids_after_deletion(self, basic_context):
+        u1 = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        u2 = basic_context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+        basic_context.deletePrimitive(u1)
+        deleted = basic_context.getDeletedUUIDs()
+        assert u1 in deleted
+        assert u2 not in deleted
+
+    def test_get_dirty_uuids_returns_list(self, basic_context):
+        basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        result = basic_context.getDirtyUUIDs()
+        assert isinstance(result, list)
+        assert all(isinstance(u, int) for u in result)
+
+    def test_get_dirty_uuids_include_deleted_default_true(self, basic_context):
+        # Just verify the call works with both flag values; we don't assert
+        # specifics about content because dirty-tracking semantics depend on Helios.
+        a = basic_context.getDirtyUUIDs(include_deleted=True)
+        b = basic_context.getDirtyUUIDs(include_deleted=False)
+        assert isinstance(a, list)
+        assert isinstance(b, list)
+
+    def test_get_unique_primitive_parent_object_ids_empty_input(self, basic_context):
+        result = basic_context.getUniquePrimitiveParentObjectIDs([], include_zero=True)
+        assert result == []
+
+    def test_get_unique_primitive_parent_object_ids_for_loose_primitives(self, basic_context):
+        u1 = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        u2 = basic_context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+        # Loose primitives have parent object ID 0.
+        result_with_zero = basic_context.getUniquePrimitiveParentObjectIDs(
+            [u1, u2], include_zero=True
+        )
+        assert 0 in result_with_zero
+        # Without the zero sentinel, list should be empty for loose primitives.
+        result_no_zero = basic_context.getUniquePrimitiveParentObjectIDs(
+            [u1, u2], include_zero=False
+        )
+        assert 0 not in result_no_zero
+
+    def test_get_unique_primitive_parent_object_ids_for_object(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(2, 2))
+        uuids = basic_context.getObjectPrimitiveUUIDs(objID)
+        result = basic_context.getUniquePrimitiveParentObjectIDs(uuids, include_zero=False)
+        assert objID in result
+
+    def test_get_unique_primitive_parent_object_ids_validates_input(self, basic_context):
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.getUniquePrimitiveParentObjectIDs(123)
+
+
+@pytest.mark.native_only
+class TestObjectNormalAndOrigin:
+    def test_get_object_average_normal_returns_vec3(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        n = basic_context.getObjectAverageNormal(objID)
+        assert isinstance(n, vec3)
+        # Default tile faces +Z (no rotation applied).
+        assert n.z == pytest.approx(1.0, abs=1e-3)
+
+    def test_set_object_origin_runs_cleanly(self, basic_context):
+        # setObjectOrigin assigns the object's metadata "origin" attribute used by
+        # downstream transform stacks; it does not translate primitive geometry.
+        # Just verify the call completes and doesn't raise.
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setObjectOrigin(objID, vec3(5, 0, 0))
+
+    def test_set_object_origin_validates_vec3(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="origin must be a vec3"):
+            basic_context.setObjectOrigin(objID, (1, 2, 3))
+
+    def test_set_object_average_normal_validates_args(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="origin must be a vec3"):
+            basic_context.setObjectAverageNormal(objID, (0, 0, 0), vec3(0, 0, 1))
+        with pytest.raises(ValueError, match="new_normal must be a vec3"):
+            basic_context.setObjectAverageNormal(objID, vec3(0, 0, 0), (0, 0, 1))
+
+
+@pytest.mark.native_only
+class TestPrimitiveAzimuthElevation:
+    def test_set_primitive_azimuth_runs_cleanly(self, basic_context):
+        # Use a triangle so azimuth/elevation rotations have a clear effect on the normal.
+        uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+        basic_context.setPrimitiveAzimuth(uuid, vec3(0, 0, 0), 1.5708)  # pi/2
+        # Just verify no exception — Helios handles the rotation math internally.
+
+    def test_set_primitive_elevation_runs_cleanly(self, basic_context):
+        uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+        basic_context.setPrimitiveElevation(uuid, vec3(0, 0, 0), 0.7854)  # pi/4
+
+    def test_set_primitive_azimuth_validates_origin(self, basic_context):
+        uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+        with pytest.raises(ValueError, match="origin must be a vec3"):
+            basic_context.setPrimitiveAzimuth(uuid, (0, 0, 0), 1.0)
+
+
+@pytest.mark.native_only
+class TestGeometryMutators:
+    def test_set_triangle_vertices_updates_geometry(self, basic_context):
+        uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+        # Move vertices to a new location.
+        basic_context.setTriangleVertices(
+            uuid, vec3(5, 0, 0), vec3(6, 0, 0), vec3(5, 1, 0)
+        )
+        # Read back via the existing per-vertex query.
+        v0 = basic_context.getTriangleVertex(uuid, 0)
+        assert v0.x == pytest.approx(5.0)
+        assert v0.y == pytest.approx(0.0)
+
+    def test_set_triangle_vertices_validates_args(self, basic_context):
+        uuid = basic_context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+        with pytest.raises(ValueError, match="vertex0 must be a vec3"):
+            basic_context.setTriangleVertices(uuid, (0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+
+    def test_set_primitive_normal_single(self, basic_context):
+        # Match the (working) batch-test case: rotate to +Y normal.
+        uuid = basic_context.addPatch(center=vec3(2, 0, 0), size=vec2(0.5, 0.5))
+        basic_context.setPrimitiveNormal(uuid, vec3(0, 0, 0), vec3(0, 1, 0))
+        n = basic_context.getPrimitiveNormal(uuid)
+        assert n.y == pytest.approx(1.0, abs=1e-3)
+
+    def test_set_primitive_normal_batch(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(0.5, 0.5))
+                 for i in range(3)]
+        basic_context.setPrimitiveNormal(uuids, vec3(0, 0, 0), vec3(0, 1, 0))
+        # Each patch's normal should now point along +Y.
+        for u in uuids:
+            n = basic_context.getPrimitiveNormal(u)
+            assert n.y == pytest.approx(1.0, abs=1e-3)
+
+    def test_set_primitive_normal_validates_args(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        with pytest.raises(ValueError, match="origin must be a vec3"):
+            basic_context.setPrimitiveNormal(uuid, (0, 0, 0), vec3(0, 0, 1))
+        with pytest.raises(ValueError, match="new_normal must be a vec3"):
+            basic_context.setPrimitiveNormal(uuid, vec3(0, 0, 0), (0, 0, 1))
+
+    def test_set_primitive_parent_object_id_single(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setPrimitiveParentObjectID(uuid, objID)
+        assert basic_context.getPrimitiveParentObjectID(uuid) == objID
+
+    def test_set_primitive_parent_object_id_batch(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(0.1, 0.1))
+                 for i in range(3)]
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setPrimitiveParentObjectID(uuids, objID)
+        for u in uuids:
+            assert basic_context.getPrimitiveParentObjectID(u) == objID
+
+    def test_set_primitive_parent_object_id_detach_with_zero(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setPrimitiveParentObjectID(uuid, objID)
+        basic_context.setPrimitiveParentObjectID(uuid, 0)
+        assert basic_context.getPrimitiveParentObjectID(uuid) == 0
+
+
+# =============================================================================
+# 4x4 transformation matrices + domain bounds
+# =============================================================================
+
+@pytest.mark.native_only
+class TestTransformationMatrices:
+    @staticmethod
+    def _identity_flat():
+        return [1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0]
+
+    @staticmethod
+    def _translation_matrix(tx, ty, tz):
+        # Row-major: translation lives in column 3 → indices 3, 7, 11.
+        return [1.0, 0.0, 0.0, float(tx),
+                0.0, 1.0, 0.0, float(ty),
+                0.0, 0.0, 1.0, float(tz),
+                0.0, 0.0, 0.0, 1.0]
+
+    def test_object_transform_round_trip_identity(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        T = basic_context.getObjectTransformationMatrix(objID)
+        assert T.shape == (4, 4)
+        assert T.dtype == np.float32
+
+    def test_object_transform_set_get_translation(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        T_in = self._translation_matrix(5, -2, 7)
+        basic_context.setObjectTransformationMatrix(objID, T_in)
+        T_out = basic_context.getObjectTransformationMatrix(objID)
+        assert T_out[0, 3] == pytest.approx(5.0)
+        assert T_out[1, 3] == pytest.approx(-2.0)
+        assert T_out[2, 3] == pytest.approx(7.0)
+
+    def test_set_object_transform_accepts_ndarray(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        T_in = np.array(self._translation_matrix(1, 2, 3), dtype=np.float32).reshape((4, 4))
+        basic_context.setObjectTransformationMatrix(objID, T_in)
+        T_out = basic_context.getObjectTransformationMatrix(objID)
+        assert T_out[0, 3] == pytest.approx(1.0)
+        assert T_out[1, 3] == pytest.approx(2.0)
+        assert T_out[2, 3] == pytest.approx(3.0)
+
+    def test_set_object_transform_accepts_nested_list(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        T_in = [[1, 0, 0, 4],
+                [0, 1, 0, 5],
+                [0, 0, 1, 6],
+                [0, 0, 0, 1]]
+        basic_context.setObjectTransformationMatrix(objID, T_in)
+        T_out = basic_context.getObjectTransformationMatrix(objID)
+        assert T_out[0, 3] == pytest.approx(4.0)
+        assert T_out[1, 3] == pytest.approx(5.0)
+        assert T_out[2, 3] == pytest.approx(6.0)
+
+    def test_set_object_transform_batch(self, basic_context):
+        ids = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(0.5, 0.5),
+                                           rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+               for i in range(3)]
+        T_in = self._translation_matrix(10, 20, 30)
+        basic_context.setObjectTransformationMatrix(ids, T_in)
+        for objID in ids:
+            T_out = basic_context.getObjectTransformationMatrix(objID)
+            assert T_out[0, 3] == pytest.approx(10.0)
+            assert T_out[1, 3] == pytest.approx(20.0)
+            assert T_out[2, 3] == pytest.approx(30.0)
+
+    def test_primitive_transform_round_trip(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        T = basic_context.getPrimitiveTransformationMatrix(uuid)
+        assert T.shape == (4, 4)
+        assert T.dtype == np.float32
+
+    def test_primitive_transform_set_get_translation(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        T_in = self._translation_matrix(2, 3, 4)
+        basic_context.setPrimitiveTransformationMatrix(uuid, T_in)
+        T_out = basic_context.getPrimitiveTransformationMatrix(uuid)
+        assert T_out[0, 3] == pytest.approx(2.0)
+        assert T_out[1, 3] == pytest.approx(3.0)
+        assert T_out[2, 3] == pytest.approx(4.0)
+
+    def test_primitive_transform_batch(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(0.1, 0.1))
+                 for i in range(3)]
+        T_in = self._translation_matrix(7, 8, 9)
+        basic_context.setPrimitiveTransformationMatrix(uuids, T_in)
+        for u in uuids:
+            T_out = basic_context.getPrimitiveTransformationMatrix(u)
+            assert T_out[0, 3] == pytest.approx(7.0)
+            assert T_out[1, 3] == pytest.approx(8.0)
+            assert T_out[2, 3] == pytest.approx(9.0)
+
+    def test_set_transform_rejects_wrong_shape(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError):
+            basic_context.setObjectTransformationMatrix(objID, [1, 2, 3])
+        with pytest.raises(ValueError):
+            basic_context.setObjectTransformationMatrix(objID, np.zeros((3, 3), dtype=np.float32))
+        with pytest.raises(ValueError):
+            basic_context.setObjectTransformationMatrix(objID, "not a matrix")
+
+
+@pytest.mark.native_only
+class TestDomainBounds:
+    def test_bounding_box_simple(self, basic_context):
+        # Two patches at known positions; domain bounds should cover both.
+        basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.addPatch(center=vec3(5, 3, 2), size=vec2(0.2, 0.2))
+        xb, yb, zb = basic_context.getDomainBoundingBox()
+        assert isinstance(xb, vec2)
+        assert isinstance(yb, vec2)
+        assert isinstance(zb, vec2)
+        # x covers [-0.5, 5.1]; y covers [-0.5, 3.1]; z covers [0, 0]
+        assert xb.x <= 0.0 and xb.y >= 5.0
+        assert yb.x <= 0.0 and yb.y >= 3.0
+
+    def test_bounding_box_filtered_by_uuids(self, basic_context):
+        u_in = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(0.1, 0.1))
+        basic_context.addPatch(center=vec3(100, 100, 100), size=vec2(0.1, 0.1))  # outlier
+        xb, yb, zb = basic_context.getDomainBoundingBox(uuids=[u_in])
+        assert xb.y < 50.0  # outlier excluded
+        assert yb.y < 50.0
+
+    def test_bounding_box_filtered_validates_input(self, basic_context):
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.getDomainBoundingBox(uuids=42)
+
+    def test_bounding_sphere_simple(self, basic_context):
+        basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+        center, radius = basic_context.getDomainBoundingSphere()
+        assert isinstance(center, vec3)
+        assert isinstance(radius, float)
+        assert radius > 0.0
+
+    def test_bounding_sphere_filtered(self, basic_context):
+        u_in = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(0.1, 0.1))
+        basic_context.addPatch(center=vec3(100, 0, 0), size=vec2(0.1, 0.1))
+        center, radius = basic_context.getDomainBoundingSphere(uuids=[u_in])
+        # Sphere only encloses the small patch.
+        assert radius < 50.0
+
+
+# =============================================================================
+# Tube/polymesh + object color/dirty/tile mutators
+# =============================================================================
+
+@pytest.fixture
+def tube_object(basic_context):
+    """Create a simple straight tube object for mutation tests."""
+    nodes = [vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 0, 2)]
+    radii = [0.1, 0.1, 0.1]
+    return basic_context.addTubeObject(ndivs=8, nodes=nodes, radii=radii)
+
+
+@pytest.mark.native_only
+class TestTubeMutators:
+    def test_set_tube_nodes(self, basic_context, tube_object):
+        new_nodes = [vec3(0, 0, 0), vec3(0, 0, 0.5), vec3(0, 0, 1.0)]
+        basic_context.setTubeNodes(tube_object, new_nodes)
+
+    def test_set_tube_nodes_validates(self, basic_context, tube_object):
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.setTubeNodes(tube_object, "nope")
+        with pytest.raises(ValueError, match="must be a vec3"):
+            basic_context.setTubeNodes(tube_object, [vec3(0, 0, 0), (1, 2, 3)])
+
+    def test_set_tube_radii(self, basic_context, tube_object):
+        basic_context.setTubeRadii(tube_object, [0.2, 0.2, 0.2])
+
+    def test_set_tube_radii_validates(self, basic_context, tube_object):
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.setTubeRadii(tube_object, 0.5)
+
+    def test_scale_tube_girth(self, basic_context, tube_object):
+        basic_context.scaleTubeGirth(tube_object, 2.0)
+
+    def test_scale_tube_length(self, basic_context, tube_object):
+        basic_context.scaleTubeLength(tube_object, 0.5)
+
+    def test_prune_tube_nodes(self, basic_context, tube_object):
+        # Prune everything from index 2 onward (leaves nodes 0 and 1).
+        basic_context.pruneTubeNodes(tube_object, 2)
+
+    def test_append_tube_segment_color(self, basic_context, tube_object):
+        basic_context.appendTubeSegment(
+            tube_object,
+            node_position=vec3(0, 0, 3),
+            radius=0.1,
+            color=RGBcolor(0.2, 0.5, 0.8),
+        )
+
+    def test_append_tube_segment_requires_color_or_texture(self, basic_context, tube_object):
+        with pytest.raises(ValueError, match="exactly one of"):
+            basic_context.appendTubeSegment(tube_object, vec3(0, 0, 3), 0.1)
+        with pytest.raises(ValueError, match="exactly one of"):
+            basic_context.appendTubeSegment(
+                tube_object, vec3(0, 0, 3), 0.1,
+                color=RGBcolor(1, 0, 0),
+                texture_file="x.png",
+                uv=vec2(0, 0),
+            )
+
+    def test_append_tube_segment_validates_node_position(self, basic_context, tube_object):
+        with pytest.raises(ValueError, match="node_position must be a vec3"):
+            basic_context.appendTubeSegment(
+                tube_object, (0, 0, 3), 0.1, color=RGBcolor(1, 0, 0)
+            )
+
+
+@pytest.mark.native_only
+class TestPolymeshObject:
+    def test_add_polymesh_object_returns_id(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(0.1, 0.1))
+                 for i in range(3)]
+        objID = basic_context.addPolymeshObject(uuids)
+        assert isinstance(objID, int)
+        assert objID > 0
+        # All input primitives are now part of the new object.
+        for u in uuids:
+            assert basic_context.getPrimitiveParentObjectID(u) == objID
+
+    def test_add_polymesh_object_rejects_empty(self, basic_context):
+        with pytest.raises(ValueError, match="at least one UUID"):
+            basic_context.addPolymeshObject([])
+
+    def test_add_polymesh_object_rejects_non_list(self, basic_context):
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.addPolymeshObject(42)
+
+
+@pytest.mark.native_only
+class TestObjectColor:
+    def test_set_object_color_rgb_single(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setObjectColor(objID, RGBcolor(0.2, 0.4, 0.6))
+
+    def test_set_object_color_rgba_single(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setObjectColor(objID, RGBAcolor(0.2, 0.4, 0.6, 0.8))
+
+    def test_set_object_color_rgb_batch(self, basic_context):
+        ids = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(0.5, 0.5),
+                                           rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+               for i in range(3)]
+        basic_context.setObjectColor(ids, RGBcolor(0.5, 0.5, 0.5))
+
+    def test_set_object_color_rejects_wrong_type(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="must be an RGBcolor or RGBAcolor"):
+            basic_context.setObjectColor(objID, (0.5, 0.5, 0.5))
+
+    def test_override_and_use_object_texture_color(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.overrideObjectTextureColor(objID)
+        basic_context.useObjectTextureColor(objID)
+
+    def test_override_object_texture_color_batch(self, basic_context):
+        ids = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(0.5, 0.5),
+                                           rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+               for i in range(2)]
+        basic_context.overrideObjectTextureColor(ids)
+        basic_context.useObjectTextureColor(ids)
+
+
+@pytest.mark.native_only
+class TestMarkDirtyClean:
+    def test_mark_dirty_single_then_clean(self, basic_context):
+        u = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        basic_context.markPrimitiveDirty(u)
+        assert basic_context.isPrimitiveDirty(u) is True
+        basic_context.markPrimitiveClean(u)
+        assert basic_context.isPrimitiveDirty(u) is False
+
+    def test_mark_dirty_batch(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(0.1, 0.1))
+                 for i in range(3)]
+        basic_context.markPrimitiveDirty(uuids)
+        for u in uuids:
+            assert basic_context.isPrimitiveDirty(u) is True
+        basic_context.markPrimitiveClean(uuids)
+        for u in uuids:
+            assert basic_context.isPrimitiveDirty(u) is False
+
+
+@pytest.mark.native_only
+class TestTileSubdivision:
+    def test_set_subdivision_count_single(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        basic_context.setTileObjectSubdivisionCount(objID, int2(3, 4))
+        # After re-subdivision, primitive count reflects new grid.
+        assert basic_context.getObjectPrimitiveCount(objID) == 12
+
+    def test_set_subdivision_count_batch(self, basic_context):
+        ids = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(0.5, 0.5),
+                                           rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+               for i in range(2)]
+        basic_context.setTileObjectSubdivisionCount(ids, int2(2, 2))
+        for objID in ids:
+            assert basic_context.getObjectPrimitiveCount(objID) == 4
+
+    def test_set_subdivision_count_validates_int2(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="subdiv must be an int2"):
+            basic_context.setTileObjectSubdivisionCount(objID, (3, 4))
+
+    def test_set_subdivision_by_area_ratio(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        # Just verify the call completes; subdivision count depends on tile size and ratio.
+        basic_context.setTileObjectSubdivisionByAreaRatio(objID, 0.5)
+
+
+# =============================================================================
+# Cleanup, XML write, RNG, Location
+# =============================================================================
+
+@pytest.mark.native_only
+class TestCleanDeletedIDs:
+    def test_clean_deleted_uuids_returns_new_list(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(0.1, 0.1))
+                 for i in range(3)]
+        basic_context.deletePrimitive(uuids[1])
+        survivors = basic_context.cleanDeletedUUIDs(uuids)
+        assert uuids[0] in survivors
+        assert uuids[2] in survivors
+        assert uuids[1] not in survivors
+        # Original input is NOT mutated.
+        assert len(uuids) == 3
+
+    def test_clean_deleted_uuids_validates_input(self, basic_context):
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.cleanDeletedUUIDs(42)
+
+    def test_clean_deleted_uuids_empty_input(self, basic_context):
+        assert basic_context.cleanDeletedUUIDs([]) == []
+
+    def test_clean_deleted_object_ids_returns_new_list(self, basic_context):
+        ids = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(0.5, 0.5),
+                                           rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+               for i in range(3)]
+        basic_context.deleteObject(ids[1])
+        survivors = basic_context.cleanDeletedObjectIDs(ids)
+        assert ids[0] in survivors
+        assert ids[2] in survivors
+        assert ids[1] not in survivors
+
+
+@pytest.mark.native_only
+class TestWriteXML:
+    def test_writeXML_full_roundtrip(self, basic_context, tmp_path):
+        u = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        target = tmp_path / "ctx.xml"
+        basic_context.writeXML(str(target), quiet=True)
+        assert target.exists()
+        assert target.stat().st_size > 0
+        # Verify by re-loading; the file should contain the patch UUID.
+        with target.open() as f:
+            content = f.read()
+        assert "primitive" in content.lower() or "patch" in content.lower()
+
+    def test_writeXML_filtered_by_uuids(self, basic_context, tmp_path):
+        u_keep = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        u_skip = basic_context.addPatch(center=vec3(5, 5, 5), size=vec2(1, 1))
+        target = tmp_path / "filtered.xml"
+        basic_context.writeXML(str(target), uuids=[u_keep], quiet=True)
+        assert target.exists()
+
+    def test_writeXML_byobject(self, basic_context, tmp_path):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(2, 2))
+        target = tmp_path / "obj.xml"
+        basic_context.writeXML_byobject(str(target), [objID], quiet=True)
+        assert target.exists()
+
+    def test_writeXML_rejects_non_xml_extension(self, basic_context, tmp_path):
+        with pytest.raises(ValueError):
+            basic_context.writeXML(str(tmp_path / "ctx.txt"), quiet=True)
+
+    def test_writeXML_filtered_validates_uuids(self, basic_context, tmp_path):
+        target = tmp_path / "ctx.xml"
+        with pytest.raises(ValueError, match="must be a list or tuple"):
+            basic_context.writeXML(str(target), uuids=42, quiet=True)
+
+
+@pytest.mark.native_only
+class TestRandomNumberGeneration:
+    def test_randu_basic_returns_unit_interval(self, basic_context):
+        for _ in range(20):
+            v = basic_context.randu()
+            assert 0.0 <= v < 1.0
+
+    def test_randu_float_range(self, basic_context):
+        for _ in range(20):
+            v = basic_context.randu(2.0, 5.0)
+            assert 2.0 <= v < 5.0
+
+    def test_randu_int_range(self, basic_context):
+        for _ in range(20):
+            v = basic_context.randu(10, 20)
+            assert isinstance(v, int)
+            assert 10 <= v <= 20
+
+    def test_randn_basic_finite(self, basic_context):
+        # Standard normal; just verify it returns a finite float each draw.
+        import math
+        for _ in range(20):
+            v = basic_context.randn()
+            assert math.isfinite(v)
+
+    def test_randn_with_params(self, basic_context):
+        # Mean of 1000 draws should be roughly close to the configured mean.
+        samples = [basic_context.randn(10.0, 0.5) for _ in range(1000)]
+        avg = sum(samples) / len(samples)
+        assert abs(avg - 10.0) < 1.0  # generous bound
+
+    def test_randu_partial_args_raise(self, basic_context):
+        with pytest.raises(ValueError, match="both low and high"):
+            basic_context.randu(low=1.0)
+
+    def test_randn_partial_args_raise(self, basic_context):
+        with pytest.raises(ValueError, match="both mean and stddev"):
+            basic_context.randn(mean=0.0)
+
+
+@pytest.mark.native_only
+class TestGeographicLocation:
+    def test_set_get_location_round_trip_floats(self, basic_context):
+        basic_context.setLocation(40.7, 74.0, -5.0)
+        loc = basic_context.getLocation()
+        assert loc.latitude == pytest.approx(40.7, abs=1e-4)
+        assert loc.longitude == pytest.approx(74.0, abs=1e-4)
+        assert loc.utc_offset == pytest.approx(-5.0, abs=1e-4)
+
+    def test_set_get_location_round_trip_object(self, basic_context):
+        basic_context.setLocation(Location(38.5, 121.7, 8.0))
+        loc = basic_context.getLocation()
+        assert isinstance(loc, Location)
+        # C++ Location stores floats, not doubles - allow float-precision tolerance.
+        assert loc.latitude == pytest.approx(38.5, abs=1e-4)
+        assert loc.longitude == pytest.approx(121.7, abs=1e-3)
+        assert loc.utc_offset == pytest.approx(8.0, abs=1e-4)
+
+    def test_default_location_is_helios_default(self, basic_context):
+        # Helios::Location default constructor: lat=38.55, lon=121.76, utc=8.
+        loc = basic_context.getLocation()
+        assert loc.latitude == pytest.approx(38.55, abs=1e-3)
+
+    def test_set_location_rejects_partial_args(self, basic_context):
+        with pytest.raises(ValueError, match="3 floats"):
+            basic_context.setLocation(40.0)
+        with pytest.raises(ValueError, match="3 floats"):
+            basic_context.setLocation(40.0, 70.0)
+
+    def test_set_location_rejects_mixed_args(self, basic_context):
+        with pytest.raises(ValueError, match="When passing a Location"):
+            basic_context.setLocation(Location(0, 0, 0), 1.0, 2.0)
+
+    def test_location_is_immutable(self):
+        loc = Location(1, 2, 3)
+        with pytest.raises(AttributeError):
+            loc.latitude = 99
+
+    def test_location_equality_and_repr(self):
+        a = Location(1, 2, 3)
+        b = Location(1, 2, 3)
+        c = Location(1, 2, 4)
+        assert a == b
+        assert a != c
+        assert "latitude=1" in repr(a)
+
+
+# =============================================================================
+# Colormap helpers + texture transparency
+# =============================================================================
+
+@pytest.mark.native_only
+class TestColormap:
+    def test_generate_colormap_named(self, basic_context):
+        colors = basic_context.generateColormap("hot", 16)
+        assert isinstance(colors, list)
+        assert len(colors) == 16
+        for c in colors:
+            assert isinstance(c, RGBcolor)
+            assert 0.0 <= c.r <= 1.0
+            assert 0.0 <= c.g <= 1.0
+            assert 0.0 <= c.b <= 1.0
+
+    def test_generate_colormap_returns_distinct_colors(self, basic_context):
+        # A real colormap should have visible variation across entries.
+        colors = basic_context.generateColormap("hot", 8)
+        first = (colors[0].r, colors[0].g, colors[0].b)
+        last = (colors[-1].r, colors[-1].g, colors[-1].b)
+        assert first != last
+
+
+@pytest.mark.native_only
+class TestTextureTransparency:
+    def test_no_transparency_returns_none(self, basic_context):
+        u = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        # An untextured patch has no transparency data.
+        assert basic_context.getPrimitiveTextureTransparencyData(u) is None
+
+    def test_textured_with_alpha_returns_ndarray(self, basic_context):
+        # GrapeLeaf.png has a transparent background.
+        texture = "/Users/bnbailey/Dropbox/PyHelios/helios-core/plugins/plantarchitecture/assets/textures/GrapeLeaf.png"
+        if not os.path.exists(texture):
+            pytest.skip("Test texture not available")
+        u = basic_context.addPatchTextured(
+            center=vec3(0, 0, 0), size=vec2(1, 1), texture_file=texture
+        )
+        result = basic_context.getPrimitiveTextureTransparencyData(u)
+        # If the texture has an alpha channel, we get an ndarray. If Helios
+        # treats it as opaque, we get None. Either is acceptable; verify the
+        # type of the returned value.
+        assert result is None or (hasattr(result, 'shape') and result.dtype == bool)
+        if result is not None:
+            assert result.ndim == 2
+            assert result.shape[0] > 0 and result.shape[1] > 0

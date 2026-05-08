@@ -19,8 +19,10 @@ class ULeafOptics(ctypes.Structure):
 # Import UContext from main wrapper to avoid type conflicts
 from .UContextWrapper import UContext
 
-# Number of properties in LeafOpticsProperties struct
-LEAF_OPTICS_PROPERTIES_COUNT = 9
+# Number of properties in LeafOpticsProperties struct.
+# Order: [numberlayers, brownpigments, chlorophyllcontent, carotenoidcontent,
+#        anthocyancontent, watermass, drymass, protein, carbonconstituents, V2Z, fqe]
+LEAF_OPTICS_PROPERTIES_COUNT = 11
 
 # Number of spectral points (400-2500 nm at 1nm resolution)
 LEAF_OPTICS_SPECTRAL_POINTS = 2101

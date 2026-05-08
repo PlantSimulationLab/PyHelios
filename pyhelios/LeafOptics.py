@@ -61,11 +61,19 @@ class LeafOpticsProperties:
         drymass: Dry matter content (leaf mass per area) in grams per square cm
         protein: Protein content in grams per square cm (PROSPECT-PRO mode)
         carbonconstituents: Carbon-based constituents in grams per square cm (PROSPECT-PRO mode)
+        V2Z: Violaxanthin-to-zeaxanthin de-epoxidation state, [0, 1]. Used by the
+            radiation plugin's solar-induced fluorescence (SIF) pipeline; ignored by
+            the pure PROSPECT reflectance/transmittance calculation. Default 0
+            (dark-adapted, all violaxanthin).
+        fqe: Intrinsic fluorescence quantum efficiency scalar applied on top of the
+            per-leaf Phi_F at SIF emission time (radiation plugin only). Ignored by
+            PROSPECT. Default 1.0.
 
     Note:
         - If protein > 0 OR carbonconstituents > 0, the model uses PROSPECT-PRO mode
           which ignores drymass and uses protein + carbonconstituents instead.
         - Otherwise, the model uses PROSPECT-D mode which uses drymass.
+        - V2Z and fqe are inert unless the radiation plugin's SIF camera is in use.
     """
     numberlayers: float = 1.5
     brownpigments: float = 0.0
@@ -76,6 +84,8 @@ class LeafOpticsProperties:
     drymass: float = 0.09             # g/cm^2
     protein: float = 0.0              # g/cm^2 (PROSPECT-PRO mode)
     carbonconstituents: float = 0.0   # g/cm^2 (PROSPECT-PRO mode)
+    V2Z: float = 0.0                  # SIF: violaxanthin↔zeaxanthin state, [0, 1]
+    fqe: float = 1.0                  # SIF: intrinsic fluorescence quantum efficiency scalar
 
     def to_list(self) -> List[float]:
         """Convert properties to a list in the order expected by the C++ interface."""
@@ -88,14 +98,32 @@ class LeafOpticsProperties:
             self.watermass,
             self.drymass,
             self.protein,
-            self.carbonconstituents
+            self.carbonconstituents,
+            self.V2Z,
+            self.fqe,
         ]
 
     @classmethod
     def from_list(cls, values: List[float]) -> 'LeafOpticsProperties':
-        """Create LeafOpticsProperties from a list of values."""
-        if len(values) != 9:
-            raise ValueError(f"Expected 9 values, got {len(values)}")
+        """Create LeafOpticsProperties from a list of values.
+
+        Accepts the legacy 9-float layout (without V2Z/fqe) for backward
+        compatibility with serialized data; missing fields fall back to
+        defaults and a ``DeprecationWarning`` is emitted so callers can
+        migrate to the 11-element layout.
+        """
+        if len(values) not in (9, 11):
+            raise ValueError(f"Expected 9 or 11 values, got {len(values)}")
+        if len(values) == 9:
+            import warnings
+            warnings.warn(
+                "LeafOpticsProperties.from_list received a 9-element legacy "
+                "array (pre-helios-core 1.3.72). V2Z and fqe will default to "
+                "0.0 and 1.0 respectively. Migrate serialized data to the "
+                "11-element layout to silence this warning.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         return cls(
             numberlayers=values[0],
             brownpigments=values[1],
@@ -105,7 +133,9 @@ class LeafOpticsProperties:
             watermass=values[5],
             drymass=values[6],
             protein=values[7],
-            carbonconstituents=values[8]
+            carbonconstituents=values[8],
+            V2Z=values[9] if len(values) > 9 else 0.0,
+            fqe=values[10] if len(values) > 10 else 1.0,
         )
 
 

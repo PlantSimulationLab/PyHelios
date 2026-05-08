@@ -9,6 +9,8 @@
 #ifndef PYHELIOS_WRAPPER_CONTEXT_H
 #define PYHELIOS_WRAPPER_CONTEXT_H
 
+#include <stdint.h>  // For uint64_t
+
 #include "pyhelios_wrapper_common.h"
 
 // Forward declarations for Context interface
@@ -1800,6 +1802,15 @@ PYHELIOS_API void loadTabularTimeseriesData(helios::Context* context, const char
  */
 PYHELIOS_API void clearTimeseriesData(helios::Context* context);
 
+/**
+ * @brief Delete a single timeseries variable and all of its data points
+ * @param context Pointer to the Context
+ * @param label Name of the timeseries variable to delete
+ * @note If the variable does not exist, the underlying Helios API issues a non-fatal
+ *       warning and the call is otherwise a no-op.
+ */
+PYHELIOS_API void deleteTimeseriesVariable(helios::Context* context, const char* label);
+
 //=============================================================================
 // Primitive and Object Deletion Functions
 //=============================================================================
@@ -2248,6 +2259,218 @@ PYHELIOS_API void cropDomainY(helios::Context* context, float* ybounds);
 PYHELIOS_API void cropDomainZ(helios::Context* context, float* zbounds);
 PYHELIOS_API void cropDomainXYZ(helios::Context* context, float* xbounds, float* ybounds, float* zbounds);
 PYHELIOS_API unsigned int* cropDomainByUUIDs(helios::Context* context, unsigned int* uuids, unsigned int count, float* xbounds, float* ybounds, float* zbounds, unsigned int* out_size);
+
+//=============================================================================
+// Scalar Getters / Setters & List-of-String Getters
+//=============================================================================
+
+// ---- Bool getters ----
+PYHELIOS_API bool doesObjectExist(helios::Context* context, unsigned int objID);
+PYHELIOS_API bool doesObjectContainPrimitive(helios::Context* context, unsigned int objID, unsigned int uuid);
+PYHELIOS_API bool doesMaterialDataExist(helios::Context* context, const char* material_label, const char* data_label);
+PYHELIOS_API bool objectHasTexture(helios::Context* context, unsigned int objID);
+PYHELIOS_API bool isPrimitiveDirty(helios::Context* context, unsigned int uuid);
+PYHELIOS_API bool isObjectDataValueCachingEnabled(helios::Context* context, const char* label);
+PYHELIOS_API bool isPrimitiveDataValueCachingEnabled(helios::Context* context, const char* label);
+PYHELIOS_API bool areObjectPrimitivesComplete(helios::Context* context, unsigned int objID);
+
+// ---- Numeric scalar getters ----
+PYHELIOS_API int getJulianDate(helios::Context* context);
+PYHELIOS_API unsigned int getMaterialCount(helios::Context* context);
+PYHELIOS_API float getObjectArea(helios::Context* context, unsigned int objID);
+PYHELIOS_API unsigned int getObjectPrimitiveCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API float getPolymeshObjectVolume(helios::Context* context, unsigned int objID);
+PYHELIOS_API unsigned int getMaterialIDFromLabel(helios::Context* context, const char* material_label);
+PYHELIOS_API unsigned int getPrimitiveMaterialID(helios::Context* context, unsigned int uuid);
+PYHELIOS_API uint64_t getGlobalDataVersion(helios::Context* context, const char* label);
+PYHELIOS_API unsigned int getPrimitiveParentObjectID(helios::Context* context, unsigned int uuid);
+
+// ---- String returns (buffer pattern) ----
+PYHELIOS_API int getObjectTextureFile(helios::Context* context, unsigned int objID, char* buffer, int buffer_size);
+
+// ---- List-of-string returns (index pair to avoid double thread_local) ----
+PYHELIOS_API unsigned int listAllPrimitiveDataLabelsCount(helios::Context* context);
+PYHELIOS_API int listAllPrimitiveDataLabel(helios::Context* context, unsigned int index, char* buffer, int buffer_size);
+PYHELIOS_API unsigned int getLoadedXMLFileCount(helios::Context* context);
+PYHELIOS_API int getLoadedXMLFile(helios::Context* context, unsigned int index, char* buffer, int buffer_size);
+
+// ---- Simple actions ----
+PYHELIOS_API void printObjectInfo(helios::Context* context, unsigned int objID);
+PYHELIOS_API void printPrimitiveInfo(helios::Context* context, unsigned int uuid);
+PYHELIOS_API void enablePrimitiveDataValueCaching(helios::Context* context, const char* label);
+PYHELIOS_API void disablePrimitiveDataValueCaching(helios::Context* context, const char* label);
+PYHELIOS_API void enableObjectDataValueCaching(helios::Context* context, const char* label);
+PYHELIOS_API void disableObjectDataValueCaching(helios::Context* context, const char* label);
+PYHELIOS_API void setObjectDataFromPrimitiveDataMean(helios::Context* context, unsigned int objID, const char* label);
+PYHELIOS_API void renameMaterial(helios::Context* context, const char* old_label, const char* new_label);
+PYHELIOS_API void renamePrimitiveData(helios::Context* context, unsigned int uuid, const char* old_label, const char* new_label);
+PYHELIOS_API void clearMaterialData(helios::Context* context, const char* material_label, const char* data_label);
+
+//=============================================================================
+// Vector-return getters & geometry mutators
+//=============================================================================
+
+// ---- Vector<uint> returns (thread_local buffer pattern) ----
+PYHELIOS_API unsigned int* getDeletedUUIDs(helios::Context* context, unsigned int* count);
+PYHELIOS_API unsigned int* getDirtyUUIDs(helios::Context* context, bool include_deleted, unsigned int* count);
+PYHELIOS_API unsigned int* getUniquePrimitiveParentObjectIDs(helios::Context* context, unsigned int* uuids, unsigned int count, bool include_zero, unsigned int* out_count);
+
+// ---- Object normal / origin queries & setters ----
+PYHELIOS_API float* getObjectAverageNormal(helios::Context* context, unsigned int objID);
+PYHELIOS_API void setObjectAverageNormal(helios::Context* context, unsigned int objID, float* origin, float* new_normal);
+PYHELIOS_API void setObjectOrigin(helios::Context* context, unsigned int objID, float* origin);
+
+// ---- Primitive azimuth / elevation setters ----
+PYHELIOS_API void setPrimitiveAzimuth(helios::Context* context, unsigned int uuid, float* origin, float new_azimuth);
+PYHELIOS_API void setPrimitiveElevation(helios::Context* context, unsigned int uuid, float* origin, float new_elevation);
+
+// ---- Geometry mutators ----
+PYHELIOS_API void setTriangleVertices(helios::Context* context, unsigned int uuid, float* vertex0, float* vertex1, float* vertex2);
+PYHELIOS_API void setPrimitiveNormal(helios::Context* context, unsigned int uuid, float* origin, float* new_normal);
+PYHELIOS_API void setPrimitiveNormalBatch(helios::Context* context, unsigned int* uuids, unsigned int count, float* origin, float* new_normal);
+PYHELIOS_API void setPrimitiveParentObjectID(helios::Context* context, unsigned int uuid, unsigned int objID);
+PYHELIOS_API void setPrimitiveParentObjectIDBatch(helios::Context* context, unsigned int* uuids, unsigned int count, unsigned int objID);
+
+//=============================================================================
+// Material data API + unique data values
+//=============================================================================
+
+// ---- setMaterialData<T> (11 type specializations, scalar) ----
+PYHELIOS_API void setMaterialDataInt(helios::Context* context, const char* material_label, const char* data_label, int value);
+PYHELIOS_API void setMaterialDataUInt(helios::Context* context, const char* material_label, const char* data_label, unsigned int value);
+PYHELIOS_API void setMaterialDataFloat(helios::Context* context, const char* material_label, const char* data_label, float value);
+PYHELIOS_API void setMaterialDataDouble(helios::Context* context, const char* material_label, const char* data_label, double value);
+PYHELIOS_API void setMaterialDataString(helios::Context* context, const char* material_label, const char* data_label, const char* value);
+PYHELIOS_API void setMaterialDataVec2(helios::Context* context, const char* material_label, const char* data_label, float x, float y);
+PYHELIOS_API void setMaterialDataVec3(helios::Context* context, const char* material_label, const char* data_label, float x, float y, float z);
+PYHELIOS_API void setMaterialDataVec4(helios::Context* context, const char* material_label, const char* data_label, float x, float y, float z, float w);
+PYHELIOS_API void setMaterialDataInt2(helios::Context* context, const char* material_label, const char* data_label, int x, int y);
+PYHELIOS_API void setMaterialDataInt3(helios::Context* context, const char* material_label, const char* data_label, int x, int y, int z);
+PYHELIOS_API void setMaterialDataInt4(helios::Context* context, const char* material_label, const char* data_label, int x, int y, int z, int w);
+
+// ---- getMaterialData<T> (11 type specializations, scalar) ----
+PYHELIOS_API int getMaterialDataInt(helios::Context* context, const char* material_label, const char* data_label);
+PYHELIOS_API unsigned int getMaterialDataUInt(helios::Context* context, const char* material_label, const char* data_label);
+PYHELIOS_API float getMaterialDataFloat(helios::Context* context, const char* material_label, const char* data_label);
+PYHELIOS_API double getMaterialDataDouble(helios::Context* context, const char* material_label, const char* data_label);
+PYHELIOS_API int getMaterialDataString(helios::Context* context, const char* material_label, const char* data_label, char* buffer, int buffer_size);
+PYHELIOS_API void getMaterialDataVec2(helios::Context* context, const char* material_label, const char* data_label, float* x, float* y);
+PYHELIOS_API void getMaterialDataVec3(helios::Context* context, const char* material_label, const char* data_label, float* x, float* y, float* z);
+PYHELIOS_API void getMaterialDataVec4(helios::Context* context, const char* material_label, const char* data_label, float* x, float* y, float* z, float* w);
+PYHELIOS_API void getMaterialDataInt2(helios::Context* context, const char* material_label, const char* data_label, int* x, int* y);
+PYHELIOS_API void getMaterialDataInt3(helios::Context* context, const char* material_label, const char* data_label, int* x, int* y, int* z);
+PYHELIOS_API void getMaterialDataInt4(helios::Context* context, const char* material_label, const char* data_label, int* x, int* y, int* z, int* w);
+
+// ---- Material data type query ----
+PYHELIOS_API int getMaterialDataType(helios::Context* context, const char* material_label, const char* data_label);
+
+// ---- Unique data values (3 type specializations each) ----
+PYHELIOS_API int* getUniquePrimitiveDataValuesInt(helios::Context* context, const char* label, unsigned int* count);
+PYHELIOS_API unsigned int* getUniquePrimitiveDataValuesUInt(helios::Context* context, const char* label, unsigned int* count);
+PYHELIOS_API unsigned int getUniquePrimitiveDataValuesStringCount(helios::Context* context, const char* label);
+PYHELIOS_API int getUniquePrimitiveDataValuesString(helios::Context* context, const char* label, unsigned int index, char* buffer, int buffer_size);
+PYHELIOS_API int* getUniqueObjectDataValuesInt(helios::Context* context, const char* label, unsigned int* count);
+PYHELIOS_API unsigned int* getUniqueObjectDataValuesUInt(helios::Context* context, const char* label, unsigned int* count);
+PYHELIOS_API unsigned int getUniqueObjectDataValuesStringCount(helios::Context* context, const char* label);
+PYHELIOS_API int getUniqueObjectDataValuesString(helios::Context* context, const char* label, unsigned int index, char* buffer, int buffer_size);
+
+//=============================================================================
+// 4x4 transformation matrices + domain bounds
+//=============================================================================
+
+// ---- 4x4 transformation matrices (row-major, T[i*4+j]) ----
+PYHELIOS_API void getObjectTransformationMatrix(helios::Context* context, unsigned int objID, float* T_out);
+PYHELIOS_API void setObjectTransformationMatrix(helios::Context* context, unsigned int objID, float* T_in);
+PYHELIOS_API void setObjectTransformationMatrixBatch(helios::Context* context, unsigned int* objIDs, unsigned int count, float* T_in);
+PYHELIOS_API void getPrimitiveTransformationMatrix(helios::Context* context, unsigned int uuid, float* T_out);
+PYHELIOS_API void setPrimitiveTransformationMatrix(helios::Context* context, unsigned int uuid, float* T_in);
+PYHELIOS_API void setPrimitiveTransformationMatrixBatch(helios::Context* context, unsigned int* uuids, unsigned int count, float* T_in);
+
+// ---- Domain bounding box / sphere ----
+// bounds_out is a flat array: [xmin, xmax, ymin, ymax, zmin, zmax].
+PYHELIOS_API void getDomainBoundingBox(helios::Context* context, float* bounds_out);
+PYHELIOS_API void getDomainBoundingBoxFiltered(helios::Context* context, unsigned int* uuids, unsigned int count, float* bounds_out);
+// center_out is a 3-float array; radius is a scalar out.
+PYHELIOS_API void getDomainBoundingSphere(helios::Context* context, float* center_out, float* radius_out);
+PYHELIOS_API void getDomainBoundingSphereFiltered(helios::Context* context, unsigned int* uuids, unsigned int count, float* center_out, float* radius_out);
+
+//=============================================================================
+// Tube/polymesh + object color/dirty/tile mutators
+//=============================================================================
+
+// ---- Tube object mutators ----
+// node_xyz_flat is a flat float array of size count*3 (x,y,z, x,y,z, ...).
+PYHELIOS_API void setTubeNodes(helios::Context* context, unsigned int objID, float* node_xyz_flat, unsigned int count);
+PYHELIOS_API void setTubeRadii(helios::Context* context, unsigned int objID, float* node_radii, unsigned int count);
+PYHELIOS_API void scaleTubeGirth(helios::Context* context, unsigned int objID, float scale_factor);
+PYHELIOS_API void scaleTubeLength(helios::Context* context, unsigned int objID, float scale_factor);
+PYHELIOS_API void pruneTubeNodes(helios::Context* context, unsigned int objID, unsigned int node_index);
+PYHELIOS_API void appendTubeSegmentColor(helios::Context* context, unsigned int objID, float* node_position, float node_radius, float* color_rgb);
+PYHELIOS_API void appendTubeSegmentTexture(helios::Context* context, unsigned int objID, float* node_position, float node_radius, const char* texturefile, float* textureuv_ufrac);
+
+// ---- Polymesh object creation ----
+PYHELIOS_API unsigned int addPolymeshObject(helios::Context* context, unsigned int* uuids, unsigned int count);
+
+// ---- Object color / texture override (RGB single + batch, RGBA single + batch) ----
+PYHELIOS_API void setObjectColorRGB(helios::Context* context, unsigned int objID, float* color_rgb);
+PYHELIOS_API void setObjectColorRGBBatch(helios::Context* context, unsigned int* objIDs, unsigned int count, float* color_rgb);
+PYHELIOS_API void setObjectColorRGBA(helios::Context* context, unsigned int objID, float* color_rgba);
+PYHELIOS_API void setObjectColorRGBABatch(helios::Context* context, unsigned int* objIDs, unsigned int count, float* color_rgba);
+
+PYHELIOS_API void overrideObjectTextureColor(helios::Context* context, unsigned int objID);
+PYHELIOS_API void overrideObjectTextureColorBatch(helios::Context* context, unsigned int* objIDs, unsigned int count);
+PYHELIOS_API void useObjectTextureColor(helios::Context* context, unsigned int objID);
+PYHELIOS_API void useObjectTextureColorBatch(helios::Context* context, unsigned int* objIDs, unsigned int count);
+
+// ---- Mark primitive dirty/clean ----
+PYHELIOS_API void markPrimitiveDirty(helios::Context* context, unsigned int uuid);
+PYHELIOS_API void markPrimitiveDirtyBatch(helios::Context* context, unsigned int* uuids, unsigned int count);
+PYHELIOS_API void markPrimitiveClean(helios::Context* context, unsigned int uuid);
+PYHELIOS_API void markPrimitiveCleanBatch(helios::Context* context, unsigned int* uuids, unsigned int count);
+
+// ---- Tile subdivision (int2 vs area-ratio overloads, distinct names) ----
+PYHELIOS_API void setTileObjectSubdivisionCount(helios::Context* context, unsigned int* objIDs, unsigned int count, int subdiv_x, int subdiv_y);
+PYHELIOS_API void setTileObjectSubdivisionByAreaRatio(helios::Context* context, unsigned int* objIDs, unsigned int count, float area_ratio);
+
+//=============================================================================
+// Cleanup, XML write, RNG, Location
+//=============================================================================
+
+// ---- Cleanup helpers (return new list of survivors via thread_local) ----
+PYHELIOS_API unsigned int* cleanDeletedUUIDs(helios::Context* context, unsigned int* uuids_in, unsigned int count_in, unsigned int* count_out);
+PYHELIOS_API unsigned int* cleanDeletedObjectIDs(helios::Context* context, unsigned int* objIDs_in, unsigned int count_in, unsigned int* count_out);
+
+// ---- XML write ----
+PYHELIOS_API void writeXML(helios::Context* context, const char* filename, bool quiet);
+PYHELIOS_API void writeXMLFiltered(helios::Context* context, const char* filename, unsigned int* uuids, unsigned int count, bool quiet);
+PYHELIOS_API void writeXML_byobject(helios::Context* context, const char* filename, unsigned int* objIDs, unsigned int count, bool quiet);
+
+// ---- RNG ----
+PYHELIOS_API float randu_basic(helios::Context* context);
+PYHELIOS_API float randu_range(helios::Context* context, float min, float max);
+PYHELIOS_API int randu_int_range(helios::Context* context, int min, int max);
+PYHELIOS_API float randn_basic(helios::Context* context);
+PYHELIOS_API float randn_params(helios::Context* context, float mean, float stddev);
+
+// ---- Location ----
+PYHELIOS_API void setLocation(helios::Context* context, float latitude_deg, float longitude_deg, float utc_offset);
+PYHELIOS_API void getLocation(helios::Context* context, float* latitude_deg_out, float* longitude_deg_out, float* utc_offset_out);
+
+//=============================================================================
+// Colormap helpers + texture transparency
+//=============================================================================
+
+// generateColormap(name, Ncolors) - returns flat RGB triples (3*Ncolors floats).
+PYHELIOS_API float* generateColormapNamed(helios::Context* context, const char* colormap_name, unsigned int n_colors, unsigned int* count_out);
+
+// generateTexturesFromColormap returns a list of file paths via count+index pattern.
+PYHELIOS_API unsigned int generateTexturesFromColormapCount(helios::Context* context, const char* texture_file, float* colormap_rgb_flat, unsigned int n_colors);
+PYHELIOS_API int generateTexturesFromColormapPath(helios::Context* context, unsigned int index, char* buffer, int buffer_size);
+
+// getPrimitiveTextureTransparencyData fills a flat unsigned-char buffer of width*height bytes.
+// Returns 1 if transparency data is available, 0 if the primitive has no transparency channel.
+PYHELIOS_API int getPrimitiveTextureTransparencyDataInfo(helios::Context* context, unsigned int uuid, unsigned int* width_out, unsigned int* height_out);
+PYHELIOS_API unsigned char* getPrimitiveTextureTransparencyDataBuffer(helios::Context* context, unsigned int uuid);
 
 #ifdef __cplusplus
 }

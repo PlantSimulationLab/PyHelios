@@ -92,7 +92,72 @@ model.
  <tr><td>drymass</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Dry matter mass</td><td>0.09</td></tr>
  <tr><td>protein</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Protein mass</td><td>0</td></tr>
  <tr><td>carbonconstituents</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Cellulose and other carbon compounds</td><td>0</td></tr>
+ <tr><td>V2Z</td><td>unitless, [0,1]</td><td>Violaxanthin↔zeaxanthin de-epoxidation state. Used by the radiation plugin's solar-induced fluorescence (SIF) pipeline; ignored by PROSPECT.</td><td>0</td></tr>
+ <tr><td>fqe</td><td>unitless</td><td>Intrinsic fluorescence quantum-efficiency scalar applied on top of the per-leaf Phi_F at SIF emission time. Ignored by PROSPECT.</td><td>1</td></tr>
 </table>
+
+> **SIF parameters (helios-core v1.3.72+):** `V2Z` and `fqe` are inert for the pure
+> reflectance/transmittance calculation. They are written to `fluspect_biochem_<label>`
+> global data on every `run()` so the radiation plugin's SIF camera can look them up
+> per primitive when building Fluspect-B emission kernels.
+
+## Integration with the Radiation SIF Pipeline {#LOSIFIntegration}
+
+The radiation plugin includes a Fluspect-B / van der Tol pipeline for simulating solar-induced chlorophyll fluorescence (SIF) — see [SIF camera](plugin_radiation.md#sif-camera) in the radiation docs. LeafOptics is the canonical way to author the per-leaf biochemistry that pipeline needs.
+
+### What LeafOptics Writes for SIF {#LOSIFData}
+
+Every `run(uuids, props, label)` call emits one extra global-data entry and one extra primitive-data label, in addition to the reflectance and transmittance outputs:
+
+| Output | Type | Description |
+|---|---|---|
+| Global data `fluspect_biochem_<label>` | `std::vector<float>` (11 elements) | Fluspect-B biochemistry vector in fixed field order: `[Cab, Cca, Cw, Cdm, Cs, Cant, Cp, Cbc, N, V2Z, fqe]`. |
+| Primitive data `fluspect_spectrum` | `string` | Stamped on every UUID — value is `"fluspect_biochem_<label>"`. The radiation plugin reads this per primitive to identify fluorescing leaves; primitives without it are silently treated as non-fluorescing (stems, soil, etc.). |
+
+The biochemistry vector is keyed by label, so leaves sharing a spectrum label share a single Fluspect-B kernel in the radiation plugin's per-label kernel cache. This is automatic — no extra API to enable.
+
+### Field Mapping (LeafOpticsProperties → Fluspect-B) {#LOSIFFields}
+
+| `LeafOpticsProperties` Member | Fluspect-B Field | Notes |
+|---|---|---|
+| `chlorophyllcontent` | C<sub>ab</sub> | Drives the dominant red-edge absorption that emits at 685 nm. |
+| `carotenoidcontent` | C<sub>ca</sub> | Combined with V2Z controls absorption in the 400–550 nm excitation range. |
+| `watermass` | C<sub>w</sub> | Equivalent water thickness (cm). |
+| `drymass` | C<sub>dm</sub> | PROSPECT-D dry matter (g/cm²). Set to 0 in PROSPECT-PRO mode. |
+| `brownpigments` | C<sub>s</sub> | Senescence/brown-pigment content. |
+| `anthocyancontent` | C<sub>ant</sub> | |
+| `protein` | C<sub>p</sub> | PROSPECT-PRO only. |
+| `carbonconstituents` | C<sub>bc</sub> | PROSPECT-PRO only. |
+| `numberlayers` | N | Mesophyll layer parameter. |
+| `V2Z` | V2Z | SIF-only field; ignored by PROSPECT. |
+| `fqe` | f<sub>qe</sub> | SIF-only field; ignored by PROSPECT. |
+
+### Minimal SIF Wiring Example {#LOSIFExample}
+
+```python
+from pyhelios import Context, LeafOptics
+from pyhelios.LeafOptics import LeafOpticsProperties
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    leaf_uuids = [context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))]
+    with LeafOptics(context) as leafoptics:
+        props = LeafOpticsProperties()
+        props.chlorophyllcontent = 40.0   # Cab, ug/cm^2
+        props.carotenoidcontent  = 10.0   # Cca, ug/cm^2
+        props.numberlayers       = 1.5
+        props.watermass          = 0.009  # cm
+        props.drymass            = 0.012  # g/cm^2
+        props.V2Z                = 0.0    # dark-adapted; SIF-only
+        props.fqe                = 1.0    # no calibration scalar; SIF-only
+        leafoptics.run(leaf_uuids, props, "myleaf")
+
+# Now the radiation plugin's SIF pipeline can find every leaf in leaf_uuids via the
+# "fluspect_spectrum" primitive data and look up its biochemistry from the
+# "fluspect_biochem_myleaf" global data — no further wiring required.
+```
+
+> **Note:** the reverse path `getPropertiesFromSpectrum()` does not currently populate `V2Z` or `fqe` as primitive data — those fields are SIF-only and are read by the radiation plugin directly from the `fluspect_biochem_*` global-data vector.
 
 ## Using the LeafOptics Plug-in {#LOUse}
 
@@ -147,7 +212,7 @@ with Context() as context:
         leafoptics.run(leafIDs, props, "example")
 ```
 
-The method returns a \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsProperties" structure with all nine parameters populated (numberlayers, chlorophyllcontent, carotenoidcontent, anthocyancontent, brownpigments, watermass, drymass, protein, carbonconstituents).
+The method returns a \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsProperties" structure with the nine PROSPECT biochemistry parameters populated (numberlayers, chlorophyllcontent, carotenoidcontent, anthocyancontent, brownpigments, watermass, drymass, protein, carbonconstituents). The optional Fluspect-B SIF fields (`V2Z`, `fqe`) keep their dataclass defaults (0.0 and 1.0); set them on the returned object if you intend to use the radiation plugin's SIF camera.
 
 ### Available Species {#LOLibrarySpecies}
 

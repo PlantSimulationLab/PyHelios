@@ -1720,6 +1720,91 @@ class TestNewMethodsAPIStructure:
         assert callable(RadiationModel.interpolateSpectrumFromPrimitiveData)
 
 
+# ============================================================================
+# SIF Camera Bindings (helios-core v1.3.72+)
+# ============================================================================
+
+
+@pytest.mark.cross_platform
+class TestSIFCameraBindingsExposed:
+    """Sanity checks that the SIF camera surface is wired up regardless of native availability."""
+
+    def test_sif_camera_properties_dataclass(self):
+        from pyhelios import SIFCameraProperties, CameraProperties
+        if SIFCameraProperties is None:
+            pytest.skip("RadiationModel exports unavailable in this build")
+
+        props = SIFCameraProperties()
+        assert isinstance(props, CameraProperties)
+        # Defaults: 10 nm bins, no excitation scattering.
+        assert props.excitation_bin_width_nm == 10.0
+        assert props.excitation_scattering_depth == 0
+
+        custom = SIFCameraProperties(excitation_bin_width_nm=20.0, excitation_scattering_depth=2)
+        assert custom.excitation_bin_width_nm == 20.0
+        assert custom.excitation_scattering_depth == 2
+
+    def test_sif_camera_properties_validates_inputs(self):
+        from pyhelios import SIFCameraProperties
+        if SIFCameraProperties is None:
+            pytest.skip("RadiationModel exports unavailable in this build")
+        with pytest.raises(ValueError):
+            SIFCameraProperties(excitation_bin_width_nm=0.0)
+        with pytest.raises(ValueError):
+            SIFCameraProperties(excitation_scattering_depth=-1)
+
+    def test_sif_camera_methods_present_on_radiation_model(self):
+        if RadiationModel is None:
+            pytest.skip("RadiationModel unavailable in this build")
+        for name in ("addSIFCamera", "isSIFCamera"):
+            assert hasattr(RadiationModel, name)
+
+
+@pytest.mark.native_only
+@pytest.mark.requires_gpu
+class TestSIFCameraNative:
+    """End-to-end SIF camera registration (requires the radiation plugin and GPU backend)."""
+
+    def test_register_sif_camera_with_lookat(self):
+        from pyhelios import SIFCameraProperties
+        from pyhelios.wrappers.DataTypes import vec3
+
+        with Context() as context:
+            with RadiationModel(context) as radiation:
+                radiation.addRadiationBand("F687", 685.0, 690.0)
+
+                props = SIFCameraProperties(camera_resolution=(64, 64),
+                                             excitation_bin_width_nm=20.0,
+                                             excitation_scattering_depth=0)
+                radiation.addSIFCamera(
+                    "sif_cam",
+                    emission_band_labels=["F687"],
+                    position=vec3(0, 0, 5),
+                    lookat_or_direction=vec3(0, 0, 0),
+                    camera_properties=props,
+                    antialiasing_samples=4,
+                )
+
+                assert radiation.isSIFCamera("sif_cam") is True
+
+    def test_is_sif_camera_returns_false_for_regular_camera(self):
+        from pyhelios import CameraProperties
+        from pyhelios.wrappers.DataTypes import vec3
+
+        with Context() as context:
+            with RadiationModel(context) as radiation:
+                radiation.addRadiationBand("PAR", 400.0, 700.0)
+                radiation.addRadiationCamera(
+                    "regular",
+                    band_labels=["PAR"],
+                    position=vec3(0, 0, 5),
+                    lookat_or_direction=vec3(0, 0, 0),
+                    camera_properties=CameraProperties(camera_resolution=(64, 64)),
+                    antialiasing_samples=4,
+                )
+                assert radiation.isSIFCamera("regular") is False
+
+
 if __name__ == "__main__":
     # Run tests with pytest
     pytest.main([__file__, "-v"])

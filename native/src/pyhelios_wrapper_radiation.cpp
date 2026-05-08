@@ -18,7 +18,46 @@ enum class ColorCorrectionAlgorithm {
     MATRIX_3X3_FORCE = 2      //!< Force 3x3 matrix calculation even if potentially unstable
 };
 
+// =============================================================================
+// SIF helpers (must have C++ linkage — kept outside the extern "C" block below).
+// =============================================================================
+
+namespace pyhelios_radiation_internal {
+
+// Populate a SIFCameraProperties struct from a 10-float camera-properties array
+// (same layout as addRadiationCameraVec3) plus the two SIF-specific fields.
+inline SIFCameraProperties buildSIFCameraProperties(const float* camera_properties,
+                                                    float excitation_bin_width_nm,
+                                                    unsigned int excitation_scattering_depth) {
+    SIFCameraProperties props;
+    props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
+    props.focal_plane_distance = camera_properties[2];
+    props.lens_diameter = camera_properties[3];
+    props.HFOV = camera_properties[4];
+    props.FOV_aspect_ratio = camera_properties[5];
+
+    props.lens_focal_length = camera_properties[6];
+    props.sensor_width_mm = camera_properties[7];
+    props.shutter_speed = camera_properties[8];
+    props.camera_zoom = camera_properties[9];
+
+    props.model = "generic";
+    props.lens_make = "";
+    props.lens_model = "";
+    props.lens_specification = "";
+    props.exposure = "auto";
+    props.white_balance = "auto";
+
+    props.excitation_bin_width_nm = excitation_bin_width_nm;
+    props.excitation_scattering_depth = excitation_scattering_depth;
+    return props;
+}
+
+} // namespace pyhelios_radiation_internal
+
 extern "C" {
+
+using pyhelios_radiation_internal::buildSIFCameraProperties;
     // RadiationModel C interface functions
     
     PYHELIOS_API RadiationModel* createRadiationModel(helios::Context* context) {
@@ -2163,6 +2202,129 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addRadiationCamera): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addRadiationCamera): Unknown error adding radiation camera.");
+        }
+    }
+
+    //=========================================================================
+    // SIF (Solar-Induced Fluorescence) Camera
+    //=========================================================================
+
+    PYHELIOS_API void addSIFCameraVec3(RadiationModel* radiation_model, const char* camera_label,
+                                       const char** band_labels, size_t band_count,
+                                       float position_x, float position_y, float position_z,
+                                       float lookat_x, float lookat_y, float lookat_z,
+                                       const float* camera_properties,
+                                       float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
+                                       unsigned int antialiasing_samples) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !band_labels || !camera_properties) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+            if (band_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "At least one emission band label is required");
+                return;
+            }
+            if (excitation_bin_width_nm <= 0.f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "excitation_bin_width_nm must be > 0");
+                return;
+            }
+
+            std::vector<std::string> band_vector;
+            for (size_t i = 0; i < band_count; i++) {
+                if (band_labels[i]) {
+                    band_vector.push_back(std::string(band_labels[i]));
+                }
+            }
+
+            helios::vec3 position(position_x, position_y, position_z);
+            helios::vec3 lookat(lookat_x, lookat_y, lookat_z);
+
+            SIFCameraProperties props = buildSIFCameraProperties(camera_properties,
+                                                                 excitation_bin_width_nm,
+                                                                 excitation_scattering_depth);
+
+            radiation_model->addSIFCamera(std::string(camera_label), band_vector, position, lookat, props, antialiasing_samples);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addSIFCamera): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addSIFCamera): Unknown error adding SIF camera.");
+        }
+    }
+
+    PYHELIOS_API void addSIFCameraSpherical(RadiationModel* radiation_model, const char* camera_label,
+                                            const char** band_labels, size_t band_count,
+                                            float position_x, float position_y, float position_z,
+                                            float radius, float elevation, float azimuth,
+                                            const float* camera_properties,
+                                            float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
+                                            unsigned int antialiasing_samples) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !band_labels || !camera_properties) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+            if (band_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "At least one emission band label is required");
+                return;
+            }
+            if (excitation_bin_width_nm <= 0.f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "excitation_bin_width_nm must be > 0");
+                return;
+            }
+
+            std::vector<std::string> band_vector;
+            for (size_t i = 0; i < band_count; i++) {
+                if (band_labels[i]) {
+                    band_vector.push_back(std::string(band_labels[i]));
+                }
+            }
+
+            helios::vec3 position(position_x, position_y, position_z);
+            helios::SphericalCoord viewing_direction = helios::make_SphericalCoord(radius, elevation, azimuth);
+
+            SIFCameraProperties props = buildSIFCameraProperties(camera_properties,
+                                                                 excitation_bin_width_nm,
+                                                                 excitation_scattering_depth);
+
+            radiation_model->addSIFCamera(std::string(camera_label), band_vector, position, viewing_direction, props, antialiasing_samples);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addSIFCamera): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::addSIFCamera): Unknown error adding SIF camera.");
+        }
+    }
+
+    PYHELIOS_API int isSIFCamera(RadiationModel* radiation_model, const char* camera_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label is null");
+                return 0;
+            }
+            return radiation_model->isSIFCamera(std::string(camera_label)) ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::isSIFCamera): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::isSIFCamera): Unknown error.");
+            return 0;
         }
     }
 
