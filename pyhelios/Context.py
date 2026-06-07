@@ -3363,6 +3363,51 @@ class Context:
             raise ValueError("Label must be a non-empty string")
         context_wrapper.deleteTimeseriesVariable(self.context, label)
 
+    def deleteTimeseriesDataPoint(self, date: 'Date', time: 'Time', label: Optional[str] = None):
+        """Delete a single timeseries data point at the given date and time.
+
+        If ``label`` is provided, only that variable's matching point is removed. If ``label``
+        is omitted (None), the matching point is removed from every timeseries variable.
+
+        Args:
+            date: Date of the data point to delete.
+            time: Time of the data point to delete.
+            label: Optional name of the timeseries variable. None applies to all variables.
+
+        Raises:
+            ValueError: If date/time are wrong types, or label is an empty string.
+            NotImplementedError: If running against helios-core older than v1.3.73.
+
+        Note:
+            If no matching data point exists, the underlying Helios API issues a non-fatal
+            warning to stderr and the call is otherwise a no-op. Matching uses the same
+            (date, time) encoding as :meth:`addTimeseriesData`.
+
+        Example:
+            >>> from pyhelios.types import Date, Time
+            >>> context.deleteTimeseriesDataPoint(Date(2024, 6, 15), Time(12, 0, 0), "temperature")
+        """
+        self._check_context_available()
+        if not isinstance(date, Date):
+            raise ValueError(f"date must be a Date instance, got {type(date).__name__}")
+        if not isinstance(time, Time):
+            raise ValueError(f"time must be a Time instance, got {type(time).__name__}")
+        if label is not None and (not isinstance(label, str) or not label):
+            raise ValueError("label must be a non-empty string or None")
+
+        if label is None:
+            context_wrapper.deleteTimeseriesDataPointAll(
+                self.context,
+                date.day, date.month, date.year,
+                time.hour, time.minute, time.second
+            )
+        else:
+            context_wrapper.deleteTimeseriesDataPoint(
+                self.context, label,
+                date.day, date.month, date.year,
+                time.hour, time.minute, time.second
+            )
+
     def loadTabularTimeseriesData(self, data_file: str, column_labels: List[str],
                                   delimiter: str = ",", date_string_format: str = "YYYYMMDD",
                                   headerlines: int = 0):
@@ -4207,6 +4252,16 @@ class Context:
         else:
             context_wrapper.clearObjectDataWrapper(self.context, objids_or_objid, label)
 
+    def clearAllObjectData(self, label: str) -> None:
+        """Remove a named data field from every compound object in the Context.
+
+        Clears the data with the given label from all objects (including hidden ones) and
+        releases the registered data type for the label, so it may subsequently be
+        re-registered with a different type. Requires helios-core v1.3.73 or newer.
+        """
+        self._check_context_available()
+        context_wrapper.clearAllObjectDataByLabelWrapper(self.context, label)
+
     def listObjectData(self, objID: int) -> List[str]:
         """List all data labels on a specific object."""
         return context_wrapper.listObjectDataWrapper(self.context, objID)
@@ -4779,6 +4834,16 @@ class Context:
             context_wrapper.clearPrimitiveDataByLabelBatchWrapper(self.context, list(uuids), label)
         else:
             context_wrapper.clearPrimitiveDataByLabelWrapper(self.context, uuids, label)
+
+    def clearAllPrimitiveData(self, label: str) -> None:
+        """Remove a named data field from every primitive in the Context.
+
+        Clears the data with the given label from all primitives (including hidden ones)
+        and releases the registered data type for the label, so it may subsequently be
+        re-registered with a different type. Requires helios-core v1.3.73 or newer.
+        """
+        self._check_context_available()
+        context_wrapper.clearAllPrimitiveDataByLabelWrapper(self.context, label)
 
     def listPrimitiveData(self, uuid: int) -> List[str]:
         """List all data labels attached to a primitive."""
@@ -5850,17 +5915,22 @@ class Context:
 
     # ---- Location ----
 
-    def setLocation(self, location_or_lat, longitude=None, utc_offset=None) -> None:
+    def setLocation(self, location_or_lat, longitude=None, utc_offset=None, altitude=0.0) -> None:
         """Set the geographic location used by solar/radiation calculations.
 
         Two call forms:
             ``setLocation(loc: Location)``
-            ``setLocation(latitude_deg: float, longitude_deg: float, utc_offset: float)``
+            ``setLocation(latitude_deg: float, longitude_deg: float, utc_offset: float, altitude=0.0)``
+
+        ``altitude`` is the height of the local Cartesian origin in meters above
+        sea level. It is only used in the (lat, lon, utc) float form; when passing
+        a ``Location`` object, the location's own altitude is used.
         """
         self._check_context_available()
         if isinstance(location_or_lat, Location):
-            if longitude is not None or utc_offset is not None:
-                raise ValueError("When passing a Location, do not also pass longitude/utc_offset.")
+            if longitude is not None or utc_offset is not None or altitude != 0.0:
+                raise ValueError("When passing a Location, do not also pass longitude/utc_offset/altitude; "
+                                 "set them on the Location object instead.")
             loc = location_or_lat
         else:
             if longitude is None or utc_offset is None:
@@ -5868,14 +5938,14 @@ class Context:
                     "setLocation requires either a Location object or "
                     "(latitude_deg, longitude_deg, utc_offset) as 3 floats."
                 )
-            loc = Location(float(location_or_lat), float(longitude), float(utc_offset))
-        context_wrapper.setLocationWrapper(self.context, loc.latitude, loc.longitude, loc.utc_offset)
+            loc = Location(float(location_or_lat), float(longitude), float(utc_offset), float(altitude))
+        context_wrapper.setLocationWrapper(self.context, loc.latitude, loc.longitude, loc.utc_offset, loc.altitude)
 
     def getLocation(self) -> Location:
         """Return the Context's currently-configured geographic location."""
         self._check_context_available()
-        lat, lon, utc = context_wrapper.getLocationWrapper(self.context)
-        return Location(lat, lon, utc)
+        lat, lon, utc, alt = context_wrapper.getLocationWrapper(self.context)
+        return Location(lat, lon, utc, alt)
 
     # =========================================================================
     # Colormap helpers + texture transparency

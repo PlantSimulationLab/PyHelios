@@ -97,7 +97,9 @@ class LiDARCloud:
     def addScan(self, origin: Union[vec3, List[float], Tuple[float, float, float]],
                 Ntheta: int, theta_range: Tuple[float, float],
                 Nphi: int, phi_range: Tuple[float, float],
-                exit_diameter: float, beam_divergence: float) -> int:
+                exit_diameter: float, beam_divergence: float,
+                column_format: Optional[List[str]] = None,
+                range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0) -> int:
         """
         Add a LiDAR scan to the point cloud.
 
@@ -109,6 +111,21 @@ class LiDARCloud:
             phi_range: Azimuthal angle range (min, max) in radians
             exit_diameter: Laser beam exit diameter (meters)
             beam_divergence: Beam divergence angle (radians)
+            column_format: Optional list of column-format labels. Non-standard labels
+                (anything other than geometry/standard tokens like x/y/z/r/g/b/raydir)
+                cause syntheticScan to sample that named primitive data from the struck
+                primitive onto each hit's data map, retrievable via getHitData(). Defaults
+                to None (empty format).
+
+                One label is special: "reflectivity_lidar" modulates each hit's "intensity"
+                (intensity *= reflectivity) rather than being stored as its own hit-data
+                key, so getHitData(i, "reflectivity_lidar") will NOT return it.
+            range_noise_stddev: Standard deviation of Gaussian range (along-beam) measurement
+                noise in meters. Only affects synthetic-scan generation. Defaults to 0.0
+                (noise disabled).
+            angle_noise_stddev: Standard deviation of Gaussian angular (beam-pointing) jitter
+                in radians. Only affects synthetic-scan generation. Defaults to 0.0 (jitter
+                disabled).
 
         Returns:
             Scan ID for referencing this scan
@@ -118,7 +135,8 @@ class LiDARCloud:
             ...     origin=vec3(0, 0, 1),
             ...     Ntheta=100, theta_range=(0, 1.57),
             ...     Nphi=100, phi_range=(-3.14, 3.14),
-            ...     exit_diameter=0.01, beam_divergence=0.001
+            ...     exit_diameter=0.01, beam_divergence=0.001,
+            ...     column_format=["my_scalar"]
             ... )
         """
         # Convert origin to vec3 if needed
@@ -140,9 +158,21 @@ class LiDARCloud:
         if not isinstance(phi_range, (list, tuple)) or len(phi_range) != 2:
             raise ValueError("phi_range must be a tuple (min, max)")
 
+        if column_format is not None:
+            if not isinstance(column_format, (list, tuple)) or \
+                    not all(isinstance(c, str) for c in column_format):
+                raise ValueError("column_format must be a list of strings")
+            column_format = list(column_format)
+
+        if range_noise_stddev < 0:
+            raise ValueError("range_noise_stddev must be non-negative")
+        if angle_noise_stddev < 0:
+            raise ValueError("angle_noise_stddev must be non-negative")
+
         return lidar_wrapper.addLiDARScan(
             self._cloud_ptr, origin_list, Ntheta, theta_range,
-            Nphi, phi_range, exit_diameter, beam_divergence
+            Nphi, phi_range, exit_diameter, beam_divergence, column_format,
+            range_noise_stddev, angle_noise_stddev
         )
 
     def getScanCount(self) -> int:
@@ -167,6 +197,24 @@ class LiDARCloud:
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
         return lidar_wrapper.getLiDARScanSizePhi(self._cloud_ptr, scanID)
+
+    def getScanRangeNoiseStdDev(self, scanID: int) -> float:
+        """Get the range (along-beam) measurement noise standard deviation for a scan (meters).
+
+        Returns the value supplied to addScan() as ``range_noise_stddev`` (0.0 if disabled).
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanRangeNoiseStdDev(self._cloud_ptr, scanID)
+
+    def getScanAngleNoiseStdDev(self, scanID: int) -> float:
+        """Get the angular (beam-pointing) jitter standard deviation for a scan (radians).
+
+        Returns the value supplied to addScan() as ``angle_noise_stddev`` (0.0 if disabled).
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanAngleNoiseStdDev(self._cloud_ptr, scanID)
 
     def addHitPoint(self, scanID: int,
                     xyz: Union[vec3, List[float], Tuple[float, float, float]],
@@ -218,6 +266,44 @@ class LiDARCloud:
         else:
             lidar_wrapper.addLiDARHitPoint(self._cloud_ptr, scanID, xyz_list, direction_list)
 
+    def addHitPoints(self, scanID: int, xyz_array, direction_array, color_array=None):
+        """
+        Add many hit points to the point cloud in a single bulk call.
+
+        This skips the per-point Python loop by passing contiguous buffers
+        straight to the native library in one FFI call.
+
+        Args:
+            scanID: Scan ID these hits belong to
+            xyz_array: Hit point coordinates, shape (N, 3) [x, y, z]
+            direction_array: Ray directions, shape (N, 3) [radius, elevation, azimuth]
+                             (azimuth is currently ignored, matching addHitPoint)
+            color_array: Optional RGB colors, shape (N, 3) [r, g, b]
+        """
+        import numpy as np
+
+        xyz_array = np.ascontiguousarray(xyz_array, dtype=np.float32)
+        direction_array = np.ascontiguousarray(direction_array, dtype=np.float32)
+
+        if xyz_array.ndim != 2 or xyz_array.shape[1] != 3:
+            raise ValueError("xyz_array must have shape (N, 3)")
+        if direction_array.ndim != 2 or direction_array.shape[1] != 3:
+            raise ValueError("direction_array must have shape (N, 3)")
+
+        count = xyz_array.shape[0]
+        if direction_array.shape[0] != count:
+            raise ValueError("xyz_array and direction_array must have the same number of rows")
+
+        if color_array is not None:
+            color_array = np.ascontiguousarray(color_array, dtype=np.float32)
+            if color_array.ndim != 2 or color_array.shape[1] != 3:
+                raise ValueError("color_array must have shape (N, 3)")
+            if color_array.shape[0] != count:
+                raise ValueError("color_array must have the same number of rows as xyz_array")
+
+        lidar_wrapper.addLiDARHitPoints(self._cloud_ptr, scanID,
+                                        xyz_array, direction_array, count, color_array)
+
     def getHitCount(self) -> int:
         """Get total number of hit points in cloud"""
         return lidar_wrapper.getLiDARHitCount(self._cloud_ptr)
@@ -242,6 +328,62 @@ class LiDARCloud:
             raise ValueError("Index must be non-negative")
         color_list = lidar_wrapper.getLiDARHitColor(self._cloud_ptr, index)
         return RGBcolor(*color_list)
+
+    def getHitScanID(self, index: int) -> int:
+        """Get the scan ID a hit point belongs to"""
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARHitScanID(self._cloud_ptr, index)
+
+    def doesHitDataExist(self, index: int, label: str) -> bool:
+        """Check whether a named scalar data value exists for a hit point.
+
+        Per-hit data computed by syntheticScan includes 'intensity', 'distance',
+        'timestamp', 'target_index', 'target_count', 'deviation', 'nRaysHit', plus any
+        primitive-data labels listed in the scan's column_format.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.doesLiDARHitDataExist(self._cloud_ptr, index, label)
+
+    def getHitData(self, index: int, label: str) -> float:
+        """Get a named scalar data value for a hit point.
+
+        Raises HeliosError if the label does not exist for this hit; guard with
+        doesHitDataExist() when unsure.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARHitData(self._cloud_ptr, index, label)
+
+    def getHitDataAll(self, label: str) -> List[float]:
+        """Bulk-export a named scalar data value for all hits in a single FFI call.
+
+        Returns a list of length getHitCount(); entries are NaN where the label is
+        absent for that hit. Much faster than looping getHitData() for large clouds.
+
+        Note: values are returned at float32 precision (vs. getHitData(), which returns
+        full float64). Use getHitData() per-hit if full precision is required.
+        """
+        n = self.getHitCount()
+        if n == 0:
+            return []
+        return lidar_wrapper.getLiDARHitData_all(self._cloud_ptr, label, n)
+
+    def getHitsXYZRGB(self) -> Tuple[List[vec3], List[RGBcolor]]:
+        """Bulk-export coordinates and colors for all hits in a single FFI call.
+
+        Returns (positions, colors) where positions is a list of vec3 and colors a list
+        of RGBcolor, each of length getHitCount(). Much faster than looping
+        getHitXYZ()/getHitColor() for large clouds.
+        """
+        n = self.getHitCount()
+        if n == 0:
+            return [], []
+        xyz_flat, rgb_flat = lidar_wrapper.getLiDARHitsXYZRGB_all(self._cloud_ptr, n)
+        positions = [vec3(xyz_flat[3 * i], xyz_flat[3 * i + 1], xyz_flat[3 * i + 2]) for i in range(n)]
+        colors = [RGBcolor(rgb_flat[3 * i], rgb_flat[3 * i + 1], rgb_flat[3 * i + 2]) for i in range(n)]
+        return positions, colors
 
     def deleteHitPoint(self, index: int):
         """Delete a hit point from the cloud"""
@@ -323,6 +465,19 @@ class LiDARCloud:
         if not filename:
             raise ValueError("Filename cannot be empty")
         lidar_wrapper.exportLiDARPointCloud(self._cloud_ptr, filename)
+
+    def exportScans(self, filename: str):
+        """Export all scans to an XML metadata file plus one ASCII data file per scan.
+
+        Args:
+            filename: Path of the XML metadata file to write (e.g. "output/scans.xml").
+                One ASCII data file is auto-generated per scan, named by stripping the XML
+                extension and appending "_<scanID>.xyz" (e.g. "output/scans_0.xyz"). The
+                resulting XML can be re-loaded with loadXML() from the same working directory.
+        """
+        if not filename:
+            raise ValueError("Filename cannot be empty")
+        lidar_wrapper.exportLiDARScans(self._cloud_ptr, filename)
 
     def loadXML(self, filename: str):
         """Load scan metadata from XML file"""

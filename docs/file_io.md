@@ -140,7 +140,7 @@ The Context can automatically import Stanford .ply files [en.wikipedia.org/wiki/
 
 ```python
 from pyhelios import Context
-from pyhelios.types import vec3, SphericalCoord, RGBcolorcolor, RGBcolor
+from pyhelios.types import vec3, SphericalCoord, RGBcolor, RGBcolor
 import math
 
 context = Context()
@@ -197,7 +197,7 @@ from pyhelios.types import vec3, RGBcolor
 
 context = Context()
 
-context.loadOBJ("relative/path/to/someobjfile.obj", vec3(0, 0, 0), 0, SphericalCoord(1, 0, 0), RGBcolorcolor(1, 0, 0))
+context.loadOBJ("relative/path/to/someobjfile.obj", vec3(0, 0, 0), 0, SphericalCoord(1, 0, 0), RGBcolor(1, 0, 0))
 ```
 
 ### Writing PLY (Stanford Polygon) Files {#PLYwrite}

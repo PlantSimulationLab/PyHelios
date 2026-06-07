@@ -4969,6 +4969,50 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void deleteTimeseriesDataPoint(helios::Context* context, const char* label,
+                                                int day, int month, int year, int hour, int minute, int second) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null");
+                return;
+            }
+            helios::Date date(day, month, year);
+            helios::Time time(hour, minute, second);
+            context->deleteTimeseriesDataPoint(label, date, time);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (deleteTimeseriesDataPoint): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (deleteTimeseriesDataPoint): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void deleteTimeseriesDataPointAll(helios::Context* context,
+                                                   int day, int month, int year, int hour, int minute, int second) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            helios::Date date(day, month, year);
+            helios::Time time(hour, minute, second);
+            context->deleteTimeseriesDataPoint(date, time);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (deleteTimeseriesDataPointAll): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (deleteTimeseriesDataPointAll): Unknown error");
+        }
+    }
+
     //=============================================================================
     // File Export Functions
     //=============================================================================
@@ -7361,6 +7405,19 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void clearAllObjectDataByLabel(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->clearObjectData(label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearAllObjectDataByLabel): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (clearAllObjectDataByLabel): Unknown error.");
+        }
+    }
+
     PYHELIOS_API const char** listObjectData(helios::Context* context, unsigned int objID, unsigned int* count) {
         clearError();
         try {
@@ -8792,6 +8849,16 @@ extern "C" {
         } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
         catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::clearPrimitiveDataByLabel_batch): Unknown error."); }
+    }
+
+    PYHELIOS_API void clearAllPrimitiveDataByLabel(helios::Context* context, const char* label) {
+        try {
+            clearError();
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Label is null"); return; }
+            context->clearPrimitiveData(label);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearAllPrimitiveDataByLabel): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::clearAllPrimitiveDataByLabel): Unknown error."); }
     }
 
     PYHELIOS_API const char** listPrimitiveData(helios::Context* context, unsigned int uuid, unsigned int* count) {
@@ -10813,11 +10880,11 @@ extern "C" {
 
     // ---- Location ----
 
-    PYHELIOS_API void setLocation(helios::Context* context, float latitude_deg, float longitude_deg, float utc_offset) {
+    PYHELIOS_API void setLocation(helios::Context* context, float latitude_deg, float longitude_deg, float utc_offset, float altitude_m) {
         clearError();
         try {
             if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
-            context->setLocation(helios::Location(latitude_deg, longitude_deg, utc_offset));
+            context->setLocation(helios::Location(latitude_deg, longitude_deg, utc_offset, altitude_m));
         } catch (const std::runtime_error& e) {
             setError(PYHELIOS_ERROR_RUNTIME, e.what());
         } catch (const std::exception& e) {
@@ -10827,11 +10894,11 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API void getLocation(helios::Context* context, float* latitude_deg_out, float* longitude_deg_out, float* utc_offset_out) {
+    PYHELIOS_API void getLocation(helios::Context* context, float* latitude_deg_out, float* longitude_deg_out, float* utc_offset_out, float* altitude_m_out) {
         clearError();
         try {
             if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
-            if (!latitude_deg_out || !longitude_deg_out || !utc_offset_out) {
+            if (!latitude_deg_out || !longitude_deg_out || !utc_offset_out || !altitude_m_out) {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointer is null");
                 return;
             }
@@ -10839,6 +10906,7 @@ extern "C" {
             *latitude_deg_out = loc.latitude_deg;
             *longitude_deg_out = loc.longitude_deg;
             *utc_offset_out = loc.UTC_offset;
+            *altitude_m_out = loc.altitude_m;
         } catch (const std::runtime_error& e) {
             setError(PYHELIOS_ERROR_RUNTIME, e.what());
         } catch (const std::exception& e) {

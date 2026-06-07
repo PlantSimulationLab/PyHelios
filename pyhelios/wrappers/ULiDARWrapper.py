@@ -46,7 +46,11 @@ try:
         ctypes.c_float,  # phiMin
         ctypes.c_float,  # phiMax
         ctypes.c_float,  # exitDiameter
-        ctypes.c_float   # beamDivergence
+        ctypes.c_float,  # beamDivergence
+        ctypes.c_float,  # rangeNoiseStdDev
+        ctypes.c_float,  # angleNoiseStdDev
+        ctypes.POINTER(ctypes.c_char_p),  # columnFormat
+        ctypes.c_uint    # nCols
     ]
     helios_lib.addLiDARScan.restype = ctypes.c_uint
     helios_lib.addLiDARScan.errcheck = _check_error
@@ -71,6 +75,14 @@ try:
     helios_lib.getLiDARScanSizePhi.restype = ctypes.c_uint
     helios_lib.getLiDARScanSizePhi.errcheck = _check_error
 
+    helios_lib.getLiDARScanRangeNoiseStdDev.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanRangeNoiseStdDev.restype = ctypes.c_float
+    helios_lib.getLiDARScanRangeNoiseStdDev.errcheck = _check_error
+
+    helios_lib.getLiDARScanAngleNoiseStdDev.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanAngleNoiseStdDev.restype = ctypes.c_float
+    helios_lib.getLiDARScanAngleNoiseStdDev.errcheck = _check_error
+
     # Hit point operations
     helios_lib.addLiDARHitPoint.argtypes = [
         ctypes.POINTER(ULiDARcloud),
@@ -90,6 +102,17 @@ try:
     ]
     helios_lib.addLiDARHitPointRGB.restype = None
     helios_lib.addLiDARHitPointRGB.errcheck = _check_error
+
+    helios_lib.addLiDARHitPoints.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float),  # xyzs[count*3]
+        ctypes.POINTER(ctypes.c_float),  # directions[count*3]
+        ctypes.c_uint,                   # count
+        ctypes.POINTER(ctypes.c_float)   # colors[count*3] or NULL
+    ]
+    helios_lib.addLiDARHitPoints.restype = None
+    helios_lib.addLiDARHitPoints.errcheck = _check_error
 
     helios_lib.getLiDARHitCount.argtypes = [ctypes.POINTER(ULiDARcloud)]
     helios_lib.getLiDARHitCount.restype = ctypes.c_uint
@@ -118,6 +141,44 @@ try:
     ]
     helios_lib.getLiDARHitColor.restype = None
     helios_lib.getLiDARHitColor.errcheck = _check_error
+
+    helios_lib.getLiDARHitScanID.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARHitScanID.restype = ctypes.c_int
+    helios_lib.getLiDARHitScanID.errcheck = _check_error
+
+    helios_lib.doesLiDARHitDataExist.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,
+        ctypes.c_char_p
+    ]
+    helios_lib.doesLiDARHitDataExist.restype = ctypes.c_int
+    helios_lib.doesLiDARHitDataExist.errcheck = _check_error
+
+    helios_lib.getLiDARHitData.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,
+        ctypes.c_char_p
+    ]
+    helios_lib.getLiDARHitData.restype = ctypes.c_double
+    helios_lib.getLiDARHitData.errcheck = _check_error
+
+    helios_lib.getLiDARHitData_all.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_uint
+    ]
+    helios_lib.getLiDARHitData_all.restype = None
+    helios_lib.getLiDARHitData_all.errcheck = _check_error
+
+    helios_lib.getLiDARHitsXYZRGB_all.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_uint
+    ]
+    helios_lib.getLiDARHitsXYZRGB_all.restype = None
+    helios_lib.getLiDARHitsXYZRGB_all.errcheck = _check_error
 
     helios_lib.deleteLiDARHitPoint.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.deleteLiDARHitPoint.restype = None
@@ -172,6 +233,10 @@ try:
     helios_lib.exportLiDARPointCloud.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_char_p]
     helios_lib.exportLiDARPointCloud.restype = None
     helios_lib.exportLiDARPointCloud.errcheck = _check_error
+
+    helios_lib.exportLiDARScans.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_char_p]
+    helios_lib.exportLiDARScans.restype = None
+    helios_lib.exportLiDARScans.errcheck = _check_error
 
     helios_lib.loadLiDARXML.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_char_p]
     helios_lib.loadLiDARXML.restype = None
@@ -391,7 +456,9 @@ def destroyLiDARcloud(cloud_ptr: ctypes.POINTER(ULiDARcloud)) -> None:
 def addLiDARScan(cloud_ptr: ctypes.POINTER(ULiDARcloud),
                  origin: List[float], Ntheta: int, theta_range: Tuple[float, float],
                  Nphi: int, phi_range: Tuple[float, float],
-                 exit_diameter: float, beam_divergence: float) -> int:
+                 exit_diameter: float, beam_divergence: float,
+                 column_format: Optional[List[str]] = None,
+                 range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0) -> int:
     """Add a LiDAR scan to the point cloud"""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
@@ -400,9 +467,21 @@ def addLiDARScan(cloud_ptr: ctypes.POINTER(ULiDARcloud),
         raise ValueError("Origin must be a 3-element array [x, y, z]")
 
     origin_array = (ctypes.c_float * 3)(*origin)
+
+    if column_format:
+        column_array = (ctypes.c_char_p * len(column_format))(
+            *[c.encode('utf-8') for c in column_format]
+        )
+        n_cols = len(column_format)
+    else:
+        column_array = None
+        n_cols = 0
+
     return helios_lib.addLiDARScan(
         cloud_ptr, origin_array, Ntheta, theta_range[0], theta_range[1],
-        Nphi, phi_range[0], phi_range[1], exit_diameter, beam_divergence
+        Nphi, phi_range[0], phi_range[1], exit_diameter, beam_divergence,
+        float(range_noise_stddev), float(angle_noise_stddev),
+        column_array, n_cols
     )
 
 
@@ -435,6 +514,20 @@ def getLiDARScanSizePhi(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> 
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
     return helios_lib.getLiDARScanSizePhi(cloud_ptr, scanID)
+
+
+def getLiDARScanRangeNoiseStdDev(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> float:
+    """Get the range (along-beam) measurement noise standard deviation for a scan (meters)"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARScanRangeNoiseStdDev(cloud_ptr, scanID)
+
+
+def getLiDARScanAngleNoiseStdDev(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> float:
+    """Get the angular (beam-pointing) jitter standard deviation for a scan (radians)"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARScanAngleNoiseStdDev(cloud_ptr, scanID)
 
 
 def addLiDARHitPoint(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int,
@@ -472,6 +565,24 @@ def addLiDARHitPointRGB(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int,
     helios_lib.addLiDARHitPointRGB(cloud_ptr, scanID, xyz_array, direction_array, color_array)
 
 
+def addLiDARHitPoints(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int,
+                      xyzs, directions, count: int, colors=None) -> None:
+    """Add many hit points to the cloud in a single call (bulk ingestion).
+
+    xyzs and directions must be contiguous float32 buffers (e.g. numpy arrays)
+    of shape (count, 3). colors, if given, must be a contiguous float32 buffer
+    of shape (count, 3); pass None to add without color. The buffers are passed
+    straight through to C without per-point Python marshalling.
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    xyzs_ptr = xyzs.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    directions_ptr = directions.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    colors_ptr = colors.ctypes.data_as(ctypes.POINTER(ctypes.c_float)) if colors is not None else None
+    helios_lib.addLiDARHitPoints(cloud_ptr, scanID, xyzs_ptr, directions_ptr, count, colors_ptr)
+
+
 def getLiDARHitCount(cloud_ptr: ctypes.POINTER(ULiDARcloud)) -> int:
     """Get total number of hit points"""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
@@ -507,6 +618,51 @@ def getLiDARHitColor(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List
     color = (ctypes.c_float * 3)()
     helios_lib.getLiDARHitColor(cloud_ptr, index, color)
     return list(color)
+
+
+def getLiDARHitScanID(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> int:
+    """Get the scan ID a hit point belongs to"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARHitScanID(cloud_ptr, index)
+
+
+def doesLiDARHitDataExist(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int, label: str) -> bool:
+    """Check whether a named scalar data value exists for a hit point"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return bool(helios_lib.doesLiDARHitDataExist(cloud_ptr, index, label.encode('utf-8')))
+
+
+def getLiDARHitData(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int, label: str) -> float:
+    """Get a named scalar data value for a hit point"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARHitData(cloud_ptr, index, label.encode('utf-8'))
+
+
+def getLiDARHitData_all(cloud_ptr: ctypes.POINTER(ULiDARcloud), label: str, n: int) -> List[float]:
+    """Bulk-export a named scalar data value for all hit points in one call"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    out = (ctypes.c_float * n)()
+    helios_lib.getLiDARHitData_all(cloud_ptr, label.encode('utf-8'), out, n)
+    return list(out)
+
+
+def getLiDARHitsXYZRGB_all(cloud_ptr: ctypes.POINTER(ULiDARcloud), n: int) -> Tuple[List[float], List[float]]:
+    """Bulk-export XYZ coordinates and RGB colors for all hit points in one call.
+
+    Returns a tuple (xyz_flat, rgb_flat) of flat 3*n-element lists.
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    xyz = (ctypes.c_float * (3 * n))()
+    rgb = (ctypes.c_float * (3 * n))()
+    helios_lib.getLiDARHitsXYZRGB_all(cloud_ptr, xyz, rgb, n)
+    return list(xyz), list(rgb)
 
 
 def deleteLiDARHitPoint(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> None:
@@ -588,6 +744,13 @@ def exportLiDARPointCloud(cloud_ptr: ctypes.POINTER(ULiDARcloud), filename: str)
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
     helios_lib.exportLiDARPointCloud(cloud_ptr, filename.encode('utf-8'))
+
+
+def exportLiDARScans(cloud_ptr: ctypes.POINTER(ULiDARcloud), filename: str) -> None:
+    """Export all scans to an XML metadata file plus one ASCII data file per scan"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    helios_lib.exportLiDARScans(cloud_ptr, filename.encode('utf-8'))
 
 
 def loadLiDARXML(cloud_ptr: ctypes.POINTER(ULiDARcloud), filename: str) -> None:

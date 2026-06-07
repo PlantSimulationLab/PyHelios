@@ -1,5 +1,21 @@
 # Changelog
 
+# [v0.1.21] 2026-06-07
+
+- Updated helios-core to v1.3.73
+
+## Context
+- Added `clearAllPrimitiveData(label)` and `clearAllObjectData(label)` to remove a named data field from *every* primitive/compound object in the Context (including hidden ones) and release the registered data type for that label, complementing the existing per-UUID/per-objID `clearPrimitiveData()`/`clearObjectData()`.
+- Added `deleteTimeseriesDataPoint(date, time, label=None)` to delete a single timeseries data point at a given date/time — for one variable when `label` is given, or across all variables when `label` is `None`.
+- `Location` gained an `altitude` field (meters above sea level, default 0.0); `setLocation()` accepts an optional `altitude` in its float form, `getLocation()` now returns it, and `make_Location()` accepts an optional 4th argument. Existing 3-argument usage is unchanged. Note Helios's non-standard longitude convention (+W / −E), which is auto-flipped to the standard +E convention when written into camera EXIF metadata.
+
+## Radiation
+- `CameraProperties` gained a `manufacturer` field (helios-core v1.3.73 maps it to the EXIF camera *Make* tag; empty ⇒ "Helios"). Like the other `CameraProperties` string fields, it is exposed on the Python class for forward compatibility but is not yet plumbed through to the native camera. Camera images written via `writeCameraImage()` embed EXIF/XMP metadata (camera intrinsics, orientation, and GPS derived from the Context `Location`) automatically on the native side.
+
+## LiDAR
+- `LiDARCloud.addScan()` gained optional `range_noise_stddev` (meters) and `angle_noise_stddev` (radians) arguments that drive realistic anisotropic positional error during `syntheticScan()` (along-beam range noise and across-beam beam-pointing jitter). Both default to 0.0 (disabled), preserving prior behavior. Query them with `getScanRangeNoiseStdDev(scanID)` / `getScanAngleNoiseStdDev(scanID)`.
+- Added `exportScans(filename)` to write all scans as an XML metadata file plus one ASCII data file per scan (auto-named `<base>_<scanID>.xyz`), re-loadable with `loadXML()`.
+
 # [v0.1.20] 2026-05-08
 
 - Updated helios-core to v1.3.72
@@ -25,6 +41,10 @@
 
 ## Radiation
 - Added `addSIFCamera()` (vec3 lookat and SphericalCoord overloads) plus the new `SIFCameraProperties` (extends `CameraProperties` with `excitation_bin_width_nm` and `excitation_scattering_depth`) and the `isSIFCamera()` query. SIF cameras source per-band emission from the Fluspect-B kernel rather than Stefan-Boltzmann; Helios auto-creates internal excitation bands covering 400–750 nm at the requested bin width.
+
+## LiDAR
+- Exposed per-hit scalar data and metadata that `syntheticScan()` already computes: `LiDARCloud.getHitData(index, label)`, `doesHitDataExist(index, label)`, and `getHitScanID(index)`, reaching `intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `nRaysHit`, and any column-format fields. Added bulk single-call exports `getHitDataAll(label)` and `getHitsXYZRGB()` for large clouds.
+- Generalized the synthetic scan's primitive-data → hit-data transfer to be driven by the scan's column format: any non-standard label in a scan's `column_format` is now sampled from the struck primitive (FLOAT/DOUBLE/INT/UINT) onto each hit, replacing the previously hardcoded `object_label`/`reflectivity_lidar` pair (`reflectivity_lidar` retains its intensity-modulation behavior). `LiDARCloud.addScan()` gained an optional `column_format` argument (default keeps prior behavior); the previously auto-copied `object_label` must now be listed in `column_format` to transfer.
 
 # [v0.1.19] 2026-04-16
 

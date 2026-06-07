@@ -33,8 +33,8 @@ from pyhelios.types import *
 
 with Context() as context:
     # Set date and time
-    context.setDate(1, 5, 2015)  # May 1, 2015
-    context.setTime(30, 12)      # 12:30
+    context.setDate(2015, 5, 1)  # May 1, 2015
+    context.setTime(12, 30)      # 12:30
 
     # Create SolarPosition with location (UTC offset, latitude, longitude)
     with SolarPosition(7, 31.256, 119.947, context) as sun:
@@ -223,8 +223,8 @@ from pyhelios.types import *
 
 with Context() as context:
     # Set the current time and date
-    context.setDate(1, 5, 2015)  # May 1, 2015
-    context.setTime(30, 12)      # 12:30
+    context.setDate(2015, 5, 1)  # May 1, 2015
+    context.setTime(12, 30)      # 12:30
 
     # Initialize the SolarPosition class with coordinates
     # Arguments: context, utc_offset, latitude, longitude
@@ -250,8 +250,8 @@ import math
 
 with Context() as context:
     # Set the current time and date
-    context.setDate(1, 5, 2015)  # May 1, 2015
-    context.setTime(30, 12)      # 12:30
+    context.setDate(2015, 5, 1)  # May 1, 2015
+    context.setTime(12, 30)      # 12:30
 
     # Initialize the SolarPosition class
     with SolarPosition(context, 7, 31.256, 119.947) as sun:
@@ -327,8 +327,8 @@ import math
 
 with Context() as context:
     # Set the current time and date
-    context.setDate(1, 5, 2015)  # May 1, 2015
-    context.setTime(30, 12)      # 12:30
+    context.setDate(2015, 5, 1)  # May 1, 2015
+    context.setTime(12, 30)      # 12:30
 
     # Initialize the SolarPosition class
     with SolarPosition(context, 7, 31.256, 119.947) as sun:
@@ -440,7 +440,7 @@ from pyhelios import Context, SolarPosition
 
 with Context() as context:
     # Set current time, date, and location
-    context.setDate(16, 7, 2023)  # July 16, 2023
+    context.setDate(2023, 7, 16)  # July 16, 2023
     context.setTime(12, 0)         # Solar noon
 
     # Initialize SolarPosition with location

@@ -2108,6 +2108,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             // Extended properties (v1.3.58+) - use defaults then override if provided
             props.lens_focal_length = 0.05f;     // 50mm default
             props.sensor_width_mm = 35.0f;        // Full-frame default
+            props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
             props.model = "generic";
             props.lens_make = "";
             props.lens_model = "";
@@ -2180,6 +2181,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             // Extended properties (v1.3.58+) - use defaults then override if provided
             props.lens_focal_length = 0.05f;     // 50mm default
             props.sensor_width_mm = 35.0f;        // Full-frame default
+            props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
             props.model = "generic";
             props.lens_make = "";
             props.lens_model = "";
@@ -2776,6 +2778,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
 
             // String fields use defaults (cannot be updated via this interface)
+            props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
             props.model = "generic";
             props.lens_make = "";
             props.lens_model = "";

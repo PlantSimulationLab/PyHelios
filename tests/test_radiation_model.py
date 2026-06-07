@@ -1805,6 +1805,33 @@ class TestSIFCameraNative:
                 assert radiation.isSIFCamera("regular") is False
 
 
+@pytest.mark.cross_platform
+class TestCameraPropertiesManufacturer:
+    """Test the CameraProperties.manufacturer field (Python class behavior, mock-safe)."""
+
+    def test_manufacturer_default_empty(self):
+        from pyhelios import CameraProperties
+        props = CameraProperties()
+        assert props.manufacturer == ""
+
+    def test_manufacturer_set(self):
+        from pyhelios import CameraProperties
+        props = CameraProperties(manufacturer="Canon")
+        assert props.manufacturer == "Canon"
+        assert "manufacturer='Canon'" in repr(props)
+
+    def test_manufacturer_invalid_type_raises(self):
+        from pyhelios import CameraProperties
+        with pytest.raises(ValueError, match="manufacturer must be a string"):
+            CameraProperties(manufacturer=123)
+
+    def test_manufacturer_does_not_break_to_array(self):
+        # to_array() carries only numeric fields; manufacturer must not alter its length.
+        from pyhelios import CameraProperties
+        props = CameraProperties(manufacturer="Nikon")
+        assert len(props.to_array()) == 10
+
+
 if __name__ == "__main__":
     # Run tests with pytest
     pytest.main([__file__, "-v"])

@@ -53,12 +53,21 @@ PYHELIOS_API void destroyLiDARcloud(LiDARcloud* cloud);
  * @param phiMax Maximum azimuthal angle (radians)
  * @param exitDiameter Laser beam exit diameter (meters)
  * @param beamDivergence Beam divergence angle (radians)
+ * @param rangeNoiseStdDev Standard deviation of Gaussian range (along-beam) measurement noise in
+ *                         meters (0 disables noise). Only affects synthetic-scan generation.
+ * @param angleNoiseStdDev Standard deviation of Gaussian angular (beam-pointing) jitter in radians
+ *                         (0 disables jitter). Only affects synthetic-scan generation.
+ * @param columnFormat Array of column-format label strings (may be nullptr). Non-standard labels
+ *                     drive primitive-data sampling onto hits during syntheticScan.
+ * @param nCols Number of entries in columnFormat (0 keeps the default empty format)
  * @return Scan ID for referencing this scan
  */
 PYHELIOS_API unsigned int addLiDARScan(LiDARcloud* cloud, const float* origin,
                                        unsigned int Ntheta, float thetaMin, float thetaMax,
                                        unsigned int Nphi, float phiMin, float phiMax,
-                                       float exitDiameter, float beamDivergence);
+                                       float exitDiameter, float beamDivergence,
+                                       float rangeNoiseStdDev, float angleNoiseStdDev,
+                                       const char** columnFormat, unsigned int nCols);
 
 /**
  * @brief Get the number of scans in the cloud
@@ -91,6 +100,22 @@ PYHELIOS_API unsigned int getLiDARScanSizeTheta(LiDARcloud* cloud, unsigned int 
  */
 PYHELIOS_API unsigned int getLiDARScanSizePhi(LiDARcloud* cloud, unsigned int scanID);
 
+/**
+ * @brief Get the standard deviation of Gaussian range (along-beam) measurement noise for a scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @return Range noise standard deviation in meters (0 if disabled), or 0 on error
+ */
+PYHELIOS_API float getLiDARScanRangeNoiseStdDev(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the standard deviation of Gaussian angular (beam-pointing) jitter for a scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @return Angular jitter standard deviation in radians (0 if disabled), or 0 on error
+ */
+PYHELIOS_API float getLiDARScanAngleNoiseStdDev(LiDARcloud* cloud, unsigned int scanID);
+
 //=============================================================================
 // Hit Point Operations
 //=============================================================================
@@ -116,6 +141,20 @@ PYHELIOS_API void addLiDARHitPoint(LiDARcloud* cloud, unsigned int scanID,
 PYHELIOS_API void addLiDARHitPointRGB(LiDARcloud* cloud, unsigned int scanID,
                                        const float* xyz, const float* direction,
                                        const float* color);
+
+/**
+ * @brief Add many hit points to the cloud in a single call (bulk ingestion)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID these hits belong to
+ * @param xyzs Hit point coordinates, count×3 row-major cartesian [x, y, z]
+ * @param directions Ray directions, count×3 [radius, elevation, azimuth]
+ *                   (azimuth is currently ignored, matching single-point behavior)
+ * @param count Number of hit points to add
+ * @param colors RGB colors, count×3 [r, g, b], or NULL to add without color
+ */
+PYHELIOS_API void addLiDARHitPoints(LiDARcloud* cloud, unsigned int scanID,
+                                     const float* xyzs, const float* directions,
+                                     unsigned int count, const float* colors);
 
 /**
  * @brief Get total number of hit points in the cloud
@@ -147,6 +186,52 @@ PYHELIOS_API void getLiDARHitRaydir(LiDARcloud* cloud, unsigned int index, float
  * @param color_out Output array [r, g, b]
  */
 PYHELIOS_API void getLiDARHitColor(LiDARcloud* cloud, unsigned int index, float* color_out);
+
+/**
+ * @brief Get the scan ID a hit point belongs to
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Hit point index
+ * @return Scan ID, or -1 on error / out-of-bounds index
+ */
+PYHELIOS_API int getLiDARHitScanID(LiDARcloud* cloud, unsigned int index);
+
+/**
+ * @brief Check whether a named scalar data value exists for a hit point
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Hit point index
+ * @param label Data label to query
+ * @return 1 if the data exists, 0 otherwise (including out-of-bounds index)
+ */
+PYHELIOS_API int doesLiDARHitDataExist(LiDARcloud* cloud, unsigned int index, const char* label);
+
+/**
+ * @brief Get a named scalar data value for a hit point
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Hit point index
+ * @param label Data label to retrieve
+ * @return The stored value, or NaN on error / missing label / out-of-bounds index
+ */
+PYHELIOS_API double getLiDARHitData(LiDARcloud* cloud, unsigned int index, const char* label);
+
+/**
+ * @brief Bulk-export a named scalar data value for all hit points in one call
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Data label to retrieve
+ * @param out Caller-allocated output array of length n; entries are NaN where the label is absent.
+ *            Only the first min(n, hit count) entries are written; if n exceeds the hit count the
+ *            trailing entries are left untouched.
+ * @param n Capacity of the output array (export is clamped to min(n, hit count))
+ */
+PYHELIOS_API void getLiDARHitData_all(LiDARcloud* cloud, const char* label, float* out, unsigned int n);
+
+/**
+ * @brief Bulk-export XYZ coordinates and RGB colors for all hit points in one call
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param xyz_out Caller-allocated output array of length 3*n (x,y,z per hit)
+ * @param rgb_out Caller-allocated output array of length 3*n (r,g,b per hit)
+ * @param n Capacity in hits (export is clamped to min(n, hit count))
+ */
+PYHELIOS_API void getLiDARHitsXYZRGB_all(LiDARcloud* cloud, float* xyz_out, float* rgb_out, unsigned int n);
 
 /**
  * @brief Delete a hit point from the cloud
@@ -232,6 +317,15 @@ PYHELIOS_API void lidarLastHitFilter(LiDARcloud* cloud);
  * @param filename Output file path
  */
 PYHELIOS_API void exportLiDARPointCloud(LiDARcloud* cloud, const char* filename);
+
+/**
+ * @brief Export all scans to an XML metadata file plus one ASCII data file per scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param filename Path of the XML metadata file to write (e.g. "output/scans.xml"). One ASCII data
+ *                 file is auto-generated per scan, named by stripping the XML extension and appending
+ *                 "_<scanID>.xyz" (e.g. "output/scans_0.xyz"). Re-loadable with loadLiDARXML().
+ */
+PYHELIOS_API void exportLiDARScans(LiDARcloud* cloud, const char* filename);
 
 /**
  * @brief Load scan metadata from XML file

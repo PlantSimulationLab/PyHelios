@@ -800,46 +800,52 @@ class Location:
     """Geographic location for solar position and radiation calculations.
 
     Mirrors helios::Location: latitude in degrees (+N / -S), longitude in degrees
-    (+W / -E per Helios convention), and UTC offset in hours (+moving West).
+    (+W / -E per Helios convention), UTC offset in hours (+moving West), and
+    altitude of the local Cartesian origin in meters above sea level (default 0).
     """
-    __slots__ = ("latitude", "longitude", "utc_offset")
+    __slots__ = ("latitude", "longitude", "utc_offset", "altitude")
 
-    def __init__(self, latitude: float = 38.55, longitude: float = 121.76, utc_offset: float = 8.0):
+    def __init__(self, latitude: float = 38.55, longitude: float = 121.76, utc_offset: float = 8.0, altitude: float = 0.0):
         if not isinstance(latitude, (int, float)):
             raise ValueError(f"latitude must be a number, got {type(latitude).__name__}")
         if not isinstance(longitude, (int, float)):
             raise ValueError(f"longitude must be a number, got {type(longitude).__name__}")
         if not isinstance(utc_offset, (int, float)):
             raise ValueError(f"utc_offset must be a number, got {type(utc_offset).__name__}")
+        if not isinstance(altitude, (int, float)):
+            raise ValueError(f"altitude must be a number, got {type(altitude).__name__}")
         # The C++ Helios::Location accepts any latitude; we only enforce sane bounds
         # at the call site so users can replicate any C++ test inputs.
         object.__setattr__(self, "latitude", float(latitude))
         object.__setattr__(self, "longitude", float(longitude))
         object.__setattr__(self, "utc_offset", float(utc_offset))
+        object.__setattr__(self, "altitude", float(altitude))
 
     def __setattr__(self, name, value):
         # Frozen behavior to match the spirit of an immutable Location.
         raise AttributeError(f"Location is immutable; cannot reassign '{name}'")
 
     def __repr__(self) -> str:
-        return f"Location(latitude={self.latitude}, longitude={self.longitude}, utc_offset={self.utc_offset})"
+        return (f"Location(latitude={self.latitude}, longitude={self.longitude}, "
+                f"utc_offset={self.utc_offset}, altitude={self.altitude})")
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Location):
             return False
         return (self.latitude == other.latitude and
                 self.longitude == other.longitude and
-                self.utc_offset == other.utc_offset)
+                self.utc_offset == other.utc_offset and
+                self.altitude == other.altitude)
 
     def __ne__(self, other) -> bool:
         return not self.__eq__(other)
 
     def __hash__(self) -> int:
-        return hash((self.latitude, self.longitude, self.utc_offset))
+        return hash((self.latitude, self.longitude, self.utc_offset, self.altitude))
 
 
-def make_Location(latitude: float, longitude: float, utc_offset: float) -> Location:
-    """Make a Location from latitude (deg), longitude (deg), and UTC offset (hours)."""
-    return Location(latitude, longitude, utc_offset)
+def make_Location(latitude: float, longitude: float, utc_offset: float, altitude: float = 0.0) -> Location:
+    """Make a Location from latitude (deg), longitude (deg), UTC offset (hours), and altitude (m)."""
+    return Location(latitude, longitude, utc_offset, altitude)
 
 # Removed duplicate make_SphericalCoord function - keeping only the 2-parameter version above

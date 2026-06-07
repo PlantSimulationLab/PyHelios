@@ -3660,6 +3660,27 @@ try:
 except AttributeError:
     _TIMESERIES_DELETE_AVAILABLE = False
 
+# deleteTimeseriesDataPoint was added in helios-core v1.3.73. Probe separately so wheels
+# built against older libraries keep the rest of the timeseries API working.
+_TIMESERIES_DELETE_POINT_AVAILABLE = False
+try:
+    helios_lib.deleteTimeseriesDataPoint.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_char_p,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int
+    ]
+    helios_lib.deleteTimeseriesDataPoint.restype = None
+    helios_lib.deleteTimeseriesDataPoint.errcheck = _check_error_timeseries
+
+    helios_lib.deleteTimeseriesDataPointAll.argtypes = [
+        ctypes.POINTER(UContext),
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int
+    ]
+    helios_lib.deleteTimeseriesDataPointAll.restype = None
+    helios_lib.deleteTimeseriesDataPointAll.errcheck = _check_error_timeseries
+    _TIMESERIES_DELETE_POINT_AVAILABLE = True
+except AttributeError:
+    _TIMESERIES_DELETE_POINT_AVAILABLE = False
+
 # updateTimeseriesData was added in helios-core v1.3.71. Probe separately so that
 # wheels built against older libraries keep the rest of the timeseries API working.
 _TIMESERIES_UPDATE_AVAILABLE = False
@@ -3828,6 +3849,35 @@ def deleteTimeseriesVariable(context, label: str):
             "Please rebuild PyHelios with `build_scripts/build_helios --clean`."
         )
     helios_lib.deleteTimeseriesVariable(context, label.encode('utf-8'))
+
+
+def deleteTimeseriesDataPoint(context, label: str, day: int, month: int, year: int,
+                              hour: int, minute: int, second: int):
+    """Delete a single timeseries data point at (date, time) for a given variable.
+
+    Requires helios-core v1.3.73 or newer.
+    """
+    if not _TIMESERIES_DELETE_POINT_AVAILABLE:
+        raise NotImplementedError(
+            "deleteTimeseriesDataPoint requires helios-core v1.3.73 or newer. "
+            "Please rebuild PyHelios with `build_scripts/build_helios --clean`."
+        )
+    helios_lib.deleteTimeseriesDataPoint(context, label.encode('utf-8'),
+                                         day, month, year, hour, minute, second)
+
+
+def deleteTimeseriesDataPointAll(context, day: int, month: int, year: int,
+                                 hour: int, minute: int, second: int):
+    """Delete the timeseries data point at (date, time) across all timeseries variables.
+
+    Requires helios-core v1.3.73 or newer.
+    """
+    if not _TIMESERIES_DELETE_POINT_AVAILABLE:
+        raise NotImplementedError(
+            "deleteTimeseriesDataPointAll requires helios-core v1.3.73 or newer. "
+            "Please rebuild PyHelios with `build_scripts/build_helios --clean`."
+        )
+    helios_lib.deleteTimeseriesDataPointAll(context, day, month, year, hour, minute, second)
 
 
 # ============================================================================
@@ -4709,6 +4759,10 @@ try:
     helios_lib.clearObjectDataBatch.restype = None
     helios_lib.clearObjectDataBatch.errcheck = _check_error
 
+    helios_lib.clearAllObjectDataByLabel.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.clearAllObjectDataByLabel.restype = None
+    helios_lib.clearAllObjectDataByLabel.errcheck = _check_error
+
     helios_lib.listObjectData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
     helios_lib.listObjectData.restype = ctypes.POINTER(ctypes.c_char_p)
     helios_lib.listObjectData.errcheck = _check_error
@@ -4930,6 +4984,12 @@ def clearObjectDataBatchWrapper(context, objIDs: List[int], label: str):
         return
     ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
     helios_lib.clearObjectDataBatch(context, ids_array, len(objIDs), label.encode('utf-8'))
+
+def clearAllObjectDataByLabelWrapper(context, label: str):
+    """Clear object data with the given label from every compound object in the Context."""
+    if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_OBJDATA_MSG)
+    helios_lib.clearAllObjectDataByLabel(context, label.encode('utf-8'))
 
 def listObjectDataWrapper(context, objID: int) -> List[str]:
     if not _OBJECT_DATA_FUNCTIONS_AVAILABLE:
@@ -5770,6 +5830,10 @@ try:
     helios_lib.clearPrimitiveDataByLabel_batch.restype = None
     helios_lib.clearPrimitiveDataByLabel_batch.errcheck = _check_error
 
+    helios_lib.clearAllPrimitiveDataByLabel.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.clearAllPrimitiveDataByLabel.restype = None
+    helios_lib.clearAllPrimitiveDataByLabel.errcheck = _check_error
+
     helios_lib.listPrimitiveData.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
     helios_lib.listPrimitiveData.restype = ctypes.POINTER(ctypes.c_char_p)
     helios_lib.listPrimitiveData.errcheck = _check_error
@@ -6161,6 +6225,12 @@ def clearPrimitiveDataByLabelBatchWrapper(context, uuids: List[int], label: str)
     _require_ctx_ext()
     arr = (ctypes.c_uint * len(uuids))(*uuids)
     helios_lib.clearPrimitiveDataByLabel_batch(context, arr, len(uuids), label.encode('utf-8'))
+
+
+def clearAllPrimitiveDataByLabelWrapper(context, label: str):
+    """Clear primitive data with the given label from every primitive in the Context."""
+    _require_ctx_ext()
+    helios_lib.clearAllPrimitiveDataByLabel(context, label.encode('utf-8'))
 
 
 def listPrimitiveDataWrapper(context, uuid: int) -> List[str]:
@@ -7613,11 +7683,11 @@ try:
     helios_lib.randn_params.restype = ctypes.c_float
     helios_lib.randn_params.errcheck = _check_error
 
-    helios_lib.setLocation.argtypes = [ctypes.POINTER(UContext), ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setLocation.argtypes = [ctypes.POINTER(UContext), ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
     helios_lib.setLocation.restype = None
     helios_lib.setLocation.errcheck = _check_error
 
-    helios_lib.getLocation.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getLocation.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
     helios_lib.getLocation.restype = None
     helios_lib.getLocation.errcheck = _check_error
 
@@ -7705,19 +7775,20 @@ def randnParamsWrapper(context, mean: float, stddev: float) -> float:
 
 # ---- Location ----
 
-def setLocationWrapper(context, latitude: float, longitude: float, utc_offset: float) -> None:
+def setLocationWrapper(context, latitude: float, longitude: float, utc_offset: float, altitude: float = 0.0) -> None:
     _require_ctx_xml_rng_loc()
-    helios_lib.setLocation(context, float(latitude), float(longitude), float(utc_offset))
+    helios_lib.setLocation(context, float(latitude), float(longitude), float(utc_offset), float(altitude))
 
 
 def getLocationWrapper(context):
-    """Return (latitude, longitude, utc_offset) as a 3-tuple of floats."""
+    """Return (latitude, longitude, utc_offset, altitude) as a 4-tuple of floats."""
     _require_ctx_xml_rng_loc()
     lat = ctypes.c_float()
     lon = ctypes.c_float()
     utc = ctypes.c_float()
-    helios_lib.getLocation(context, ctypes.byref(lat), ctypes.byref(lon), ctypes.byref(utc))
-    return (float(lat.value), float(lon.value), float(utc.value))
+    alt = ctypes.c_float()
+    helios_lib.getLocation(context, ctypes.byref(lat), ctypes.byref(lon), ctypes.byref(utc), ctypes.byref(alt))
+    return (float(lat.value), float(lon.value), float(utc.value), float(alt.value))
 
 
 # =============================================================================

@@ -104,8 +104,8 @@ class CameraProperties:
 
     def __init__(self, camera_resolution=None, focal_plane_distance=1.0, lens_diameter=0.05,
                  HFOV=20.0, FOV_aspect_ratio=0.0, lens_focal_length=0.05,
-                 sensor_width_mm=35.0, model="generic", lens_make="", lens_model="",
-                 lens_specification="", exposure="auto", shutter_speed=1.0/125.0,
+                 sensor_width_mm=35.0, manufacturer="", model="generic", lens_make="",
+                 lens_model="", lens_specification="", exposure="auto", shutter_speed=1.0/125.0,
                  white_balance="auto", camera_zoom=1.0):
         """
         Initialize camera properties with defaults matching C++ CameraProperties.
@@ -118,6 +118,11 @@ class CameraProperties:
             FOV_aspect_ratio: Ratio of horizontal to vertical FOV. Default: 0.0 (auto-calculate from resolution)
             lens_focal_length: Camera lens optical focal length in meters (physical, not 35mm equiv). Default: 0.05 (50mm)
             sensor_width_mm: Physical sensor width in mm. Default: 35.0 (full-frame)
+            manufacturer: Camera manufacturer (e.g., "Canon", "Nikon", "Apple"). In helios-core
+                v1.3.73 this maps to the EXIF Make tag (empty ⇒ "Helios"). NOTE: like the other
+                string fields (model, lens_make, etc.), this attribute is not yet plumbed through to
+                the native camera and currently has no effect on written images; the C++ default is
+                used. It is exposed for forward compatibility. Default: ""
             model: Camera model name (e.g., "Nikon D700", "Canon EOS 5D"). Default: "generic"
             lens_make: Lens manufacturer (e.g., "Canon", "Nikon"). Default: ""
             lens_model: Lens model name (e.g., "AF-S NIKKOR 50mm f/1.8G"). Default: ""
@@ -167,6 +172,8 @@ class CameraProperties:
         self.camera_zoom = float(camera_zoom)
 
         # Validate and set string properties
+        if not isinstance(manufacturer, str):
+            raise ValueError("manufacturer must be a string")
         if not isinstance(model, str):
             raise ValueError("model must be a string")
         if not isinstance(lens_make, str):
@@ -188,6 +195,7 @@ class CameraProperties:
         if white_balance not in ["auto", "off"]:
             raise ValueError("white_balance must be 'auto' or 'off'")
 
+        self.manufacturer = str(manufacturer)
         self.model = str(model)
         self.lens_make = str(lens_make)
         self.lens_model = str(lens_model)
@@ -230,6 +238,7 @@ class CameraProperties:
                 f"FOV_aspect_ratio={self.FOV_aspect_ratio}, "
                 f"lens_focal_length={self.lens_focal_length}, "
                 f"sensor_width_mm={self.sensor_width_mm}, "
+                f"manufacturer='{self.manufacturer}', "
                 f"model='{self.model}', "
                 f"lens_make='{self.lens_make}', "
                 f"lens_model='{self.lens_model}', "

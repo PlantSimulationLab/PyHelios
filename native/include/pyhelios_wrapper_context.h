@@ -1811,6 +1811,22 @@ PYHELIOS_API void clearTimeseriesData(helios::Context* context);
  */
 PYHELIOS_API void deleteTimeseriesVariable(helios::Context* context, const char* label);
 
+//! Delete a single timeseries data point at (date, time) for a given variable.
+/**
+ * Date is (day, month, year); time is (hour, minute, second). If the variable does not exist or
+ * no point matches the exact (date, time), the native call issues a non-fatal warning and is a no-op.
+ */
+PYHELIOS_API void deleteTimeseriesDataPoint(helios::Context* context, const char* label,
+                                            int day, int month, int year, int hour, int minute, int second);
+
+//! Delete the timeseries data point at (date, time) across all timeseries variables.
+/**
+ * Date is (day, month, year); time is (hour, minute, second). Variables with no matching point are
+ * left unchanged; if no variable contains a matching point, a non-fatal warning is issued.
+ */
+PYHELIOS_API void deleteTimeseriesDataPointAll(helios::Context* context,
+                                               int day, int month, int year, int hour, int minute, int second);
+
 //=============================================================================
 // Primitive and Object Deletion Functions
 //=============================================================================
@@ -2086,6 +2102,8 @@ PYHELIOS_API int getObjectDataSize(helios::Context* context, unsigned int objID,
 PYHELIOS_API bool doesObjectDataExist(helios::Context* context, unsigned int objID, const char* label);
 PYHELIOS_API void clearObjectData(helios::Context* context, unsigned int objID, const char* label);
 PYHELIOS_API void clearObjectDataBatch(helios::Context* context, unsigned int* objIDs, unsigned int count, const char* label);
+//! Clear object data with the given label from every compound object in the Context, releasing the registered type for the label.
+PYHELIOS_API void clearAllObjectDataByLabel(helios::Context* context, const char* label);
 PYHELIOS_API const char** listObjectData(helios::Context* context, unsigned int objID, unsigned int* count);
 PYHELIOS_API const char** listAllObjectDataLabels(helios::Context* context, unsigned int* count);
 PYHELIOS_API void duplicateObjectData(helios::Context* context, unsigned int objID, const char* old_label, const char* new_label);
@@ -2251,6 +2269,8 @@ PYHELIOS_API void setPrimitiveColorRGBA_batch(helios::Context* context, unsigned
 // ==================== Primitive Data Introspection / Cleanup ====================
 PYHELIOS_API void clearPrimitiveDataByLabel(helios::Context* context, unsigned int uuid, const char* label);
 PYHELIOS_API void clearPrimitiveDataByLabel_batch(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label);
+//! Clear primitive data with the given label from every primitive in the Context, releasing the registered type for the label.
+PYHELIOS_API void clearAllPrimitiveDataByLabel(helios::Context* context, const char* label);
 PYHELIOS_API const char** listPrimitiveData(helios::Context* context, unsigned int uuid, unsigned int* count);
 
 // ==================== Domain Cropping ====================
@@ -2453,8 +2473,8 @@ PYHELIOS_API float randn_basic(helios::Context* context);
 PYHELIOS_API float randn_params(helios::Context* context, float mean, float stddev);
 
 // ---- Location ----
-PYHELIOS_API void setLocation(helios::Context* context, float latitude_deg, float longitude_deg, float utc_offset);
-PYHELIOS_API void getLocation(helios::Context* context, float* latitude_deg_out, float* longitude_deg_out, float* utc_offset_out);
+PYHELIOS_API void setLocation(helios::Context* context, float latitude_deg, float longitude_deg, float utc_offset, float altitude_m);
+PYHELIOS_API void getLocation(helios::Context* context, float* latitude_deg_out, float* longitude_deg_out, float* utc_offset_out, float* altitude_m_out);
 
 //=============================================================================
 // Colormap helpers + texture transparency

@@ -3096,6 +3096,18 @@ class TestObjectDataOperations:
         basic_context.clearObjectData(obj_id, "to_clear")
         assert basic_context.doesObjectDataExist(obj_id, "to_clear") is False
 
+    def test_clear_all_object_data_by_label(self, basic_context):
+        obj_ids = [self._make_box(basic_context) for _ in range(2)]
+        for oid in obj_ids:
+            basic_context.setObjectDataInt(oid, "wipe", 1)
+            basic_context.setObjectDataInt(oid, "keep", 2)
+
+        basic_context.clearAllObjectData("wipe")
+
+        for oid in obj_ids:
+            assert basic_context.doesObjectDataExist(oid, "wipe") is False
+            assert basic_context.doesObjectDataExist(oid, "keep") is True
+
     def test_list_object_data(self, basic_context):
         obj_id = self._make_box(basic_context)
         basic_context.setObjectDataInt(obj_id, "alpha", 1)
@@ -3657,6 +3669,20 @@ class TestPrimitiveDataIntrospection:
         basic_context.clearPrimitiveData(uuids, "x")
         for u in uuids:
             assert "x" not in basic_context.listPrimitiveData(u)
+
+    def test_clear_all_primitive_data_by_label(self, basic_context):
+        uuids = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                 for i in range(3)]
+        for u in uuids:
+            basic_context.setPrimitiveDataFloat(u, "wipe", 1.0)
+            basic_context.setPrimitiveDataFloat(u, "keep", 2.0)
+
+        basic_context.clearAllPrimitiveData("wipe")
+
+        for u in uuids:
+            labels = basic_context.listPrimitiveData(u)
+            assert "wipe" not in labels
+            assert "keep" in labels
 
 
 @pytest.mark.native_only
@@ -4562,6 +4588,27 @@ class TestGeographicLocation:
         assert loc.longitude == pytest.approx(74.0, abs=1e-4)
         assert loc.utc_offset == pytest.approx(-5.0, abs=1e-4)
 
+    def test_set_get_location_round_trip_altitude_floats(self, basic_context):
+        basic_context.setLocation(40.7, 74.0, -5.0, altitude=123.0)
+        loc = basic_context.getLocation()
+        assert loc.latitude == pytest.approx(40.7, abs=1e-4)
+        assert loc.altitude == pytest.approx(123.0, abs=1e-3)
+
+    def test_set_get_location_round_trip_altitude_object(self, basic_context):
+        basic_context.setLocation(Location(38.5, 121.7, 8.0, 16.0))
+        loc = basic_context.getLocation()
+        assert loc.altitude == pytest.approx(16.0, abs=1e-3)
+
+    def test_default_location_altitude_is_zero(self, basic_context):
+        # Helios::Location default altitude is 0.
+        loc = basic_context.getLocation()
+        assert loc.altitude == pytest.approx(0.0, abs=1e-4)
+
+    def test_set_get_location_three_arg_defaults_altitude_zero(self, basic_context):
+        basic_context.setLocation(40.7, 74.0, -5.0)
+        loc = basic_context.getLocation()
+        assert loc.altitude == pytest.approx(0.0, abs=1e-4)
+
     def test_set_get_location_round_trip_object(self, basic_context):
         basic_context.setLocation(Location(38.5, 121.7, 8.0))
         loc = basic_context.getLocation()
@@ -4586,6 +4633,10 @@ class TestGeographicLocation:
         with pytest.raises(ValueError, match="When passing a Location"):
             basic_context.setLocation(Location(0, 0, 0), 1.0, 2.0)
 
+    def test_set_location_rejects_altitude_with_object(self, basic_context):
+        with pytest.raises(ValueError, match="When passing a Location"):
+            basic_context.setLocation(Location(0, 0, 0), altitude=99.0)
+
     def test_location_is_immutable(self):
         loc = Location(1, 2, 3)
         with pytest.raises(AttributeError):
@@ -4598,6 +4649,29 @@ class TestGeographicLocation:
         assert a == b
         assert a != c
         assert "latitude=1" in repr(a)
+
+    def test_location_altitude_default_and_field(self):
+        loc = Location(1, 2, 3)
+        assert loc.altitude == 0.0
+        loc2 = Location(1, 2, 3, 50.0)
+        assert loc2.altitude == 50.0
+        assert "altitude=50" in repr(loc2)
+
+    def test_location_altitude_distinguishes_equality(self):
+        assert Location(1, 2, 3, 0.0) == Location(1, 2, 3)
+        assert Location(1, 2, 3, 10.0) != Location(1, 2, 3, 20.0)
+        assert hash(Location(1, 2, 3, 10.0)) != hash(Location(1, 2, 3, 20.0))
+
+    def test_location_altitude_invalid_type_raises(self):
+        with pytest.raises(ValueError, match="altitude must be a number"):
+            Location(1, 2, 3, "high")
+
+    def test_make_location_altitude(self):
+        from pyhelios.wrappers.DataTypes import make_Location
+        loc = make_Location(1, 2, 3, 7.5)
+        assert loc.altitude == 7.5
+        # 3-arg form still defaults altitude to 0.
+        assert make_Location(1, 2, 3).altitude == 0.0
 
 
 # =============================================================================

@@ -103,6 +103,8 @@ Each scan has a set of parameters or "metadata" that must be specified in order 
 <tr><td>Rotation</td><td>\<rotation></td><td>Global spherical rotation (theta,phi) to be applied to the entire scan, including the origin and all hit points.</td><td>Use `coordinateRotation()`</td><td>No rotation</td></tr>
 <tr><td>Beam exit diameter (meters)</td><td>\<exitDiameter></td><td>Effective diameter of laser beam exiting the instrument. Only used for full-waveform synthetic data generation.</td><td>`exit_diameter`</td><td>0 (discrete return)</td></tr>
 <tr><td>Beam divergence angle (rad)</td><td>\<beamDivergence></td><td>Angle of laser beam divergence after exiting the instrument. Only used for full-waveform synthetic data generation.</td><td>`beam_divergence`</td><td>0</td></tr>
+<tr><td>Range noise std. dev. (meters)</td><td>\<rangeNoiseStdDev></td><td>Standard deviation of zero-mean Gaussian noise added to the measured range (distance) of each return during synthetic scan generation, displacing the hit point along the beam direction (along-beam error). Only used for synthetic data generation.</td><td>`range_noise_stddev`</td><td>0 (no noise)</td></tr>
+<tr><td>Angular noise std. dev. (rad)</td><td>\<angleNoiseStdDev></td><td>Standard deviation of zero-mean Gaussian jitter applied to the pointing direction of each pulse during synthetic scan generation, producing the across-beam (lateral) error that grows with range. Only used for synthetic data generation.</td><td>`angle_noise_stddev`</td><td>0 (no jitter)</td></tr>
 <tr><td>ASCII point cloud file</td><td>\<filename></td><td>File containing point cloud data to be read.</td><td>Loaded via `loadXML()`</td><td>No file will be read</td></tr>
 <tr><td>ASCII file column format</td><td>\<ASCII_format></td><td>Labels for columns in ASCII point cloud file. See section below for possible values and examples.</td><td>Loaded via `loadXML()`</td><td>x y z</td></tr>
 </table>
@@ -498,6 +500,7 @@ Results of data processing can be easily written to file for external analysis. 
 <table>
 <tr><th>Function</th><th>Description</th><th>PyHelios Status</th></tr>
 <tr><td>exportPointCloud(filename)</td><td>Write the entire point cloud to ASCII file.</td><td>✅ Available</td></tr>
+<tr><td>exportScans(filename)</td><td>Write an XML metadata file describing all scans plus one ASCII point cloud file per scan (auto-named `&lt;base&gt;_&lt;scanID&gt;.xyz`). The XML can be re-loaded with `loadXML()`.</td><td>✅ Available</td></tr>
 <tr><td>exportTriangleNormals(filename)</td><td>Write the unit normal vectors [nx ny nz] of all triangles formed from triangulation.</td><td>✅ Available</td></tr>
 <tr><td>exportTriangleAreas(filename)</td><td>Write the areas of all triangles formed from triangulation.</td><td>✅ Available</td></tr>
 <tr><td>exportLeafAreas(filename)</td><td>Write the leaf area contained within each voxel.</td><td>✅ Available</td></tr>

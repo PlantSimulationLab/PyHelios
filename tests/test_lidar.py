@@ -109,6 +109,9 @@ class TestLiDARInterface:
         assert hasattr(LiDARCloud, 'getHitCount')
         assert hasattr(LiDARCloud, 'triangulateHitPoints')
         assert hasattr(LiDARCloud, 'exportPointCloud')
+        assert hasattr(LiDARCloud, 'exportScans')
+        assert hasattr(LiDARCloud, 'getScanRangeNoiseStdDev')
+        assert hasattr(LiDARCloud, 'getScanAngleNoiseStdDev')
         assert hasattr(LiDARCloud, 'is_available')
 
     @pytest.mark.cross_platform
@@ -171,6 +174,54 @@ class TestLiDARFunctionality:
                 exit_diameter=0.01, beam_divergence=0.001
             )
             assert scan_id >= 0
+
+    def test_add_scan_with_noise_params(self):
+        """Test adding a scan with range/angle measurement noise and querying them back."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 1),
+                Ntheta=10, theta_range=(0, 1.57),
+                Nphi=10, phi_range=(-3.14, 3.14),
+                exit_diameter=0.01, beam_divergence=0.001,
+                range_noise_stddev=0.003, angle_noise_stddev=0.0002
+            )
+            assert scan_id >= 0
+            assert lidar.getScanRangeNoiseStdDev(scan_id) == pytest.approx(0.003, abs=1e-6)
+            assert lidar.getScanAngleNoiseStdDev(scan_id) == pytest.approx(0.0002, abs=1e-7)
+
+    def test_add_scan_noise_defaults_zero(self):
+        """Noise parameters default to 0 (disabled), preserving prior behavior."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 1),
+                Ntheta=5, theta_range=(0, 1.0),
+                Nphi=5, phi_range=(-3.14, 3.14),
+                exit_diameter=0.01, beam_divergence=0.001
+            )
+            assert lidar.getScanRangeNoiseStdDev(scan_id) == pytest.approx(0.0, abs=1e-7)
+            assert lidar.getScanAngleNoiseStdDev(scan_id) == pytest.approx(0.0, abs=1e-7)
+
+    @pytest.mark.parametrize("noise_kwargs", [
+        {"range_noise_stddev": -1.0},
+        {"angle_noise_stddev": -0.001},
+    ])
+    def test_add_scan_negative_noise_raises(self, noise_kwargs):
+        """Negative range or angle noise standard deviations are rejected."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            with pytest.raises(ValueError):
+                lidar.addScan(
+                    origin=vec3(0, 0, 1),
+                    Ntheta=5, theta_range=(0, 1.0),
+                    Nphi=5, phi_range=(-3.14, 3.14),
+                    exit_diameter=0.01, beam_divergence=0.001,
+                    **noise_kwargs
+                )
 
     def test_scan_properties(self):
         """Test querying scan properties"""
@@ -285,6 +336,100 @@ class TestLiDARFunctionality:
             # Delete middle point
             lidar.deleteHitPoint(1)
             assert lidar.getHitCount() == 2
+
+    def test_bulk_add_hit_points_roundtrip_no_color(self):
+        """Bulk addHitPoints (no color) matches per-point addHitPoint exactly"""
+        import numpy as np
+        from pyhelios import LiDARCloud
+
+        # Eight hit points with distinct coords and ray directions
+        xyz = np.array([
+            [1.0, 0.0, 0.0], [2.0, 1.0, 0.5], [3.0, -1.0, 2.0],
+            [0.5, 0.5, 0.5], [4.0, 2.0, 1.0], [-1.0, 3.0, 0.0],
+            [2.5, 2.5, 2.5], [0.0, 0.0, 1.0],
+        ], dtype=np.float32)
+        directions = np.array([
+            [1.0, 0.0, 0.0], [1.0, 0.1, 0.0], [1.0, 0.2, 0.0],
+            [1.0, 0.3, 0.0], [1.0, 0.4, 0.0], [1.0, 0.5, 0.0],
+            [1.0, 0.6, 0.0], [1.0, 0.7, 0.0],
+        ], dtype=np.float32)
+        n = xyz.shape[0]
+
+        def make_scan(lidar):
+            return lidar.addScan(
+                origin=vec3(0, 0, 1),
+                Ntheta=10, theta_range=(0, 1.0),
+                Nphi=10, phi_range=(-3.14, 3.14),
+                exit_diameter=0.01, beam_divergence=0.001
+            )
+
+        with LiDARCloud() as bulk, LiDARCloud() as loop:
+            bulk_scan = make_scan(bulk)
+            loop_scan = make_scan(loop)
+
+            bulk.addHitPoints(bulk_scan, xyz, directions)
+            for i in range(n):
+                loop.addHitPoint(loop_scan, list(xyz[i]), list(directions[i]))
+
+            assert bulk.getHitCount() == n
+            assert loop.getHitCount() == n
+
+            for i in range(n):
+                b = bulk.getHitXYZ(i)
+                l = loop.getHitXYZ(i)
+                assert abs(b.x - l.x) < 1e-5
+                assert abs(b.y - l.y) < 1e-5
+                assert abs(b.z - l.z) < 1e-5
+
+    def test_bulk_add_hit_points_roundtrip_with_color(self):
+        """Bulk addHitPoints (with color) matches per-point addHitPoint exactly"""
+        import numpy as np
+        from pyhelios import LiDARCloud
+
+        xyz = np.array([
+            [1.0, 0.0, 0.0], [2.0, 1.0, 0.5], [3.0, -1.0, 2.0],
+            [0.5, 0.5, 0.5], [4.0, 2.0, 1.0],
+        ], dtype=np.float32)
+        directions = np.array([
+            [1.0, 0.0, 0.0], [1.0, 0.1, 0.0], [1.0, 0.2, 0.0],
+            [1.0, 0.3, 0.0], [1.0, 0.4, 0.0],
+        ], dtype=np.float32)
+        colors = np.array([
+            [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.5], [0.2, 0.4, 0.6],
+        ], dtype=np.float32)
+        n = xyz.shape[0]
+
+        def make_scan(lidar):
+            return lidar.addScan(
+                origin=vec3(0, 0, 1),
+                Ntheta=10, theta_range=(0, 1.0),
+                Nphi=10, phi_range=(-3.14, 3.14),
+                exit_diameter=0.01, beam_divergence=0.001
+            )
+
+        with LiDARCloud() as bulk, LiDARCloud() as loop:
+            bulk_scan = make_scan(bulk)
+            loop_scan = make_scan(loop)
+
+            bulk.addHitPoints(bulk_scan, xyz, directions, color_array=colors)
+            for i in range(n):
+                loop.addHitPoint(loop_scan, list(xyz[i]), list(directions[i]),
+                                 color=list(colors[i]))
+
+            assert bulk.getHitCount() == n
+            assert loop.getHitCount() == n
+
+            for i in range(n):
+                bp, lp = bulk.getHitXYZ(i), loop.getHitXYZ(i)
+                assert abs(bp.x - lp.x) < 1e-5
+                assert abs(bp.y - lp.y) < 1e-5
+                assert abs(bp.z - lp.z) < 1e-5
+
+                bc, lc = bulk.getHitColor(i), loop.getHitColor(i)
+                assert abs(bc.r - lc.r) < 1e-5
+                assert abs(bc.g - lc.g) < 1e-5
+                assert abs(bc.b - lc.b) < 1e-5
 
     def test_coordinate_shift(self):
         """Test coordinate shift transformation"""
@@ -408,6 +553,32 @@ class TestLiDARFunctionality:
             # File should exist
             assert output_file.exists()
             assert output_file.stat().st_size > 0
+
+    def test_export_scans(self, tmp_path):
+        """Test exporting all scans to XML metadata + per-scan ASCII files."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 1),
+                Ntheta=5, theta_range=(0, 1.0),
+                Nphi=5, phi_range=(-3.14, 3.14),
+                exit_diameter=0.01, beam_divergence=0.001
+            )
+            lidar.addHitPoint(scan_id, vec3(1, 0, 0), vec3(1, 0, 0))
+
+            output_xml = tmp_path / "scans.xml"
+            lidar.exportScans(str(output_xml))
+
+            # XML metadata file plus a per-scan ASCII data file (scans_0.xyz) should appear.
+            assert output_xml.exists()
+            assert (tmp_path / "scans_0.xyz").exists()
+
+    def test_export_scans_empty_filename_raises(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            with pytest.raises(ValueError):
+                lidar.exportScans("")
 
     def test_message_control(self):
         """Test enabling/disabling messages"""
@@ -1722,4 +1893,118 @@ class TestLiDARIntegration:
 
                 # Must calculate non-zero total leaf area
                 assert total_leaf_area > 0, f"Must calculate non-zero total leaf area, got {total_leaf_area}"
+
+
+class TestLiDARHitData:
+    """Test per-hit data accessors and column-format-driven primitive-data transfer.
+
+    Uses the proven leaf-cube XML geometry (real 3-D geometry that the synthetic scan
+    reliably hits) — a flat or tiny mesh produces a degenerate/ill-aimed scan that yields
+    zero hits.
+    """
+
+    # Scan parameters proven to generate hits against the leaf-cube geometry (mirrors
+    # TestLiDARLeafArea.test_calculate_leaf_area), trimmed for test speed.
+    _SCAN = dict(
+        origin=vec3(-5.0, 0.0, 0.5),
+        Ntheta=300, theta_range=(0.0, math.pi),
+        Nphi=600, phi_range=(0.0, 2 * math.pi),
+        exit_diameter=0.0, beam_divergence=0.0,
+    )
+
+    @pytest.mark.native_only
+    @pytest.mark.slow
+    def test_hit_data_and_column_format_transfer(self):
+        """End-to-end: scan geometry, read per-hit data, scan ID, and a column-format scalar."""
+        from pyhelios import Context, LiDARCloud
+
+        xml_path = get_lidar_asset_path('xml/leaf_cube_LAI2_lw0_01_spherical.xml')
+        if xml_path is None:
+            pytest.skip("LiDAR test assets not available")
+
+        my_scalar_value = 1.23
+
+        with Context() as context:
+            uuids = context.loadXML(xml_path, quiet=True)
+            for uuid in uuids:
+                context.setPrimitiveDataFloat(uuid, "reflectivity_lidar", 0.7)
+                context.setPrimitiveDataFloat(uuid, "my_scalar", my_scalar_value)
+
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                scan_id = lidar.addScan(column_format=["my_scalar"], **self._SCAN)
+
+                lidar.syntheticScan(context)
+
+                hit_count = lidar.getHitCount()
+                assert hit_count > 0, f"Synthetic scan must generate hits, got {hit_count}"
+
+                # Find a real hit (target_index == 99 marks misses) carrying the sampled scalar.
+                real_index = None
+                for i in range(hit_count):
+                    if not lidar.doesHitDataExist(i, "target_index"):
+                        continue
+                    if lidar.getHitData(i, "target_index") != 99 and lidar.doesHitDataExist(i, "my_scalar"):
+                        real_index = i
+                        break
+                assert real_index is not None, "Expected at least one real hit carrying my_scalar"
+
+                # Standard per-hit scalars computed by syntheticScan must exist.
+                for label in ("intensity", "distance", "timestamp", "target_index", "target_count"):
+                    assert lidar.doesHitDataExist(real_index, label), \
+                        f"Expected hit data '{label}' to exist on a real hit"
+
+                # The column-format primitive-data scalar must have transferred verbatim.
+                assert abs(lidar.getHitData(real_index, "my_scalar") - my_scalar_value) < 1e-4
+
+                # reflectivity_lidar is special: it modulates intensity and is NOT stored
+                # as its own retrievable hit-data key (even though it was set on primitives
+                # and is not in column_format here, the rule holds regardless).
+                assert not lidar.doesHitDataExist(real_index, "reflectivity_lidar")
+
+                # Scan ID round-trips.
+                assert lidar.getHitScanID(real_index) == scan_id
+
+                # Bulk exports return one entry per hit.
+                intensities = lidar.getHitDataAll("intensity")
+                assert len(intensities) == hit_count
+                positions, colors = lidar.getHitsXYZRGB()
+                assert len(positions) == hit_count
+                assert len(colors) == hit_count
+                # Bulk XYZ matches the per-hit accessor.
+                p0 = lidar.getHitXYZ(real_index)
+                assert abs(positions[real_index].x - p0.x) < 1e-4
+                assert abs(positions[real_index].y - p0.y) < 1e-4
+                assert abs(positions[real_index].z - p0.z) < 1e-4
+
+    @pytest.mark.native_only
+    @pytest.mark.slow
+    def test_hit_data_absent_without_column_format(self):
+        """Without listing it in column_format, a custom scalar must NOT transfer onto hits."""
+        from pyhelios import Context, LiDARCloud
+
+        xml_path = get_lidar_asset_path('xml/leaf_cube_LAI2_lw0_01_spherical.xml')
+        if xml_path is None:
+            pytest.skip("LiDAR test assets not available")
+
+        with Context() as context:
+            uuids = context.loadXML(xml_path, quiet=True)
+            for uuid in uuids:
+                context.setPrimitiveDataFloat(uuid, "my_scalar", 4.56)
+
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                # No column_format -> my_scalar should not be sampled onto hits.
+                lidar.addScan(**self._SCAN)
+                lidar.syntheticScan(context)
+
+                hit_count = lidar.getHitCount()
+                assert hit_count > 0
+
+                # Bulk-export the scalar in one call; every entry must be NaN since
+                # my_scalar was not in column_format and so was never sampled onto hits.
+                values = lidar.getHitDataAll("my_scalar")
+                assert len(values) == hit_count
+                assert all(math.isnan(v) for v in values), \
+                    "my_scalar must not transfer to hits when absent from column_format"
 

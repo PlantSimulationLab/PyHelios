@@ -34,35 +34,35 @@ Vector types can be initialized directly. For example, `i2 = int2(1, 2)` creates
 
 ### R-G-B(-A) color vectors
 
-There are several predefined RGB color vectors (see RGBcolor) that can be used, which are tabulated below:
+PyHelios does not provide predefined named color constants; construct colors directly with `RGBcolor(r, g, b)` (values normalized to 1). The table below lists common colors and their RGB values for convenience:
 
-| Color | RGB Values | Color Swatch |
-|-------|------------|--------------|
-| RGB::black | (0,0,0) | <div style="width:50px;height:30px;background-color:rgb(0,0,0);border:1px solid #ccc;"></div> |
-| RGB::white | (1,1,1) | <div style="width:50px;height:30px;background-color:rgb(255,255,255);border:1px solid #ccc;"></div> |
-| RGB::red | (1,0,0) | <div style="width:50px;height:30px;background-color:rgb(255,0,0);"></div> |
-| RGB::blue | (0,0,1) | <div style="width:50px;height:30px;background-color:rgb(0,0,255);"></div> |
-| RGB::green | (0,0.6,0) | <div style="width:50px;height:30px;background-color:rgb(0,153,0);"></div> |
-| RGB::cyan | (0,1,1) | <div style="width:50px;height:30px;background-color:rgb(0,255,255);"></div> |
-| RGB::magenta | (1,0,1) | <div style="width:50px;height:30px;background-color:rgb(255,0,255);"></div> |
-| RGB::yellow | (1,1,0) | <div style="width:50px;height:30px;background-color:rgb(255,255,0);"></div> |
-| RGB::orange | (1,0.5,0) | <div style="width:50px;height:30px;background-color:rgb(255,127,0);"></div> |
-| RGB::violet | (0.5,0,0.5) | <div style="width:50px;height:30px;background-color:rgb(127,0,127);"></div> |
-| RGB::lime | (0,1,0) | <div style="width:50px;height:30px;background-color:rgb(0,255,0);"></div> |
-| RGB::silver | (0.75,0.75,0.75) | <div style="width:50px;height:30px;background-color:rgb(191,191,191);"></div> |
-| RGB::gray | (0.5,0.5,0.5) | <div style="width:50px;height:30px;background-color:rgb(127,127,127);"></div> |
-| RGB::navy | (0,0,0.5) | <div style="width:50px;height:30px;background-color:rgb(0,0,127);"></div> |
-| RGB::brown | (0.55,0.27,0.075) | <div style="width:50px;height:30px;background-color:rgb(140,69,19);"></div> |
-| RGB::khaki | (0.94,0.92,0.55) | <div style="width:50px;height:30px;background-color:rgb(240,235,140);"></div> |
-| RGB::greenyellow | (0.678,1,0.184) | <div style="width:50px;height:30px;background-color:rgb(173,255,47);"></div> |
-| RGB::forestgreen | (0.133,0.545,0.133) | <div style="width:50px;height:30px;background-color:rgb(34,139,34);"></div> |
-| RGB::yellowgreen | (0.6,0.8,0.2) | <div style="width:50px;height:30px;background-color:rgb(153,204,51);"></div> |
-| RGB::goldenrod | (0.855,0.647,0.126) | <div style="width:50px;height:30px;background-color:rgb(218,165,32);"></div> |
+| Color | RGB Values | `RGBcolor(...)` | Color Swatch |
+|-------|------------|-----------------|--------------|
+| black | (0,0,0) | `RGBcolor(0, 0, 0)` | <div style="width:50px;height:30px;background-color:rgb(0,0,0);border:1px solid #ccc;"></div> |
+| white | (1,1,1) | `RGBcolor(1, 1, 1)` | <div style="width:50px;height:30px;background-color:rgb(255,255,255);border:1px solid #ccc;"></div> |
+| red | (1,0,0) | `RGBcolor(1, 0, 0)` | <div style="width:50px;height:30px;background-color:rgb(255,0,0);"></div> |
+| blue | (0,0,1) | `RGBcolor(0, 0, 1)` | <div style="width:50px;height:30px;background-color:rgb(0,0,255);"></div> |
+| green | (0,0.6,0) | `RGBcolor(0, 0.6, 0)` | <div style="width:50px;height:30px;background-color:rgb(0,153,0);"></div> |
+| cyan | (0,1,1) | `RGBcolor(0, 1, 1)` | <div style="width:50px;height:30px;background-color:rgb(0,255,255);"></div> |
+| magenta | (1,0,1) | `RGBcolor(1, 0, 1)` | <div style="width:50px;height:30px;background-color:rgb(255,0,255);"></div> |
+| yellow | (1,1,0) | `RGBcolor(1, 1, 0)` | <div style="width:50px;height:30px;background-color:rgb(255,255,0);"></div> |
+| orange | (1,0.5,0) | `RGBcolor(1, 0.5, 0)` | <div style="width:50px;height:30px;background-color:rgb(255,127,0);"></div> |
+| violet | (0.5,0,0.5) | `RGBcolor(0.5, 0, 0.5)` | <div style="width:50px;height:30px;background-color:rgb(127,0,127);"></div> |
+| lime | (0,1,0) | `RGBcolor(0, 1, 0)` | <div style="width:50px;height:30px;background-color:rgb(0,255,0);"></div> |
+| silver | (0.75,0.75,0.75) | `RGBcolor(0.75, 0.75, 0.75)` | <div style="width:50px;height:30px;background-color:rgb(191,191,191);"></div> |
+| gray | (0.5,0.5,0.5) | `RGBcolor(0.5, 0.5, 0.5)` | <div style="width:50px;height:30px;background-color:rgb(127,127,127);"></div> |
+| navy | (0,0,0.5) | `RGBcolor(0, 0, 0.5)` | <div style="width:50px;height:30px;background-color:rgb(0,0,127);"></div> |
+| brown | (0.55,0.27,0.075) | `RGBcolor(0.55, 0.27, 0.075)` | <div style="width:50px;height:30px;background-color:rgb(140,69,19);"></div> |
+| khaki | (0.94,0.92,0.55) | `RGBcolor(0.94, 0.92, 0.55)` | <div style="width:50px;height:30px;background-color:rgb(240,235,140);"></div> |
+| greenyellow | (0.678,1,0.184) | `RGBcolor(0.678, 1, 0.184)` | <div style="width:50px;height:30px;background-color:rgb(173,255,47);"></div> |
+| forestgreen | (0.133,0.545,0.133) | `RGBcolor(0.133, 0.545, 0.133)` | <div style="width:50px;height:30px;background-color:rgb(34,139,34);"></div> |
+| yellowgreen | (0.6,0.8,0.2) | `RGBcolor(0.6, 0.8, 0.2)` | <div style="width:50px;height:30px;background-color:rgb(153,204,51);"></div> |
+| goldenrod | (0.855,0.647,0.126) | `RGBcolor(0.855, 0.647, 0.126)` | <div style="width:50px;height:30px;background-color:rgb(218,165,32);"></div> |
 
-Note that the above colors can be directly used with RGBAcolor to specify an alpha (transparency) value:
+Any color can be used with RGBAcolor to specify an alpha (transparency) value:
 
 ```python
-from pyhelios.types import RGBAcolor, RGBcolorcolor
+from pyhelios.types import RGBAcolor, RGBcolor
 
 # Create red color first, then use its components
 red = RGBcolor(1, 0, 0)
@@ -106,7 +106,7 @@ The Context is usually passed to plugins, which gives them access to geometry an
 
 ### Geographic Location {#Location}
 
-The Context stores a geographic location used by plugins such as SolarPosition and RadiationModel for sun-position calculations. Location is represented by the immutable `Location` dataclass with three fields: `latitude` in degrees (+N / -S), `longitude` in degrees (+W / -E per Helios convention), and `utc_offset` in hours (+ moving West).
+The Context stores a geographic location used by plugins such as SolarPosition and RadiationModel for sun-position calculations. Location is represented by the immutable `Location` dataclass with four fields: `latitude` in degrees (+N / -S), `longitude` in degrees (+W / -E per Helios convention), `utc_offset` in hours (+ moving West), and `altitude` in meters above sea level (default 0.0). The non-standard +W longitude convention is automatically flipped to the standard +E convention when written into camera EXIF metadata.
 
 ```python
 from pyhelios import Context
@@ -115,12 +115,13 @@ from pyhelios.types import Location
 context = Context()
 
 # Set location explicitly
-context.setLocation(38.55, 121.76, 8.0)             # latitude, longitude, UTC offset
-context.setLocation(Location(38.55, 121.76, 8.0))   # equivalent
+context.setLocation(38.55, 121.76, 8.0)                    # latitude, longitude, UTC offset
+context.setLocation(38.55, 121.76, 8.0, altitude=16.0)    # with altitude (meters)
+context.setLocation(Location(38.55, 121.76, 8.0, 16.0))   # equivalent
 
 # Read it back
 loc = context.getLocation()
-print(loc.latitude, loc.longitude, loc.utc_offset)
+print(loc.latitude, loc.longitude, loc.utc_offset, loc.altitude)
 ```
 
 Once the Context location is set, downstream plugins can read it instead of taking explicit lat/lon arguments.
@@ -203,7 +204,7 @@ Triangles are added by specifying the (x,y,z) coordinates of the triangle's thre
 
 ```python
 from pyhelios import Context
-from pyhelios.types import vec3, RGBcolorcolor
+from pyhelios.types import vec3, RGBcolor
 
 context = Context()
 
@@ -211,7 +212,7 @@ v0 = vec3(-0.5, -0.5, 1)
 v1 = vec3(0.5, -0.5, 1)
 v2 = vec3(0, 0.5, 1)
 
-UUID = context.addTriangle(v0, v1, v2, RGBcolorcolor(1, 0, 0))
+UUID = context.addTriangle(v0, v1, v2, RGBcolor(1, 0, 0))
 ```
 
 This will add the Triangle shown below. (Note that the addition of the checkerboard ground and the 'Visualizer' plugin is needed to replicate this image, which is not shown in the example code.)
@@ -230,7 +231,7 @@ For box-shaped geometry, use:
 
 ```python
 from pyhelios import Context
-from pyhelios.types import vec3, int3, RGBcolorcolor
+from pyhelios.types import vec3, int3, RGBcolor
 
 context = Context()
 
@@ -239,7 +240,7 @@ size = vec3(1, 1, 1)
 subdivisions = int3(1, 1, 1)
 
 # Use addBox for voxel-like geometry
-UUIDs = context.addBox(center, size, subdivisions, RGBcolorcolor(1, 0, 0))
+UUIDs = context.addBox(center, size, subdivisions, RGBcolor(1, 0, 0))
 ```
 
 ![Voxel geometric primitive](images/primitives/Voxel.png)
@@ -500,14 +501,14 @@ Primitive data values can be scalar or a one-dimensional array of values.
 
 ```python
 from pyhelios import Context
-from pyhelios.types import vec3, vec2, RGBcolorcolor
+from pyhelios.types import vec3, vec2, RGBcolor
 
 context = Context()
 
 center = vec3(0, 0, 0)
 size = vec2(1, 1)
 
-UUID = context.addPatch(center, size, RGBcolorcolor(1, 0, 0))
+UUID = context.addPatch(center, size, RGBcolor(1, 0, 0))
 
 eps = 0.9
 context.setPrimitiveDataFloat(UUID, "emissivity", eps)
