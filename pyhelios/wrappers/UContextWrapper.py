@@ -4817,6 +4817,29 @@ try:
 except AttributeError:
     _BROADCAST_OBJECT_DATA_AVAILABLE = False
 
+# Per-element bulk data setters: assign a DISTINCT value to each UUID/ObjID.
+# Scalar/String variants take values of length N; VecN/IntN take a flat array of N*ncomp.
+_PERELEM_DATA_AVAILABLE = False
+try:
+    _ptr = ctypes.POINTER(UContext)
+    _uptr = ctypes.POINTER(ctypes.c_uint)
+    for _scope in ['Primitive', 'Object']:
+        for _t, _vt in [('Int', ctypes.c_int), ('UInt', ctypes.c_uint),
+                        ('Float', ctypes.c_float), ('Double', ctypes.c_double),
+                        ('Vec2', ctypes.c_float), ('Vec3', ctypes.c_float), ('Vec4', ctypes.c_float),
+                        ('Int2', ctypes.c_int), ('Int3', ctypes.c_int), ('Int4', ctypes.c_int)]:
+            _fn = getattr(helios_lib, f'set{_scope}Data{_t}Array')
+            _fn.argtypes = [_ptr, _uptr, ctypes.c_size_t, ctypes.c_char_p, ctypes.POINTER(_vt), ctypes.c_size_t]
+            _fn.restype = None
+            _fn.errcheck = _check_error
+        _sfn = getattr(helios_lib, f'set{_scope}DataStringArray')
+        _sfn.argtypes = [_ptr, _uptr, ctypes.c_size_t, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
+        _sfn.restype = None
+        _sfn.errcheck = _check_error
+    _PERELEM_DATA_AVAILABLE = True
+except AttributeError:
+    _PERELEM_DATA_AVAILABLE = False
+
 _NOT_AVAILABLE_OBJDATA_MSG = (
     "Object data functions not available in current Helios library. "
     "Rebuild PyHelios with updated C++ wrapper implementation."
@@ -5108,6 +5131,72 @@ def setBroadcastObjectDataInt4(context, objIDs: List[int], label: str, x: int, y
         raise ValueError("Object IDs list cannot be empty")
     ids_array = (ctypes.c_uint * len(objIDs))(*objIDs)
     helios_lib.setBroadcastObjectDataInt4(context, ids_array, len(objIDs), label.encode('utf-8'), x, y, z, w)
+
+# Per-element bulk data setters: distinct value per ID
+
+_NOT_AVAILABLE_PERELEM_MSG = (
+    "Per-element bulk data setters not available. "
+    "Rebuild native library with updated version."
+)
+
+_PERELEM_SCALAR_CTYPE = {
+    'Int': ctypes.c_int, 'UInt': ctypes.c_uint, 'Float': ctypes.c_float, 'Double': ctypes.c_double,
+}
+_PERELEM_VEC_SPEC = {
+    'Vec2': (2, ctypes.c_float), 'Vec3': (3, ctypes.c_float), 'Vec4': (4, ctypes.c_float),
+    'Int2': (2, ctypes.c_int), 'Int3': (3, ctypes.c_int), 'Int4': (4, ctypes.c_int),
+}
+
+def _perelem_components(value, ncomp: int):
+    """Extract ncomp scalar components from a vecN/intN object or a raw sequence."""
+    if hasattr(value, 'to_list'):
+        comps = list(value.to_list())
+    elif isinstance(value, (list, tuple)):
+        comps = list(value)
+    else:
+        raise TypeError(f"Per-element vector value must be a vecN/intN object or sequence, got {type(value).__name__}")
+    if len(comps) != ncomp:
+        raise ValueError(f"Expected {ncomp} components per element, got {len(comps)}")
+    return comps
+
+def _setDataArray(scope: str, context, ids: List[int], label: str, type_name: str, values) -> None:
+    """Dispatch a per-element bulk data set for primitives ('Primitive') or objects ('Object')."""
+    if not _PERELEM_DATA_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_PERELEM_MSG)
+    n = len(ids)
+    if n == 0:
+        raise ValueError("IDs list cannot be empty")
+    values = list(values)
+    if len(values) != n:
+        raise ValueError(f"values length ({len(values)}) must match number of IDs ({n})")
+    ids_array = (ctypes.c_uint * n)(*[int(i) for i in ids])
+    label_enc = label.encode('utf-8')
+    fn = getattr(helios_lib, f'set{scope}Data{type_name}Array')
+    if type_name in _PERELEM_SCALAR_CTYPE:
+        ct = _PERELEM_SCALAR_CTYPE[type_name]
+        vals = (ct * n)(*values)
+        fn(context, ids_array, n, label_enc, vals, n)
+    elif type_name == 'String':
+        encoded = [(v.encode('utf-8') if isinstance(v, str) else v) for v in values]
+        vals = (ctypes.c_char_p * n)(*encoded)
+        fn(context, ids_array, n, label_enc, vals, n)
+    elif type_name in _PERELEM_VEC_SPEC:
+        ncomp, ct = _PERELEM_VEC_SPEC[type_name]
+        flat = []
+        for v in values:
+            flat.extend(_perelem_components(v, ncomp))
+        vals = (ct * (n * ncomp))(*flat)
+        fn(context, ids_array, n, label_enc, vals, n * ncomp)
+    else:
+        raise ValueError(f"Unknown per-element data type '{type_name}'")
+
+def setPrimitiveDataArray(context, uuids: List[int], label: str, type_name: str, values) -> None:
+    """Set a distinct value on each of multiple primitives (per-element bulk set)."""
+    _setDataArray('Primitive', context, uuids, label, type_name, values)
+
+def setObjectDataArray(context, objIDs: List[int], label: str, type_name: str, values) -> None:
+    """Set a distinct value on each of multiple objects (per-element bulk set)."""
+    _setDataArray('Object', context, objIDs, label, type_name, values)
 
 # Filters
 
@@ -5500,6 +5589,12 @@ try:
     helios_lib.incrementPrimitiveDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float]
     helios_lib.incrementPrimitiveDataFloat.restype = None
     helios_lib.incrementPrimitiveDataFloat.errcheck = _check_error
+    helios_lib.incrementPrimitiveDataUInt.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_uint]
+    helios_lib.incrementPrimitiveDataUInt.restype = None
+    helios_lib.incrementPrimitiveDataUInt.errcheck = _check_error
+    helios_lib.incrementPrimitiveDataDouble.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_double]
+    helios_lib.incrementPrimitiveDataDouble.restype = None
+    helios_lib.incrementPrimitiveDataDouble.errcheck = _check_error
 
     helios_lib.aggregatePrimitiveDataSum.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.c_char_p]
     helios_lib.aggregatePrimitiveDataSum.restype = None
@@ -5591,6 +5686,16 @@ def incrementPrimitiveDataFloatWrapper(context, uuids: List[int], label: str, in
     if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
     arr = (ctypes.c_uint * len(uuids))(*uuids)
     helios_lib.incrementPrimitiveDataFloat(context, arr, len(uuids), label.encode('utf-8'), increment)
+
+def incrementPrimitiveDataUIntWrapper(context, uuids: List[int], label: str, increment: int):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.incrementPrimitiveDataUInt(context, arr, len(uuids), label.encode('utf-8'), increment)
+
+def incrementPrimitiveDataDoubleWrapper(context, uuids: List[int], label: str, increment: float):
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.incrementPrimitiveDataDouble(context, arr, len(uuids), label.encode('utf-8'), increment)
 
 def aggregatePrimitiveDataSumWrapper(context, uuids: List[int], labels: List[str], result_label: str):
     if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
@@ -7425,6 +7530,14 @@ try:
     helios_lib.useObjectTextureColorBatch.restype = None
     helios_lib.useObjectTextureColorBatch.errcheck = _check_error
 
+    helios_lib.overridePrimitiveTextureColorBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.overridePrimitiveTextureColorBatch.restype = None
+    helios_lib.overridePrimitiveTextureColorBatch.errcheck = _check_error
+
+    helios_lib.usePrimitiveTextureColorBatch.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.usePrimitiveTextureColorBatch.restype = None
+    helios_lib.usePrimitiveTextureColorBatch.errcheck = _check_error
+
     # Mark dirty/clean
     helios_lib.markPrimitiveDirty.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
     helios_lib.markPrimitiveDirty.restype = None
@@ -7580,6 +7693,24 @@ def useObjectTextureColorBatchWrapper(context, objIDs: List[int]) -> None:
         return
     arr = (ctypes.c_uint * n)(*objIDs)
     helios_lib.useObjectTextureColorBatch(context, arr, n)
+
+
+def overridePrimitiveTextureColorBatchWrapper(context, uuids: List[int]) -> None:
+    _require_ctx_tube_object()
+    n = len(uuids)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*uuids)
+    helios_lib.overridePrimitiveTextureColorBatch(context, arr, n)
+
+
+def usePrimitiveTextureColorBatchWrapper(context, uuids: List[int]) -> None:
+    _require_ctx_tube_object()
+    n = len(uuids)
+    if n == 0:
+        return
+    arr = (ctypes.c_uint * n)(*uuids)
+    helios_lib.usePrimitiveTextureColorBatch(context, arr, n)
 
 
 # ---- Mark dirty/clean ----

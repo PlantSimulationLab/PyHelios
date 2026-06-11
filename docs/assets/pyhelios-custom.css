@@ -1,5 +1,27 @@
 /* PyHelios custom CSS fixes */
 
+/* ============================================
+   Inline code spans (markdown `code`)
+   Doxygen 1.13+ emits inline code as <span class="tt"> rather than <code>.
+   The doxygen-awesome theme only styles the <code> element, so span.tt falls
+   through to base doxygen.css, which fills it with --fragment-background-color
+   (a near-white color the theme never overrides for dark mode). The result is
+   inline code rendering as a clashing white box (most visibly in dark mode).
+   Re-style span.tt to match the theme's intended inline-code appearance using
+   the theme variables, which adapt to both light and dark mode.
+   (Inline code inside note/warning admonitions keeps its own higher-specificity
+   styling, e.g. dl.note .tt, and is unaffected by this rule.)
+   ============================================ */
+span.tt {
+    background-color: var(--code-background);
+    color: var(--code-foreground);
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-small);
+    padding: 0.1em 0.35em;
+    font-size: var(--code-font-size);
+    white-space: normal;
+}
+
 /* Fix header background color consistency - override doxygen-awesome */
 #titlearea, #titlearea table, #titlearea tbody, #titlearea tr, #titlearea td {
     background: var(--page-background-color) !important;

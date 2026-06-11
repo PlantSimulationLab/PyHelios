@@ -19,6 +19,7 @@
       <tab type="user" visible="yes" url="@ref BoundaryLayerConductanceDoc" title="Boundary Layer Conductance"/>
       <tab type="user" visible="yes" url="@ref EnergyBalanceDoc" title="Energy Balance Model"/>
       <tab type="user" visible="yes" url="@ref LeafOpticsDoc" title="Leaf Optics Model"/>
+      <tab type="user" visible="yes" url="@ref LiDARDoc" title="Terrestrial LiDAR"/>
       <tab type="user" visible="yes" url="@ref PhotosynthesisDoc" title="Photosynthesis Model"/>
       <tab type="user" visible="yes" url="@ref PlantArchitectureDoc" title="Plant Architecture"/>
       <tab type="user" visible="yes" url="@ref RadiationDoc" title="Radiation Model"/>
@@ -26,6 +27,8 @@
       <tab type="user" visible="yes" url="@ref StomatalConductanceDoc" title="Stomatal Conductance Model"/>
       <tab type="user" visible="yes" url="@ref VisualizerDoc" title="Visualizer"/>
       <tab type="user" visible="yes" url="@ref WeberPennTreeDoc" title="Weber-Penn Tree"/>
+      <!-- Build/selection details (PyHelios-specific) -->
+      <tab type="user" visible="yes" url="@ref PluginBuildSystem" title="Building &amp; Selecting Plug-ins"/>
     </tab>
 
     <!-- Verification & Validation -->

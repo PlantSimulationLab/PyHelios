@@ -37,6 +37,15 @@ PYHELIOS_API int getAvailablePlantModels(PlantArchitecture* plantarch, char*** m
 PYHELIOS_API unsigned int* getAllPlantObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, bool include_hidden, int* count);
 
+// Shoot topology inspection (read-only). All return thread-local static storage; do NOT free.
+PYHELIOS_API unsigned int* getAllPlantShootIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+PYHELIOS_API void getPlantShootTopology(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* out);
+PYHELIOS_API int* getPlantShootChildIDs(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
+// *count is set to the number of VERTICES; the returned buffer holds 3*count floats (x,y,z per vertex).
+PYHELIOS_API float* getPlantShootInternodeVertices(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
+// *count is set to the number of radius values (one per vertex, i.e. equal to the vertex count).
+PYHELIOS_API float* getPlantShootInternodeRadii(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
+
 // Memory cleanup functions
 PYHELIOS_API void freeStringArray(char** strings, int count);
 PYHELIOS_API void freeIntArray(unsigned int* array);

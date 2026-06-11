@@ -789,13 +789,16 @@ class TestLiDARLeafArea:
         from pyhelios import Context, LiDARCloud
 
         with Context() as context:
+            # Geometry to scan so the leaf-area inversion has hits and (recorded) misses.
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.5, 0.5))
             with LiDARCloud() as lidar:
-                # Add scan
-                scan_id = lidar.addScan(
-                    origin=vec3(0, 0, 2),
-                    Ntheta=10, theta_range=(0, 1.5),
-                    Nphi=10, phi_range=(0, 6.28),
-                    exit_diameter=0.01, beam_divergence=0.001
+                lidar.disableMessages()
+                # Scanner above looking down so most beams reach the patch or miss past it.
+                lidar.addScan(
+                    origin=vec3(0, 0, 3),
+                    Ntheta=40, theta_range=(2.7, 3.13),
+                    Nphi=40, phi_range=(0, 6.28),
+                    exit_diameter=0.02, beam_divergence=0.001
                 )
 
                 # Add grid
@@ -806,9 +809,9 @@ class TestLiDARLeafArea:
                     rotation=0.0
                 )
 
-                # Add hit points
-                for i in range(5):
-                    lidar.addHitPoint(scan_id, vec3(i * 0.2, 0, 0.5), vec3(1, 0, 0))
+                # Synthetic scan records misses by default (required by calculateLeafArea).
+                lidar.syntheticScan(context, rays_per_pulse=12, pulse_distance_threshold=0.05)
+                assert lidar.hasMisses(), "Synthetic scan must record misses for leaf-area inversion"
 
                 # Triangulate and calculate
                 lidar.triangulateHitPoints(Lmax=1.0, max_aspect_ratio=4.0)
@@ -1333,6 +1336,7 @@ class TestLiDARRigorousValidation:
                 assert relative_rmse < 0.06, \
                     f"LAD distribution RMSE failed: {relative_rmse*100:.1f}% (threshold: 6%)"
 
+    @pytest.mark.slow
     def test_synthetic_almond_tree(self):
         """
         Mirror C++ 'Synthetic Almond Tree Test'.
@@ -2008,3 +2012,188 @@ class TestLiDARHitData:
                 assert all(math.isnan(v) for v in values), \
                     "my_scalar must not transfer to hits when absent from column_format"
 
+
+
+@pytest.mark.native_only
+class TestLiDARMergeAdditions:
+    """Tests for LiDAR API added with the helios-core 1.3.74 merge:
+    scanner tilt, spinning multibeam, miss detection, leaf-area uncertainty, and
+    point-cloud header export."""
+
+    def test_scan_tilt_roundtrip(self):
+        """Scanner tilt roll/pitch supplied to addScan() round-trip through the getters."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 2),
+                Ntheta=10, theta_range=(0.2, 1.4),
+                Nphi=10, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+                scan_tilt_roll=0.05, scan_tilt_pitch=-0.03,
+            )
+            assert lidar.getScanTiltRoll(scan_id) == pytest.approx(0.05, abs=1e-6)
+            assert lidar.getScanTiltPitch(scan_id) == pytest.approx(-0.03, abs=1e-6)
+
+    def test_scan_tilt_defaults_zero(self):
+        """Tilt defaults to level (0, 0), preserving prior behavior."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 2),
+                Ntheta=10, theta_range=(0.2, 1.4),
+                Nphi=10, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+            )
+            assert lidar.getScanTiltRoll(scan_id) == pytest.approx(0.0, abs=1e-7)
+            assert lidar.getScanTiltPitch(scan_id) == pytest.approx(0.0, abs=1e-7)
+
+    def test_raster_scan_pattern(self):
+        """A scan added via addScan() reports the RASTER pattern and no beam zenith angles."""
+        from pyhelios import LiDARCloud
+        from pyhelios.LiDARCloud import ScanPattern
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 2),
+                Ntheta=10, theta_range=(0.2, 1.4),
+                Nphi=10, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+            )
+            assert lidar.getScanPattern(scan_id) == ScanPattern.RASTER
+            assert lidar.getScanBeamZenithAngles(scan_id) == []
+
+    def test_multibeam_scan(self):
+        """addScanMultibeam() reports the SPINNING_MULTIBEAM pattern and round-trips the channel angles."""
+        from pyhelios import LiDARCloud
+        from pyhelios.LiDARCloud import ScanPattern
+
+        angles = [math.radians(80), math.radians(90), math.radians(100)]
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScanMultibeam(
+                origin=vec3(0, 0, 2),
+                beam_zenith_angles=angles,
+                Nphi=20, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+            )
+            assert lidar.getScanPattern(scan_id) == ScanPattern.SPINNING_MULTIBEAM
+            assert lidar.getScanSizeTheta(scan_id) == len(angles)
+            returned = lidar.getScanBeamZenithAngles(scan_id)
+            assert len(returned) == len(angles)
+            for got, exp in zip(returned, angles):
+                assert got == pytest.approx(exp, abs=1e-5)
+
+    def test_multibeam_requires_angles(self):
+        """addScanMultibeam() rejects an empty channel-angle list."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            with pytest.raises(ValueError):
+                lidar.addScanMultibeam(
+                    origin=vec3(0, 0, 2),
+                    beam_zenith_angles=[],
+                    Nphi=20, phi_range=(0, 6.28),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                )
+
+    def test_miss_detection(self):
+        """record_misses=True produces misses detectable via hasMisses()/isHitMiss()."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 2),
+                    Ntheta=20, theta_range=(0, 1.4),
+                    Nphi=20, phi_range=(0, 6.28),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                )
+                lidar.syntheticScan(context, rays_per_pulse=10,
+                                    pulse_distance_threshold=0.05, record_misses=True)
+                assert lidar.hasMisses() is True
+                hit_count = lidar.getHitCount()
+                assert hit_count > 0
+                # At least one hit must be flagged as a miss.
+                assert any(lidar.isHitMiss(i) for i in range(hit_count))
+
+    def test_miss_distance_constant(self):
+        """getMissDistance() exposes the LIDAR_MISS_DISTANCE constant (20000 m)."""
+        from pyhelios import LiDARCloud
+
+        assert LiDARCloud.getMissDistance() == pytest.approx(20000.0, abs=1.0)
+
+    def test_export_point_cloud_header(self, tmp_path):
+        """exportPointCloud(write_header=True) writes a '#'-prefixed header line."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.5, 0.5))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 2),
+                    Ntheta=15, theta_range=(2.6, 3.13),
+                    Nphi=15, phi_range=(0, 6.28),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                    column_format=["x", "y", "z"],
+                )
+                lidar.syntheticScan(context)
+
+                headered = tmp_path / "headered.xyz"
+                lidar.exportPointCloud(str(headered), write_header=True)
+                assert headered.exists()
+                first_line = headered.read_text().splitlines()[0]
+                assert first_line.startswith("#")
+
+                bare = tmp_path / "bare.xyz"
+                lidar.exportPointCloud(str(bare), write_header=False)
+                assert bare.exists()
+                assert not bare.read_text().splitlines()[0].startswith("#")
+
+    def test_leaf_area_uncertainty_accessors(self):
+        """calculateLeafArea(element_width=...) populates the uncertainty accessors without error.
+
+        The numeric values depend on scan geometry; here we only assert the accessors are
+        callable and return values of the documented types/sentinels.
+        """
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 3),
+                    Ntheta=30, theta_range=(2.7, 3.13),
+                    Nphi=30, phi_range=(0, 6.28),
+                    exit_diameter=0.02, beam_divergence=0.001,
+                )
+                lidar.syntheticScan(context, rays_per_pulse=12,
+                                    pulse_distance_threshold=0.05, record_misses=True)
+                lidar.addGrid(center=vec3(0, 0, 0.5), size=vec3(1, 1, 1),
+                              ndiv=[1, 1, 1], rotation=0.0)
+                lidar.triangulateHitPoints(Lmax=0.1, max_aspect_ratio=5.0)
+                lidar.calculateHitGridCell()
+                lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05)
+
+                # Accessors are callable and typed; beam count is an int >= -1.
+                assert isinstance(lidar.getCellBeamCount(0), int)
+                assert isinstance(lidar.getCellLADVariance(0), float)
+                assert isinstance(lidar.getCellRelativeDensityIndex(0), float)
+                assert isinstance(lidar.getCellMeanPathLength(0), float)
+                valid, lo, hi = lidar.getCellLeafAreaConfidenceInterval(0, 0.95)
+                assert isinstance(valid, bool)
+                gvalid, mean_lad, glo, ghi = lidar.getGroupLADConfidenceInterval([0], 0.95)
+                assert isinstance(gvalid, bool)
+
+    def test_element_width_requires_min_voxel_hits(self):
+        """element_width without min_voxel_hits is a usage error."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            with LiDARCloud() as lidar:
+                with pytest.raises(ValueError):
+                    lidar.calculateLeafArea(context, element_width=0.05)

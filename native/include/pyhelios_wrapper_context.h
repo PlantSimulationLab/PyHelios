@@ -2492,6 +2492,41 @@ PYHELIOS_API int generateTexturesFromColormapPath(helios::Context* context, unsi
 PYHELIOS_API int getPrimitiveTextureTransparencyDataInfo(helios::Context* context, unsigned int uuid, unsigned int* width_out, unsigned int* height_out);
 PYHELIOS_API unsigned char* getPrimitiveTextureTransparencyDataBuffer(helios::Context* context, unsigned int uuid);
 
+// Per-element bulk data setters: assign a distinct value to each ID. Scalar/String
+// variants require values length == num_ids; VecN/IntN variants take a flat array of
+// length num_ids*N.
+PYHELIOS_API void setPrimitiveDataIntArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataUIntArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, unsigned int* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataFloatArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataDoubleArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, double* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataStringArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, const char** values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataVec2Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataVec3Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataVec4Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataInt2Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataInt3Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+PYHELIOS_API void setPrimitiveDataInt4Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+
+PYHELIOS_API void setObjectDataIntArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+PYHELIOS_API void setObjectDataUIntArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, unsigned int* values, size_t num_values);
+PYHELIOS_API void setObjectDataFloatArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setObjectDataDoubleArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, double* values, size_t num_values);
+PYHELIOS_API void setObjectDataStringArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, const char** values, size_t num_values);
+PYHELIOS_API void setObjectDataVec2Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setObjectDataVec3Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setObjectDataVec4Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);
+PYHELIOS_API void setObjectDataInt2Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+PYHELIOS_API void setObjectDataInt3Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+PYHELIOS_API void setObjectDataInt4Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
+
+// Bulk texture-color override for primitives.
+PYHELIOS_API void overridePrimitiveTextureColorBatch(helios::Context* context, unsigned int* uuids, unsigned int count);
+PYHELIOS_API void usePrimitiveTextureColorBatch(helios::Context* context, unsigned int* uuids, unsigned int count);
+
+// incrementPrimitiveData: unsigned int and double overloads.
+PYHELIOS_API void incrementPrimitiveDataUInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, unsigned int increment);
+PYHELIOS_API void incrementPrimitiveDataDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, double increment);
+
 #ifdef __cplusplus
 }
 #endif

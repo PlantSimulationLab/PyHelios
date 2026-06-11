@@ -1182,6 +1182,183 @@ extern "C" {
         }
     }
 
+    //=============================================================================
+    // Shoot Topology Inspection (read-only)
+    //=============================================================================
+
+    PYHELIOS_API unsigned int* getAllPlantShootIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> shootIDs = plantarch->getAllShootIDs(plantID);
+
+            static thread_local std::vector<unsigned int> static_shoot_ids;
+            static_shoot_ids.assign(shootIDs.begin(), shootIDs.end());
+            *count = static_cast<int>(static_shoot_ids.size());
+
+            return static_shoot_ids.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllShootIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllShootIDs): Unknown error getting shoot IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    // Fills out[0..3] = {rank, parent_shoot_ID, parent_node_index, node_count}. parent_shoot_ID is
+    // signed (-1 for the base stem). All other fields are non-negative.
+    PYHELIOS_API void getPlantShootTopology(PlantArchitecture* plantarch, unsigned int plantID,
+                                            unsigned int shootID, int* out) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+            if (!out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
+                return;
+            }
+            const std::shared_ptr<Shoot>& shoot = plantarch->getPlantShoot(plantID, shootID);
+            out[0] = static_cast<int>(shoot->rank);
+            out[1] = shoot->parent_shoot_ID;
+            out[2] = static_cast<int>(shoot->parent_node_index);
+            out[3] = static_cast<int>(shoot->current_node_number);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantShootTopology): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantShootTopology): Unknown error.");
+        }
+    }
+
+    // Returns the flattened list of child shoot IDs (across all parent node indices). Caller copies; the
+    // storage is thread-local static and must not be freed.
+    PYHELIOS_API int* getPlantShootChildIDs(PlantArchitecture* plantarch, unsigned int plantID,
+                                            unsigned int shootID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+            const std::shared_ptr<Shoot>& shoot = plantarch->getPlantShoot(plantID, shootID);
+
+            static thread_local std::vector<int> static_child_ids;
+            static_child_ids.clear();
+            for (const auto& entry : shoot->childIDs) {
+                for (int childID : entry.second) {
+                    static_child_ids.push_back(childID);
+                }
+            }
+            *count = static_cast<int>(static_child_ids.size());
+            return static_child_ids.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantShootChildIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantShootChildIDs): Unknown error.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    // Returns the flattened woody internode polyline as 3*N floats (x,y,z per vertex), in
+    // phytomer-then-segment order; *count is set to N (the number of vertices). The parallel per-vertex
+    // radii are available via getPlantShootInternodeRadii. Thread-local static storage; do not free.
+    PYHELIOS_API float* getPlantShootInternodeVertices(PlantArchitecture* plantarch, unsigned int plantID,
+                                                       unsigned int shootID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+            const std::shared_ptr<Shoot>& shoot = plantarch->getPlantShoot(plantID, shootID);
+
+            static thread_local std::vector<float> static_vertices;
+            static_vertices.clear();
+            int n = 0;
+            for (const auto& phytomer : shoot->shoot_internode_vertices) {
+                for (const helios::vec3& v : phytomer) {
+                    static_vertices.push_back(v.x);
+                    static_vertices.push_back(v.y);
+                    static_vertices.push_back(v.z);
+                    n++;
+                }
+            }
+            *count = n;
+            return static_vertices.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantShootInternodeVertices): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantShootInternodeVertices): Unknown error.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    // Returns the flattened per-vertex woody internode radii (one per vertex returned by
+    // getPlantShootInternodeVertices). Thread-local static storage; do not free.
+    PYHELIOS_API float* getPlantShootInternodeRadii(PlantArchitecture* plantarch, unsigned int plantID,
+                                                    unsigned int shootID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+            const std::shared_ptr<Shoot>& shoot = plantarch->getPlantShoot(plantID, shootID);
+
+            static thread_local std::vector<float> static_radii;
+            static_radii.clear();
+            for (const auto& phytomer : shoot->shoot_internode_radii) {
+                for (float r : phytomer) {
+                    static_radii.push_back(r);
+                }
+            }
+            *count = static_cast<int>(static_radii.size());
+            return static_radii.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantShootInternodeRadii): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantShootInternodeRadii): Unknown error.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
 } // extern "C"
 
 #endif // PLANTARCHITECTURE_PLUGIN_AVAILABLE

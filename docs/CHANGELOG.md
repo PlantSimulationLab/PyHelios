@@ -1,5 +1,27 @@
 # Changelog
 
+# [v0.1.22] 2026-06-10
+
+- Updated helios-core to v1.3.74
+
+## Context
+- `setPrimitiveData*()`/`setObjectData*()` now accept a *list* of values (one per UUID/objID) to assign a distinct value to each element in a single bulk call, complementing the existing scalar-broadcast behavior (a scalar still applies the same value to every ID). Covers all 11 data types (`int`, `uint`, `float`, `double`, `string`, `vec2`, `vec3`, `vec4`, `int2`, `int3`, `int4`).
+- `overridePrimitiveTextureColor()` and `usePrimitiveTextureColor()` now accept a list of UUIDs, applying the override/restore to all of them in one bulk call (previously single-UUID only).
+- `incrementPrimitiveData()` gained an optional `data_type` keyword (`'int'`/`'uint'`/`'float'`/`'double'`) to target a specific field type, and now supports unsigned-int and double fields in addition to the existing int/float overloads.
+
+## LiDAR
+- Added `LiDARCloud.addHitPointsWithData()` for bulk in-memory hit ingestion carrying a per-hit data map: like `addHitPoints()` but populates each hit's named-scalar data map (the in-memory equivalent of what the ASCII loader does for non-standard columns), so values like `timestamp`/`target_index`/`target_count` land in the map for multi-return grouping. Uses the full `SphericalCoord` (radius retained for Beer's-law path length).
+- Added `LiDARCloud.getTriangleVerticesAll()` to bulk-export every triangulated triangle's three vertices (and source scan ID) in a single call as flat numpy arrays, reading directly off the LiDARcloud and bypassing the Context round-trip and per-triangle vertex loop.
+- Added `LiDARCloud.getTriangulationStats()` returning the filter diagnostics from the most recent `triangulateHitPoints()` call as a dict (`candidates`, `dropped_lmax`, `dropped_aspect`, `dropped_degenerate`); each dropped triangle is attributed to one primary reason so `candidates == getTriangleCount() + dropped_lmax + dropped_aspect + dropped_degenerate`, distinguishing a data-limited mesh (few candidates) from a filter-limited one (many candidates dropped by Lmax/aspect).
+- **Leaf-area inversion now requires misses (behavior change from helios-core 1.3.74).** `calculateLeafArea()` fails fast with an explicit error if the point cloud contains no misses (fired pulses that returned nothing), rather than silently producing biased leaf area density. `LiDARCloud.syntheticScan()` now records misses by default for **discrete-return** scans as well as full-waveform (the discrete path is routed through a new miss-aware native overload honoring `scan_grid_only`/`record_misses`); import workflows can synthesize misses with `gapfillMisses()`. Added `hasMisses()`, `isHitMiss(index)`, and the static `getMissDistance()` (the `LIDAR_MISS_DISTANCE` constant) to inspect misses.
+- Added a global scanner-tilt option for synthetic scans: `addScan()` gained `scan_tilt_roll`/`scan_tilt_pitch` keyword arguments (radians; default 0 = level), queryable via `getScanTiltRoll()`/`getScanTiltPitch()`. Models the residual tilt of the scanner spin axis away from plumb.
+- Added a spinning multibeam scan pattern (e.g. Velodyne/Ouster/Hesai): `addScanMultibeam()` registers a rotating multi-channel scan from a list of per-channel zenith angles, and `getScanPattern()` (returning the new `ScanPattern` enum: `RASTER`/`SPINNING_MULTIBEAM`) and `getScanBeamZenithAngles()` query the pattern.
+- Added per-voxel leaf-area sampling uncertainty (Pimont et al. 2018): `calculateLeafArea()` gained an optional `element_width` argument that, alongside the leaf-area estimate, computes the sampling variance, exposed through `getCellLADVariance()`, `getCellBeamCount()`, `getCellRelativeDensityIndex()`, `getCellMeanPathLength()`, single-voxel `getCellLeafAreaConfidenceInterval()`, group-scale `getGroupLADConfidenceInterval()` (recommended), and the `exportLeafAreaUncertainty()` file export.
+- `exportPointCloud()` gained a `write_header` argument (default True): exports now prepend a `#`-prefixed column-name header line (CloudCompare convention) that round-trips through `loadXML()`.
+
+## Plant Architecture
+- Added read-only shoot-topology inspection mirroring helios-core 1.3.74's `getAllShootIDs()`/`getPlantShoot()`: `PlantArchitecture.getAllShootIDs()` returns the contiguous 0-based shoot IDs for a plant (shoot 0 is the base stem), `getShoot()` returns a shoot's topology dict (`rank`, `parent_shoot_id` (-1 for the base stem), `parent_node_index`, `node_count`), `getShootChildIDs()` returns its child shoot IDs, and `getShootInternodeVertices()`/`getShootInternodeRadii()` return its woody internode polyline geometry.
+
 # [v0.1.21] 2026-06-07
 
 - Updated helios-core to v1.3.73

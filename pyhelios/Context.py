@@ -2503,10 +2503,14 @@ class Context:
         Args:
             uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Signed integer value (broadcast to all UUIDs if list provided)
+            value: Signed integer scalar (broadcast to all UUIDs), or a list of
+                values (one per UUID) to set a distinct value on each primitive.
         """
         if isinstance(uuids_or_uuid, (list, tuple)):
-            context_wrapper.setBroadcastPrimitiveDataInt(self.context, uuids_or_uuid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Int', value)
+            else:
+                context_wrapper.setBroadcastPrimitiveDataInt(self.context, uuids_or_uuid, label, value)
         else:
             context_wrapper.setPrimitiveDataInt(self.context, uuids_or_uuid, label, value)
 
@@ -2519,10 +2523,14 @@ class Context:
         Args:
             uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Unsigned integer value (broadcast to all UUIDs if list provided)
+            value: Unsigned integer scalar (broadcast to all UUIDs), or a list of
+                values (one per UUID) to set a distinct value on each primitive.
         """
         if isinstance(uuids_or_uuid, (list, tuple)):
-            context_wrapper.setBroadcastPrimitiveDataUInt(self.context, uuids_or_uuid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'UInt', value)
+            else:
+                context_wrapper.setBroadcastPrimitiveDataUInt(self.context, uuids_or_uuid, label, value)
         else:
             context_wrapper.setPrimitiveDataUInt(self.context, uuids_or_uuid, label, value)
 
@@ -2533,10 +2541,14 @@ class Context:
         Args:
             uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Float value (broadcast to all UUIDs if list provided)
+            value: Float scalar (broadcast to all UUIDs), or a list of values
+                (one per UUID) to set a distinct value on each primitive.
         """
         if isinstance(uuids_or_uuid, (list, tuple)):
-            context_wrapper.setBroadcastPrimitiveDataFloat(self.context, uuids_or_uuid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Float', value)
+            else:
+                context_wrapper.setBroadcastPrimitiveDataFloat(self.context, uuids_or_uuid, label, value)
         else:
             context_wrapper.setPrimitiveDataFloat(self.context, uuids_or_uuid, label, value)
 
@@ -2547,10 +2559,14 @@ class Context:
         Args:
             uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: Double value (broadcast to all UUIDs if list provided)
+            value: Double scalar (broadcast to all UUIDs), or a list of values
+                (one per UUID) to set a distinct value on each primitive.
         """
         if isinstance(uuids_or_uuid, (list, tuple)):
-            context_wrapper.setBroadcastPrimitiveDataDouble(self.context, uuids_or_uuid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Double', value)
+            else:
+                context_wrapper.setBroadcastPrimitiveDataDouble(self.context, uuids_or_uuid, label, value)
         else:
             context_wrapper.setPrimitiveDataDouble(self.context, uuids_or_uuid, label, value)
 
@@ -2561,10 +2577,14 @@ class Context:
         Args:
             uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
             label: String key for the data
-            value: String value (broadcast to all UUIDs if list provided)
+            value: String scalar (broadcast to all UUIDs), or a list of strings
+                (one per UUID) to set a distinct value on each primitive.
         """
         if isinstance(uuids_or_uuid, (list, tuple)):
-            context_wrapper.setBroadcastPrimitiveDataString(self.context, uuids_or_uuid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'String', value)
+            else:
+                context_wrapper.setBroadcastPrimitiveDataString(self.context, uuids_or_uuid, label, value)
         else:
             context_wrapper.setPrimitiveDataString(self.context, uuids_or_uuid, label, value)
 
@@ -2578,6 +2598,9 @@ class Context:
             x_or_vec: Either x component (float) or vec2 object
             y: Y component (if x_or_vec is float)
         """
+        if isinstance(uuids_or_uuid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Vec2', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x'):
             x, y = x_or_vec.x, x_or_vec.y
         else:
@@ -2598,6 +2621,9 @@ class Context:
             y: Y component (if x_or_vec is float)
             z: Z component (if x_or_vec is float)
         """
+        if isinstance(uuids_or_uuid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Vec3', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x'):
             x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
         else:
@@ -2619,6 +2645,9 @@ class Context:
             z: Z component (if x_or_vec is float)
             w: W component (if x_or_vec is float)
         """
+        if isinstance(uuids_or_uuid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Vec4', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x'):
             x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
         else:
@@ -2638,6 +2667,9 @@ class Context:
             x_or_vec: Either x component (int) or int2 object
             y: Y component (if x_or_vec is int)
         """
+        if isinstance(uuids_or_uuid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Int2', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x'):
             x, y = x_or_vec.x, x_or_vec.y
         else:
@@ -2658,6 +2690,9 @@ class Context:
             y: Y component (if x_or_vec is int)
             z: Z component (if x_or_vec is int)
         """
+        if isinstance(uuids_or_uuid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Int3', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x'):
             x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
         else:
@@ -2679,6 +2714,9 @@ class Context:
             z: Z component (if x_or_vec is int)
             w: W component (if x_or_vec is int)
         """
+        if isinstance(uuids_or_uuid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setPrimitiveDataArray(self.context, uuids_or_uuid, label, 'Int4', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x'):
             x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
         else:
@@ -3949,23 +3987,31 @@ class Context:
             return np.ctypeslib.as_array(ptr, shape=(size,)).copy()
         return context_wrapper.getPrimitiveSolidFraction(self.context, uuid)
 
-    def overridePrimitiveTextureColor(self, uuid: int) -> None:
-        """Override texture color with constant RGB color for a primitive.
+    def overridePrimitiveTextureColor(self, uuids_or_uuid) -> None:
+        """Override texture color with the primitive's constant RGB color.
 
         Args:
-            uuid: UUID of the primitive
+            uuids_or_uuid: A single UUID (int) or a list of UUIDs. When a list is
+                given, the override is applied to all of them in a single bulk call.
         """
         self._check_context_available()
-        context_wrapper.overridePrimitiveTextureColor(self.context, uuid)
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.overridePrimitiveTextureColorBatchWrapper(self.context, list(uuids_or_uuid))
+        else:
+            context_wrapper.overridePrimitiveTextureColor(self.context, uuids_or_uuid)
 
-    def usePrimitiveTextureColor(self, uuid: int) -> None:
-        """Use texture map color instead of constant RGB for a primitive.
+    def usePrimitiveTextureColor(self, uuids_or_uuid) -> None:
+        """Use texture-map color instead of the constant RGB color.
 
         Args:
-            uuid: UUID of the primitive
+            uuids_or_uuid: A single UUID (int) or a list of UUIDs. When a list is
+                given, all of them are restored in a single bulk call.
         """
         self._check_context_available()
-        context_wrapper.usePrimitiveTextureColor(self.context, uuid)
+        if isinstance(uuids_or_uuid, (list, tuple)):
+            context_wrapper.usePrimitiveTextureColorBatchWrapper(self.context, list(uuids_or_uuid))
+        else:
+            context_wrapper.usePrimitiveTextureColor(self.context, uuids_or_uuid)
 
     def isPrimitiveTextureColorOverridden(self, uuid: int) -> bool:
         """Check if primitive texture color is overridden.
@@ -4086,42 +4132,60 @@ class Context:
     # ==================== Object Data Methods ====================
 
     def setObjectDataInt(self, objids_or_objid, label: str, value: int) -> None:
-        """Set object data as signed 32-bit integer for one or multiple objects."""
+        """Set object data as signed 32-bit integer. Scalar broadcasts to all objIDs; a list of values sets a distinct value per objID."""
         if isinstance(objids_or_objid, (list, tuple)):
-            context_wrapper.setBroadcastObjectDataInt(self.context, objids_or_objid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Int', value)
+            else:
+                context_wrapper.setBroadcastObjectDataInt(self.context, objids_or_objid, label, value)
         else:
             context_wrapper.setObjectDataInt(self.context, objids_or_objid, label, value)
 
     def setObjectDataUInt(self, objids_or_objid, label: str, value: int) -> None:
-        """Set object data as unsigned 32-bit integer for one or multiple objects."""
+        """Set object data as unsigned 32-bit integer. Scalar broadcasts to all objIDs; a list of values sets a distinct value per objID."""
         if isinstance(objids_or_objid, (list, tuple)):
-            context_wrapper.setBroadcastObjectDataUInt(self.context, objids_or_objid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'UInt', value)
+            else:
+                context_wrapper.setBroadcastObjectDataUInt(self.context, objids_or_objid, label, value)
         else:
             context_wrapper.setObjectDataUInt(self.context, objids_or_objid, label, value)
 
     def setObjectDataFloat(self, objids_or_objid, label: str, value: float) -> None:
-        """Set object data as 32-bit float for one or multiple objects."""
+        """Set object data as 32-bit float. Scalar broadcasts to all objIDs; a list of values sets a distinct value per objID."""
         if isinstance(objids_or_objid, (list, tuple)):
-            context_wrapper.setBroadcastObjectDataFloat(self.context, objids_or_objid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Float', value)
+            else:
+                context_wrapper.setBroadcastObjectDataFloat(self.context, objids_or_objid, label, value)
         else:
             context_wrapper.setObjectDataFloat(self.context, objids_or_objid, label, value)
 
     def setObjectDataDouble(self, objids_or_objid, label: str, value: float) -> None:
-        """Set object data as 64-bit double for one or multiple objects."""
+        """Set object data as 64-bit double. Scalar broadcasts to all objIDs; a list of values sets a distinct value per objID."""
         if isinstance(objids_or_objid, (list, tuple)):
-            context_wrapper.setBroadcastObjectDataDouble(self.context, objids_or_objid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Double', value)
+            else:
+                context_wrapper.setBroadcastObjectDataDouble(self.context, objids_or_objid, label, value)
         else:
             context_wrapper.setObjectDataDouble(self.context, objids_or_objid, label, value)
 
     def setObjectDataString(self, objids_or_objid, label: str, value: str) -> None:
-        """Set object data as string for one or multiple objects."""
+        """Set object data as string. Scalar broadcasts to all objIDs; a list of strings sets a distinct value per objID."""
         if isinstance(objids_or_objid, (list, tuple)):
-            context_wrapper.setBroadcastObjectDataString(self.context, objids_or_objid, label, value)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'String', value)
+            else:
+                context_wrapper.setBroadcastObjectDataString(self.context, objids_or_objid, label, value)
         else:
             context_wrapper.setObjectDataString(self.context, objids_or_objid, label, value)
 
     def setObjectDataVec2(self, objids_or_objid, label: str, x_or_vec, y: float = None) -> None:
-        """Set object data as vec2. Accepts vec2 object or x,y components."""
+        """Set object data as vec2. Accepts a vec2 / x,y components, or a list of vec2 (one per objID)."""
+        if isinstance(objids_or_objid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Vec2', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x') and y is None:
             x, y = x_or_vec.x, x_or_vec.y
         else:
@@ -4132,7 +4196,10 @@ class Context:
             context_wrapper.setObjectDataVec2(self.context, objids_or_objid, label, x, y)
 
     def setObjectDataVec3(self, objids_or_objid, label: str, x_or_vec, y: float = None, z: float = None) -> None:
-        """Set object data as vec3. Accepts vec3 object or x,y,z components."""
+        """Set object data as vec3. Accepts a vec3 / x,y,z components, or a list of vec3 (one per objID)."""
+        if isinstance(objids_or_objid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Vec3', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x') and y is None:
             x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
         else:
@@ -4143,7 +4210,10 @@ class Context:
             context_wrapper.setObjectDataVec3(self.context, objids_or_objid, label, x, y, z)
 
     def setObjectDataVec4(self, objids_or_objid, label: str, x_or_vec, y: float = None, z: float = None, w: float = None) -> None:
-        """Set object data as vec4. Accepts vec4 object or x,y,z,w components."""
+        """Set object data as vec4. Accepts a vec4 / x,y,z,w components, or a list of vec4 (one per objID)."""
+        if isinstance(objids_or_objid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Vec4', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x') and y is None:
             x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
         else:
@@ -4154,7 +4224,10 @@ class Context:
             context_wrapper.setObjectDataVec4(self.context, objids_or_objid, label, x, y, z, w)
 
     def setObjectDataInt2(self, objids_or_objid, label: str, x_or_vec, y: int = None) -> None:
-        """Set object data as int2. Accepts int2 object or x,y components."""
+        """Set object data as int2. Accepts an int2 / x,y components, or a list of int2 (one per objID)."""
+        if isinstance(objids_or_objid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Int2', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x') and y is None:
             x, y = x_or_vec.x, x_or_vec.y
         else:
@@ -4165,7 +4238,10 @@ class Context:
             context_wrapper.setObjectDataInt2(self.context, objids_or_objid, label, x, y)
 
     def setObjectDataInt3(self, objids_or_objid, label: str, x_or_vec, y: int = None, z: int = None) -> None:
-        """Set object data as int3. Accepts int3 object or x,y,z components."""
+        """Set object data as int3. Accepts an int3 / x,y,z components, or a list of int3 (one per objID)."""
+        if isinstance(objids_or_objid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Int3', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x') and y is None:
             x, y, z = x_or_vec.x, x_or_vec.y, x_or_vec.z
         else:
@@ -4176,7 +4252,10 @@ class Context:
             context_wrapper.setObjectDataInt3(self.context, objids_or_objid, label, x, y, z)
 
     def setObjectDataInt4(self, objids_or_objid, label: str, x_or_vec, y: int = None, z: int = None, w: int = None) -> None:
-        """Set object data as int4. Accepts int4 object or x,y,z,w components."""
+        """Set object data as int4. Accepts an int4 / x,y,z,w components, or a list of int4 (one per objID)."""
+        if isinstance(objids_or_objid, (list, tuple)) and isinstance(x_or_vec, (list, tuple, np.ndarray)):
+            context_wrapper.setObjectDataArray(self.context, objids_or_objid, label, 'Int4', x_or_vec)
+            return
         if hasattr(x_or_vec, 'x') and y is None:
             x, y, z, w = x_or_vec.x, x_or_vec.y, x_or_vec.z, x_or_vec.w
         else:
@@ -4498,8 +4577,34 @@ class Context:
         else:
             context_wrapper.scalePrimitiveDataWithUUIDsWrapper(self.context, uuids_or_label, label_or_factor, factor)
 
-    def incrementPrimitiveData(self, uuids: List[int], label: str, increment) -> None:
-        """Increment primitive data. Auto-dispatches based on increment type."""
+    def incrementPrimitiveData(self, uuids: List[int], label: str, increment, data_type: str = None) -> None:
+        """Increment primitive data for the given UUIDs.
+
+        Each Helios increment overload only acts on fields whose stored type matches;
+        fields of a different type are left unchanged. By default the overload is
+        inferred from the Python type of ``increment`` (``int`` -> int, ``float`` ->
+        float). To target an unsigned-int or double field, pass ``data_type``
+        explicitly as one of ``'int'``, ``'uint'``, ``'float'``, ``'double'``.
+
+        Args:
+            uuids: UUIDs whose data field to increment.
+            label: Data field label.
+            increment: Amount to add.
+            data_type: Optional explicit field type to target.
+        """
+        if data_type is not None:
+            dt = data_type.lower()
+            if dt == 'int':
+                context_wrapper.incrementPrimitiveDataIntWrapper(self.context, uuids, label, int(increment))
+            elif dt in ('uint', 'unsigned', 'unsigned int'):
+                context_wrapper.incrementPrimitiveDataUIntWrapper(self.context, uuids, label, int(increment))
+            elif dt == 'float':
+                context_wrapper.incrementPrimitiveDataFloatWrapper(self.context, uuids, label, float(increment))
+            elif dt == 'double':
+                context_wrapper.incrementPrimitiveDataDoubleWrapper(self.context, uuids, label, float(increment))
+            else:
+                raise ValueError(f"Unsupported data_type: {data_type!r}. Expected one of 'int', 'uint', 'float', 'double'.")
+            return
         if isinstance(increment, float):
             context_wrapper.incrementPrimitiveDataFloatWrapper(self.context, uuids, label, increment)
         elif isinstance(increment, int):

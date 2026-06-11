@@ -152,6 +152,36 @@ try:
     ]
     helios_lib.getAllPlantUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
 
+    # Shoot topology inspection
+    helios_lib.getAllPlantShootIDs.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_int)
+    ]
+    helios_lib.getAllPlantShootIDs.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.getPlantShootTopology.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int),  # out[4]
+    ]
+    helios_lib.getPlantShootTopology.restype = None
+
+    helios_lib.getPlantShootChildIDs.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getPlantShootChildIDs.restype = ctypes.POINTER(ctypes.c_int)
+
+    helios_lib.getPlantShootInternodeVertices.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getPlantShootInternodeVertices.restype = ctypes.POINTER(ctypes.c_float)
+
+    helios_lib.getPlantShootInternodeRadii.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getPlantShootInternodeRadii.restype = ctypes.POINTER(ctypes.c_float)
+
     # Memory cleanup functions
     helios_lib.freeStringArray.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
     helios_lib.freeStringArray.restype = None
@@ -383,6 +413,11 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.getAvailablePlantModels.errcheck = _check_error
     helios_lib.getAllPlantObjectIDs.errcheck = _check_error
     helios_lib.getAllPlantUUIDs.errcheck = _check_error
+    helios_lib.getAllPlantShootIDs.errcheck = _check_error
+    helios_lib.getPlantShootTopology.errcheck = _check_error
+    helios_lib.getPlantShootChildIDs.errcheck = _check_error
+    helios_lib.getPlantShootInternodeVertices.errcheck = _check_error
+    helios_lib.getPlantShootInternodeRadii.errcheck = _check_error
     # Collision detection error checking
     helios_lib.enableSoftCollisionAvoidance.errcheck = _check_error
     helios_lib.disableCollisionDetection.errcheck = _check_error
@@ -805,6 +840,93 @@ def getAllPlantObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plan
         return [ptr[i] for i in range(count.value)]
     else:
         return []
+
+
+def getAllPlantShootIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+    """Get all shoot IDs for a plant (0-based; shoot 0 is the base stem)."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    count = ctypes.c_int()
+    ptr = helios_lib.getAllPlantShootIDs(plantarch_ptr, plant_id, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [ptr[i] for i in range(count.value)]
+    return []
+
+
+def getPlantShootTopology(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                          plant_id: int, shoot_id: int) -> dict:
+    """Get a shoot's topology as a dict: rank, parent_shoot_id, parent_node_index, node_count.
+
+    parent_shoot_id is -1 for the base stem.
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    out = (ctypes.c_int * 4)()
+    helios_lib.getPlantShootTopology(plantarch_ptr, plant_id, shoot_id, out)
+    return {
+        "rank": int(out[0]),
+        "parent_shoot_id": int(out[1]),
+        "parent_node_index": int(out[2]),
+        "node_count": int(out[3]),
+    }
+
+
+def getPlantShootChildIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                          plant_id: int, shoot_id: int) -> List[int]:
+    """Get the child shoot IDs of a shoot (flattened across parent node indices)."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    count = ctypes.c_int()
+    ptr = helios_lib.getPlantShootChildIDs(plantarch_ptr, plant_id, shoot_id, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [int(ptr[i]) for i in range(count.value)]
+    return []
+
+
+def getPlantShootInternodeVertices(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                   plant_id: int, shoot_id: int) -> List[Tuple[float, float, float]]:
+    """Get the woody internode polyline vertices of a shoot as a list of (x, y, z) tuples."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    count = ctypes.c_int()  # number of vertices (the C array holds 3*count floats)
+    ptr = helios_lib.getPlantShootInternodeVertices(plantarch_ptr, plant_id, shoot_id, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [(float(ptr[3 * i]), float(ptr[3 * i + 1]), float(ptr[3 * i + 2]))
+                for i in range(count.value)]
+    return []
+
+
+def getPlantShootInternodeRadii(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                plant_id: int, shoot_id: int) -> List[float]:
+    """Get the per-vertex woody internode radii of a shoot."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    count = ctypes.c_int()
+    ptr = helios_lib.getPlantShootInternodeRadii(plantarch_ptr, plant_id, shoot_id, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [float(ptr[i]) for i in range(count.value)]
+    return []
+
 
 def getAllPlantUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int, include_hidden: bool = False) -> List[int]:
     """Get all UUIDs for a plant"""

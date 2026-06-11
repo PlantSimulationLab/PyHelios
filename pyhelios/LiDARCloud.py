@@ -8,6 +8,7 @@ Provides Python interface to Helios LiDAR plugin for:
 - Leaf area density calculations
 """
 
+from enum import IntEnum
 from typing import List, Tuple, Optional, Union
 from .wrappers import ULiDARWrapper as lidar_wrapper
 from .Context import Context
@@ -21,6 +22,17 @@ from .validation.core import validate_positive_value
 class LiDARError(HeliosError):
     """Exception raised for LiDAR-specific errors"""
     pass
+
+
+class ScanPattern(IntEnum):
+    """Scan pattern returned by :meth:`LiDARCloud.getScanPattern`.
+
+    RASTER is the uniform-angular-grid pattern produced by :meth:`LiDARCloud.addScan`;
+    SPINNING_MULTIBEAM is the rotating multi-channel pattern produced by
+    :meth:`LiDARCloud.addScanMultibeam`.
+    """
+    RASTER = 0
+    SPINNING_MULTIBEAM = 1
 
 
 class LiDARCloud:
@@ -99,7 +111,8 @@ class LiDARCloud:
                 Nphi: int, phi_range: Tuple[float, float],
                 exit_diameter: float, beam_divergence: float,
                 column_format: Optional[List[str]] = None,
-                range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0) -> int:
+                range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0) -> int:
         """
         Add a LiDAR scan to the point cloud.
 
@@ -126,6 +139,12 @@ class LiDARCloud:
             angle_noise_stddev: Standard deviation of Gaussian angular (beam-pointing) jitter
                 in radians. Only affects synthetic-scan generation. Defaults to 0.0 (jitter
                 disabled).
+            scan_tilt_roll: Global scanner tilt roll angle in radians, modeling residual tilt of
+                the scanner spin axis away from plumb (right-hand rotation about the body lateral
+                axis). Only affects synthetic-scan generation. Defaults to 0.0 (level).
+            scan_tilt_pitch: Global scanner tilt pitch angle in radians (right-hand rotation about
+                the body forward/azimuth-zero axis). Only affects synthetic-scan generation.
+                Defaults to 0.0 (level).
 
         Returns:
             Scan ID for referencing this scan
@@ -172,7 +191,77 @@ class LiDARCloud:
         return lidar_wrapper.addLiDARScan(
             self._cloud_ptr, origin_list, Ntheta, theta_range,
             Nphi, phi_range, exit_diameter, beam_divergence, column_format,
-            range_noise_stddev, angle_noise_stddev
+            range_noise_stddev, angle_noise_stddev,
+            scan_tilt_roll, scan_tilt_pitch
+        )
+
+    def addScanMultibeam(self, origin: Union[vec3, List[float], Tuple[float, float, float]],
+                         beam_zenith_angles: List[float],
+                         Nphi: int, phi_range: Tuple[float, float],
+                         exit_diameter: float, beam_divergence: float,
+                         column_format: Optional[List[str]] = None,
+                         range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                         scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0) -> int:
+        """
+        Add a spinning multibeam LiDAR scan (rotating multi-channel sensor, e.g. Velodyne/Ouster/Hesai).
+
+        Each laser channel is fired at a fixed zenith angle (taken from ``beam_zenith_angles``) as the
+        sensor head rotates through ``Nphi`` uniform azimuth steps. The scan is stored as an
+        (len(beam_zenith_angles) x Nphi) table, so all downstream processing is shared with raster scans.
+
+        Args:
+            origin: Scanner position (vec3 or 3-element list/tuple)
+            beam_zenith_angles: Per-channel zenith angles in radians (0 = upward, pi/2 = horizontal,
+                pi = downward). Manufacturer spec sheets typically list channel angles as elevation
+                above the horizon; zenith = pi/2 - elevation. Its length sets Ntheta (number of channels).
+            Nphi: Number of azimuth steps (columns) per rotation
+            phi_range: Azimuthal angle range (min, max) in radians
+            exit_diameter: Laser beam exit diameter (meters)
+            beam_divergence: Beam divergence angle (radians)
+            column_format: Optional list of column-format labels (see addScan)
+            range_noise_stddev: Std. dev. of Gaussian range noise in meters (default 0)
+            angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
+            scan_tilt_roll: Global scanner tilt roll angle in radians (default 0, level)
+            scan_tilt_pitch: Global scanner tilt pitch angle in radians (default 0, level)
+
+        Returns:
+            Scan ID for referencing this scan
+        """
+        if isinstance(origin, (list, tuple)):
+            if len(origin) != 3:
+                raise ValueError("Origin must have 3 elements [x, y, z]")
+            origin = vec3(*origin)
+        elif not hasattr(origin, 'x'):
+            raise ValueError("Origin must be vec3 or 3-element list/tuple")
+
+        origin_list = [origin.x, origin.y, origin.z]
+
+        if not isinstance(beam_zenith_angles, (list, tuple)) or len(beam_zenith_angles) == 0:
+            raise ValueError("beam_zenith_angles must be a non-empty list of per-channel angles")
+        if not all(isinstance(a, (int, float)) for a in beam_zenith_angles):
+            raise ValueError("beam_zenith_angles must be a list of numbers (radians)")
+
+        validate_positive_value(Nphi, 'Nphi', 'addScanMultibeam')
+
+        if not isinstance(phi_range, (list, tuple)) or len(phi_range) != 2:
+            raise ValueError("phi_range must be a tuple (min, max)")
+
+        if column_format is not None:
+            if not isinstance(column_format, (list, tuple)) or \
+                    not all(isinstance(c, str) for c in column_format):
+                raise ValueError("column_format must be a list of strings")
+            column_format = list(column_format)
+
+        if range_noise_stddev < 0:
+            raise ValueError("range_noise_stddev must be non-negative")
+        if angle_noise_stddev < 0:
+            raise ValueError("angle_noise_stddev must be non-negative")
+
+        return lidar_wrapper.addLiDARScanMultibeam(
+            self._cloud_ptr, origin_list, list(beam_zenith_angles),
+            Nphi, phi_range, exit_diameter, beam_divergence, column_format,
+            range_noise_stddev, angle_noise_stddev,
+            scan_tilt_roll, scan_tilt_pitch
         )
 
     def getScanCount(self) -> int:
@@ -215,6 +304,38 @@ class LiDARCloud:
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
         return lidar_wrapper.getLiDARScanAngleNoiseStdDev(self._cloud_ptr, scanID)
+
+    def getScanTiltRoll(self, scanID: int) -> float:
+        """Get the global scanner tilt roll angle for a scan (radians; 0.0 if level)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanTiltRoll(self._cloud_ptr, scanID)
+
+    def getScanTiltPitch(self, scanID: int) -> float:
+        """Get the global scanner tilt pitch angle for a scan (radians; 0.0 if level)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanTiltPitch(self._cloud_ptr, scanID)
+
+    def getScanPattern(self, scanID: int) -> int:
+        """Get the scan pattern for a scan.
+
+        Returns an integer: 0 = raster (uniform angular grid), 1 = spinning multibeam
+        (rotating multi-channel sensor). Compare against ``ScanPattern.RASTER`` /
+        ``ScanPattern.SPINNING_MULTIBEAM``.
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanPattern(self._cloud_ptr, scanID)
+
+    def getScanBeamZenithAngles(self, scanID: int) -> List[float]:
+        """Get the per-channel beam zenith angles (radians) for a multibeam scan.
+
+        Returns an empty list for a raster scan.
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanBeamZenithAngles(self._cloud_ptr, scanID)
 
     def addHitPoint(self, scanID: int,
                     xyz: Union[vec3, List[float], Tuple[float, float, float]],
@@ -304,6 +425,59 @@ class LiDARCloud:
         lidar_wrapper.addLiDARHitPoints(self._cloud_ptr, scanID,
                                         xyz_array, direction_array, count, color_array)
 
+    def addHitPointsWithData(self, scanID: int, xyz_array, direction_array,
+                             data_labels=None, data_values=None, color_array=None):
+        """
+        Add many hit points carrying a per-hit data map in a single bulk call.
+
+        Like addHitPoints, but also populates each hit's named-scalar data map —
+        the in-memory equivalent of what the ASCII loader does for non-standard
+        columns. This is the path multi-return LAD needs (timestamp/target_index/
+        target_count land in the map so gapfillMisses() can group beams by pulse).
+
+        Args:
+            scanID: Scan ID these hits belong to (the scan must already exist)
+            xyz_array: Hit point coordinates, shape (N, 3) [x, y, z]
+            direction_array: Ray directions, shape (N, 3) [radius, elevation, azimuth].
+                             Pass cart2sphere(xyz - origin) to match loadASCIIFile;
+                             the full SphericalCoord (incl. radius) is used.
+            data_labels: Optional list of data-map key names (length k)
+            data_values: Optional (N, k) values for those keys (float64)
+            color_array: Optional RGB colors, shape (N, 3) [r, g, b]
+        """
+        import numpy as np
+
+        xyz_array = np.ascontiguousarray(xyz_array, dtype=np.float32)
+        direction_array = np.ascontiguousarray(direction_array, dtype=np.float32)
+
+        if xyz_array.ndim != 2 or xyz_array.shape[1] != 3:
+            raise ValueError("xyz_array must have shape (N, 3)")
+        if direction_array.ndim != 2 or direction_array.shape[1] != 3:
+            raise ValueError("direction_array must have shape (N, 3)")
+
+        count = xyz_array.shape[0]
+        if direction_array.shape[0] != count:
+            raise ValueError("xyz_array and direction_array must have the same number of rows")
+
+        labels = list(data_labels or [])
+        if labels:
+            data_values = np.ascontiguousarray(data_values, dtype=np.float64)
+            if data_values.ndim != 2 or data_values.shape != (count, len(labels)):
+                raise ValueError("data_values must have shape (N, len(data_labels))")
+        else:
+            data_values = None
+
+        if color_array is not None:
+            color_array = np.ascontiguousarray(color_array, dtype=np.float32)
+            if color_array.ndim != 2 or color_array.shape[1] != 3:
+                raise ValueError("color_array must have shape (N, 3)")
+            if color_array.shape[0] != count:
+                raise ValueError("color_array must have the same number of rows as xyz_array")
+
+        lidar_wrapper.addLiDARHitPointsWithData(
+            self._cloud_ptr, scanID, xyz_array, direction_array, count,
+            color_array, labels, data_values)
+
     def getHitCount(self) -> int:
         """Get total number of hit points in cloud"""
         return lidar_wrapper.getLiDARHitCount(self._cloud_ptr)
@@ -320,7 +494,8 @@ class LiDARCloud:
         if index < 0:
             raise ValueError("Index must be non-negative")
         direction_list = lidar_wrapper.getLiDARHitRaydir(self._cloud_ptr, index)
-        return SphericalCoord(direction_list[0], direction_list[1])
+        # direction_list is [radius, elevation, azimuth]; preserve azimuth (was previously dropped).
+        return SphericalCoord(direction_list[0], direction_list[1], direction_list[2])
 
     def getHitColor(self, index: int) -> RGBcolor:
         """Get color of a hit point"""
@@ -391,6 +566,30 @@ class LiDARCloud:
             raise ValueError("Index must be non-negative")
         lidar_wrapper.deleteLiDARHitPoint(self._cloud_ptr, index)
 
+    def isHitMiss(self, index: int) -> bool:
+        """Return True if a hit is a "miss" (a fired pulse that returned nothing).
+
+        Misses are the transmitted beams that form the denominator of the per-voxel
+        transmission probability used by :meth:`calculateLeafArea`. They are produced by
+        ``syntheticScan(..., record_misses=True)`` and by :meth:`gapfillMisses`.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.isLiDARHitMiss(self._cloud_ptr, index)
+
+    def hasMisses(self) -> bool:
+        """Return True if the cloud contains at least one miss.
+
+        :meth:`calculateLeafArea` requires misses and fails fast without them.
+        """
+        return lidar_wrapper.lidarHasMisses(self._cloud_ptr)
+
+    @staticmethod
+    def getMissDistance() -> float:
+        """Return the LIDAR_MISS_DISTANCE constant (meters): the distance at which a
+        miss point is placed along its beam."""
+        return lidar_wrapper.getLiDARMissDistance()
+
     def coordinateShift(self, shift: Union[vec3, List[float], Tuple[float, float, float]]):
         """
         Translate all hit points by a shift vector.
@@ -443,6 +642,33 @@ class LiDARCloud:
         """Get number of triangles in the mesh"""
         return lidar_wrapper.getLiDARTriangleCount(self._cloud_ptr)
 
+    def getTriangulationStats(self) -> dict:
+        """Filter diagnostics from the most recent triangulateHitPoints() call.
+
+        Returns a dict::
+
+            {"candidates", "dropped_lmax", "dropped_aspect", "dropped_degenerate"}
+
+        Each dropped triangle is attributed to one primary reason (Lmax, then
+        aspect, then degenerate), so ``candidates == getTriangleCount() +
+        dropped_lmax + dropped_aspect + dropped_degenerate``. All zero if
+        triangulation has not been run. Use this to tell whether an empty or
+        sparse mesh is data-limited (few candidates) or filter-limited (many
+        candidates dropped by Lmax/aspect).
+        """
+        return lidar_wrapper.getLiDARTriangulationStats(self._cloud_ptr)
+
+    def getTriangleVerticesAll(self):
+        """Bulk-export every triangle's vertices and source scan in one call.
+
+        Returns (xyz_flat, scan_ids): xyz_flat is a (T*9,) float32 array laid out
+        [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z] per triangle, scan_ids is a (T,)
+        int32 array. Avoids the Context round-trip and the per-triangle
+        getPrimitiveVertices loop.
+        """
+        return lidar_wrapper.getLiDARTriangleVertices_all(
+            self._cloud_ptr, self.getTriangleCount())
+
     def distanceFilter(self, maxdistance: float):
         """Filter hit points by maximum distance from scanner"""
         validate_positive_value(maxdistance, 'maxdistance', 'distanceFilter')
@@ -460,11 +686,31 @@ class LiDARCloud:
         """Keep only last return hit points"""
         lidar_wrapper.lidarLastHitFilter(self._cloud_ptr)
 
-    def exportPointCloud(self, filename: str):
-        """Export point cloud to ASCII file"""
+    def exportPointCloud(self, filename: str, write_header: bool = True):
+        """Export point cloud to ASCII file.
+
+        Args:
+            filename: Output file path.
+            write_header: If True (default), prepend a ``#``-prefixed comment line listing the
+                column field names (CloudCompare convention). The loader skips ``#``-prefixed
+                lines, so headered files round-trip through ``loadXML()``. Set False for a
+                bare data file.
+        """
         if not filename:
             raise ValueError("Filename cannot be empty")
-        lidar_wrapper.exportLiDARPointCloud(self._cloud_ptr, filename)
+        lidar_wrapper.exportLiDARPointCloud(self._cloud_ptr, filename, write_header)
+
+    def exportLeafAreaUncertainty(self, filename: str):
+        """Export per-voxel leaf-area sampling uncertainty to a self-describing ASCII file.
+
+        The file has a ``#``-prefixed header and one row per grid cell:
+        ``cell_index leaf_area beam_count I_rdi LAD_std_error ci_valid``. Requires that
+        :meth:`calculateLeafArea` has been run with an ``element_width`` (the uncertainty
+        overload).
+        """
+        if not filename:
+            raise ValueError("Filename cannot be empty")
+        lidar_wrapper.exportLiDARLeafAreaUncertainty(self._cloud_ptr, filename)
 
     def exportScans(self, filename: str):
         """Export all scans to an XML metadata file plus one ASCII data file per scan.
@@ -603,6 +849,64 @@ class LiDARCloud:
             raise ValueError("Index must be non-negative")
         return lidar_wrapper.getLiDARCellLeafAreaDensity(self._cloud_ptr, index)
 
+    def getCellBeamCount(self, index: int) -> int:
+        """Get the beam count N that entered a grid cell during the leaf-area inversion.
+
+        Returns -1 if :meth:`calculateLeafArea` has not been run for this cell.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARCellBeamCount(self._cloud_ptr, index)
+
+    def getCellRelativeDensityIndex(self, index: int) -> float:
+        """Get the relative density index (I_rdi) for a grid cell."""
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARCellRelativeDensityIndex(self._cloud_ptr, index)
+
+    def getCellMeanPathLength(self, index: int) -> float:
+        """Get the mean beam path length (m) through a grid cell."""
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARCellMeanPathLength(self._cloud_ptr, index)
+
+    def getCellLADVariance(self, index: int) -> float:
+        """Get the per-voxel LAD sampling variance for a grid cell.
+
+        Returns -1 if uncertainty has not been computed (call :meth:`calculateLeafArea`
+        with an ``element_width``).
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARCellLADVariance(self._cloud_ptr, index)
+
+    def getCellLeafAreaConfidenceInterval(self, index: int, confidence_level: float = 0.95):
+        """Get the leaf-area confidence interval for a single grid cell.
+
+        Returns a ``(valid, lower, upper)`` tuple. ``valid`` is False when the interval is
+        gated out by the Pimont validity envelope (single-voxel intervals are often
+        untrustworthy; prefer :meth:`getGroupLADConfidenceInterval`). Requires
+        :meth:`calculateLeafArea` to have been run with an ``element_width``.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARCellLeafAreaConfidenceInterval(
+            self._cloud_ptr, index, confidence_level)
+
+    def getGroupLADConfidenceInterval(self, indices: List[int], confidence_level: float = 0.95):
+        """Get the group-scale LAD confidence interval over a set of grid cells (recommended).
+
+        Returns a ``(valid, mean_lad, lower, upper)`` tuple (Pimont et al. 2018, Eq. 39,
+        assuming voxel independence). Requires :meth:`calculateLeafArea` to have been run
+        with an ``element_width``.
+        """
+        if not indices:
+            raise ValueError("indices must contain at least one cell index")
+        if any(i < 0 for i in indices):
+            raise ValueError("Cell indices must be non-negative")
+        return lidar_wrapper.getLiDARGroupLADConfidenceInterval(
+            self._cloud_ptr, indices, confidence_level)
+
     def getCellGtheta(self, index: int) -> float:
         """Get G(theta) value for a grid cell"""
         if index < 0:
@@ -682,8 +986,11 @@ class LiDARCloud:
 
         # Discrete-return mode (single ray per pulse)
         if rays_per_pulse is None:
-            # Use append-aware version to ensure explicit control
-            lidar_wrapper.syntheticLiDARScanAppend(self._cloud_ptr, context_ptr, append)
+            # Honor scan_grid_only and record_misses for discrete scans too. record_misses
+            # defaults to True so the cloud carries the transmitted beams that
+            # calculateLeafArea() requires.
+            lidar_wrapper.syntheticLiDARScanDiscrete(
+                self._cloud_ptr, context_ptr, scan_grid_only, record_misses, append)
         else:
             # Full-waveform mode (multiple rays per pulse)
             if pulse_distance_threshold is None:
@@ -698,15 +1005,28 @@ class LiDARCloud:
                 scan_grid_only, record_misses, append
             )
 
-    def calculateLeafArea(self, context: Context, min_voxel_hits: Optional[int] = None):
+    def calculateLeafArea(self, context: Context, min_voxel_hits: Optional[int] = None,
+                          element_width: Optional[float] = None):
         """
         Calculate leaf area for each grid cell.
 
         Requires triangulation to have been performed first.
 
+        .. note::
+            The cloud must contain misses (transmitted beams that returned nothing) — the
+            inversion fails fast without them. Misses are produced by
+            ``syntheticScan(..., record_misses=True)`` (the default) or by
+            :meth:`gapfillMisses`. Use :meth:`hasMisses` to check.
+
         Args:
             context: Helios Context instance
             min_voxel_hits: Optional minimum number of hits required per voxel
+            element_width: Optional characteristic vegetation element width (meters). When
+                provided, per-voxel sampling uncertainty (Pimont et al. 2018) is computed
+                alongside the leaf-area estimate and becomes available via
+                :meth:`getCellLADVariance`, :meth:`getCellLeafAreaConfidenceInterval`, and
+                :meth:`getGroupLADConfidenceInterval`. ``element_width <= 0`` yields a
+                sampling-only variance. Requires ``min_voxel_hits`` to also be specified.
 
         Example:
             >>> from pyhelios import Context, LiDARCloud
@@ -719,7 +1039,14 @@ class LiDARCloud:
             raise TypeError("context must be a Context instance")
 
         context_ptr = context.getNativePtr()
-        if min_voxel_hits is None:
+        if element_width is not None:
+            if min_voxel_hits is None:
+                raise ValueError(
+                    "element_width requires min_voxel_hits to also be specified "
+                    "(the uncertainty overload takes both)")
+            lidar_wrapper.calculateLiDARLeafAreaUncertainty(
+                self._cloud_ptr, context_ptr, min_voxel_hits, element_width)
+        elif min_voxel_hits is None:
             lidar_wrapper.calculateLiDARLeafArea(self._cloud_ptr, context_ptr)
         else:
             lidar_wrapper.calculateLiDARLeafAreaMinHits(self._cloud_ptr, context_ptr, min_voxel_hits)

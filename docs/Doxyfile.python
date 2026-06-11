@@ -128,11 +128,13 @@ INPUT                  = pyhelios \
                          docs/file_io.md \
                          docs/cross_platform.md \
                          docs/plugin_system.md \
+                         docs/plugin_build_system.md \
                          docs/cuda_setup.md \
                          docs/plugin_integration_guide.md \
                          docs/plugin_boundarylayerconductance.md \
                          docs/plugin_energybalance.md \
                          docs/plugin_leafoptics.md \
+                         docs/plugin_lidar.md \
                          docs/plugin_photosynthesis.md \
                          docs/plugin_plantarchitecture.md \
                          docs/plugin_radiation.md \

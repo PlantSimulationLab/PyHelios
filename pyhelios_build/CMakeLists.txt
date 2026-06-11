@@ -242,7 +242,7 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
     if("lidar" IN_LIST PLUGINS)
         target_include_directories(pyhelios_interface PRIVATE
             ${BASE_DIRECTORY}/plugins/lidar/include
-            ${BASE_DIRECTORY}/plugins/lidar/lib/s_hull_pro
+            ${BASE_DIRECTORY}/plugins/lidar/lib/CDT/include
             ${BASE_DIRECTORY}/plugins/collisiondetection/include
             ${BASE_DIRECTORY}/plugins/visualizer/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
@@ -370,7 +370,7 @@ endif()
 if("lidar" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/lidar/include
-        ${BASE_DIRECTORY}/plugins/lidar/lib/s_hull_pro
+        ${BASE_DIRECTORY}/plugins/lidar/lib/CDT/include
         ${BASE_DIRECTORY}/plugins/collisiondetection/include
         ${BASE_DIRECTORY}/plugins/visualizer/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include

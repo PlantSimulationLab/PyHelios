@@ -394,7 +394,7 @@ If issues persist:
 
 ### PyHelios Documentation
 
-- \ref PluginSystem "PyHelios Plugin System"
+- \ref PluginBuildSystem "Building and Selecting Plug-ins"
 - \ref pyhelios.RadiationModel.RadiationModel "RadiationModel Documentation"
 - \ref EnergyBalanceDoc "EnergyBalance Documentation"
 

@@ -824,6 +824,77 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get UUIDs for plant {plant_id}: {e}")
 
+    def getAllShootIDs(self, plant_id: int) -> List[int]:
+        """
+        Get the IDs of all shoots belonging to a plant.
+
+        Shoot IDs are contiguous 0-based indices into the plant's shoot tree, in creation
+        order; shoot 0 is always the base stem. The returned IDs can be passed to
+        :meth:`getShoot`, :meth:`getShootChildIDs`, etc.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of shoot IDs for the plant
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        try:
+            return plantarch_wrapper.getAllPlantShootIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get shoot IDs for plant {plant_id}: {e}")
+
+    def getShoot(self, plant_id: int, shoot_id: int) -> Dict[str, Any]:
+        """
+        Get a read-only view of a shoot's topology.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+
+        Returns:
+            A dict with keys ``rank``, ``parent_shoot_id`` (-1 for the base stem),
+            ``parent_node_index``, and ``node_count``.
+        """
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+        try:
+            return plantarch_wrapper.getPlantShootTopology(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get shoot {shoot_id} of plant {plant_id}: {e}")
+
+    def getShootChildIDs(self, plant_id: int, shoot_id: int) -> List[int]:
+        """Get the child shoot IDs of a shoot (flattened across parent node indices)."""
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+        try:
+            return plantarch_wrapper.getPlantShootChildIDs(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get child shoots of shoot {shoot_id}, plant {plant_id}: {e}")
+
+    def getShootInternodeVertices(self, plant_id: int, shoot_id: int) -> List[tuple]:
+        """Get the woody internode polyline vertices of a shoot as a list of (x, y, z) tuples."""
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+        try:
+            return plantarch_wrapper.getPlantShootInternodeVertices(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get internode vertices of shoot {shoot_id}, plant {plant_id}: {e}")
+
+    def getShootInternodeRadii(self, plant_id: int, shoot_id: int) -> List[float]:
+        """Get the per-vertex woody internode radii of a shoot."""
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+        try:
+            return plantarch_wrapper.getPlantShootInternodeRadii(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get internode radii of shoot {shoot_id}, plant {plant_id}: {e}")
+
     def getPlantAge(self, plant_id: int) -> float:
         """
         Get the current age of a plant in days.

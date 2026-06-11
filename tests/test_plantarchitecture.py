@@ -2536,3 +2536,77 @@ class TestPlantArchitectureProgressCallbackNative:
 
         assert len(updates) == count_before_clear, \
             "No callbacks should fire after clearing with None"
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureShootTopology:
+    """Tests for the shoot-topology accessors added with the helios-core 1.3.74 merge:
+    getAllShootIDs / getShoot / getShootChildIDs / getShootInternode{Vertices,Radii}."""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        plantarch_instance = PlantArchitecture(context)
+        yield plantarch_instance
+        plantarch_instance.__exit__(None, None, None)
+
+    def _build_plant(self, plantarch):
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+        plantarch.loadPlantModelFromLibrary(models[0])
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+
+    def test_get_all_shoot_ids(self, plantarch):
+        """getAllShootIDs returns a contiguous 0-based list with shoot 0 (the base stem)."""
+        plant_id = self._build_plant(plantarch)
+        shoot_ids = plantarch.getAllShootIDs(plant_id)
+        assert isinstance(shoot_ids, list)
+        assert len(shoot_ids) >= 1
+        assert shoot_ids[0] == 0
+        assert shoot_ids == list(range(len(shoot_ids)))
+
+    def test_get_shoot_topology(self, plantarch):
+        """getShoot returns the base stem's topology: rank 0, parent -1."""
+        plant_id = self._build_plant(plantarch)
+        shoot = plantarch.getShoot(plant_id, 0)
+        assert set(shoot.keys()) == {"rank", "parent_shoot_id", "parent_node_index", "node_count"}
+        assert shoot["rank"] == 0
+        assert shoot["parent_shoot_id"] == -1  # base stem has no parent
+        assert shoot["node_count"] >= 1
+
+    def test_get_shoot_children(self, plantarch):
+        """getShootChildIDs returns valid child shoot IDs that exist in getAllShootIDs."""
+        plant_id = self._build_plant(plantarch)
+        all_ids = set(plantarch.getAllShootIDs(plant_id))
+        children = plantarch.getShootChildIDs(plant_id, 0)
+        assert isinstance(children, list)
+        for child in children:
+            assert child in all_ids
+
+    def test_get_shoot_internode_geometry(self, plantarch):
+        """Internode vertices are (x,y,z) tuples with a parallel per-vertex radii array."""
+        plant_id = self._build_plant(plantarch)
+        verts = plantarch.getShootInternodeVertices(plant_id, 0)
+        radii = plantarch.getShootInternodeRadii(plant_id, 0)
+        assert isinstance(verts, list)
+        assert isinstance(radii, list)
+        assert len(verts) == len(radii)
+        for v in verts:
+            assert len(v) == 3
+        for r in radii:
+            assert r >= 0.0
+
+    def test_shoot_accessors_reject_negative_ids(self, plantarch):
+        """Negative plant/shoot IDs raise ValueError."""
+        with pytest.raises(ValueError):
+            plantarch.getShoot(-1, 0)
+        with pytest.raises(ValueError):
+            plantarch.getShootChildIDs(0, -1)

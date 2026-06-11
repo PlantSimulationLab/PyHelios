@@ -60,6 +60,9 @@ PYHELIOS_API void destroyLiDARcloud(LiDARcloud* cloud);
  * @param columnFormat Array of column-format label strings (may be nullptr). Non-standard labels
  *                     drive primitive-data sampling onto hits during syntheticScan.
  * @param nCols Number of entries in columnFormat (0 keeps the default empty format)
+ * @param scanTiltRoll Global scanner tilt roll angle in radians (0 = perfectly level). Models residual
+ *                     spin-axis tilt away from plumb; only affects synthetic-scan generation.
+ * @param scanTiltPitch Global scanner tilt pitch angle in radians (0 = perfectly level).
  * @return Scan ID for referencing this scan
  */
 PYHELIOS_API unsigned int addLiDARScan(LiDARcloud* cloud, const float* origin,
@@ -67,7 +70,39 @@ PYHELIOS_API unsigned int addLiDARScan(LiDARcloud* cloud, const float* origin,
                                        unsigned int Nphi, float phiMin, float phiMax,
                                        float exitDiameter, float beamDivergence,
                                        float rangeNoiseStdDev, float angleNoiseStdDev,
-                                       const char** columnFormat, unsigned int nCols);
+                                       const char** columnFormat, unsigned int nCols,
+                                       float scanTiltRoll, float scanTiltPitch);
+
+/**
+ * @brief Add a spinning multibeam LiDAR scan (e.g. Velodyne/Ouster/Hesai rotating multi-channel sensor)
+ *
+ * Each laser channel is fired at a fixed zenith angle (from beamZenithAngles) as the head rotates
+ * through uniform azimuth steps. The scan is stored as an (nAngles x Nphi) table so all downstream
+ * processing is shared with raster scans.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param origin Scanner position as [x, y, z]
+ * @param beamZenithAngles Per-channel zenith angles in radians (0 = upward, pi/2 = horizontal, pi = downward)
+ * @param nAngles Number of channels (sets Ntheta); must be >= 1
+ * @param Nphi Number of azimuth steps (columns) per rotation
+ * @param phiMin Minimum azimuthal angle (radians)
+ * @param phiMax Maximum azimuthal angle (radians)
+ * @param exitDiameter Laser beam exit diameter (meters)
+ * @param beamDivergence Beam divergence angle (radians)
+ * @param rangeNoiseStdDev Standard deviation of Gaussian range noise in meters (0 disables)
+ * @param angleNoiseStdDev Standard deviation of Gaussian angular jitter in radians (0 disables)
+ * @param columnFormat Array of column-format label strings (may be nullptr)
+ * @param nCols Number of entries in columnFormat
+ * @param scanTiltRoll Global scanner tilt roll angle in radians (0 = level)
+ * @param scanTiltPitch Global scanner tilt pitch angle in radians (0 = level)
+ * @return Scan ID for referencing this scan
+ */
+PYHELIOS_API unsigned int addLiDARScanMultibeam(LiDARcloud* cloud, const float* origin,
+                                                const float* beamZenithAngles, unsigned int nAngles,
+                                                unsigned int Nphi, float phiMin, float phiMax,
+                                                float exitDiameter, float beamDivergence,
+                                                float rangeNoiseStdDev, float angleNoiseStdDev,
+                                                const char** columnFormat, unsigned int nCols,
+                                                float scanTiltRoll, float scanTiltPitch);
 
 /**
  * @brief Get the number of scans in the cloud
@@ -116,6 +151,73 @@ PYHELIOS_API float getLiDARScanRangeNoiseStdDev(LiDARcloud* cloud, unsigned int 
  */
 PYHELIOS_API float getLiDARScanAngleNoiseStdDev(LiDARcloud* cloud, unsigned int scanID);
 
+/**
+ * @brief Get the global scanner tilt roll angle for a scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @return Tilt roll angle in radians (0 if level), or 0 on error
+ */
+PYHELIOS_API float getLiDARScanTiltRoll(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the global scanner tilt pitch angle for a scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @return Tilt pitch angle in radians (0 if level), or 0 on error
+ */
+PYHELIOS_API float getLiDARScanTiltPitch(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the scan pattern for a scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @return 0 = SCAN_PATTERN_RASTER, 1 = SCAN_PATTERN_SPINNING_MULTIBEAM, or -1 on error
+ */
+PYHELIOS_API int getLiDARScanPattern(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the number of per-channel beam zenith angles for a scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @return Number of channel angles (0 for a raster scan), or 0 on error
+ */
+PYHELIOS_API unsigned int getLiDARScanBeamZenithAngleCount(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the per-channel beam zenith angles for a multibeam scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @param out Caller-allocated array (radians); fills min(count, available) entries
+ * @param count Capacity of out
+ */
+PYHELIOS_API void getLiDARScanBeamZenithAngles(LiDARcloud* cloud, unsigned int scanID,
+                                               float* out, unsigned int count);
+
+//=============================================================================
+// Miss Detection
+//=============================================================================
+
+/**
+ * @brief Determine whether a hit is a "miss" (a transmitted beam that returned nothing)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Hit index
+ * @return 1 if the hit is a miss, 0 otherwise (or on error)
+ */
+PYHELIOS_API int isLiDARHitMiss(LiDARcloud* cloud, unsigned int index);
+
+/**
+ * @brief Determine whether the cloud contains any misses
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return 1 if at least one hit is a miss, 0 otherwise (or on error)
+ */
+PYHELIOS_API int lidarHasMisses(LiDARcloud* cloud);
+
+/**
+ * @brief Get the LIDAR_MISS_DISTANCE constant (distance at which a miss point is placed along its beam)
+ * @return LiDARcloud::LIDAR_MISS_DISTANCE in meters
+ */
+PYHELIOS_API float getLiDARMissDistance();
+
 //=============================================================================
 // Hit Point Operations
 //=============================================================================
@@ -155,6 +257,33 @@ PYHELIOS_API void addLiDARHitPointRGB(LiDARcloud* cloud, unsigned int scanID,
 PYHELIOS_API void addLiDARHitPoints(LiDARcloud* cloud, unsigned int scanID,
                                      const float* xyzs, const float* directions,
                                      unsigned int count, const float* colors);
+
+/**
+ * @brief Add many hit points carrying a per-hit data map in a single call.
+ *
+ * Like addLiDARHitPoints, but also populates each HitPoint's data map from
+ * named scalar columns — the in-memory equivalent of what loadASCIIFile does
+ * for non-standard columns. This is the path multi-return LAD needs: the
+ * timestamp/target_index/target_count values land in the map so
+ * isMultiReturnData()/gapfillMisses() can group beams by pulse.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID these hits belong to (the scan must already exist)
+ * @param xyzs Hit point coordinates, count×3 row-major cartesian [x, y, z]
+ * @param directions Ray directions, count×3 [radius, elevation, azimuth].
+ *                   Pass cart2sphere(xyz-origin) to match the ASCII loader;
+ *                   the full SphericalCoord (incl. radius) is used.
+ * @param count Number of hit points to add
+ * @param colors RGB colors, count×3 [r, g, b], or NULL to add without color
+ * @param dataLabels nLabels C-strings naming the data-map keys, or NULL
+ * @param nLabels Number of data-map columns (0 for no data map)
+ * @param dataValues count×nLabels row-major double values, or NULL
+ */
+PYHELIOS_API void addLiDARHitPointsWithData(LiDARcloud* cloud, unsigned int scanID,
+                                            const float* xyzs, const float* directions,
+                                            unsigned int count, const float* colors,
+                                            const char** dataLabels, unsigned int nLabels,
+                                            const double* dataValues);
 
 /**
  * @brief Get total number of hit points in the cloud
@@ -277,6 +406,35 @@ PYHELIOS_API void lidarTriangulateHitPoints(LiDARcloud* cloud, float Lmax, float
  */
 PYHELIOS_API unsigned int getLiDARTriangleCount(LiDARcloud* cloud);
 
+/**
+ * @brief Get triangulation filter diagnostics from the most recent
+ *        triangulateHitPoints() call.
+ *
+ * Fills out[0..3] with: candidate count (pre-filter), dropped-by-Lmax,
+ * dropped-by-aspect, dropped-by-degenerate. Each dropped triangle is attributed
+ * to one primary reason, so out[0] == getLiDARTriangleCount() + out[1] + out[2]
+ * + out[3]. All zero if triangulation has not been run.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param out   Caller-allocated array of at least 4 unsigned ints
+ */
+PYHELIOS_API void getLiDARTriangulationStats(LiDARcloud* cloud, unsigned int* out);
+
+/**
+ * @brief Bulk-export every triangle's three vertices (and source scan) in one call.
+ *
+ * Reads getTriangle(i).vertex0/1/2 directly off the LiDARcloud, bypassing the
+ * Context round-trip and the per-UUID getPrimitiveVertices loop. out_xyz is
+ * filled row-major as [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z] per triangle
+ * (triCount×9 floats). out_scan, if non-NULL, receives each triangle's scanID.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param out_xyz Output buffer of triCount×9 floats
+ * @param out_scan Output buffer of triCount ints, or NULL to skip provenance
+ * @param triCount Number of triangles the buffers are sized for
+ */
+PYHELIOS_API void getLiDARTriangleVertices_all(LiDARcloud* cloud, float* out_xyz,
+                                               int* out_scan, unsigned int triCount);
+
 //=============================================================================
 // Filters
 //=============================================================================
@@ -315,8 +473,17 @@ PYHELIOS_API void lidarLastHitFilter(LiDARcloud* cloud);
  * @brief Export point cloud to ASCII file
  * @param cloud Pointer to the LiDARcloud instance
  * @param filename Output file path
+ * @param write_header If true, prepend a '#'-prefixed column-name header line (CloudCompare
+ *                     convention); the loader skips '#'-prefixed lines so headered files round-trip.
  */
-PYHELIOS_API void exportLiDARPointCloud(LiDARcloud* cloud, const char* filename);
+PYHELIOS_API void exportLiDARPointCloud(LiDARcloud* cloud, const char* filename, bool write_header);
+
+/**
+ * @brief Export per-voxel leaf-area sampling uncertainty to a self-describing ASCII file
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param filename Output file path
+ */
+PYHELIOS_API void exportLiDARLeafAreaUncertainty(LiDARcloud* cloud, const char* filename);
 
 /**
  * @brief Export all scans to an XML metadata file plus one ASCII data file per scan
@@ -398,6 +565,58 @@ PYHELIOS_API float getLiDARCellLeafArea(LiDARcloud* cloud, unsigned int index);
  */
 PYHELIOS_API float getLiDARCellLeafAreaDensity(LiDARcloud* cloud, unsigned int index);
 
+//=============================================================================
+// Leaf-Area Sampling Uncertainty (Pimont et al. 2018)
+//=============================================================================
+
+/**
+ * @brief Get the beam count N entering a grid cell (from the most recent calculateLeafArea())
+ * @return Beam count, or -1 if calculateLeafArea() has not been run for this cell, or on error
+ */
+PYHELIOS_API int getLiDARCellBeamCount(LiDARcloud* cloud, unsigned int index);
+
+/**
+ * @brief Get the relative density index I_rdi for a grid cell
+ * @return Relative density index, or 0 on error
+ */
+PYHELIOS_API float getLiDARCellRelativeDensityIndex(LiDARcloud* cloud, unsigned int index);
+
+/**
+ * @brief Get the mean beam path length through a grid cell
+ * @return Mean path length (m), or 0 on error
+ */
+PYHELIOS_API float getLiDARCellMeanPathLength(LiDARcloud* cloud, unsigned int index);
+
+/**
+ * @brief Get the per-voxel LAD sampling variance for a grid cell
+ * @return LAD variance, or -1 if unavailable / on error
+ */
+PYHELIOS_API float getLiDARCellLADVariance(LiDARcloud* cloud, unsigned int index);
+
+/**
+ * @brief Get the leaf-area confidence interval for a single grid cell
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Grid cell index
+ * @param confidence_level Two-sided confidence level (e.g. 0.95)
+ * @param out_bounds Caller-allocated array[2] receiving [lower, upper]
+ * @return 1 if the interval is valid (passes the Pimont validity envelope), 0 otherwise / on error
+ */
+PYHELIOS_API int getLiDARCellLeafAreaConfidenceInterval(LiDARcloud* cloud, unsigned int index,
+                                                        float confidence_level, float* out_bounds);
+
+/**
+ * @brief Get the group-scale LAD confidence interval over a set of grid cells (recommended path)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param indices Array of grid cell indices
+ * @param nIndices Number of indices
+ * @param confidence_level Two-sided confidence level (e.g. 0.95)
+ * @param out_results Caller-allocated array[3] receiving [mean_lad, lower, upper]
+ * @return 1 if the interval is valid, 0 otherwise / on error
+ */
+PYHELIOS_API int getLiDARGroupLADConfidenceInterval(LiDARcloud* cloud, const unsigned int* indices,
+                                                    unsigned int nIndices, float confidence_level,
+                                                    float* out_results);
+
 /**
  * @brief Calculate hit point grid cell assignments
  * @param cloud Pointer to the LiDARcloud instance
@@ -422,6 +641,18 @@ PYHELIOS_API void syntheticLiDARScan(LiDARcloud* cloud, helios::Context* context
  * @param append If true, append to existing hits; if false, clear existing hits
  */
 PYHELIOS_API void syntheticLiDARScanAppend(LiDARcloud* cloud, helios::Context* context, bool append);
+
+/**
+ * @brief Perform discrete-return synthetic scan with miss recording control
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context containing geometry
+ * @param scan_grid_only If true, only scan within defined grid cells
+ * @param record_misses If true, record miss/sky points (transmitted beams). Required by
+ *                      calculateLeafArea(), which counts misses as transmitted beams.
+ * @param append If true, append to existing hits; if false, clear existing hits
+ */
+PYHELIOS_API void syntheticLiDARScanDiscrete(LiDARcloud* cloud, helios::Context* context,
+                                             bool scan_grid_only, bool record_misses, bool append);
 
 /**
  * @brief Perform synthetic full-waveform LiDAR scan
@@ -496,6 +727,18 @@ PYHELIOS_API void calculateLiDARLeafArea(LiDARcloud* cloud, helios::Context* con
  */
 PYHELIOS_API void calculateLiDARLeafAreaMinHits(LiDARcloud* cloud, helios::Context* context,
                                                  int min_voxel_hits);
+
+/**
+ * @brief Calculate leaf area with per-voxel sampling uncertainty (Pimont et al. 2018)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context
+ * @param min_voxel_hits Minimum number of hits required per voxel
+ * @param element_width Characteristic vegetation element width (m) for the element-position-variability
+ *                      term; element_width <= 0 leaves a sampling-only variance. Per-voxel uncertainty is
+ *                      then available via getLiDARCellLADVariance / getLiDARCell*ConfidenceInterval.
+ */
+PYHELIOS_API void calculateLiDARLeafAreaUncertainty(LiDARcloud* cloud, helios::Context* context,
+                                                    int min_voxel_hits, float element_width);
 
 /**
  * @brief Calculate synthetic leaf area (for synthetic scan validation)

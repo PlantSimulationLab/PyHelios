@@ -11046,4 +11046,181 @@ extern "C" {
         return s_transparency_buffer_cache.empty() ? nullptr : s_transparency_buffer_cache.data();
     }
 
+    // ======================================================================
+    // Per-element bulk data setters
+    // Assign a DISTINCT value to each UUID/ObjID, mirroring the C++ overloads
+    // setPrimitiveData/setObjectData(const std::vector<uint>&, label, const std::vector<T>&).
+    // (The setBroadcast* functions instead apply the SAME value to every ID.)
+    // ======================================================================
+
+    #define PERELEM_PROLOGUE(fname) \
+        clearError(); \
+        try { \
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): Context pointer is null."); return; } \
+            if (!ids || num_ids == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): IDs array is null or empty."); return; } \
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): Label is null."); return; } \
+            if (!values) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): Values array is null."); return; }
+
+    #define PERELEM_EPILOGUE(fname) \
+        } catch (const std::runtime_error& e) { \
+            setError(PYHELIOS_ERROR_RUNTIME, e.what()); \
+        } catch (const std::exception& e) { \
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (" fname "): ") + e.what()); \
+        } catch (...) { \
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (" fname "): Unknown error."); \
+        }
+
+    // Scalar (int / unsigned int / float / double): values length == num_ids.
+    #define PERELEM_SCALAR(NAME, CTYPE, METHOD) \
+        PYHELIOS_API void NAME(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, CTYPE* values, size_t num_values) { \
+            PERELEM_PROLOGUE(#NAME) \
+            if (num_values != num_ids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): values length must match IDs length."); return; } \
+            std::vector<uint> id_vec(ids, ids + num_ids); \
+            std::vector<CTYPE> data_vec(values, values + num_values); \
+            context->METHOD(id_vec, label, data_vec); \
+            PERELEM_EPILOGUE(#NAME) \
+        }
+
+    // 2/3/4-component vector types reconstructed from a flat array of length num_ids*N.
+    #define PERELEM_N2(NAME, HTYPE, CTYPE, METHOD) \
+        PYHELIOS_API void NAME(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, CTYPE* values, size_t num_values) { \
+            PERELEM_PROLOGUE(#NAME) \
+            if (num_values != num_ids * 2) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): values length must be 2x IDs length."); return; } \
+            std::vector<uint> id_vec(ids, ids + num_ids); \
+            std::vector<helios::HTYPE> data_vec; data_vec.reserve(num_ids); \
+            for (size_t i = 0; i < num_ids; i++) { data_vec.push_back(helios::HTYPE(values[2*i], values[2*i+1])); } \
+            context->METHOD(id_vec, label, data_vec); \
+            PERELEM_EPILOGUE(#NAME) \
+        }
+
+    #define PERELEM_N3(NAME, HTYPE, CTYPE, METHOD) \
+        PYHELIOS_API void NAME(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, CTYPE* values, size_t num_values) { \
+            PERELEM_PROLOGUE(#NAME) \
+            if (num_values != num_ids * 3) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): values length must be 3x IDs length."); return; } \
+            std::vector<uint> id_vec(ids, ids + num_ids); \
+            std::vector<helios::HTYPE> data_vec; data_vec.reserve(num_ids); \
+            for (size_t i = 0; i < num_ids; i++) { data_vec.push_back(helios::HTYPE(values[3*i], values[3*i+1], values[3*i+2])); } \
+            context->METHOD(id_vec, label, data_vec); \
+            PERELEM_EPILOGUE(#NAME) \
+        }
+
+    #define PERELEM_N4(NAME, HTYPE, CTYPE, METHOD) \
+        PYHELIOS_API void NAME(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, CTYPE* values, size_t num_values) { \
+            PERELEM_PROLOGUE(#NAME) \
+            if (num_values != num_ids * 4) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): values length must be 4x IDs length."); return; } \
+            std::vector<uint> id_vec(ids, ids + num_ids); \
+            std::vector<helios::HTYPE> data_vec; data_vec.reserve(num_ids); \
+            for (size_t i = 0; i < num_ids; i++) { data_vec.push_back(helios::HTYPE(values[4*i], values[4*i+1], values[4*i+2], values[4*i+3])); } \
+            context->METHOD(id_vec, label, data_vec); \
+            PERELEM_EPILOGUE(#NAME) \
+        }
+
+    // String: array of C strings, one per ID.
+    #define PERELEM_STRING(NAME, METHOD) \
+        PYHELIOS_API void NAME(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, const char** values, size_t num_values) { \
+            PERELEM_PROLOGUE(#NAME) \
+            if (num_values != num_ids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): values length must match IDs length."); return; } \
+            std::vector<uint> id_vec(ids, ids + num_ids); \
+            std::vector<std::string> data_vec; data_vec.reserve(num_ids); \
+            for (size_t i = 0; i < num_ids; i++) { data_vec.emplace_back(values[i] ? values[i] : ""); } \
+            context->METHOD(id_vec, label, data_vec); \
+            PERELEM_EPILOGUE(#NAME) \
+        }
+
+    // ---- Per-element primitive data ----
+    PERELEM_SCALAR(setPrimitiveDataIntArray, int, setPrimitiveData)
+    PERELEM_SCALAR(setPrimitiveDataUIntArray, unsigned int, setPrimitiveData)
+    PERELEM_SCALAR(setPrimitiveDataFloatArray, float, setPrimitiveData)
+    PERELEM_SCALAR(setPrimitiveDataDoubleArray, double, setPrimitiveData)
+    PERELEM_STRING(setPrimitiveDataStringArray, setPrimitiveData)
+    PERELEM_N2(setPrimitiveDataVec2Array, vec2, float, setPrimitiveData)
+    PERELEM_N3(setPrimitiveDataVec3Array, vec3, float, setPrimitiveData)
+    PERELEM_N4(setPrimitiveDataVec4Array, vec4, float, setPrimitiveData)
+    PERELEM_N2(setPrimitiveDataInt2Array, int2, int, setPrimitiveData)
+    PERELEM_N3(setPrimitiveDataInt3Array, int3, int, setPrimitiveData)
+    PERELEM_N4(setPrimitiveDataInt4Array, int4, int, setPrimitiveData)
+
+    // ---- Per-element object data ----
+    PERELEM_SCALAR(setObjectDataIntArray, int, setObjectData)
+    PERELEM_SCALAR(setObjectDataUIntArray, unsigned int, setObjectData)
+    PERELEM_SCALAR(setObjectDataFloatArray, float, setObjectData)
+    PERELEM_SCALAR(setObjectDataDoubleArray, double, setObjectData)
+    PERELEM_STRING(setObjectDataStringArray, setObjectData)
+    PERELEM_N2(setObjectDataVec2Array, vec2, float, setObjectData)
+    PERELEM_N3(setObjectDataVec3Array, vec3, float, setObjectData)
+    PERELEM_N4(setObjectDataVec4Array, vec4, float, setObjectData)
+    PERELEM_N2(setObjectDataInt2Array, int2, int, setObjectData)
+    PERELEM_N3(setObjectDataInt3Array, int3, int, setObjectData)
+    PERELEM_N4(setObjectDataInt4Array, int4, int, setObjectData)
+
+    #undef PERELEM_SCALAR
+    #undef PERELEM_N2
+    #undef PERELEM_N3
+    #undef PERELEM_N4
+    #undef PERELEM_STRING
+    #undef PERELEM_PROLOGUE
+    #undef PERELEM_EPILOGUE
+
+    // ======================================================================
+    // Bulk texture-color override for primitives (mirrors object-level batch)
+    // ======================================================================
+
+    PYHELIOS_API void overridePrimitiveTextureColorBatch(helios::Context* context, unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!uuids && count > 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs pointer is null"); return; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            context->overridePrimitiveTextureColor(v);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::overridePrimitiveTextureColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::overridePrimitiveTextureColor): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void usePrimitiveTextureColorBatch(helios::Context* context, unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!uuids && count > 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs pointer is null"); return; }
+            std::vector<unsigned int> v(uuids, uuids + count);
+            context->usePrimitiveTextureColor(v);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::usePrimitiveTextureColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::usePrimitiveTextureColor): Unknown error.");
+        }
+    }
+
+    // ======================================================================
+    // incrementPrimitiveData: unsigned int and double overloads
+    // (int and float variants already exist above). Each only acts on fields
+    // whose stored type matches; non-matching fields are skipped by Helios.
+    // ======================================================================
+
+    PYHELIOS_API void incrementPrimitiveDataUInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, unsigned int increment) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->incrementPrimitiveData(uuids_vec, label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
+    PYHELIOS_API void incrementPrimitiveDataDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, double increment) {
+        clearError();
+        try {
+            if (!context || !uuids || count == 0 || !label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return; }
+            std::vector<uint> uuids_vec(uuids, uuids + count);
+            context->incrementPrimitiveData(uuids_vec, label, increment);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
+    }
+
 } //extern "C"

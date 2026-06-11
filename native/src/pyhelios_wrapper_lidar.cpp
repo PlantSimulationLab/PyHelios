@@ -50,7 +50,8 @@ extern "C" {
                                             unsigned int Nphi, float phiMin, float phiMax,
                                             float exitDiameter, float beamDivergence,
                                             float rangeNoiseStdDev, float angleNoiseStdDev,
-                                            const char** columnFormat, unsigned int nCols) {
+                                            const char** columnFormat, unsigned int nCols,
+                                            float scanTiltRoll, float scanTiltPitch) {
         try {
             clearError();
             if (!cloud) {
@@ -85,10 +86,12 @@ extern "C" {
                 }
             }
             // rangeNoiseStdDev and angleNoiseStdDev are 0 by default (range noise and beam-pointing
-            // jitter disabled); these only affect synthetic-scan generation.
+            // jitter disabled); these only affect synthetic-scan generation. scanTiltRoll/scanTiltPitch
+            // (radians) model a residual scanner spin-axis tilt away from plumb; 0 0 = perfectly level.
             ScanMetadata metadata(scan_origin, Ntheta, thetaMin, thetaMax,
                                   Nphi, phiMin, phiMax, exitDiameter, beamDivergence,
-                                  rangeNoiseStdDev, angleNoiseStdDev, column_format);
+                                  rangeNoiseStdDev, angleNoiseStdDev, column_format,
+                                  scanTiltRoll, scanTiltPitch);
 
             return cloud->addScan(metadata);
 
@@ -97,6 +100,66 @@ extern "C" {
             return 0;
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addLiDARScan): Unknown error adding LiDAR scan");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned int addLiDARScanMultibeam(LiDARcloud* cloud, const float* origin,
+                                                     const float* beamZenithAngles, unsigned int nAngles,
+                                                     unsigned int Nphi, float phiMin, float phiMax,
+                                                     float exitDiameter, float beamDivergence,
+                                                     float rangeNoiseStdDev, float angleNoiseStdDev,
+                                                     const char** columnFormat, unsigned int nCols,
+                                                     float scanTiltRoll, float scanTiltPitch) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            if (!origin) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Origin array is null");
+                return 0;
+            }
+            if (!beamZenithAngles || nAngles == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "beamZenithAngles must contain at least one per-channel angle");
+                return 0;
+            }
+            if (Nphi == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Nphi must be greater than 0");
+                return 0;
+            }
+
+            helios::vec3 scan_origin(origin[0], origin[1], origin[2]);
+
+            std::vector<float> beam_zenith_angles;
+            beam_zenith_angles.reserve(nAngles);
+            for (unsigned int i = 0; i < nAngles; i++) {
+                beam_zenith_angles.push_back(beamZenithAngles[i]);
+            }
+
+            std::vector<std::string> column_format;
+            if (columnFormat != nullptr && nCols > 0) {
+                column_format.reserve(nCols);
+                for (unsigned int i = 0; i < nCols; i++) {
+                    if (columnFormat[i] != nullptr) {
+                        column_format.emplace_back(columnFormat[i]);
+                    }
+                }
+            }
+            // Spinning multibeam (e.g. Velodyne/Ouster/Hesai): each row is a laser channel fired at its
+            // own fixed zenith angle while each column is a uniform azimuth step. Ntheta == nAngles.
+            ScanMetadata metadata(scan_origin, beam_zenith_angles, Nphi, phiMin, phiMax,
+                                  exitDiameter, beamDivergence, rangeNoiseStdDev, angleNoiseStdDev,
+                                  column_format, scanTiltRoll, scanTiltPitch);
+
+            return cloud->addScan(metadata);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (addLiDARScanMultibeam): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addLiDARScanMultibeam): Unknown error adding multibeam scan");
             return 0;
         }
     }
@@ -190,6 +253,99 @@ extern "C" {
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanAngleNoiseStdDev): Unknown error");
             return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float getLiDARScanTiltRoll(LiDARcloud* cloud, unsigned int scanID) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0.0f;
+            }
+            return cloud->getScanTiltRoll(scanID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanTiltRoll): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanTiltRoll): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float getLiDARScanTiltPitch(LiDARcloud* cloud, unsigned int scanID) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0.0f;
+            }
+            return cloud->getScanTiltPitch(scanID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanTiltPitch): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanTiltPitch): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API int getLiDARScanPattern(LiDARcloud* cloud, unsigned int scanID) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return -1;
+            }
+            // Returns 0 for SCAN_PATTERN_RASTER, 1 for SCAN_PATTERN_SPINNING_MULTIBEAM.
+            return static_cast<int>(cloud->getScanPattern(scanID));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanPattern): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanPattern): Unknown error");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API unsigned int getLiDARScanBeamZenithAngleCount(LiDARcloud* cloud, unsigned int scanID) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return static_cast<unsigned int>(cloud->getScanBeamZenithAngles(scanID).size());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanBeamZenithAngleCount): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanBeamZenithAngleCount): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API void getLiDARScanBeamZenithAngles(LiDARcloud* cloud, unsigned int scanID,
+                                                   float* out, unsigned int count) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "output array is null");
+                return;
+            }
+            std::vector<float> angles = cloud->getScanBeamZenithAngles(scanID);
+            unsigned int n = std::min(count, static_cast<unsigned int>(angles.size()));
+            for (unsigned int i = 0; i < n; i++) {
+                out[i] = angles[i];
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanBeamZenithAngles): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanBeamZenithAngles): Unknown error");
         }
     }
 
@@ -314,6 +470,66 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (addLiDARHitPoints): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addLiDARHitPoints): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void addLiDARHitPointsWithData(LiDARcloud* cloud, unsigned int scanID,
+                                                const float* xyzs, const float* directions,
+                                                unsigned int count, const float* colors,
+                                                const char** dataLabels, unsigned int nLabels,
+                                                const double* dataValues) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!xyzs) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "XYZ array is null");
+                return;
+            }
+            if (!directions) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Direction array is null");
+                return;
+            }
+            if (nLabels > 0 && (dataLabels == nullptr || dataValues == nullptr)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                         "Data labels/values are null with nLabels > 0");
+                return;
+            }
+
+            // Cache the label strings once rather than re-wrapping per hit.
+            std::vector<std::string> labels;
+            labels.reserve(nLabels);
+            for (unsigned int j = 0; j < nLabels; j++) {
+                labels.emplace_back(dataLabels[j] != nullptr ? dataLabels[j] : "");
+            }
+
+            for (unsigned int i = 0; i < count; i++) {
+                helios::vec3 position(xyzs[3 * i], xyzs[3 * i + 1], xyzs[3 * i + 2]);
+                // Full SphericalCoord (radius, elevation, azimuth) — radius is the
+                // beam path length Beer's law needs, so keep it (the no-data
+                // addLiDARHitPoints drops it via the 2-arg make_SphericalCoord).
+                helios::SphericalCoord ray_direction = helios::make_SphericalCoord(
+                    directions[3 * i], directions[3 * i + 1], directions[3 * i + 2]);
+
+                std::map<std::string, double> data;
+                for (unsigned int j = 0; j < nLabels; j++) {
+                    data[labels[j]] = dataValues[(size_t)i * nLabels + j];
+                }
+
+                if (colors == nullptr) {
+                    cloud->addHitPoint(scanID, position, ray_direction, data);
+                } else {
+                    helios::RGBcolor rgb(colors[3 * i], colors[3 * i + 1], colors[3 * i + 2]);
+                    cloud->addHitPoint(scanID, position, ray_direction, rgb, data);
+                }
+            }
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (addLiDARHitPointsWithData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addLiDARHitPointsWithData): Unknown error");
         }
     }
 
@@ -647,6 +863,59 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void getLiDARTriangulationStats(LiDARcloud* cloud, unsigned int* out) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "output pointer is null");
+                return;
+            }
+            out[0] = static_cast<unsigned int>(cloud->getTriangulationCandidateCount());
+            out[1] = static_cast<unsigned int>(cloud->getTriangulationDroppedByLmax());
+            out[2] = static_cast<unsigned int>(cloud->getTriangulationDroppedByAspect());
+            out[3] = static_cast<unsigned int>(cloud->getTriangulationDroppedByDegenerate());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARTriangulationStats): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARTriangulationStats): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getLiDARTriangleVertices_all(LiDARcloud* cloud, float* out_xyz,
+                                                   int* out_scan, unsigned int triCount) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!out_xyz) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output XYZ array is null");
+                return;
+            }
+            unsigned int n = cloud->getTriangleCount();
+            unsigned int limit = (triCount < n) ? triCount : n;
+            for (unsigned int i = 0; i < limit; i++) {
+                Triangulation t = cloud->getTriangle(i);
+                float* p = out_xyz + (size_t)9 * i;
+                p[0] = t.vertex0.x; p[1] = t.vertex0.y; p[2] = t.vertex0.z;
+                p[3] = t.vertex1.x; p[4] = t.vertex1.y; p[5] = t.vertex1.z;
+                p[6] = t.vertex2.x; p[7] = t.vertex2.y; p[8] = t.vertex2.z;
+                if (out_scan) {
+                    out_scan[i] = t.scanID;
+                }
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARTriangleVertices_all): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARTriangleVertices_all): Unknown error");
+        }
+    }
+
     //=============================================================================
     // Filters
     //=============================================================================
@@ -727,7 +996,7 @@ extern "C" {
     // File I/O
     //=============================================================================
 
-    PYHELIOS_API void exportLiDARPointCloud(LiDARcloud* cloud, const char* filename) {
+    PYHELIOS_API void exportLiDARPointCloud(LiDARcloud* cloud, const char* filename, bool write_header) {
         try {
             clearError();
             if (!cloud) {
@@ -739,12 +1008,33 @@ extern "C" {
                 return;
             }
 
-            cloud->exportPointCloud(filename);
+            // write_header=true prepends a '#'-prefixed column-name header line (CloudCompare convention);
+            // the loader skips '#'-prefixed lines so headered files round-trip through loadXML().
+            cloud->exportPointCloud(filename, write_header);
 
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (exportLiDARPointCloud): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (exportLiDARPointCloud): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void exportLiDARLeafAreaUncertainty(LiDARcloud* cloud, const char* filename) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+            cloud->exportLeafAreaUncertainty(filename);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (exportLiDARLeafAreaUncertainty): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (exportLiDARLeafAreaUncertainty): Unknown error");
         }
     }
 
@@ -944,6 +1234,136 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API int getLiDARCellBeamCount(LiDARcloud* cloud, unsigned int index) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return -1;
+            }
+            // -1 if calculateLeafArea() has not been run for this cell.
+            return cloud->getCellBeamCount(index);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellBeamCount): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellBeamCount): Unknown error");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API float getLiDARCellRelativeDensityIndex(LiDARcloud* cloud, unsigned int index) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0.0f;
+            }
+            return cloud->getCellRelativeDensityIndex(index);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellRelativeDensityIndex): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellRelativeDensityIndex): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float getLiDARCellMeanPathLength(LiDARcloud* cloud, unsigned int index) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0.0f;
+            }
+            return cloud->getCellMeanPathLength(index);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellMeanPathLength): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellMeanPathLength): Unknown error");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float getLiDARCellLADVariance(LiDARcloud* cloud, unsigned int index) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return -1.0f;
+            }
+            // -1 if calculateLeafArea() has not been run for this cell.
+            return cloud->getCellLADVariance(index);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellLADVariance): ") + e.what());
+            return -1.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellLADVariance): Unknown error");
+            return -1.0f;
+        }
+    }
+
+    PYHELIOS_API int getLiDARCellLeafAreaConfidenceInterval(LiDARcloud* cloud, unsigned int index,
+                                                            float confidence_level, float* out_bounds) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            if (!out_bounds) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "output bounds array is null");
+                return 0;
+            }
+            float lower = 0.0f, upper = 0.0f;
+            // Returns false (0) when the interval is gated out by the Pimont validity envelope.
+            bool valid = cloud->getCellLeafAreaConfidenceInterval(index, confidence_level, lower, upper);
+            out_bounds[0] = lower;
+            out_bounds[1] = upper;
+            return valid ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellLeafAreaConfidenceInterval): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellLeafAreaConfidenceInterval): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API int getLiDARGroupLADConfidenceInterval(LiDARcloud* cloud, const unsigned int* indices,
+                                                        unsigned int nIndices, float confidence_level,
+                                                        float* out_results) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            if (!indices || nIndices == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "indices must contain at least one cell index");
+                return 0;
+            }
+            if (!out_results) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "output results array is null");
+                return 0;
+            }
+            std::vector<uint> idx_vec(indices, indices + nIndices);
+            float mean_lad = 0.0f, lower = 0.0f, upper = 0.0f;
+            bool valid = cloud->getGroupLADConfidenceInterval(idx_vec, confidence_level, mean_lad, lower, upper);
+            out_results[0] = mean_lad;
+            out_results[1] = lower;
+            out_results[2] = upper;
+            return valid ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARGroupLADConfidenceInterval): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARGroupLADConfidenceInterval): Unknown error");
+            return 0;
+        }
+    }
+
     PYHELIOS_API void calculateLiDARHitGridCell(LiDARcloud* cloud) {
         try {
             clearError();
@@ -1002,6 +1422,29 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (syntheticLiDARScanAppend): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (syntheticLiDARScanAppend): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void syntheticLiDARScanDiscrete(LiDARcloud* cloud, helios::Context* context,
+                                                 bool scan_grid_only, bool record_misses, bool append) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            // Discrete-return scan with explicit miss recording. record_misses=true records the
+            // transmitted beams (misses) required by calculateLeafArea()'s inversion.
+            cloud->syntheticScan(context, scan_grid_only, record_misses, append);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (syntheticLiDARScanDiscrete): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (syntheticLiDARScanDiscrete): Unknown error");
         }
     }
 
@@ -1122,6 +1565,47 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API int isLiDARHitMiss(LiDARcloud* cloud, unsigned int index) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            // A "miss" is a fired pulse that returned nothing (transmitted beam); these form the
+            // denominator of the per-voxel transmission probability used by calculateLeafArea().
+            return cloud->isHitMiss(index) ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (isLiDARHitMiss): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (isLiDARHitMiss): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API int lidarHasMisses(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return cloud->hasMisses() ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (lidarHasMisses): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (lidarHasMisses): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API float getLiDARMissDistance() {
+        // The distance at which a miss point is placed along its beam (LiDARcloud::LIDAR_MISS_DISTANCE).
+        return LiDARcloud::LIDAR_MISS_DISTANCE;
+    }
+
     //=============================================================================
     // Leaf Area Calculations
     //=============================================================================
@@ -1162,6 +1646,29 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (calculateLiDARLeafAreaMinHits): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (calculateLiDARLeafAreaMinHits): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void calculateLiDARLeafAreaUncertainty(LiDARcloud* cloud, helios::Context* context,
+                                                        int min_voxel_hits, float element_width) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            // element_width (m) is the characteristic vegetation element size used for the
+            // element-position-variability term of the per-voxel LAD sampling variance
+            // (Pimont et al. 2018). element_width <= 0 leaves a sampling-only variance.
+            cloud->calculateLeafArea(context, min_voxel_hits, element_width);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (calculateLiDARLeafAreaUncertainty): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (calculateLiDARLeafAreaUncertainty): Unknown error");
         }
     }
 

@@ -145,11 +145,12 @@ except (AttributeError, ImportError):
     LeafOpticsProperties = None
 
 try:
-    from .LiDARCloud import LiDARCloud, LiDARError
+    from .LiDARCloud import LiDARCloud, LiDARError, ScanPattern
 except (AttributeError, ImportError):
     # LiDARCloud functions not available in current library
     LiDARCloud = None
     LiDARError = None
+    ScanPattern = None
 
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
