@@ -8,6 +8,7 @@ Tests are designed to work in both native and mock modes.
 import pytest
 import sys
 import os
+import numpy as np
 from typing import List
 
 # Add pyhelios to path
@@ -763,6 +764,146 @@ class TestRadiationModelCameraFunctions:
                         output_file_path="test.jpg",
                         print_quality_report="invalid"  # Should be boolean
                     )
+
+
+@pytest.mark.native_only
+@pytest.mark.requires_gpu
+class TestRadiationModelLabelMap:
+    """Test per-pixel primitive/object data label map functions."""
+
+    def _setup_full_fov_scene(self, context, radiation_model, patch_id):
+        """Render a scene where a single labelled patch fills the entire camera FOV.
+
+        Returns (camera_label, band_label, resolution) and leaves the model run so that
+        per-pixel labels exist. Camera at (0,0,5) looking down with HFOV=90 sees a focal
+        plane half-width of 5 at z=0, so a 20x20 patch fully covers the view.
+        """
+        from pyhelios.wrappers.DataTypes import vec3, vec2
+        from pyhelios import CameraProperties
+
+        patch_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(20.0, 20.0))
+        context.setPrimitiveDataInt(patch_uuid, "patch_id", patch_id)
+
+        source = radiation_model.addCollimatedRadiationSource(vec3(0, 0, 1))
+        radiation_model.addRadiationBand("SW")
+        radiation_model.setSourceFlux(source, "SW", 1000.0)
+        radiation_model.setScatteringDepth("SW", 1)
+
+        resolution = (32, 32)
+        camera_props = CameraProperties(camera_resolution=resolution, HFOV=90.0)
+        radiation_model.addRadiationCamera(
+            camera_label="label_cam",
+            band_labels=["SW"],
+            position=vec3(0, 0, 5),
+            lookat_or_direction=vec3(0, 0, 0),
+            camera_properties=camera_props,
+            antialiasing_samples=1,
+        )
+
+        radiation_model.updateGeometry()
+        radiation_model.runBand(["SW"])
+        return "label_cam", "SW", resolution
+
+    def test_write_primitive_data_label_map_file(self, tmp_path):
+        """writePrimitiveDataLabelMap writes a text map matching camera resolution."""
+        patch_id = 7
+        with Context() as context:
+            with RadiationModel(context) as radiation_model:
+                camera, band, resolution = self._setup_full_fov_scene(
+                    context, radiation_model, patch_id)
+                width, height = resolution
+
+                radiation_model.writePrimitiveDataLabelMap(
+                    camera=camera,
+                    primitive_data_label="patch_id",
+                    imagefile_base="labels",
+                    image_path=str(tmp_path) + os.sep,
+                    frame=0,
+                )
+
+                # frame >= 0 => zero-padded 5-digit frame suffix
+                label_file = tmp_path / f"{camera}_labels_00000.txt"
+                assert label_file.exists(), f"Label map file not created: {label_file}"
+
+                labels = np.loadtxt(str(label_file))
+                assert labels.shape == (height, width)
+                assert labels.size == width * height
+
+                # Patch fills the whole FOV: every pixel carries the patch label, no padding.
+                assert not np.any(np.isnan(labels)), "Full-FOV scene should have no background pixels"
+                assert np.all(labels == patch_id)
+
+                # Cross-check pixel count against getCameraPixelData (one value per pixel).
+                pixel_data = radiation_model.getCameraPixelData(camera, band)
+                assert len(pixel_data) == width * height
+                foreground = int(np.count_nonzero(~np.isnan(labels)))
+                assert foreground == len(pixel_data)
+
+    def test_get_primitive_data_label_map_array(self):
+        """getPrimitiveDataLabelMap returns a 2D NumPy array with NaN background."""
+        patch_id = 3
+        with Context() as context:
+            with RadiationModel(context) as radiation_model:
+                from pyhelios.wrappers.DataTypes import vec3, vec2
+                from pyhelios import CameraProperties
+
+                # Small patch leaves background pixels so we exercise the NaN padding path.
+                patch_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(2.0, 2.0))
+                context.setPrimitiveDataInt(patch_uuid, "patch_id", patch_id)
+
+                source = radiation_model.addCollimatedRadiationSource(vec3(0, 0, 1))
+                radiation_model.addRadiationBand("SW")
+                radiation_model.setSourceFlux(source, "SW", 1000.0)
+                radiation_model.setScatteringDepth("SW", 1)
+
+                resolution = (32, 32)
+                camera_props = CameraProperties(camera_resolution=resolution, HFOV=90.0)
+                radiation_model.addRadiationCamera(
+                    camera_label="label_cam",
+                    band_labels=["SW"],
+                    position=vec3(0, 0, 5),
+                    lookat_or_direction=vec3(0, 0, 0),
+                    camera_properties=camera_props,
+                    antialiasing_samples=1,
+                )
+                radiation_model.updateGeometry()
+                radiation_model.runBand(["SW"])
+
+                labels = radiation_model.getPrimitiveDataLabelMap("label_cam", "patch_id")
+
+                width, height = resolution
+                assert isinstance(labels, np.ndarray)
+                assert labels.shape == (height, width)
+
+                # Small patch in the center: some labelled foreground, some NaN background.
+                foreground_mask = labels == patch_id
+                background_mask = np.isnan(labels)
+                assert foreground_mask.any(), "Expected the central patch to be visible"
+                assert background_mask.any(), "Expected background (NaN) pixels around the patch"
+                # Every non-background pixel must carry the patch label.
+                assert np.all(labels[~background_mask] == patch_id)
+
+                # Cross-check total pixel count against getCameraPixelData.
+                pixel_data = radiation_model.getCameraPixelData("label_cam", "SW")
+                assert len(pixel_data) == width * height
+                assert int(foreground_mask.sum() + background_mask.sum()) == len(pixel_data)
+
+
+@pytest.mark.cross_platform
+class TestRadiationModelLabelMapAPI:
+    """Mock-mode-safe checks that the label map API is wired up and importable."""
+
+    def test_label_map_methods_exist(self):
+        """The label map methods are exposed regardless of native availability."""
+        for name in ("writePrimitiveDataLabelMap", "writeObjectDataLabelMap",
+                     "getPrimitiveDataLabelMap", "getObjectDataLabelMap"):
+            assert hasattr(RadiationModel, name), f"RadiationModel missing {name}"
+
+    def test_label_map_wrapper_functions_exist(self):
+        """The ctypes wrapper exposes the label map functions (import does not crash)."""
+        from pyhelios.wrappers import URadiationModelWrapper as wrapper
+        assert hasattr(wrapper, "writePrimitiveDataLabelMap")
+        assert hasattr(wrapper, "writeObjectDataLabelMap")
 
 
 @pytest.mark.requires_gpu
@@ -1830,6 +1971,180 @@ class TestCameraPropertiesManufacturer:
         from pyhelios import CameraProperties
         props = CameraProperties(manufacturer="Nikon")
         assert len(props.to_array()) == 10
+
+
+@pytest.mark.native_only
+class TestCameraExposureSparseSubject:
+    """Regression tests for spectral auto-exposure on sparse subjects.
+
+    Not marked ``requires_gpu``: this bug lives in host-side exposure code and
+    manifests on the Vulkan software-BVH backend, which has no GPU requirement.
+    The ``requires_gpu`` marker would skip these on exactly the platform the bug
+    affects. Where no ray-tracing backend is constructible at all (e.g. the
+    cibuildwheel test environment), ``_radiation_model`` skips these tests
+    rather than failing — the exposure path under test is unreachable there.
+
+    Previously, a single-band ("spectral"-typed) camera viewing an emitting
+    subject that filled less than 5% of the frame produced astronomically large
+    pixel values (~1.9e8): the 95th-percentile exposure reference landed on the
+    zero background, the gain floor (0.7/1e-6) took over, and the real radiance
+    was amplified by ~7e5. Exposure depended on how much of the frame the subject
+    happened to fill (camera distance / field of view) rather than its radiance.
+    """
+
+    @staticmethod
+    def _radiation_model(context):
+        # The Vulkan software-BVH backend (no GPU required) is what these tests
+        # target, but some environments — notably the cibuildwheel test step —
+        # have no compatible ray-tracing backend at all, so the constructor
+        # cannot initialize. Skip there rather than fail; the exposure logic
+        # under test is unreachable without a working backend.
+        try:
+            return RadiationModel(context)
+        except RadiationModelError as e:
+            # No ray-tracing backend is constructible in this environment. This
+            # surfaces differently per platform: a clean "No compatible GPU
+            # backend found" message, or a low-level dependency-load failure
+            # (e.g. Windows error 0xc06d007e when the radiation lib's OptiX/CUDA
+            # dependencies are absent in the cibuildwheel test step). In every
+            # such case the exposure path under test is unreachable, so skip.
+            msg = str(e)
+            backend_unavailable = (
+                "No compatible GPU backend found" in msg
+                or "Failed to initialize RadiationModel" in msg
+            )
+            if backend_unavailable:
+                pytest.skip(f"No ray-tracing backend available: {e}")
+            raise
+
+    def _render(self, hfov, position, patch_size, resolution=64, exposure="auto", temperature=350.0):
+        from pyhelios.RadiationModel import CameraProperties
+        from pyhelios.wrappers.DataTypes import vec3, vec2
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(patch_size, patch_size))
+            context.setPrimitiveDataFloat(uuid, "temperature", temperature)
+            context.setPrimitiveDataFloat(uuid, "emissivity_TH", 1.0)
+            with self._radiation_model(context) as radiation:
+                radiation.addRadiationBand("TH")
+                radiation.enableEmission("TH")
+                radiation.setScatteringDepth("TH", 1)
+                radiation.setDiffuseRayCount("TH", 100)
+                props = CameraProperties(
+                    camera_resolution=(resolution, resolution),
+                    HFOV=hfov,
+                    lens_diameter=0.0,
+                    exposure=exposure,
+                )
+                radiation.addRadiationCamera(
+                    "cam", ["TH"], vec3(*position), vec3(0, 0, 0), props,
+                    antialiasing_samples=1,
+                )
+                radiation.updateGeometry()
+                radiation.runBand(["TH"])
+                return np.array(radiation.getCameraPixelData("cam", "TH"))
+
+    def test_small_subject_does_not_blow_up_exposure(self):
+        # Subject fills well under 5% of the frame -> exercises the sparse path.
+        pixels = self._render(hfov=30, position=(0, 0, 10), patch_size=0.5)
+        nonzero = pixels[pixels > 0]
+        assert len(nonzero) > 0, "subject must render (nonzero pixels)"
+        assert np.all(np.isfinite(pixels)), "pixel values must be finite"
+        # Auto-exposure maps the signal toward ~0.7; the historic bug produced ~1.9e8.
+        assert pixels.max() < 100.0, (
+            f"sparse-subject exposure blew up: max pixel = {pixels.max():.4g}"
+        )
+
+    def test_exposure_bounded_across_hfov(self):
+        # Across the full FOV range the subject must render with bounded values,
+        # whether it fills <5% (wide FOV) or most of the frame (narrow FOV).
+        for hfov in (40, 30, 28, 20, 10, 5):
+            pixels = self._render(hfov=hfov, position=(0, 0, 10), patch_size=2.0)
+            assert (pixels > 0).sum() > 0, f"HFOV={hfov}: subject must render"
+            assert np.all(np.isfinite(pixels)), f"HFOV={hfov}: non-finite pixels"
+            assert pixels.max() < 100.0, (
+                f"HFOV={hfov}: exposure blew up, max = {pixels.max():.4g}"
+            )
+
+    def test_exposure_invariant_to_subject_size(self):
+        # A uniform emitter should auto-expose to the same level regardless of how
+        # much of the frame it fills (the property the bug violated).
+        big = self._render(hfov=30, position=(0, 0, 10), patch_size=2.0)
+        small = self._render(hfov=30, position=(0, 0, 10), patch_size=0.5)
+        assert np.isclose(big.max(), small.max(), rtol=0.1), (
+            f"exposure not size-invariant: big={big.max():.4g} small={small.max():.4g}"
+        )
+
+    def test_manual_exposure_returns_raw_radiance(self):
+        # exposure="manual" must be plumbed through to the camera and skip
+        # auto-exposure, returning physical radiance (sigma*T^4/pi for a
+        # blackbody). Previously the exposure mode was dropped at the ctypes
+        # boundary, so "manual" behaved identically to "auto".
+        manual = self._render(hfov=30, position=(0, 0, 10), patch_size=2.0, exposure="manual")
+        auto = self._render(hfov=30, position=(0, 0, 10), patch_size=2.0, exposure="auto")
+        sigma = 5.670374419e-8
+        expected = sigma * 350.0 ** 4 / np.pi  # ~270.8 W/m^2/sr
+        assert np.isclose(manual.max(), expected, rtol=0.05), (
+            f"manual exposure should return raw radiance ~{expected:.1f}, got {manual.max():.4g}"
+        )
+        # Auto normalizes to ~0.7; manual must clearly differ (mode is honored).
+        assert manual.max() > 10.0 * auto.max(), (
+            f"manual ({manual.max():.4g}) not distinct from auto ({auto.max():.4g})"
+        )
+
+    def test_manual_exposure_scales_with_temperature(self):
+        # Raw radiance must track the emitter temperature (auto-exposure would
+        # normalize this away). Confirms manual genuinely bypasses exposure.
+        hot = self._render(hfov=10, position=(0, 0, 10), patch_size=2.0,
+                           exposure="manual", temperature=500.0)
+        cool = self._render(hfov=10, position=(0, 0, 10), patch_size=2.0,
+                            exposure="manual", temperature=350.0)
+        ratio = hot.max() / cool.max()
+        expected_ratio = (500.0 / 350.0) ** 4  # Stefan-Boltzmann
+        assert np.isclose(ratio, expected_ratio, rtol=0.05), (
+            f"raw radiance should scale as T^4 (expected {expected_ratio:.2f}x), got {ratio:.2f}x"
+        )
+
+    def test_update_camera_parameters_honors_exposure(self):
+        # updateCameraParameters must also plumb the exposure mode through. The
+        # camera is created with the default "auto" then switched to "manual";
+        # the rendered radiance must change from the normalized ~0.7 to the raw
+        # blackbody value. Previously the exposure string was dropped on this path.
+        from pyhelios.RadiationModel import CameraProperties
+        from pyhelios.wrappers.DataTypes import vec3, vec2
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(2.0, 2.0))
+            context.setPrimitiveDataFloat(uuid, "temperature", 350.0)
+            context.setPrimitiveDataFloat(uuid, "emissivity_TH", 1.0)
+            with self._radiation_model(context) as radiation:
+                radiation.addRadiationBand("TH")
+                radiation.enableEmission("TH")
+                radiation.setScatteringDepth("TH", 1)
+                radiation.setDiffuseRayCount("TH", 100)
+                radiation.addRadiationCamera(
+                    "cam", ["TH"], vec3(0, 0, 10), vec3(0, 0, 0),
+                    CameraProperties(camera_resolution=(64, 64), HFOV=30, lens_diameter=0.0),
+                    antialiasing_samples=1,
+                )
+                radiation.updateGeometry()
+                radiation.runBand(["TH"])
+                auto_max = np.array(radiation.getCameraPixelData("cam", "TH")).max()
+
+                radiation.updateCameraParameters(
+                    "cam",
+                    CameraProperties(camera_resolution=(64, 64), HFOV=30,
+                                     lens_diameter=0.0, exposure="manual"),
+                )
+                radiation.runBand(["TH"])
+                manual_max = np.array(radiation.getCameraPixelData("cam", "TH")).max()
+
+        expected = 5.670374419e-8 * 350.0 ** 4 / np.pi  # ~270.8 W/m^2/sr
+        assert np.isclose(manual_max, expected, rtol=0.05), (
+            f"updateCameraParameters(manual) should yield raw radiance ~{expected:.1f}, "
+            f"got {manual_max:.4g}"
+        )
+        assert manual_max > 10.0 * auto_max, (
+            f"exposure update had no effect: auto={auto_max:.4g} manual={manual_max:.4g}"
+        )
 
 
 if __name__ == "__main__":

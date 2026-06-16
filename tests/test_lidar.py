@@ -2197,3 +2197,243 @@ class TestLiDARMergeAdditions:
             with LiDARCloud() as lidar:
                 with pytest.raises(ValueError):
                     lidar.calculateLeafArea(context, element_width=0.05)
+
+
+class TestLiDARMovingPlatformInterface:
+    """Cross-platform interface tests for the helios-core 1.3.75 LiDAR additions:
+    azimuth offset, per-hit origin, moving-platform scans, and the G(theta) leaf-area overload."""
+
+    @pytest.mark.cross_platform
+    def test_new_methods_exist(self):
+        """The 1.3.75 high-level methods are present on LiDARCloud."""
+        from pyhelios import LiDARCloud
+
+        assert hasattr(LiDARCloud, 'getScanAzimuthOffset')
+        assert hasattr(LiDARCloud, 'getHitOrigin')
+        assert hasattr(LiDARCloud, 'addScanMoving')
+
+    @pytest.mark.cross_platform
+    def test_addscanmoving_length_mismatch_validation(self):
+        """addScanMoving validates equal trajectory array lengths before touching native code.
+
+        Runs in mock mode: validation happens in Python before any FFI call.
+        """
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)  # bypass native cloud creation
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanMoving(
+                Ntheta=4, theta_range=(0.2, 1.4), Nphi=4, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+                traj_t=[0.0, 1.0],
+                traj_pos=[[0, 0, 10]],  # length 1 != len(traj_t) == 2
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+                pulse_rate_hz=1000.0,
+            )
+
+    @pytest.mark.cross_platform
+    def test_addscanmoving_rotation_stride_validation(self):
+        """Euler trajectory entries must be length-3; quaternion entries length-4."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanMoving(
+                Ntheta=4, theta_range=(0.2, 1.4), Nphi=4, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+                traj_t=[0.0],
+                traj_pos=[[0, 0, 10]],
+                traj_rot=[[0, 0, 0, 1]],  # length 4 but rot_is_quaternion=False expects 3
+                rot_is_quaternion=False,
+                pulse_rate_hz=1000.0,
+            )
+
+    @pytest.mark.cross_platform
+    def test_addscanmoving_pulse_rate_validation(self):
+        """pulse_rate_hz must be positive."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanMoving(
+                Ntheta=4, theta_range=(0.2, 1.4), Nphi=4, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+                traj_t=[0.0], traj_pos=[[0, 0, 10]], traj_rot=[[0, 0, 0, 1]],
+                pulse_rate_hz=0.0,
+            )
+
+    @pytest.mark.cross_platform
+    def test_addscanmoving_nonmonotonic_traj_t_validation(self):
+        """traj_t must be strictly increasing; caught in Python before any FFI call."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanMoving(
+                Ntheta=4, theta_range=(0.2, 1.4), Nphi=4, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+                traj_t=[0.0, 0.0],  # not strictly increasing
+                traj_pos=[[0, 0, 10], [1, 0, 10]],
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+                pulse_rate_hz=1000.0,
+            )
+
+    @pytest.mark.cross_platform
+    def test_calculate_leaf_area_gtheta_requires_all_args(self):
+        """The Gtheta overload requires min_voxel_hits and element_width too."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises((ValueError, TypeError)):
+            # missing context entirely is a TypeError; missing the companion args a ValueError
+            lidar.calculateLeafArea(None, Gtheta=0.5)
+
+    @pytest.mark.cross_platform
+    def test_calculate_leaf_area_gtheta_rejects_nonpositive(self):
+        """Gtheta <= 0 is rejected (it is the native 'compute-from-triangulation' sentinel)."""
+        from pyhelios import Context, LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+
+        class _FakeContext(Context):
+            def __init__(self):  # bypass native context creation
+                pass
+
+        with pytest.raises(ValueError):
+            lidar.calculateLeafArea(_FakeContext(), min_voxel_hits=1, element_width=0.05, Gtheta=0.0)
+
+
+@pytest.mark.native_only
+class TestLiDARMovingPlatformFunctionality:
+    """Native functional tests for the helios-core 1.3.75 LiDAR additions."""
+
+    def test_scan_azimuth_offset_roundtrip(self):
+        """scan_azimuth_offset supplied to addScan() round-trips through getScanAzimuthOffset()."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 2),
+                Ntheta=10, theta_range=(0.2, 1.4),
+                Nphi=10, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+                scan_azimuth_offset=0.123,
+            )
+            assert lidar.getScanAzimuthOffset(scan_id) == pytest.approx(0.123, abs=1e-6)
+
+    def test_scan_azimuth_offset_defaults_zero(self):
+        """Azimuth offset defaults to 0 (no heading offset), preserving prior behavior."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 2),
+                Ntheta=10, theta_range=(0.2, 1.4),
+                Nphi=10, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+            )
+            assert lidar.getScanAzimuthOffset(scan_id) == pytest.approx(0.0, abs=1e-7)
+
+    def test_static_hit_origin_matches_scan_origin(self):
+        """For a static scan, getHitOrigin() falls back to the scan origin."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            origin = vec3(1, 2, 3)
+            scan_id = lidar.addScan(
+                origin=origin,
+                Ntheta=5, theta_range=(0, 1.0),
+                Nphi=5, phi_range=(-3.14, 3.14),
+                exit_diameter=0.01, beam_divergence=0.001,
+            )
+            lidar.addHitPoint(scan_id, vec3(1.5, 2.5, 3.5), vec3(1, 0, 0))
+            hit_origin = lidar.getHitOrigin(0)
+            assert hit_origin.x == pytest.approx(origin.x, abs=1e-4)
+            assert hit_origin.y == pytest.approx(origin.y, abs=1e-4)
+            assert hit_origin.z == pytest.approx(origin.z, abs=1e-4)
+
+    def test_add_scan_moving_quaternion(self):
+        """addScanMoving() with a quaternion trajectory creates a scan and produces hits/origins."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0), size=vec2(4, 4))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                scan_id = lidar.addScanMoving(
+                    Ntheta=8, theta_range=(2.7, 3.13),
+                    Nphi=8, phi_range=(-0.3, 0.3),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                    traj_t=[0.0, 1.0],
+                    traj_pos=[[-1, 0, 10], [1, 0, 10]],
+                    traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],  # identity quaternions
+                    rot_is_quaternion=True,
+                    pulse_rate_hz=1000.0,
+                )
+                assert scan_id >= 0
+                assert lidar.getScanCount() == 1
+                lidar.syntheticScan(context, rays_per_pulse=4,
+                                    pulse_distance_threshold=0.05, record_misses=True)
+                assert lidar.getHitCount() > 0
+                # Per-pulse origin should be near the moving platform altitude (z ~ 10), not (0,0,0).
+                origin = lidar.getHitOrigin(0)
+                assert origin.z == pytest.approx(10.0, abs=2.0)
+
+    def test_add_scan_moving_euler(self):
+        """addScanMoving() also accepts a roll/pitch/yaw Euler trajectory."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0), size=vec2(4, 4))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                scan_id = lidar.addScanMoving(
+                    Ntheta=8, theta_range=(2.7, 3.13),
+                    Nphi=8, phi_range=(-0.3, 0.3),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                    traj_t=[0.0, 1.0],
+                    traj_pos=[[-1, 0, 10], [1, 0, 10]],
+                    traj_rot=[[0, 0, 0], [0, 0, 0]],  # level
+                    rot_is_quaternion=False,
+                    pulse_rate_hz=1000.0,
+                )
+                assert scan_id >= 0
+                assert lidar.getScanCount() == 1
+
+    def test_calculate_leaf_area_gtheta(self):
+        """calculateLeafArea(Gtheta=...) runs the triangulation-free inversion without error."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 3),
+                    Ntheta=30, theta_range=(2.7, 3.13),
+                    Nphi=30, phi_range=(0, 6.28),
+                    exit_diameter=0.02, beam_divergence=0.001,
+                )
+                lidar.syntheticScan(context, rays_per_pulse=12,
+                                    pulse_distance_threshold=0.05, record_misses=True)
+                lidar.addGrid(center=vec3(0, 0, 0.5), size=vec3(1, 1, 1),
+                              ndiv=[1, 1, 1], rotation=0.0)
+                lidar.calculateHitGridCell()
+                # No triangulation performed; the G(theta) overload must not require it.
+                lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05, Gtheta=0.5)
+                assert isinstance(lidar.getCellLeafArea(0), float)
+
+    def test_calculate_leaf_area_gtheta_requires_companions(self):
+        """Gtheta without min_voxel_hits/element_width is a usage error (native check)."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            with LiDARCloud() as lidar:
+                with pytest.raises(ValueError):
+                    lidar.calculateLeafArea(context, Gtheta=0.5)

@@ -724,6 +724,7 @@ jobs:
     timeout-minutes: 45
     needs: build_wheels
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04

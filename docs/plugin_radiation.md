@@ -745,6 +745,8 @@ g_horizontal = radiation.calculateGtheta(vec3(1, 0, 0))
 print(f"G-function (horizontal): {g_horizontal}")
 ```
 
+\note `calculateGtheta()` calls `updateGeometry()` automatically (emitting a warning) if the scene geometry has not yet been pushed to the radiation model, so an explicit prior `updateGeometry()` is no longer required. If the G-function is undefined — no geometry, or zero total leaf area in the scene — it raises an explicit `RuntimeError` rather than returning NaN.
+
 ### Sky Energy and Optional Outputs
 
 ```python
@@ -1221,6 +1223,43 @@ radiation.writeImageSegmentationMasks(
     json_filename="instance_segmentation.json",
     image_file="plant_instances.jpg"
 )
+```
+
+### Per-Pixel Data Label Maps
+
+Export a camera's per-pixel primitive- or object-data values as a dense, row-major map — useful for ground-truth regression targets (e.g. per-pixel temperature, leaf age, or any numeric primitive/object data field). Float, double, uint, and int data types are supported; background pixels (no primitive struck) receive a configurable `padvalue` (default NaN).
+
+```python
+# Write the map to a row-major ASCII text file
+radiation.writePrimitiveDataLabelMap(
+    camera="overhead_camera",
+    primitive_data_label="temperature",
+    imagefile_base="temp_map",
+    image_path="./data",
+    padvalue=float("nan"),   # value for background (no-hit) pixels
+)
+radiation.writeObjectDataLabelMap(
+    camera="overhead_camera",
+    object_data_label="plant_id",
+    imagefile_base="plantid_map",
+    image_path="./data",
+)
+
+# Or get the map directly as a 2D (height, width) NumPy array (no file left on disk)
+temp = radiation.getPrimitiveDataLabelMap("overhead_camera", "temperature")  # shape (H, W)
+plant_id = radiation.getObjectDataLabelMap("overhead_camera", "plant_id")
+```
+
+### Camera Exposure
+
+`CameraProperties` carries an `exposure` field that is passed through to the native camera by `addRadiationCamera()` and `updateCameraParameters()`. Supported modes are `"auto"` (automatic exposure, the default), `"manual"` (no automatic exposure scaling), and `"ISOXXX"` (ISO-based, e.g. `"ISO100"`, calibrated against auto-exposure at reference settings). Use `"manual"` when you need radiometrically comparable pixel values across frames or cameras.
+
+```python
+from pyhelios import RadiationModel, CameraProperties
+
+props = CameraProperties()
+props.exposure = "manual"   # disable per-frame auto-exposure scaling
+radiation.addRadiationCamera("fixed_exposure_cam", ["red", "green", "blue"], position, lookat, props)
 ```
 
 ### Auto-Calibrated Camera Images

@@ -781,12 +781,14 @@ PYHELIOS_API const char* autoCalibrateCameraImage(RadiationModel* radiation_mode
  * @param lookat_z Lookat point Z coordinate
  * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
  * @param antialiasing_samples Number of antialiasing samples
+ * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
  */
 PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const char* camera_label,
                                          const char** band_labels, size_t band_count,
                                          float position_x, float position_y, float position_z,
                                          float lookat_x, float lookat_y, float lookat_z,
-                                         const float* camera_properties, unsigned int antialiasing_samples);
+                                         const float* camera_properties, unsigned int antialiasing_samples,
+                                         const char* exposure);
 
 /**
  * @brief Add radiation camera with position and spherical viewing direction
@@ -802,12 +804,14 @@ PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const 
  * @param azimuth Spherical coordinate azimuth
  * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
  * @param antialiasing_samples Number of antialiasing samples
+ * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
  */
 PYHELIOS_API void addRadiationCameraSpherical(RadiationModel* radiation_model, const char* camera_label,
                                               const char** band_labels, size_t band_count,
                                               float position_x, float position_y, float position_z,
                                               float radius, float elevation, float azimuth,
-                                              const float* camera_properties, unsigned int antialiasing_samples);
+                                              const float* camera_properties, unsigned int antialiasing_samples,
+                                              const char* exposure);
 
 /**
  * @brief Add a solar-induced chlorophyll fluorescence (SIF) camera with vec3 lookat
@@ -1049,10 +1053,12 @@ PYHELIOS_API void addRadiationCameraFromLibraryWithBands(RadiationModel* radiati
  * @param radiation_model Pointer to the RadiationModel
  * @param camera_label Label for the camera to update
  * @param camera_properties Camera properties array (9 floats; v1.3.58+)
+ * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
  */
 PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
                                          const char* camera_label,
-                                         const float* camera_properties);
+                                         const float* camera_properties,
+                                         const char* exposure);
 
 /**
  * @brief Enable automatic JSON metadata file writing for a camera
@@ -1136,6 +1142,34 @@ PYHELIOS_API void writeDepthImageDataEXR(RadiationModel* radiation_model, const 
 PYHELIOS_API void writeNormDepthImage(RadiationModel* radiation_model, const char* camera_label,
                                       const char* imagefile_base, float max_depth,
                                       const char* image_path, int frame);
+
+/**
+ * @brief Write a per-pixel primitive-data label map for a camera to an ASCII text file
+ * @param radiation_model Pointer to the RadiationModel
+ * @param cameralabel Camera label
+ * @param primitive_data_label Primitive data label to map (must be float/double/uint/int)
+ * @param imagefile_base Base filename for output
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit the frame suffix)
+ * @param padvalue Value written for empty/background pixels (NAN for default)
+ */
+PYHELIOS_API void writePrimitiveDataLabelMap(RadiationModel* radiation_model, const char* cameralabel,
+                                             const char* primitive_data_label, const char* imagefile_base,
+                                             const char* image_path, int frame, float padvalue);
+
+/**
+ * @brief Write a per-pixel object-data label map for a camera to an ASCII text file
+ * @param radiation_model Pointer to the RadiationModel
+ * @param cameralabel Camera label
+ * @param object_data_label Object data label to map (must be float/double/uint/int)
+ * @param imagefile_base Base filename for output
+ * @param image_path Output directory path
+ * @param frame Frame number (-1 to omit the frame suffix)
+ * @param padvalue Value written for empty/background pixels (NAN for default)
+ */
+PYHELIOS_API void writeObjectDataLabelMap(RadiationModel* radiation_model, const char* cameralabel,
+                                          const char* object_data_label, const char* imagefile_base,
+                                          const char* image_path, int frame, float padvalue);
 
 //=============================================================================
 // Backend Query Functions (v1.3.67+)

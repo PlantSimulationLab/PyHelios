@@ -112,7 +112,8 @@ class LiDARCloud:
                 exit_diameter: float, beam_divergence: float,
                 column_format: Optional[List[str]] = None,
                 range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
-                scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0) -> int:
+                scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0,
+                scan_azimuth_offset: float = 0.0) -> int:
         """
         Add a LiDAR scan to the point cloud.
 
@@ -145,6 +146,9 @@ class LiDARCloud:
             scan_tilt_pitch: Global scanner tilt pitch angle in radians (right-hand rotation about
                 the body forward/azimuth-zero axis). Only affects synthetic-scan generation.
                 Defaults to 0.0 (level).
+            scan_azimuth_offset: Global scanner azimuth (heading) offset in radians, a right-hand
+                rotation about the world +z axis applied on top of the azimuth sweep. Only affects
+                synthetic-scan generation. Defaults to 0.0 (no offset).
 
         Returns:
             Scan ID for referencing this scan
@@ -192,7 +196,7 @@ class LiDARCloud:
             self._cloud_ptr, origin_list, Ntheta, theta_range,
             Nphi, phi_range, exit_diameter, beam_divergence, column_format,
             range_noise_stddev, angle_noise_stddev,
-            scan_tilt_roll, scan_tilt_pitch
+            scan_tilt_roll, scan_tilt_pitch, scan_azimuth_offset
         )
 
     def addScanMultibeam(self, origin: Union[vec3, List[float], Tuple[float, float, float]],
@@ -201,7 +205,8 @@ class LiDARCloud:
                          exit_diameter: float, beam_divergence: float,
                          column_format: Optional[List[str]] = None,
                          range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
-                         scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0) -> int:
+                         scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0,
+                         scan_azimuth_offset: float = 0.0) -> int:
         """
         Add a spinning multibeam LiDAR scan (rotating multi-channel sensor, e.g. Velodyne/Ouster/Hesai).
 
@@ -223,6 +228,8 @@ class LiDARCloud:
             angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
             scan_tilt_roll: Global scanner tilt roll angle in radians (default 0, level)
             scan_tilt_pitch: Global scanner tilt pitch angle in radians (default 0, level)
+            scan_azimuth_offset: Global scanner azimuth (heading) offset in radians, a right-hand
+                rotation about the world +z axis applied on top of the azimuth sweep (default 0, no offset)
 
         Returns:
             Scan ID for referencing this scan
@@ -261,7 +268,119 @@ class LiDARCloud:
             self._cloud_ptr, origin_list, list(beam_zenith_angles),
             Nphi, phi_range, exit_diameter, beam_divergence, column_format,
             range_noise_stddev, angle_noise_stddev,
-            scan_tilt_roll, scan_tilt_pitch
+            scan_tilt_roll, scan_tilt_pitch, scan_azimuth_offset
+        )
+
+    def addScanMoving(self, Ntheta: int, theta_range: Tuple[float, float],
+                      Nphi: int, phi_range: Tuple[float, float],
+                      exit_diameter: float, beam_divergence: float,
+                      traj_t: List[float],
+                      traj_pos: List[Union[vec3, List[float], Tuple[float, float, float]]],
+                      traj_rot: List[List[float]], pulse_rate_hz: float,
+                      rot_is_quaternion: bool = True,
+                      lever_arm: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                      boresight_rpy: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                      column_format: Optional[List[str]] = None,
+                      range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                      t0: float = 0.0) -> int:
+        """
+        Add a moving-platform (mobile/airborne) raster LiDAR scan driven by a 6-DOF pose trajectory.
+
+        Unlike :meth:`addScan`, the scanner pose changes during the sweep. For each pulse the synthetic-scan
+        generator computes its acquisition time ``t = t0 + ordinal / pulse_rate_hz``, interpolates the platform
+        pose at that time (linear position, SLERP orientation), and emits a per-pulse origin
+        ``o = pos + R(q) * lever_arm`` and direction ``d = R(q) * R(boresight) * d_body``. Every resulting hit
+        and miss stores its own origin (hit-data "origin_x"/"origin_y"/"origin_z", retrievable via
+        :meth:`getHitOrigin`), timestamp ("timestamp"), and firing index ("pulse_id").
+
+        The static tilt roll/pitch/azimuth fields are NOT applied in this mode; attitude comes entirely
+        from the trajectory and the boresight misalignment. Because the pulses do not lie on a fixed
+        theta-phi grid they cannot be triangulated, so leaf-area inversion must use
+        :meth:`calculateLeafArea` with an explicit ``Gtheta``.
+
+        Args:
+            Ntheta: Number of scan points in zenith direction (raster grid rows)
+            theta_range: Zenith angle range (min, max) in radians
+            Nphi: Number of scan points in azimuthal direction (raster grid columns)
+            phi_range: Azimuthal angle range (min, max) in radians
+            exit_diameter: Laser beam exit diameter (meters)
+            beam_divergence: Beam divergence angle (radians)
+            traj_t: Monotonically increasing trajectory sample times in seconds (length M)
+            traj_pos: Platform positions in world coordinates, one [x, y, z] (or vec3) per traj_t entry
+            traj_rot: Platform orientations, one entry per traj_t entry. Each entry is a length-4
+                quaternion (qx, qy, qz, qw, Hamilton body->world) when ``rot_is_quaternion`` is True,
+                otherwise a length-3 roll/pitch/yaw Euler triple in radians (intrinsic Z-Y-X).
+            pulse_rate_hz: Pulse repetition rate in Hz (must be > 0)
+            rot_is_quaternion: Whether traj_rot holds quaternions (default True) or Euler angles
+            lever_arm: Sensor optical center in the platform body frame [x, y, z] meters (default origin)
+            boresight_rpy: Fixed sensor rotational misalignment [roll, pitch, yaw] radians (default 0)
+            column_format: Optional list of column-format labels (see addScan)
+            range_noise_stddev: Std. dev. of Gaussian range noise in meters (default 0)
+            angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
+            t0: Time of the first pulse in seconds (relative time; default 0)
+
+        Returns:
+            Scan ID for referencing this scan
+        """
+        validate_positive_value(Ntheta, 'Ntheta', 'addScanMoving')
+        validate_positive_value(Nphi, 'Nphi', 'addScanMoving')
+
+        if not isinstance(theta_range, (list, tuple)) or len(theta_range) != 2:
+            raise ValueError("theta_range must be a tuple (min, max)")
+        if not isinstance(phi_range, (list, tuple)) or len(phi_range) != 2:
+            raise ValueError("phi_range must be a tuple (min, max)")
+
+        if not isinstance(traj_t, (list, tuple)) or len(traj_t) == 0:
+            raise ValueError("traj_t must be a non-empty list of trajectory sample times")
+        M = len(traj_t)
+        if len(traj_pos) != M or len(traj_rot) != M:
+            raise ValueError("traj_t, traj_pos, and traj_rot must all have length M")
+        if pulse_rate_hz <= 0:
+            raise ValueError("pulse_rate_hz must be greater than 0")
+        # Fail fast on a non-monotonic trajectory rather than deferring to a C++
+        # exception inside poseAt() at syntheticScan time.
+        if any(traj_t[i] >= traj_t[i + 1] for i in range(M - 1)):
+            raise ValueError("traj_t must be strictly monotonically increasing")
+
+        def _to_xyz(v, name):
+            if hasattr(v, 'x'):
+                return [v.x, v.y, v.z]
+            if isinstance(v, (list, tuple)) and len(v) == 3:
+                return [float(c) for c in v]
+            raise ValueError(f"{name} must be a vec3 or 3-element list/tuple")
+
+        pos_list = [_to_xyz(p, "Each traj_pos entry") for p in traj_pos]
+
+        rot_stride = 4 if rot_is_quaternion else 3
+        rot_list = []
+        for r in traj_rot:
+            if not isinstance(r, (list, tuple)) or len(r) != rot_stride:
+                raise ValueError(
+                    f"Each traj_rot entry must have {rot_stride} elements "
+                    f"({'qx,qy,qz,qw' if rot_is_quaternion else 'roll,pitch,yaw'})"
+                )
+            rot_list.append([float(c) for c in r])
+
+        lever_list = _to_xyz(lever_arm, "lever_arm") if lever_arm is not None else None
+        boresight_list = _to_xyz(boresight_rpy, "boresight_rpy") if boresight_rpy is not None else None
+
+        if column_format is not None:
+            if not isinstance(column_format, (list, tuple)) or \
+                    not all(isinstance(c, str) for c in column_format):
+                raise ValueError("column_format must be a list of strings")
+            column_format = list(column_format)
+
+        if range_noise_stddev < 0:
+            raise ValueError("range_noise_stddev must be non-negative")
+        if angle_noise_stddev < 0:
+            raise ValueError("angle_noise_stddev must be non-negative")
+
+        return lidar_wrapper.addLiDARScanMoving(
+            self._cloud_ptr, Ntheta, theta_range, Nphi, phi_range,
+            exit_diameter, beam_divergence,
+            [float(t) for t in traj_t], pos_list, rot_list, bool(rot_is_quaternion),
+            float(pulse_rate_hz), lever_list, boresight_list, column_format,
+            range_noise_stddev, angle_noise_stddev, float(t0)
         )
 
     def getScanCount(self) -> int:
@@ -316,6 +435,12 @@ class LiDARCloud:
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
         return lidar_wrapper.getLiDARScanTiltPitch(self._cloud_ptr, scanID)
+
+    def getScanAzimuthOffset(self, scanID: int) -> float:
+        """Get the global scanner azimuth (heading) offset for a scan (radians; 0.0 if none)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanAzimuthOffset(self._cloud_ptr, scanID)
 
     def getScanPattern(self, scanID: int) -> int:
         """Get the scan pattern for a scan.
@@ -489,6 +614,17 @@ class LiDARCloud:
         xyz_list = lidar_wrapper.getLiDARHitXYZ(self._cloud_ptr, index)
         return vec3(*xyz_list)
 
+    def getHitOrigin(self, index: int) -> vec3:
+        """Get the (x,y,z) beam-emission origin of a hit point.
+
+        For moving-platform scans (see :meth:`addScanMoving`) this is the per-pulse emission origin
+        recorded on the hit; for static scans it falls back to the single scan origin of the hit's scan.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        xyz_list = lidar_wrapper.getLiDARHitOrigin(self._cloud_ptr, index)
+        return vec3(*xyz_list)
+
     def getHitRaydir(self, index: int) -> SphericalCoord:
         """Get ray direction of a hit point"""
         if index < 0:
@@ -559,6 +695,50 @@ class LiDARCloud:
         positions = [vec3(xyz_flat[3 * i], xyz_flat[3 * i + 1], xyz_flat[3 * i + 2]) for i in range(n)]
         colors = [RGBcolor(rgb_flat[3 * i], rgb_flat[3 * i + 1], rgb_flat[3 * i + 2]) for i in range(n)]
         return positions, colors
+
+    # ---- Bulk numpy exports (single FFI call each; no per-hit Python loop) ----
+    # These power the synthetic-scan fast path: extracting a million-hit cloud via
+    # the per-index getters (getHitXYZ/getHitColor/getHitScanID/...) costs tens of
+    # millions of FFI crossings, which dominated scan time. The *Array methods pull
+    # each quantity in one contiguous copy.
+
+    def getHitsXYZRGBArrays(self):
+        """Bulk-export hit coordinates + colors as numpy arrays.
+
+        Returns (xyz, rgb), each (getHitCount(), 3) float32. Empty (0,3) arrays
+        when there are no hits.
+        """
+        import numpy as np
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0, 3), np.float32), np.empty((0, 3), np.float32)
+        return lidar_wrapper.getLiDARHitsXYZRGB_all_np(self._cloud_ptr, n)
+
+    def getHitDataArray(self, label: str):
+        """Bulk-export a named scalar field as an (getHitCount(),) float32 array,
+        NaN where the label is absent for a hit."""
+        import numpy as np
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0,), np.float32)
+        return lidar_wrapper.getLiDARHitData_all_np(self._cloud_ptr, label, n)
+
+    def getHitScanIDArray(self):
+        """Bulk-export the scan ID of every hit as an (getHitCount(),) int32 array."""
+        import numpy as np
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0,), np.int32)
+        return lidar_wrapper.getLiDARHitScanID_all(self._cloud_ptr, n)
+
+    def getHitMissArray(self):
+        """Bulk-export the miss flag of every hit as an (getHitCount(),) int32
+        array (1 == sky/miss, 0 == real surface return)."""
+        import numpy as np
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0,), np.int32)
+        return lidar_wrapper.isLiDARHitMiss_all(self._cloud_ptr, n)
 
     def deleteHitPoint(self, index: int):
         """Delete a hit point from the cloud"""
@@ -1006,11 +1186,12 @@ class LiDARCloud:
             )
 
     def calculateLeafArea(self, context: Context, min_voxel_hits: Optional[int] = None,
-                          element_width: Optional[float] = None):
+                          element_width: Optional[float] = None, Gtheta: Optional[float] = None):
         """
         Calculate leaf area for each grid cell.
 
-        Requires triangulation to have been performed first.
+        Requires triangulation to have been performed first, UNLESS a ``Gtheta`` is supplied
+        (see below).
 
         .. note::
             The cloud must contain misses (transmitted beams that returned nothing) — the
@@ -1026,7 +1207,13 @@ class LiDARCloud:
                 alongside the leaf-area estimate and becomes available via
                 :meth:`getCellLADVariance`, :meth:`getCellLeafAreaConfidenceInterval`, and
                 :meth:`getGroupLADConfidenceInterval`. ``element_width <= 0`` yields a
-                sampling-only variance. Requires ``min_voxel_hits`` to also be specified.
+                sampling-only variance.
+            Gtheta: Optional caller-supplied mean leaf-projection coefficient G(theta), in (0,1]
+                (0.5 = spherical/random leaf-angle distribution). When provided, leaf area is
+                computed via a beam-based inversion that uses each hit's per-pulse beam origin and
+                does NOT require triangulation — the only supported path for moving-platform scans
+                (see :meth:`addScanMoving`). Requires both ``min_voxel_hits`` and ``element_width``
+                to also be specified.
 
         Example:
             >>> from pyhelios import Context, LiDARCloud
@@ -1038,12 +1225,27 @@ class LiDARCloud:
         if not isinstance(context, Context):
             raise TypeError("context must be a Context instance")
 
-        context_ptr = context.getNativePtr()
-        if element_width is not None:
-            if min_voxel_hits is None:
+        # Validate argument combinations before touching native state (fail-fast).
+        if Gtheta is not None:
+            if min_voxel_hits is None or element_width is None:
                 raise ValueError(
-                    "element_width requires min_voxel_hits to also be specified "
-                    "(the uncertainty overload takes both)")
+                    "Gtheta requires both min_voxel_hits and element_width to also be specified "
+                    "(the G(theta) overload takes all three)")
+            if Gtheta <= 0:
+                # The native overload treats Gtheta <= 0 as the "compute from triangulation"
+                # sentinel, which silently disables the supplied-G(theta) path. Reject it here.
+                raise ValueError(
+                    "Gtheta must be > 0 and in (0, 1] (e.g. 0.5 for a spherical leaf-angle distribution)")
+        elif element_width is not None and min_voxel_hits is None:
+            raise ValueError(
+                "element_width requires min_voxel_hits to also be specified "
+                "(the uncertainty overload takes both)")
+
+        context_ptr = context.getNativePtr()
+        if Gtheta is not None:
+            lidar_wrapper.calculateLiDARLeafAreaGtheta(
+                self._cloud_ptr, context_ptr, Gtheta, min_voxel_hits, element_width)
+        elif element_width is not None:
             lidar_wrapper.calculateLiDARLeafAreaUncertainty(
                 self._cloud_ptr, context_ptr, min_voxel_hits, element_width)
         elif min_voxel_hits is None:

@@ -1,5 +1,21 @@
 # Changelog
 
+# [v0.1.23] 2026-06-16
+
+- Updated helios-core to v1.3.75
+
+## Radiation
+- Camera exposure mode is now plumbed through to the native camera: `addRadiationCamera()` and `updateCameraParameters()` read the `exposure` field (`"auto"`/`"manual"`/`"ISOXXX"`) from `CameraProperties` and pass it to helios-core, rather than always forcing `"auto"`.
+- Added per-pixel data label map export: `writePrimitiveDataLabelMap()` and `writeObjectDataLabelMap()` write a camera's per-pixel primitive/object data values (float/double/uint/int) to a row-major ASCII text file (background pixels get a configurable `padvalue`, default NaN), plus `getPrimitiveDataLabelMap()`/`getObjectDataLabelMap()` convenience wrappers that return the map directly as a 2D `(height, width)` NumPy array (written to a temp file and loaded, no file left on disk).
+- `calculateGtheta()` now calls `updateGeometry()` automatically (with a warning) if the scene geometry hasn't been pushed to the radiation model yet, and raises an explicit `RuntimeError` when the G-function is undefined (no geometry / zero leaf area) instead of silently returning NaN.
+
+## LiDAR
+- Added bulk NumPy exports that pull a whole hit cloud across a single FFI call instead of per-hit getters (which dominated synthetic-scan extraction time for million-point clouds): `getHitsXYZRGBArrays()` (returns `(N,3)` float32 coordinates and colors), `getHitDataArray(label)` (`(N,)` float32, NaN where the label is absent), `getHitScanIDArray()` (`(N,)` int32), and `getHitMissArray()` (`(N,)` int32, 1 = miss).
+- Added moving-platform (mobile/airborne) raster scans: `addScanMoving()` registers a scan driven by a timestamped 6-DOF pose trajectory (per-sample position plus orientation as quaternions or roll/pitch/yaw Euler angles), a sensor lever arm and boresight misalignment, and a pulse rate. The synthetic-scan generator emits a per-pulse origin and direction interpolated along the trajectory; every hit/miss records its own origin, timestamp, and firing index.
+- Added `getHitOrigin(index)` returning the per-pulse beam-emission origin of a hit (the moving-platform origin, or the static scan origin as a fallback).
+- Added a global scanner azimuth (heading) offset for synthetic scans: `addScan()`/`addScanMultibeam()` gained a `scan_azimuth_offset` keyword (radians; default 0 = no offset), queryable via `getScanAzimuthOffset()`. It applies a right-hand rotation about the world +z axis on top of the azimuth sweep.
+- `calculateLeafArea()` gained an optional `Gtheta` argument: when supplied (with `min_voxel_hits` and `element_width`), leaf area is computed via a triangulation-free, beam-origin-aware inversion using the caller-supplied G(theta). This is the supported leaf-area path for moving-platform scans, whose pulses cannot be triangulated.
+
 # [v0.1.22] 2026-06-10
 
 - Updated helios-core to v1.3.74

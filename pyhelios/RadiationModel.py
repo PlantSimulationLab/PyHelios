@@ -6,10 +6,14 @@ capabilities with graceful plugin handling and informative error messages.
 """
 
 import logging
+import math
+import tempfile
 from typing import List, Optional
 from contextlib import contextmanager
 from pathlib import Path
 import os
+
+import numpy as np
 
 from .plugins.registry import get_plugin_registry, require_plugin, graceful_plugin_fallback
 from .wrappers import URadiationModelWrapper as radiation_wrapper
@@ -415,7 +419,12 @@ class RadiationModel:
         
         self.context = context
         self.radiation_model = None
-        
+        # Tracks whether scene geometry has been pushed to the radiation model via
+        # updateGeometry(). Some queries (e.g. calculateGtheta) silently return NaN
+        # from the native layer when no geometry is loaded; this flag lets us
+        # auto-update or fail with an actionable message instead.
+        self._geometry_updated = False
+
         # Check plugin availability using registry
         registry = get_plugin_registry()
         
@@ -1212,6 +1221,7 @@ class RadiationModel:
         else:
             radiation_wrapper.updateGeometryUUIDs(self.radiation_model, uuids)
             logger.debug(f"Updated {len(uuids)} geometry UUIDs in radiation model")
+        self._geometry_updated = True
     
     @require_plugin('radiation', 'run radiation simulation')
     @validate_run_band_params
@@ -1348,20 +1358,49 @@ class RadiationModel:
         The G-function describes the geometric relationship between leaf area
         distribution and viewing direction, important for canopy radiation modeling.
 
+        The G-function is computed from the geometry currently loaded in the radiation
+        model. If updateGeometry() has not yet been called, this method calls it
+        automatically (with a warning) so the query operates on the current context
+        geometry. If the result is still undefined (no primitives / zero leaf area),
+        a RuntimeError is raised rather than silently returning NaN.
+
         Args:
             view_direction: View direction as vec3 or list/tuple [x, y, z]
 
         Returns:
             G-function value
 
+        Raises:
+            RuntimeError: If the context has no geometry (or zero total leaf area),
+                so the G-function is undefined.
+
         Example:
             >>> from pyhelios.types import vec3
+            >>> radiation.updateGeometry()
             >>> g_value = radiation.calculateGtheta(vec3(0, 0, 1))
             >>> print(f"G-function: {g_value}")
         """
         validate_position_like(view_direction, "view_direction", "calculateGtheta")
+
+        if not self._geometry_updated:
+            logger.warning(
+                "calculateGtheta called before updateGeometry(); updating radiation "
+                "model geometry automatically. Call updateGeometry() explicitly after "
+                "building the scene to avoid this."
+            )
+            self.updateGeometry()
+
         context_ptr = self.context.getNativePtr()
-        return radiation_wrapper.calculateGtheta(self.radiation_model, context_ptr, view_direction)
+        value = radiation_wrapper.calculateGtheta(self.radiation_model, context_ptr, view_direction)
+
+        if value is None or math.isnan(value):
+            raise RuntimeError(
+                "calculateGtheta returned an undefined (NaN) G-function. The radiation "
+                "model has no geometry with positive leaf area for this context. Add "
+                "primitives to the Context and ensure updateGeometry() succeeds before "
+                "calling calculateGtheta()."
+            )
+        return value
 
     @require_plugin('radiation', 'configure output data')
     def optionalOutputPrimitiveData(self, label: str):
@@ -1499,7 +1538,8 @@ class RadiationModel:
                     validated_position.x, validated_position.y, validated_position.z,
                     radius, elevation, azimuth,
                     camera_properties.to_array(),
-                    validated_samples
+                    validated_samples,
+                    camera_properties.exposure
                 )
             else:
                 # vec3 case
@@ -1510,7 +1550,8 @@ class RadiationModel:
                     validated_position.x, validated_position.y, validated_position.z,
                     validated_direction.x, validated_direction.y, validated_direction.z,
                     camera_properties.to_array(),
-                    validated_samples
+                    validated_samples,
+                    camera_properties.exposure
                 )
 
         except Exception as e:
@@ -2092,9 +2133,189 @@ class RadiationModel:
         
         radiation_wrapper.writeCameraImageData(
             self.radiation_model, camera, band, imagefile_base, image_path, frame)
-        
+
         logger.info(f"Camera image data written for camera {camera}, band {band}")
-    
+
+    @require_plugin('radiation', 'write primitive data label map')
+    def writePrimitiveDataLabelMap(self, camera: str, primitive_data_label: str, imagefile_base: str,
+                                   image_path: str = "./", frame: int = -1, padvalue: float = float('nan')):
+        """
+        Write a per-pixel primitive-data label map for a camera to a text file.
+
+        For each camera pixel, writes the value of ``primitive_data_label`` on the primitive
+        seen at that pixel. Pixels that hit no geometry (or a primitive lacking the data) are
+        written as ``padvalue`` (NaN by default). The primitive data must be of type
+        float, double, uint, or int. The radiation model must have been run
+        (``updateGeometry`` + ``runBand``) so that per-pixel primitive labels exist.
+
+        The output file is written row-by-row (one line per image row), so it loads directly
+        into a 2D ``(height, width)`` array. See :meth:`getPrimitiveDataLabelMap` for a
+        convenience that returns a NumPy array instead of a file on disk.
+
+        Output filename: ``{camera}_{imagefile_base}.txt`` when ``frame < 0`` (default), or
+        ``{camera}_{imagefile_base}_{frame:05d}.txt`` when ``frame >= 0``.
+
+        Args:
+            camera: Camera label
+            primitive_data_label: Primitive data label to map (float/double/uint/int)
+            imagefile_base: Base filename for output
+            image_path: Output directory path (default: current directory)
+            frame: Frame number to write (-1 to omit the frame suffix)
+            padvalue: Value written for empty/background pixels (default: NaN)
+
+        Raises:
+            RadiationModelError: If the label map writing fails
+            TypeError: If parameters have incorrect types
+
+        Example:
+            >>> radiation.writePrimitiveDataLabelMap(
+            ...     camera="main_cam", primitive_data_label="leaf_id",
+            ...     imagefile_base="leaf_labels", image_path="./output")
+        """
+        # Validate inputs
+        if not isinstance(camera, str) or not camera.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(primitive_data_label, str) or not primitive_data_label.strip():
+            raise TypeError("Primitive data label must be a non-empty string")
+        if not isinstance(imagefile_base, str) or not imagefile_base.strip():
+            raise TypeError("Image file base must be a non-empty string")
+        if not isinstance(image_path, str):
+            raise TypeError("Image path must be a string")
+        if not isinstance(frame, int):
+            raise TypeError("Frame must be an integer")
+        if not isinstance(padvalue, (int, float)) or isinstance(padvalue, bool):
+            raise TypeError("Pad value must be a numeric type")
+
+        radiation_wrapper.writePrimitiveDataLabelMap(
+            self.radiation_model, camera, primitive_data_label, imagefile_base,
+            image_path, frame, float(padvalue))
+
+        logger.info(f"Primitive data label map written for camera {camera}, label {primitive_data_label}")
+
+    @require_plugin('radiation', 'write object data label map')
+    def writeObjectDataLabelMap(self, camera: str, object_data_label: str, imagefile_base: str,
+                                image_path: str = "./", frame: int = -1, padvalue: float = float('nan')):
+        """
+        Write a per-pixel object-data label map for a camera to a text file.
+
+        Identical to :meth:`writePrimitiveDataLabelMap` but maps the value of an object-data
+        label (compound-object data) rather than primitive data. The object data must be of
+        type float, double, uint, or int. The radiation model must have been run
+        (``updateGeometry`` + ``runBand``) so that per-pixel labels exist.
+
+        Output filename: ``{camera}_{imagefile_base}.txt`` when ``frame < 0`` (default), or
+        ``{camera}_{imagefile_base}_{frame:05d}.txt`` when ``frame >= 0``.
+
+        Args:
+            camera: Camera label
+            object_data_label: Object data label to map (float/double/uint/int)
+            imagefile_base: Base filename for output
+            image_path: Output directory path (default: current directory)
+            frame: Frame number to write (-1 to omit the frame suffix)
+            padvalue: Value written for empty/background pixels (default: NaN)
+
+        Raises:
+            RadiationModelError: If the label map writing fails
+            TypeError: If parameters have incorrect types
+        """
+        # Validate inputs
+        if not isinstance(camera, str) or not camera.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(object_data_label, str) or not object_data_label.strip():
+            raise TypeError("Object data label must be a non-empty string")
+        if not isinstance(imagefile_base, str) or not imagefile_base.strip():
+            raise TypeError("Image file base must be a non-empty string")
+        if not isinstance(image_path, str):
+            raise TypeError("Image path must be a string")
+        if not isinstance(frame, int):
+            raise TypeError("Frame must be an integer")
+        if not isinstance(padvalue, (int, float)) or isinstance(padvalue, bool):
+            raise TypeError("Pad value must be a numeric type")
+
+        radiation_wrapper.writeObjectDataLabelMap(
+            self.radiation_model, camera, object_data_label, imagefile_base,
+            image_path, frame, float(padvalue))
+
+        logger.info(f"Object data label map written for camera {camera}, label {object_data_label}")
+
+    @require_plugin('radiation', 'read primitive data label map')
+    def getPrimitiveDataLabelMap(self, camera: str, primitive_data_label: str,
+                                 padvalue: float = float('nan')) -> 'np.ndarray':
+        """
+        Return a per-pixel primitive-data label map for a camera as a NumPy array.
+
+        Convenience wrapper around :meth:`writePrimitiveDataLabelMap` for the common use case
+        of per-pixel masking in Python: the label map is written to a temporary file, loaded
+        with ``numpy.loadtxt``, and returned as a 2D array. The file does not persist.
+
+        Args:
+            camera: Camera label
+            primitive_data_label: Primitive data label to map (float/double/uint/int)
+            padvalue: Value used for empty/background pixels (default: NaN)
+
+        Returns:
+            2D NumPy array of shape ``(height, width)`` (row-major) holding the primitive-data
+            value at each pixel, with ``padvalue`` (NaN by default) where no labelled geometry
+            was seen.
+
+        Raises:
+            RadiationModelError: If the label map generation fails
+            TypeError: If parameters have incorrect types
+
+        Example:
+            >>> labels = radiation.getPrimitiveDataLabelMap("main_cam", "leaf_id")
+            >>> mask = labels == 3          # per-pixel mask for primitive label 3
+            >>> background = np.isnan(labels)
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            imagefile_base = "labelmap"
+            self.writePrimitiveDataLabelMap(
+                camera, primitive_data_label, imagefile_base,
+                image_path=os.path.join(tmpdir, ""), frame=-1, padvalue=padvalue)
+            # frame < 0 => filename has no frame suffix
+            filepath = os.path.join(tmpdir, f"{camera}_{imagefile_base}.txt")
+            labels = np.loadtxt(filepath)
+
+        # np.loadtxt collapses a single-row file to 1D; keep a consistent 2D shape.
+        if labels.ndim == 1:
+            labels = labels.reshape(1, -1)
+        return labels
+
+    @require_plugin('radiation', 'read object data label map')
+    def getObjectDataLabelMap(self, camera: str, object_data_label: str,
+                              padvalue: float = float('nan')) -> 'np.ndarray':
+        """
+        Return a per-pixel object-data label map for a camera as a NumPy array.
+
+        Convenience wrapper around :meth:`writeObjectDataLabelMap`; see
+        :meth:`getPrimitiveDataLabelMap` for behaviour. The label map is written to a temporary
+        file, loaded with ``numpy.loadtxt``, and returned as a 2D ``(height, width)`` array with
+        ``padvalue`` (NaN by default) for background pixels. The file does not persist.
+
+        Args:
+            camera: Camera label
+            object_data_label: Object data label to map (float/double/uint/int)
+            padvalue: Value used for empty/background pixels (default: NaN)
+
+        Returns:
+            2D NumPy array of shape ``(height, width)`` (row-major).
+
+        Raises:
+            RadiationModelError: If the label map generation fails
+            TypeError: If parameters have incorrect types
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            imagefile_base = "labelmap"
+            self.writeObjectDataLabelMap(
+                camera, object_data_label, imagefile_base,
+                image_path=os.path.join(tmpdir, ""), frame=-1, padvalue=padvalue)
+            filepath = os.path.join(tmpdir, f"{camera}_{imagefile_base}.txt")
+            labels = np.loadtxt(filepath)
+
+        if labels.ndim == 1:
+            labels = labels.reshape(1, -1)
+        return labels
+
     @require_plugin('radiation', 'write image bounding boxes')
     def writeImageBoundingBoxes(self, camera_label: str,
                                   primitive_data_labels=None, object_data_labels=None,

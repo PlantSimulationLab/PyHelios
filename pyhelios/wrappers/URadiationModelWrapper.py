@@ -311,6 +311,16 @@ try:
                                                ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
     helios_lib.writeCameraImageData.restype = None
 
+    helios_lib.writePrimitiveDataLabelMap.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                      ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+                                                      ctypes.c_int, ctypes.c_float]
+    helios_lib.writePrimitiveDataLabelMap.restype = None
+
+    helios_lib.writeObjectDataLabelMap.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                   ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+                                                   ctypes.c_int, ctypes.c_float]
+    helios_lib.writeObjectDataLabelMap.restype = None
+
     # Bounding box functions
     helios_lib.writeImageBoundingBoxes.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
                                                   ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p,
@@ -368,14 +378,16 @@ try:
                                                   ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
                                                   ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                                   ctypes.c_float, ctypes.c_float, ctypes.c_float,
-                                                  ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+                                                  ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+                                                  ctypes.c_char_p]
     helios_lib.addRadiationCameraVec3.restype = None
 
     helios_lib.addRadiationCameraSpherical.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
                                                        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
                                                        ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                                        ctypes.c_float, ctypes.c_float, ctypes.c_float,
-                                                       ctypes.POINTER(ctypes.c_float), ctypes.c_uint]
+                                                       ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+                                                       ctypes.c_char_p]
     helios_lib.addRadiationCameraSpherical.restype = None
 
     # Camera management functions
@@ -442,7 +454,7 @@ try:
     helios_lib.addRadiationCameraFromLibraryWithBands.restype = None
 
     helios_lib.updateCameraParameters.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
-                                                  ctypes.POINTER(ctypes.c_float)]
+                                                  ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
     helios_lib.updateCameraParameters.restype = None
 
     helios_lib.enableCameraMetadata.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
@@ -589,6 +601,8 @@ try:
     helios_lib.writeCameraImage.errcheck = _check_error
     helios_lib.writeNormCameraImage.errcheck = _check_error
     helios_lib.writeCameraImageData.errcheck = _check_error
+    helios_lib.writePrimitiveDataLabelMap.errcheck = _check_error
+    helios_lib.writeObjectDataLabelMap.errcheck = _check_error
 
     # Bounding box functions
     helios_lib.writeImageBoundingBoxes.errcheck = _check_error
@@ -1752,8 +1766,13 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     if len(props_array) != 10:
         raise ValueError(f"Camera properties must have 10 elements, got {len(props_array)}")
 
+    # Exposure mode is a string, so it travels separately from the numeric array.
+    # Read it from the CameraProperties object; list callers default to "auto".
+    exposure = getattr(camera_properties, 'exposure', 'auto')
+
     props_c = (ctypes.c_float * 10)(*props_array)
-    helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c)
+    helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c,
+                                      (exposure or "auto").encode('utf-8'))
 
 def enableCameraMetadata(radiation_model, camera_labels):
     """
@@ -1859,6 +1878,40 @@ def writeCameraImageData(radiation_model, camera: str, band: str, imagefile_base
     
     helios_lib.writeCameraImageData(radiation_model, camera_encoded, band_encoded,
                                    imagefile_base_encoded, image_path_encoded, frame)
+
+def writePrimitiveDataLabelMap(radiation_model, camera: str, primitive_data_label: str,
+                               imagefile_base: str, image_path: str = "./",
+                               frame: int = -1, padvalue: float = float('nan')):
+    """Write per-pixel primitive data label map to file (ASCII format)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write primitive data label map.")
+
+    camera_encoded = camera.encode('utf-8')
+    primitive_data_label_encoded = primitive_data_label.encode('utf-8')
+    imagefile_base_encoded = imagefile_base.encode('utf-8')
+    image_path_encoded = image_path.encode('utf-8')
+
+    helios_lib.writePrimitiveDataLabelMap(radiation_model, camera_encoded, primitive_data_label_encoded,
+                                          imagefile_base_encoded, image_path_encoded, frame, padvalue)
+
+def writeObjectDataLabelMap(radiation_model, camera: str, object_data_label: str,
+                            imagefile_base: str, image_path: str = "./",
+                            frame: int = -1, padvalue: float = float('nan')):
+    """Write per-pixel object data label map to file (ASCII format)"""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write object data label map.")
+
+    camera_encoded = camera.encode('utf-8')
+    object_data_label_encoded = object_data_label.encode('utf-8')
+    imagefile_base_encoded = imagefile_base.encode('utf-8')
+    image_path_encoded = image_path.encode('utf-8')
+
+    helios_lib.writeObjectDataLabelMap(radiation_model, camera_encoded, object_data_label_encoded,
+                                       imagefile_base_encoded, image_path_encoded, frame, padvalue)
 
 # Bounding box functions
 def writeImageBoundingBoxes(radiation_model, camera_label: str, primitive_data_label: str, 
@@ -2063,7 +2116,8 @@ def autoCalibrateCameraImage(radiation_model, camera_label: str, red_band_label:
 def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
                           position_x: float, position_y: float, position_z: float,
                           lookat_x: float, lookat_y: float, lookat_z: float,
-                          camera_properties: List[float], antialiasing_samples: int):
+                          camera_properties: List[float], antialiasing_samples: int,
+                          exposure: str = "auto"):
     """Add radiation camera with position and lookat vectors"""
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
@@ -2089,12 +2143,14 @@ def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List
     helios_lib.addRadiationCameraVec3(radiation_model, camera_encoded, band_array, len(band_labels),
                                      ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
                                      ctypes.c_float(lookat_x), ctypes.c_float(lookat_y), ctypes.c_float(lookat_z),
-                                     props_array, ctypes.c_uint(antialiasing_samples))
+                                     props_array, ctypes.c_uint(antialiasing_samples),
+                                     (exposure or "auto").encode('utf-8'))
 
 def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels: List[str],
                                position_x: float, position_y: float, position_z: float,
                                radius: float, elevation: float, azimuth: float,
-                               camera_properties: List[float], antialiasing_samples: int):
+                               camera_properties: List[float], antialiasing_samples: int,
+                               exposure: str = "auto"):
     """Add radiation camera with position and spherical viewing direction"""
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
@@ -2120,7 +2176,8 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
     helios_lib.addRadiationCameraSpherical(radiation_model, camera_encoded, band_array, len(band_labels),
                                           ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
                                           ctypes.c_float(radius), ctypes.c_float(elevation), ctypes.c_float(azimuth),
-                                          props_array, ctypes.c_uint(antialiasing_samples))
+                                          props_array, ctypes.c_uint(antialiasing_samples),
+                                          (exposure or "auto").encode('utf-8'))
 
 
 def _require_sif_camera_available():

@@ -52,7 +52,8 @@ try:
         ctypes.POINTER(ctypes.c_char_p),  # columnFormat
         ctypes.c_uint,   # nCols
         ctypes.c_float,  # scanTiltRoll
-        ctypes.c_float   # scanTiltPitch
+        ctypes.c_float,  # scanTiltPitch
+        ctypes.c_float   # scanAzimuthOffset
     ]
     helios_lib.addLiDARScan.restype = ctypes.c_uint
     helios_lib.addLiDARScan.errcheck = _check_error
@@ -72,10 +73,38 @@ try:
         ctypes.POINTER(ctypes.c_char_p),  # columnFormat
         ctypes.c_uint,   # nCols
         ctypes.c_float,  # scanTiltRoll
-        ctypes.c_float   # scanTiltPitch
+        ctypes.c_float,  # scanTiltPitch
+        ctypes.c_float   # scanAzimuthOffset
     ]
     helios_lib.addLiDARScanMultibeam.restype = ctypes.c_uint
     helios_lib.addLiDARScanMultibeam.errcheck = _check_error
+
+    helios_lib.addLiDARScanMoving.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,   # Ntheta
+        ctypes.c_float,  # thetaMin
+        ctypes.c_float,  # thetaMax
+        ctypes.c_uint,   # Nphi
+        ctypes.c_float,  # phiMin
+        ctypes.c_float,  # phiMax
+        ctypes.c_float,  # exitDiameter
+        ctypes.c_float,  # beamDivergence
+        ctypes.c_float,  # rangeNoiseStdDev
+        ctypes.c_float,  # angleNoiseStdDev
+        ctypes.POINTER(ctypes.c_char_p),  # columnFormat
+        ctypes.c_uint,   # nCols
+        ctypes.POINTER(ctypes.c_double),  # traj_t[M]
+        ctypes.POINTER(ctypes.c_float),   # traj_pos[3*M]
+        ctypes.POINTER(ctypes.c_float),   # traj_rot[4*M or 3*M]
+        ctypes.c_uint,   # M
+        ctypes.c_int,    # rotIsQuaternion
+        ctypes.POINTER(ctypes.c_float),   # lever_arm[3]
+        ctypes.POINTER(ctypes.c_float),   # boresight_rpy[3]
+        ctypes.c_float,  # pulse_rate_hz
+        ctypes.c_double  # t0
+    ]
+    helios_lib.addLiDARScanMoving.restype = ctypes.c_uint
+    helios_lib.addLiDARScanMoving.errcheck = _check_error
 
     helios_lib.getLiDARScanCount.argtypes = [ctypes.POINTER(ULiDARcloud)]
     helios_lib.getLiDARScanCount.restype = ctypes.c_uint
@@ -112,6 +141,10 @@ try:
     helios_lib.getLiDARScanTiltPitch.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.getLiDARScanTiltPitch.restype = ctypes.c_float
     helios_lib.getLiDARScanTiltPitch.errcheck = _check_error
+
+    helios_lib.getLiDARScanAzimuthOffset.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanAzimuthOffset.restype = ctypes.c_float
+    helios_lib.getLiDARScanAzimuthOffset.errcheck = _check_error
 
     helios_lib.getLiDARScanPattern.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.getLiDARScanPattern.restype = ctypes.c_int
@@ -198,6 +231,14 @@ try:
     helios_lib.getLiDARHitXYZ.restype = None
     helios_lib.getLiDARHitXYZ.errcheck = _check_error
 
+    helios_lib.getLiDARHitOrigin.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.getLiDARHitOrigin.restype = None
+    helios_lib.getLiDARHitOrigin.errcheck = _check_error
+
     helios_lib.getLiDARHitRaydir.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.c_uint,
@@ -251,6 +292,22 @@ try:
     ]
     helios_lib.getLiDARHitsXYZRGB_all.restype = None
     helios_lib.getLiDARHitsXYZRGB_all.errcheck = _check_error
+
+    helios_lib.getLiDARHitScanID_all.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_uint
+    ]
+    helios_lib.getLiDARHitScanID_all.restype = None
+    helios_lib.getLiDARHitScanID_all.errcheck = _check_error
+
+    helios_lib.isLiDARHitMiss_all.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_uint
+    ]
+    helios_lib.isLiDARHitMiss_all.restype = None
+    helios_lib.isLiDARHitMiss_all.errcheck = _check_error
 
     helios_lib.deleteLiDARHitPoint.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.deleteLiDARHitPoint.restype = None
@@ -500,6 +557,16 @@ try:
     helios_lib.calculateLiDARLeafAreaUncertainty.restype = None
     helios_lib.calculateLiDARLeafAreaUncertainty.errcheck = _check_error
 
+    helios_lib.calculateLiDARLeafAreaGtheta.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(UContext),
+        ctypes.c_float,  # Gtheta
+        ctypes.c_int,    # min_voxel_hits
+        ctypes.c_float,  # element_width
+    ]
+    helios_lib.calculateLiDARLeafAreaGtheta.restype = None
+    helios_lib.calculateLiDARLeafAreaGtheta.errcheck = _check_error
+
     helios_lib.calculateSyntheticLiDARLeafArea.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.POINTER(UContext)
@@ -603,7 +670,8 @@ def addLiDARScan(cloud_ptr: ctypes.POINTER(ULiDARcloud),
                  exit_diameter: float, beam_divergence: float,
                  column_format: Optional[List[str]] = None,
                  range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
-                 scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0) -> int:
+                 scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0,
+                 scan_azimuth_offset: float = 0.0) -> int:
     """Add a LiDAR scan to the point cloud"""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
@@ -627,7 +695,7 @@ def addLiDARScan(cloud_ptr: ctypes.POINTER(ULiDARcloud),
         Nphi, phi_range[0], phi_range[1], exit_diameter, beam_divergence,
         float(range_noise_stddev), float(angle_noise_stddev),
         column_array, n_cols,
-        float(scan_tilt_roll), float(scan_tilt_pitch)
+        float(scan_tilt_roll), float(scan_tilt_pitch), float(scan_azimuth_offset)
     )
 
 
@@ -637,7 +705,8 @@ def addLiDARScanMultibeam(cloud_ptr: ctypes.POINTER(ULiDARcloud),
                           exit_diameter: float, beam_divergence: float,
                           column_format: Optional[List[str]] = None,
                           range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
-                          scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0) -> int:
+                          scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0,
+                          scan_azimuth_offset: float = 0.0) -> int:
     """Add a spinning multibeam LiDAR scan (rotating multi-channel sensor)"""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
@@ -665,7 +734,76 @@ def addLiDARScanMultibeam(cloud_ptr: ctypes.POINTER(ULiDARcloud),
         Nphi, phi_range[0], phi_range[1], exit_diameter, beam_divergence,
         float(range_noise_stddev), float(angle_noise_stddev),
         column_array, n_cols,
-        float(scan_tilt_roll), float(scan_tilt_pitch)
+        float(scan_tilt_roll), float(scan_tilt_pitch), float(scan_azimuth_offset)
+    )
+
+
+def addLiDARScanMoving(cloud_ptr: ctypes.POINTER(ULiDARcloud),
+                       Ntheta: int, theta_range: Tuple[float, float],
+                       Nphi: int, phi_range: Tuple[float, float],
+                       exit_diameter: float, beam_divergence: float,
+                       traj_t: List[float], traj_pos: List[List[float]],
+                       traj_rot: List[List[float]], rot_is_quaternion: bool,
+                       pulse_rate_hz: float,
+                       lever_arm: Optional[List[float]] = None,
+                       boresight_rpy: Optional[List[float]] = None,
+                       column_format: Optional[List[str]] = None,
+                       range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                       t0: float = 0.0) -> int:
+    """Add a moving-platform (mobile/airborne) raster LiDAR scan driven by a 6-DOF pose trajectory.
+
+    traj_rot entries are length-4 quaternions (qx,qy,qz,qw) if rot_is_quaternion is True,
+    otherwise length-3 roll/pitch/yaw Euler angles (radians, intrinsic Z-Y-X).
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    M = len(traj_t)
+    if M == 0:
+        raise ValueError("traj_t must contain at least one trajectory sample")
+    if len(traj_pos) != M or len(traj_rot) != M:
+        raise ValueError("traj_t, traj_pos, and traj_rot must all have the same length M")
+    if pulse_rate_hz <= 0.0:
+        raise ValueError("pulse_rate_hz must be greater than 0")
+
+    rot_stride = 4 if rot_is_quaternion else 3
+    if any(len(p) != 3 for p in traj_pos):
+        raise ValueError("Each traj_pos entry must be a 3-element [x, y, z]")
+    if any(len(r) != rot_stride for r in traj_rot):
+        raise ValueError(
+            f"Each traj_rot entry must have {rot_stride} elements "
+            f"({'qx,qy,qz,qw' if rot_is_quaternion else 'roll,pitch,yaw'})"
+        )
+
+    t_array = (ctypes.c_double * M)(*[float(t) for t in traj_t])
+    pos_flat = [float(c) for p in traj_pos for c in p]
+    pos_array = (ctypes.c_float * (3 * M))(*pos_flat)
+    rot_flat = [float(c) for r in traj_rot for c in r]
+    rot_array = (ctypes.c_float * (rot_stride * M))(*rot_flat)
+
+    lever = lever_arm if lever_arm is not None else [0.0, 0.0, 0.0]
+    boresight = boresight_rpy if boresight_rpy is not None else [0.0, 0.0, 0.0]
+    if len(lever) != 3 or len(boresight) != 3:
+        raise ValueError("lever_arm and boresight_rpy must each be 3-element arrays")
+    lever_array = (ctypes.c_float * 3)(*[float(c) for c in lever])
+    boresight_array = (ctypes.c_float * 3)(*[float(c) for c in boresight])
+
+    if column_format:
+        column_array = (ctypes.c_char_p * len(column_format))(
+            *[c.encode('utf-8') for c in column_format]
+        )
+        n_cols = len(column_format)
+    else:
+        column_array = None
+        n_cols = 0
+
+    return helios_lib.addLiDARScanMoving(
+        cloud_ptr, Ntheta, theta_range[0], theta_range[1],
+        Nphi, phi_range[0], phi_range[1], exit_diameter, beam_divergence,
+        float(range_noise_stddev), float(angle_noise_stddev),
+        column_array, n_cols,
+        t_array, pos_array, rot_array, M, 1 if rot_is_quaternion else 0,
+        lever_array, boresight_array, float(pulse_rate_hz), float(t0)
     )
 
 
@@ -681,6 +819,13 @@ def getLiDARScanTiltPitch(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
     return helios_lib.getLiDARScanTiltPitch(cloud_ptr, scanID)
+
+
+def getLiDARScanAzimuthOffset(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> float:
+    """Get the global scanner azimuth (heading) offset angle (radians) for a scan."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARScanAzimuthOffset(cloud_ptr, scanID)
 
 
 def getLiDARScanPattern(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> int:
@@ -869,6 +1014,20 @@ def getLiDARHitXYZ(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List[f
     return list(xyz)
 
 
+def getLiDARHitOrigin(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List[float]:
+    """Get the (x,y,z) beam-emission origin of a hit point.
+
+    For moving-platform scans this is the per-pulse origin; for static scans it falls back to
+    the single scan origin of the hit's scan.
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    xyz = (ctypes.c_float * 3)()
+    helios_lib.getLiDARHitOrigin(cloud_ptr, index, xyz)
+    return list(xyz)
+
+
 def getLiDARHitRaydir(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List[float]:
     """Get ray direction of a hit point"""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
@@ -932,6 +1091,55 @@ def getLiDARHitsXYZRGB_all(cloud_ptr: ctypes.POINTER(ULiDARcloud), n: int) -> Tu
     rgb = (ctypes.c_float * (3 * n))()
     helios_lib.getLiDARHitsXYZRGB_all(cloud_ptr, xyz, rgb, n)
     return list(xyz), list(rgb)
+
+
+def getLiDARHitsXYZRGB_all_np(cloud_ptr: ctypes.POINTER(ULiDARcloud), n: int):
+    """Bulk-export XYZ + RGB for all hits as numpy arrays (no per-element Python).
+
+    Returns (xyz, rgb), each an (n, 3) float32 array. Much faster than the
+    list-returning variant for million-point clouds — np.frombuffer copies the
+    contiguous ctypes buffer in one shot.
+    """
+    import numpy as np
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    xyz = (ctypes.c_float * (3 * n))()
+    rgb = (ctypes.c_float * (3 * n))()
+    helios_lib.getLiDARHitsXYZRGB_all(cloud_ptr, xyz, rgb, n)
+    xyz_np = np.frombuffer(xyz, dtype=np.float32, count=3 * n).copy().reshape(n, 3)
+    rgb_np = np.frombuffer(rgb, dtype=np.float32, count=3 * n).copy().reshape(n, 3)
+    return xyz_np, rgb_np
+
+
+def getLiDARHitData_all_np(cloud_ptr: ctypes.POINTER(ULiDARcloud), label: str, n: int):
+    """Bulk-export a named scalar field for all hits as an (n,) float32 numpy array
+    (NaN where the label is absent for a hit)."""
+    import numpy as np
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    out = (ctypes.c_float * n)()
+    helios_lib.getLiDARHitData_all(cloud_ptr, label.encode('utf-8'), out, n)
+    return np.frombuffer(out, dtype=np.float32, count=n).copy()
+
+
+def getLiDARHitScanID_all(cloud_ptr: ctypes.POINTER(ULiDARcloud), n: int):
+    """Bulk-export the scan ID of every hit as an (n,) int32 numpy array."""
+    import numpy as np
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    out = (ctypes.c_int * n)()
+    helios_lib.getLiDARHitScanID_all(cloud_ptr, out, n)
+    return np.frombuffer(out, dtype=np.int32, count=n).copy()
+
+
+def isLiDARHitMiss_all(cloud_ptr: ctypes.POINTER(ULiDARcloud), n: int):
+    """Bulk-export the miss flag of every hit as an (n,) int32 numpy array (1=miss)."""
+    import numpy as np
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    out = (ctypes.c_int * n)()
+    helios_lib.isLiDARHitMiss_all(cloud_ptr, out, n)
+    return np.frombuffer(out, dtype=np.int32, count=n).copy()
 
 
 def deleteLiDARHitPoint(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> None:
@@ -1255,6 +1463,20 @@ def calculateLiDARLeafAreaUncertainty(cloud_ptr: ctypes.POINTER(ULiDARcloud),
         raise NotImplementedError("LiDAR functions not available")
     helios_lib.calculateLiDARLeafAreaUncertainty(
         cloud_ptr, context_ptr, min_voxel_hits, float(element_width))
+
+
+def calculateLiDARLeafAreaGtheta(cloud_ptr: ctypes.POINTER(ULiDARcloud),
+                                 context_ptr: ctypes.POINTER(UContext),
+                                 Gtheta: float, min_voxel_hits: int, element_width: float) -> None:
+    """Calculate leaf area using a caller-supplied G(theta), without requiring triangulation.
+
+    Suitable for moving-platform scans (which cannot be triangulated). Gtheta must be in (0,1]
+    (0.5 = spherical leaf-angle distribution).
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    helios_lib.calculateLiDARLeafAreaGtheta(
+        cloud_ptr, context_ptr, float(Gtheta), min_voxel_hits, float(element_width))
 
 
 def getLiDARCellBeamCount(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> int:

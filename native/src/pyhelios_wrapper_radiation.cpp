@@ -2065,7 +2065,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                                              const char** band_labels, size_t band_count,
                                              float position_x, float position_y, float position_z,
                                              float lookat_x, float lookat_y, float lookat_z,
-                                             const float* camera_properties, unsigned int antialiasing_samples) {
+                                             const float* camera_properties, unsigned int antialiasing_samples,
+                                             const char* exposure) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2113,7 +2114,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.lens_make = "";
             props.lens_model = "";
             props.lens_specification = "";
-            props.exposure = "auto";
+            props.exposure = exposure ? std::string(exposure) : "auto";
             props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
             props.white_balance = "auto";
             props.camera_zoom = 1.0f;             // No zoom default (v1.3.60+)
@@ -2138,7 +2139,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                                                   const char** band_labels, size_t band_count,
                                                   float position_x, float position_y, float position_z,
                                                   float radius, float elevation, float azimuth,
-                                                  const float* camera_properties, unsigned int antialiasing_samples) {
+                                                  const float* camera_properties, unsigned int antialiasing_samples,
+                                                  const char* exposure) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2186,7 +2188,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.lens_make = "";
             props.lens_model = "";
             props.lens_specification = "";
-            props.exposure = "auto";
+            props.exposure = exposure ? std::string(exposure) : "auto";
             props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
             props.white_balance = "auto";
             props.camera_zoom = 1.0f;             // No zoom default (v1.3.60+)
@@ -2748,7 +2750,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
 
     PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
                                              const char* camera_label,
-                                             const float* camera_properties) {
+                                             const float* camera_properties,
+                                             const char* exposure) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2777,13 +2780,14 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.shutter_speed = camera_properties[8];
             props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
 
-            // String fields use defaults (cannot be updated via this interface)
+            // String fields use defaults (cannot be updated via this interface),
+            // except exposure mode which is plumbed through from CameraProperties.
             props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
             props.model = "generic";
             props.lens_make = "";
             props.lens_model = "";
             props.lens_specification = "";
-            props.exposure = "auto";
+            props.exposure = exposure ? std::string(exposure) : "auto";
             props.white_balance = "auto";
 
             radiation_model->updateCameraParameters(std::string(camera_label), props);
@@ -2975,6 +2979,58 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeNormDepthImage): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeNormDepthImage): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void writePrimitiveDataLabelMap(RadiationModel* radiation_model, const char* cameralabel,
+                                                 const char* primitive_data_label, const char* imagefile_base,
+                                                 const char* image_path, int frame, float padvalue) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!cameralabel || !primitive_data_label || !imagefile_base) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+
+            std::string path = image_path ? std::string(image_path) : "./";
+
+            radiation_model->writePrimitiveDataLabelMap(std::string(cameralabel), std::string(primitive_data_label),
+                                                        std::string(imagefile_base), path, frame, padvalue);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writePrimitiveDataLabelMap): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writePrimitiveDataLabelMap): Unknown error writing primitive data label map.");
+        }
+    }
+
+    PYHELIOS_API void writeObjectDataLabelMap(RadiationModel* radiation_model, const char* cameralabel,
+                                              const char* object_data_label, const char* imagefile_base,
+                                              const char* image_path, int frame, float padvalue) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!cameralabel || !object_data_label || !imagefile_base) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+
+            std::string path = image_path ? std::string(image_path) : "./";
+
+            radiation_model->writeObjectDataLabelMap(std::string(cameralabel), std::string(object_data_label),
+                                                     std::string(imagefile_base), path, frame, padvalue);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeObjectDataLabelMap): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeObjectDataLabelMap): Unknown error writing object data label map.");
         }
     }
 

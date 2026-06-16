@@ -349,6 +349,40 @@ with LiDARCloud() as pointcloud:
 
 `addHitPoint()` also accepts an optional hit color (\ref pyhelios.types.RGBcolor "RGBcolor"). For loading many hit points at once, PyHelios provides bulk helpers that pass contiguous buffers to the native library in a single FFI call: `addHitPoints()` (positions, directions, optional colors) and `addHitPointsWithData()` (additionally a per-hit named-scalar data map — the in-memory equivalent of the non-standard ASCII columns, which is what multi-return leaf-area workflows need so that `gapfillMisses()` can group beams by pulse). For synthetic (simulated) scans, hit points are generated automatically by ray tracing the Helios geometry instead of being added by hand — see \ref LiDARsynthetic.
 
+A raster scan can also carry a global azimuth (heading) offset via the `scan_azimuth_offset` keyword (radians; default 0), a right-hand rotation about the world +z axis applied on top of the azimuth sweep. Together with `scan_tilt_roll`/`scan_tilt_pitch` it completes the roll/pitch/yaw orientation of a static scanner. It is queryable with `getScanAzimuthOffset()`.
+
+### Moving-platform (mobile/airborne) scans {#LiDARmoving}
+
+Terrestrial scans (`addScan()`/`addScanMultibeam()`) fire all pulses from a single fixed origin. For mobile or airborne LiDAR the scanner moves during the sweep, so PyHelios provides `addScanMoving()`, which drives the scanner pose from a timestamped 6-DOF trajectory. For each pulse the synthetic-scan generator computes its acquisition time \f$t = t_0 + \mathrm{ordinal}/\mathrm{pulse\_rate\_hz}\f$, interpolates the platform pose at that time (linear position, SLERP orientation), and emits a per-pulse origin \f$\mathbf{o} = \mathbf{pos} + R(\mathbf{q})\,\mathbf{lever\_arm}\f$ and direction \f$\mathbf{d} = R(\mathbf{q})\,R(\mathbf{boresight})\,\mathbf{d}_{body}\f$. Every resulting hit and miss records its own origin (queryable with `getHitOrigin()`), real timestamp, and firing index. The static tilt fields are not used in this mode — attitude comes entirely from the trajectory quaternions composed with the fixed boresight misalignment.
+
+The orientation trajectory may be supplied either as quaternions `(qx, qy, qz, qw)` (Hamilton body→world; `rot_is_quaternion=True`, the default) or as roll/pitch/yaw Euler angles in radians (`rot_is_quaternion=False`). Prefer quaternions when the trajectory comes from an INS/IMU.
+
+```python
+import math
+from pyhelios import Context, LiDARCloud
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    context.addPatch(center=vec3(0, 0, 0), size=vec2(10, 10))
+    with LiDARCloud() as pointcloud:
+        # A platform flying along +x at 10 m altitude, looking straight down
+        scan_id = pointcloud.addScanMoving(
+            Ntheta=16, theta_range=(2.8, 3.14),     # near-nadir fan
+            Nphi=64, phi_range=(-0.2, 0.2),
+            exit_diameter=0.0, beam_divergence=0.0,
+            traj_t=[0.0, 1.0],
+            traj_pos=[[-5, 0, 10], [5, 0, 10]],
+            traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],  # identity quaternions
+            rot_is_quaternion=True,
+            lever_arm=[0, 0, 0], boresight_rpy=[0, 0, 0],
+            pulse_rate_hz=10000.0,
+        )
+        pointcloud.syntheticScan(context, record_misses=True)
+        origin0 = pointcloud.getHitOrigin(0)   # per-pulse emission origin (z ~ 10)
+```
+
+Because the pulses of a moving scan do not lie on a fixed zenith/azimuth grid, they **cannot be triangulated**, so the usual G(theta)-from-triangulation path is unavailable. Leaf area for moving scans is computed with the `Gtheta` overload of `calculateLeafArea()` (see \ref LiDARleafarea), which takes a caller-supplied G(theta) and uses each hit's per-pulse beam origin.
+
 ## Establishing Grid Cells {#LiDARgrid}
 
 Rectangular grid cells are used as the basis for processing point cloud data. For example, total leaf area (or leaf area density) may be calculated for each grid cell. Grid cells or "voxels" are parallelpiped volumes. The top and bottom faces are always horizontal, but the cells can be rotated in the azimuthal direction.
@@ -508,6 +542,8 @@ In addition to the leaf-area point estimate, the plugin can quantify the **stati
 
 In PyHelios, uncertainty is computed by passing both a `min_voxel_hits` value and an `element_width` (a characteristic vegetation element width in meters, e.g. mean leaf width) to `calculateLeafArea()`. If a non-positive `element_width` is passed, the element-position variance term is omitted and the reported uncertainty is **sampling-only**. The leaf-area point estimate is identical regardless of this argument.
 
+\note **Triangulation-free inversion (`Gtheta`).** The standard inversion uses triangulation only to estimate the per-voxel mean leaf-projection coefficient \f$G(\theta)\f$. For scans that cannot be triangulated — chiefly moving-platform scans (\ref LiDARmoving) — pass an explicit `Gtheta` (in \f$(0,1]\f$; use 0.5 for a spherical/random leaf-angle distribution) to `calculateLeafArea()` along with `min_voxel_hits` and `element_width`. This selects a beam-origin-aware inversion that does **not** require `triangulateHitPoints()` and is geometrically correct for a scanner that moved during acquisition. It still requires miss points like the other overloads.
+
 Single-voxel confidence intervals are routinely \f$\pm 50\f$–\f$100\%\f$ and are only valid in specific \f$(L, L_1, N)\f$ ranges (Pimont et al. 2018, Table 3); the accessors refuse to emit an interval outside that envelope (the `valid` flag is then False). The **recommended path is the group-scale interval** (`getGroupLADConfidenceInterval()`), which aggregates over a set of voxels (a vertical slice, a whole plant) and yields much tighter intervals (\f$\pm 5\f$–\f$10\%\f$).
 
 ```python
@@ -563,7 +599,7 @@ The synthetic return intensity is computed as \f$I = \rho\,\cos\theta\f$, where 
 
 For multi-return data simulation, multiple rays are cast for a single laser beam pulse. The density of rays is Gaussian, with the peak at the center of the beam. The model will also record the target count, target index, and timestamp associated with each hit point.
 
-Per-hit synthetic data values (`intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `nRaysHit`, plus any primitive-data labels listed in the scan's `column_format`) can be queried after the scan with `getHitData()` (guard with `doesHitDataExist()`), or bulk-exported for all hits with `getHitDataAll(label)`.
+Per-hit synthetic data values (`intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `nRaysHit`, plus any primitive-data labels listed in the scan's `column_format`) can be queried after the scan with `getHitData()` (guard with `doesHitDataExist()`), or bulk-exported for all hits with `getHitDataAll(label)`. For large clouds (millions of points) prefer the NumPy bulk exports, which pull a whole field across a single FFI call: `getHitsXYZRGBArrays()` (returns `(N,3)` float32 coordinates and colors), `getHitDataArray(label)` (`(N,)` float32, NaN where the label is absent), `getHitScanIDArray()` (`(N,)` int32), and `getHitMissArray()` (`(N,)` int32, 1 = miss).
 
 \note Synthetic scanning requires the CollisionDetection plugin for ray tracing. PyHelios initializes it automatically when needed; you can also initialize it explicitly with `initializeCollisionDetection(context)`.
 
