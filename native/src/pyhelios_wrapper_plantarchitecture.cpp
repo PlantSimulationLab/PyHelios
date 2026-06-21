@@ -106,6 +106,372 @@ RandomParameter_int jsonToRandomParameterInt(const nlohmann::json& j, std::minst
     return param;
 }
 
+// ---- helios::RGBcolor / helios::vec3 JSON helpers ----
+nlohmann::json rgbToJSON(const helios::RGBcolor& c) {
+    return nlohmann::json{{"r", c.r}, {"g", c.g}, {"b", c.b}};
+}
+helios::RGBcolor jsonToRGB(const nlohmann::json& j, helios::RGBcolor fallback) {
+    if (j.contains("r")) fallback.r = j["r"];
+    if (j.contains("g")) fallback.g = j["g"];
+    if (j.contains("b")) fallback.b = j["b"];
+    return fallback;
+}
+nlohmann::json vec3ToJSON(const helios::vec3& v) {
+    return nlohmann::json{{"x", v.x}, {"y", v.y}, {"z", v.z}};
+}
+helios::vec3 jsonToVec3(const nlohmann::json& j, helios::vec3 fallback) {
+    if (j.contains("x")) fallback.x = j["x"];
+    if (j.contains("y")) fallback.y = j["y"];
+    if (j.contains("z")) fallback.z = j["z"];
+    return fallback;
+}
+
+// ---- Prototype-function registries (name <-> built-in function pointer) ----
+// Function pointers cannot cross the ctypes boundary, so the built-in prototype
+// functions declared in Assets.h are referenced by name. shared_ptr<Phytomer>
+// callbacks (phytomer_creation_function/phytomer_callback_function) are not bindable
+// and are intentionally not exposed.
+typedef uint (*LeafPrototypeFn)(helios::Context*, LeafPrototype*, int);
+typedef uint (*FlowerPrototypeFn)(helios::Context*, uint, bool);
+typedef uint (*FruitPrototypeFn)(helios::Context*, uint);
+
+const std::map<std::string, LeafPrototypeFn>& leafPrototypeRegistry() {
+    static const std::map<std::string, LeafPrototypeFn> reg = {
+        {"GenericLeafPrototype", &GenericLeafPrototype},
+        {"AsparagusLeafPrototype", &AsparagusLeafPrototype},
+        {"BeanLeafPrototype_unifoliate_OBJ", &BeanLeafPrototype_unifoliate_OBJ},
+        {"BeanLeafPrototype_trifoliate_OBJ", &BeanLeafPrototype_trifoliate_OBJ},
+        {"CheeseweedLeafPrototype", &CheeseweedLeafPrototype},
+        {"CowpeaLeafPrototype_unifoliate_OBJ", &CowpeaLeafPrototype_unifoliate_OBJ},
+        {"CowpeaLeafPrototype_trifoliate_OBJ", &CowpeaLeafPrototype_trifoliate_OBJ},
+        {"OliveLeafPrototype", &OliveLeafPrototype},
+    };
+    return reg;
+}
+
+const std::map<std::string, FlowerPrototypeFn>& flowerPrototypeRegistry() {
+    static const std::map<std::string, FlowerPrototypeFn> reg = {
+        {"AlmondFlowerPrototype", &AlmondFlowerPrototype},
+        {"AppleFlowerPrototype", &AppleFlowerPrototype},
+        {"BeanFlowerPrototype", &BeanFlowerPrototype},
+        {"BindweedFlowerPrototype", &BindweedFlowerPrototype},
+        {"BougainvilleaFlowerPrototype", &BougainvilleaFlowerPrototype},
+        {"CowpeaFlowerPrototype", &CowpeaFlowerPrototype},
+        {"OliveFlowerPrototype", &OliveFlowerPrototype},
+        {"PistachioFlowerPrototype", &PistachioFlowerPrototype},
+        {"PuncturevineFlowerPrototype", &PuncturevineFlowerPrototype},
+        {"RedbudFlowerPrototype", &RedbudFlowerPrototype},
+        {"SoybeanFlowerPrototype", &SoybeanFlowerPrototype},
+        {"StrawberryFlowerPrototype", &StrawberryFlowerPrototype},
+        {"TomatoFlowerPrototype", &TomatoFlowerPrototype},
+        {"WalnutFlowerPrototype", &WalnutFlowerPrototype},
+    };
+    return reg;
+}
+
+const std::map<std::string, FruitPrototypeFn>& fruitPrototypeRegistry() {
+    static const std::map<std::string, FruitPrototypeFn> reg = {
+        {"GeneralSphericalFruitPrototype", &GeneralSphericalFruitPrototype},
+        {"AlmondFruitPrototype", &AlmondFruitPrototype},
+        {"AppleFruitPrototype", &AppleFruitPrototype},
+        {"BeanFruitPrototype", &BeanFruitPrototype},
+        {"CapsicumFruitPrototype", &CapsicumFruitPrototype},
+        {"CowpeaFruitPrototype", &CowpeaFruitPrototype},
+        {"GrapevineFruitPrototype", &GrapevineFruitPrototype},
+        {"MaizeTasselPrototype", &MaizeTasselPrototype},
+        {"MaizeEarPrototype", &MaizeEarPrototype},
+        {"OliveFruitPrototype", &OliveFruitPrototype},
+        {"PistachioFruitPrototype", &PistachioFruitPrototype},
+        {"RedbudFruitPrototype", &RedbudFruitPrototype},
+        {"RiceSpikePrototype", &RiceSpikePrototype},
+        {"SorghumPaniclePrototype", &SorghumPaniclePrototype},
+        {"SoybeanFruitPrototype", &SoybeanFruitPrototype},
+        {"StrawberryFruitPrototype", &StrawberryFruitPrototype},
+        {"TomatoFruitPrototype", &TomatoFruitPrototype},
+        {"WalnutFruitPrototype", &WalnutFruitPrototype},
+        {"WheatSpikePrototype", &WheatSpikePrototype},
+    };
+    return reg;
+}
+
+template<typename FnMap, typename Fn>
+std::string prototypeFunctionName(const FnMap& reg, Fn fn) {
+    if (fn == nullptr) return "";
+    for (const auto& kv : reg) {
+        if (kv.second == fn) return kv.first;
+    }
+    return "";  // unrecognized (e.g. user-supplied) function pointer
+}
+
+template<typename FnMap, typename Fn>
+void resolvePrototypeFunction(const FnMap& reg, const nlohmann::json& j, const char* key, Fn& out, const char* kind) {
+    if (!j.contains(key)) return;
+    std::string name = j[key].get<std::string>();
+    if (name.empty()) {
+        out = nullptr;
+        return;
+    }
+    auto it = reg.find(name);
+    if (it == reg.end()) {
+        throw std::runtime_error(std::string("Unknown ") + kind + " prototype function name: '" + name + "'");
+    }
+    out = it->second;
+}
+
+// ---- LeafPrototype <-> JSON ----
+nlohmann::json leafPrototypeToJSON(const LeafPrototype& p) {
+    nlohmann::json j;
+    j["leaf_aspect_ratio"] = randomParameterFloatToJSON(p.leaf_aspect_ratio);
+    j["midrib_fold_fraction"] = randomParameterFloatToJSON(p.midrib_fold_fraction);
+    j["longitudinal_curvature"] = randomParameterFloatToJSON(p.longitudinal_curvature);
+    j["lateral_curvature"] = randomParameterFloatToJSON(p.lateral_curvature);
+    j["petiole_roll"] = randomParameterFloatToJSON(p.petiole_roll);
+    j["wave_period"] = randomParameterFloatToJSON(p.wave_period);
+    j["wave_amplitude"] = randomParameterFloatToJSON(p.wave_amplitude);
+    j["leaf_buckle_length"] = randomParameterFloatToJSON(p.leaf_buckle_length);
+    j["leaf_buckle_angle"] = randomParameterFloatToJSON(p.leaf_buckle_angle);
+    j["leaf_offset"] = vec3ToJSON(p.leaf_offset);
+    j["subdivisions"] = p.subdivisions;
+    j["unique_prototypes"] = p.unique_prototypes;
+    j["build_petiolule"] = p.build_petiolule;
+    j["OBJ_model_file"] = p.OBJ_model_file;
+    nlohmann::json tex = nlohmann::json::object();
+    for (const auto& kv : p.leaf_texture_file) {
+        tex[std::to_string(kv.first)] = kv.second;
+    }
+    j["leaf_texture_file"] = tex;
+    j["prototype_function"] = prototypeFunctionName(leafPrototypeRegistry(), p.prototype_function);
+    return j;
+}
+
+void jsonToLeafPrototype(LeafPrototype& p, const nlohmann::json& j, std::minstd_rand0* generator) {
+    if (j.contains("leaf_aspect_ratio")) p.leaf_aspect_ratio = jsonToRandomParameterFloat(j["leaf_aspect_ratio"], generator);
+    if (j.contains("midrib_fold_fraction")) p.midrib_fold_fraction = jsonToRandomParameterFloat(j["midrib_fold_fraction"], generator);
+    if (j.contains("longitudinal_curvature")) p.longitudinal_curvature = jsonToRandomParameterFloat(j["longitudinal_curvature"], generator);
+    if (j.contains("lateral_curvature")) p.lateral_curvature = jsonToRandomParameterFloat(j["lateral_curvature"], generator);
+    if (j.contains("petiole_roll")) p.petiole_roll = jsonToRandomParameterFloat(j["petiole_roll"], generator);
+    if (j.contains("wave_period")) p.wave_period = jsonToRandomParameterFloat(j["wave_period"], generator);
+    if (j.contains("wave_amplitude")) p.wave_amplitude = jsonToRandomParameterFloat(j["wave_amplitude"], generator);
+    if (j.contains("leaf_buckle_length")) p.leaf_buckle_length = jsonToRandomParameterFloat(j["leaf_buckle_length"], generator);
+    if (j.contains("leaf_buckle_angle")) p.leaf_buckle_angle = jsonToRandomParameterFloat(j["leaf_buckle_angle"], generator);
+    if (j.contains("leaf_offset")) p.leaf_offset = jsonToVec3(j["leaf_offset"], p.leaf_offset);
+    if (j.contains("subdivisions")) p.subdivisions = j["subdivisions"];
+    if (j.contains("unique_prototypes")) p.unique_prototypes = j["unique_prototypes"];
+    if (j.contains("build_petiolule")) p.build_petiolule = j["build_petiolule"];
+    if (j.contains("OBJ_model_file")) p.OBJ_model_file = j["OBJ_model_file"].get<std::string>();
+    if (j.contains("leaf_texture_file")) {
+        p.leaf_texture_file.clear();
+        for (auto it = j["leaf_texture_file"].begin(); it != j["leaf_texture_file"].end(); ++it) {
+            p.leaf_texture_file[std::stoi(it.key())] = it.value().get<std::string>();
+        }
+    }
+    resolvePrototypeFunction(leafPrototypeRegistry(), j, "prototype_function", p.prototype_function, "leaf");
+}
+
+// ---- PhytomerParameters <-> JSON ----
+nlohmann::json phytomerParametersToJSON(const PhytomerParameters& pp) {
+    nlohmann::json j;
+
+    nlohmann::json in;
+    in["pitch"] = randomParameterFloatToJSON(pp.internode.pitch);
+    in["phyllotactic_angle"] = randomParameterFloatToJSON(pp.internode.phyllotactic_angle);
+    in["radius_initial"] = randomParameterFloatToJSON(pp.internode.radius_initial);
+    in["max_vegetative_buds_per_petiole"] = randomParameterIntToJSON(pp.internode.max_vegetative_buds_per_petiole);
+    in["max_floral_buds_per_petiole"] = randomParameterIntToJSON(pp.internode.max_floral_buds_per_petiole);
+    in["color"] = rgbToJSON(pp.internode.color);
+    in["image_texture"] = pp.internode.image_texture;
+    in["length_segments"] = pp.internode.length_segments;
+    in["radial_subdivisions"] = pp.internode.radial_subdivisions;
+    j["internode"] = in;
+
+    nlohmann::json pe;
+    pe["petioles_per_internode"] = pp.petiole.petioles_per_internode;
+    pe["pitch"] = randomParameterFloatToJSON(pp.petiole.pitch);
+    pe["radius"] = randomParameterFloatToJSON(pp.petiole.radius);
+    pe["length"] = randomParameterFloatToJSON(pp.petiole.length);
+    pe["curvature"] = randomParameterFloatToJSON(pp.petiole.curvature);
+    pe["taper"] = randomParameterFloatToJSON(pp.petiole.taper);
+    pe["color"] = rgbToJSON(pp.petiole.color);
+    pe["length_segments"] = pp.petiole.length_segments;
+    pe["radial_subdivisions"] = pp.petiole.radial_subdivisions;
+    j["petiole"] = pe;
+
+    nlohmann::json lf;
+    lf["leaves_per_petiole"] = randomParameterIntToJSON(pp.leaf.leaves_per_petiole);
+    lf["pitch"] = randomParameterFloatToJSON(pp.leaf.pitch);
+    lf["yaw"] = randomParameterFloatToJSON(pp.leaf.yaw);
+    lf["roll"] = randomParameterFloatToJSON(pp.leaf.roll);
+    lf["leaflet_offset"] = randomParameterFloatToJSON(pp.leaf.leaflet_offset);
+    lf["leaflet_scale"] = randomParameterFloatToJSON(pp.leaf.leaflet_scale);
+    lf["prototype_scale"] = randomParameterFloatToJSON(pp.leaf.prototype_scale);
+    lf["prototype"] = leafPrototypeToJSON(pp.leaf.prototype);
+    j["leaf"] = lf;
+
+    nlohmann::json pd;
+    pd["length"] = randomParameterFloatToJSON(pp.peduncle.length);
+    pd["radius"] = randomParameterFloatToJSON(pp.peduncle.radius);
+    pd["pitch"] = randomParameterFloatToJSON(pp.peduncle.pitch);
+    pd["roll"] = randomParameterFloatToJSON(pp.peduncle.roll);
+    pd["curvature"] = randomParameterFloatToJSON(pp.peduncle.curvature);
+    pd["color"] = rgbToJSON(pp.peduncle.color);
+    pd["length_segments"] = pp.peduncle.length_segments;
+    pd["radial_subdivisions"] = pp.peduncle.radial_subdivisions;
+    j["peduncle"] = pd;
+
+    nlohmann::json inf;
+    inf["flowers_per_peduncle"] = randomParameterIntToJSON(pp.inflorescence.flowers_per_peduncle);
+    inf["flower_offset"] = randomParameterFloatToJSON(pp.inflorescence.flower_offset);
+    inf["pitch"] = randomParameterFloatToJSON(pp.inflorescence.pitch);
+    inf["roll"] = randomParameterFloatToJSON(pp.inflorescence.roll);
+    inf["flower_prototype_scale"] = randomParameterFloatToJSON(pp.inflorescence.flower_prototype_scale);
+    inf["fruit_prototype_scale"] = randomParameterFloatToJSON(pp.inflorescence.fruit_prototype_scale);
+    inf["fruit_gravity_factor_fraction"] = randomParameterFloatToJSON(pp.inflorescence.fruit_gravity_factor_fraction);
+    inf["unique_prototypes"] = pp.inflorescence.unique_prototypes;
+    inf["flower_prototype_function"] = prototypeFunctionName(flowerPrototypeRegistry(), pp.inflorescence.flower_prototype_function);
+    inf["fruit_prototype_function"] = prototypeFunctionName(fruitPrototypeRegistry(), pp.inflorescence.fruit_prototype_function);
+    j["inflorescence"] = inf;
+
+    return j;
+}
+
+void jsonToPhytomerParameters(PhytomerParameters& pp, const nlohmann::json& j, std::minstd_rand0* generator) {
+    if (j.contains("internode")) {
+        const nlohmann::json& in = j["internode"];
+        if (in.contains("pitch")) pp.internode.pitch = jsonToRandomParameterFloat(in["pitch"], generator);
+        if (in.contains("phyllotactic_angle")) pp.internode.phyllotactic_angle = jsonToRandomParameterFloat(in["phyllotactic_angle"], generator);
+        if (in.contains("radius_initial")) pp.internode.radius_initial = jsonToRandomParameterFloat(in["radius_initial"], generator);
+        if (in.contains("max_vegetative_buds_per_petiole")) pp.internode.max_vegetative_buds_per_petiole = jsonToRandomParameterInt(in["max_vegetative_buds_per_petiole"], generator);
+        if (in.contains("max_floral_buds_per_petiole")) pp.internode.max_floral_buds_per_petiole = jsonToRandomParameterInt(in["max_floral_buds_per_petiole"], generator);
+        if (in.contains("color")) pp.internode.color = jsonToRGB(in["color"], pp.internode.color);
+        if (in.contains("image_texture")) pp.internode.image_texture = in["image_texture"].get<std::string>();
+        if (in.contains("length_segments")) pp.internode.length_segments = in["length_segments"];
+        if (in.contains("radial_subdivisions")) pp.internode.radial_subdivisions = in["radial_subdivisions"];
+    }
+    if (j.contains("petiole")) {
+        const nlohmann::json& pe = j["petiole"];
+        if (pe.contains("petioles_per_internode")) pp.petiole.petioles_per_internode = pe["petioles_per_internode"];
+        if (pe.contains("pitch")) pp.petiole.pitch = jsonToRandomParameterFloat(pe["pitch"], generator);
+        if (pe.contains("radius")) pp.petiole.radius = jsonToRandomParameterFloat(pe["radius"], generator);
+        if (pe.contains("length")) pp.petiole.length = jsonToRandomParameterFloat(pe["length"], generator);
+        if (pe.contains("curvature")) pp.petiole.curvature = jsonToRandomParameterFloat(pe["curvature"], generator);
+        if (pe.contains("taper")) pp.petiole.taper = jsonToRandomParameterFloat(pe["taper"], generator);
+        if (pe.contains("color")) pp.petiole.color = jsonToRGB(pe["color"], pp.petiole.color);
+        if (pe.contains("length_segments")) pp.petiole.length_segments = pe["length_segments"];
+        if (pe.contains("radial_subdivisions")) pp.petiole.radial_subdivisions = pe["radial_subdivisions"];
+    }
+    if (j.contains("leaf")) {
+        const nlohmann::json& lf = j["leaf"];
+        if (lf.contains("leaves_per_petiole")) pp.leaf.leaves_per_petiole = jsonToRandomParameterInt(lf["leaves_per_petiole"], generator);
+        if (lf.contains("pitch")) pp.leaf.pitch = jsonToRandomParameterFloat(lf["pitch"], generator);
+        if (lf.contains("yaw")) pp.leaf.yaw = jsonToRandomParameterFloat(lf["yaw"], generator);
+        if (lf.contains("roll")) pp.leaf.roll = jsonToRandomParameterFloat(lf["roll"], generator);
+        if (lf.contains("leaflet_offset")) pp.leaf.leaflet_offset = jsonToRandomParameterFloat(lf["leaflet_offset"], generator);
+        if (lf.contains("leaflet_scale")) pp.leaf.leaflet_scale = jsonToRandomParameterFloat(lf["leaflet_scale"], generator);
+        if (lf.contains("prototype_scale")) pp.leaf.prototype_scale = jsonToRandomParameterFloat(lf["prototype_scale"], generator);
+        if (lf.contains("prototype")) jsonToLeafPrototype(pp.leaf.prototype, lf["prototype"], generator);
+    }
+    if (j.contains("peduncle")) {
+        const nlohmann::json& pd = j["peduncle"];
+        if (pd.contains("length")) pp.peduncle.length = jsonToRandomParameterFloat(pd["length"], generator);
+        if (pd.contains("radius")) pp.peduncle.radius = jsonToRandomParameterFloat(pd["radius"], generator);
+        if (pd.contains("pitch")) pp.peduncle.pitch = jsonToRandomParameterFloat(pd["pitch"], generator);
+        if (pd.contains("roll")) pp.peduncle.roll = jsonToRandomParameterFloat(pd["roll"], generator);
+        if (pd.contains("curvature")) pp.peduncle.curvature = jsonToRandomParameterFloat(pd["curvature"], generator);
+        if (pd.contains("color")) pp.peduncle.color = jsonToRGB(pd["color"], pp.peduncle.color);
+        if (pd.contains("length_segments")) pp.peduncle.length_segments = pd["length_segments"];
+        if (pd.contains("radial_subdivisions")) pp.peduncle.radial_subdivisions = pd["radial_subdivisions"];
+    }
+    if (j.contains("inflorescence")) {
+        const nlohmann::json& inf = j["inflorescence"];
+        if (inf.contains("flowers_per_peduncle")) pp.inflorescence.flowers_per_peduncle = jsonToRandomParameterInt(inf["flowers_per_peduncle"], generator);
+        if (inf.contains("flower_offset")) pp.inflorescence.flower_offset = jsonToRandomParameterFloat(inf["flower_offset"], generator);
+        if (inf.contains("pitch")) pp.inflorescence.pitch = jsonToRandomParameterFloat(inf["pitch"], generator);
+        if (inf.contains("roll")) pp.inflorescence.roll = jsonToRandomParameterFloat(inf["roll"], generator);
+        if (inf.contains("flower_prototype_scale")) pp.inflorescence.flower_prototype_scale = jsonToRandomParameterFloat(inf["flower_prototype_scale"], generator);
+        if (inf.contains("fruit_prototype_scale")) pp.inflorescence.fruit_prototype_scale = jsonToRandomParameterFloat(inf["fruit_prototype_scale"], generator);
+        if (inf.contains("fruit_gravity_factor_fraction")) pp.inflorescence.fruit_gravity_factor_fraction = jsonToRandomParameterFloat(inf["fruit_gravity_factor_fraction"], generator);
+        if (inf.contains("unique_prototypes")) pp.inflorescence.unique_prototypes = inf["unique_prototypes"];
+        resolvePrototypeFunction(flowerPrototypeRegistry(), inf, "flower_prototype_function", pp.inflorescence.flower_prototype_function, "flower");
+        resolvePrototypeFunction(fruitPrototypeRegistry(), inf, "fruit_prototype_function", pp.inflorescence.fruit_prototype_function, "fruit");
+    }
+}
+
+// ---- CarbohydrateParameters / NitrogenParameters <-> JSON ----
+nlohmann::json carbohydrateParametersToJSON(const CarbohydrateParameters& c) {
+    return nlohmann::json{
+        {"stem_density", c.stem_density},
+        {"stem_carbon_percentage", c.stem_carbon_percentage},
+        {"stem_carbohydrate_percentage", c.stem_carbohydrate_percentage},
+        {"stem_structural_carbon_percentage", c.stem_structural_carbon_percentage},
+        {"maturity_age", c.maturity_age},
+        {"initial_density_ratio", c.initial_density_ratio},
+        {"shoot_root_ratio", c.shoot_root_ratio},
+        {"leaf_total_carbon_percentage", c.leaf_total_carbon_percentage},
+        {"SLA", c.SLA},
+        {"leaf_carbohydrate_percentage", c.leaf_carbohydrate_percentage},
+        {"leaf_carbon_percentage", c.leaf_carbon_percentage},
+        {"total_flower_cost", c.total_flower_cost},
+        {"fruit_density", c.fruit_density},
+        {"fruit_carbon_percentage", c.fruit_carbon_percentage},
+        {"r_m_w_20", c.r_m_w_20},
+        {"r_m_r_20", c.r_m_r_20},
+        {"living_wood_fraction", c.living_wood_fraction},
+        {"growth_respiration_fraction", c.growth_respiration_fraction},
+        {"carbohydrate_abortion_threshold", c.carbohydrate_abortion_threshold},
+        {"carbohydrate_pruning_threshold", c.carbohydrate_pruning_threshold},
+        {"bud_death_threshold_days", c.bud_death_threshold_days},
+        {"branch_death_threshold_days", c.branch_death_threshold_days},
+        {"carbohydrate_phyllochron_threshold", c.carbohydrate_phyllochron_threshold},
+        {"carbohydrate_vegetative_break_threshold", c.carbohydrate_vegetative_break_threshold},
+        {"carbohydrate_growth_threshold", c.carbohydrate_growth_threshold},
+        {"starch_sequestration_ratio", c.starch_sequestration_ratio},
+        {"carbohydrate_transfer_threshold_down", c.carbohydrate_transfer_threshold_down},
+        {"carbohydrate_transfer_threshold_up", c.carbohydrate_transfer_threshold_up},
+        {"carbon_conductance_down", c.carbon_conductance_down},
+        {"carbon_conductance_up", c.carbon_conductance_up},
+    };
+}
+
+CarbohydrateParameters jsonToCarbohydrateParameters(const nlohmann::json& j) {
+    CarbohydrateParameters c;
+    #define PYH_CARB(field) if (j.contains(#field)) c.field = j[#field];
+    PYH_CARB(stem_density) PYH_CARB(stem_carbon_percentage) PYH_CARB(stem_carbohydrate_percentage)
+    PYH_CARB(stem_structural_carbon_percentage) PYH_CARB(maturity_age) PYH_CARB(initial_density_ratio)
+    PYH_CARB(shoot_root_ratio) PYH_CARB(leaf_total_carbon_percentage) PYH_CARB(SLA)
+    PYH_CARB(leaf_carbohydrate_percentage) PYH_CARB(leaf_carbon_percentage) PYH_CARB(total_flower_cost)
+    PYH_CARB(fruit_density) PYH_CARB(fruit_carbon_percentage) PYH_CARB(r_m_w_20) PYH_CARB(r_m_r_20)
+    PYH_CARB(living_wood_fraction) PYH_CARB(growth_respiration_fraction) PYH_CARB(carbohydrate_abortion_threshold)
+    PYH_CARB(carbohydrate_pruning_threshold) PYH_CARB(bud_death_threshold_days) PYH_CARB(branch_death_threshold_days)
+    PYH_CARB(carbohydrate_phyllochron_threshold) PYH_CARB(carbohydrate_vegetative_break_threshold)
+    PYH_CARB(carbohydrate_growth_threshold) PYH_CARB(starch_sequestration_ratio)
+    PYH_CARB(carbohydrate_transfer_threshold_down) PYH_CARB(carbohydrate_transfer_threshold_up)
+    PYH_CARB(carbon_conductance_down) PYH_CARB(carbon_conductance_up)
+    #undef PYH_CARB
+    return c;
+}
+
+nlohmann::json nitrogenParametersToJSON(const NitrogenParameters& n) {
+    return nlohmann::json{
+        {"target_leaf_N_area", n.target_leaf_N_area},
+        {"minimum_leaf_N_area", n.minimum_leaf_N_area},
+        {"root_allocation_fraction", n.root_allocation_fraction},
+        {"max_N_accumulation_rate", n.max_N_accumulation_rate},
+        {"leaf_remobilization_efficiency", n.leaf_remobilization_efficiency},
+        {"remobilization_age_threshold", n.remobilization_age_threshold},
+        {"fruit_N_area", n.fruit_N_area},
+    };
+}
+
+NitrogenParameters jsonToNitrogenParameters(const nlohmann::json& j) {
+    NitrogenParameters n;
+    #define PYH_N(field) if (j.contains(#field)) n.field = j[#field];
+    PYH_N(target_leaf_N_area) PYH_N(minimum_leaf_N_area) PYH_N(root_allocation_fraction)
+    PYH_N(max_N_accumulation_rate) PYH_N(leaf_remobilization_efficiency)
+    PYH_N(remobilization_age_threshold) PYH_N(fruit_N_area)
+    #undef PYH_N
+    return n;
+}
+
 nlohmann::json shootParametersToJSON(const ShootParameters& params) {
     nlohmann::json j;
 
@@ -127,6 +493,7 @@ nlohmann::json shootParametersToJSON(const ShootParameters& params) {
     j["phyllochron_min"] = randomParameterFloatToJSON(params.phyllochron_min);
     j["elongation_rate_max"] = randomParameterFloatToJSON(params.elongation_rate_max);
     j["vegetative_bud_break_probability_min"] = randomParameterFloatToJSON(params.vegetative_bud_break_probability_min);
+    j["vegetative_bud_break_probability_max"] = randomParameterFloatToJSON(params.vegetative_bud_break_probability_max);
     j["vegetative_bud_break_probability_decay_rate"] = randomParameterFloatToJSON(params.vegetative_bud_break_probability_decay_rate);
     j["max_terminal_floral_buds"] = randomParameterIntToJSON(params.max_terminal_floral_buds);
     j["flower_bud_break_probability"] = randomParameterFloatToJSON(params.flower_bud_break_probability);
@@ -137,6 +504,9 @@ nlohmann::json shootParametersToJSON(const ShootParameters& params) {
     j["flowers_require_dormancy"] = params.flowers_require_dormancy;
     j["growth_requires_dormancy"] = params.growth_requires_dormancy;
     j["determinate_shoot_growth"] = params.determinate_shoot_growth;
+
+    // Nested phytomer parameters (internode/petiole/leaf/peduncle/inflorescence + leaf prototype)
+    j["phytomer_parameters"] = phytomerParametersToJSON(params.phytomer_parameters);
 
     return j;
 }
@@ -162,6 +532,7 @@ ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0
     if (j.contains("phyllochron_min")) params.phyllochron_min = jsonToRandomParameterFloat(j["phyllochron_min"], generator);
     if (j.contains("elongation_rate_max")) params.elongation_rate_max = jsonToRandomParameterFloat(j["elongation_rate_max"], generator);
     if (j.contains("vegetative_bud_break_probability_min")) params.vegetative_bud_break_probability_min = jsonToRandomParameterFloat(j["vegetative_bud_break_probability_min"], generator);
+    if (j.contains("vegetative_bud_break_probability_max")) params.vegetative_bud_break_probability_max = jsonToRandomParameterFloat(j["vegetative_bud_break_probability_max"], generator);
     if (j.contains("vegetative_bud_break_probability_decay_rate")) params.vegetative_bud_break_probability_decay_rate = jsonToRandomParameterFloat(j["vegetative_bud_break_probability_decay_rate"], generator);
     if (j.contains("max_terminal_floral_buds")) params.max_terminal_floral_buds = jsonToRandomParameterInt(j["max_terminal_floral_buds"], generator);
     if (j.contains("flower_bud_break_probability")) params.flower_bud_break_probability = jsonToRandomParameterFloat(j["flower_bud_break_probability"], generator);
@@ -178,6 +549,16 @@ ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0
         std::vector<std::string> labels = j["child_shoot_types"]["labels"];
         std::vector<float> probs = j["child_shoot_types"]["probabilities"];
         params.defineChildShootTypes(labels, probs);
+    }
+
+    // Nested phytomer parameters. ShootParameters(generator) does NOT propagate the
+    // generator into phytomer_parameters (it is default-constructed with a null
+    // generator), so rebuild it with the real generator before overlaying JSON values.
+    // This guarantees every nested RandomParameter has a valid generator even for
+    // fields absent from the JSON.
+    params.phytomer_parameters = PhytomerParameters(generator);
+    if (j.contains("phytomer_parameters")) {
+        jsonToPhytomerParameters(params.phytomer_parameters, j["phytomer_parameters"], generator);
     }
 
     return params;
@@ -1032,6 +1413,89 @@ extern "C" {
         }
     }
 
+    // Carbohydrate model parameters. There is no per-plant getter in the C++ API, so the
+    // "get" path returns a default-constructed CarbohydrateParameters serialized to JSON,
+    // intended as a template to modify and apply via setPlantCarbohydrateParametersFromJSON.
+    PYHELIOS_API const char* getDefaultCarbohydrateParametersJSON() {
+        try {
+            clearError();
+            CarbohydrateParameters params;
+            static thread_local std::string json_string;
+            json_string = carbohydrateParametersToJSON(params).dump();
+            return json_string.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getDefaultCarbohydrateParameters): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getDefaultCarbohydrateParameters): Unknown error.");
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API int setPlantCarbohydrateParametersFromJSON(PlantArchitecture* plantarch, unsigned int plantID, const char* json_params) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!json_params) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "JSON parameters are null");
+                return -1;
+            }
+            nlohmann::json j = nlohmann::json::parse(json_params);
+            CarbohydrateParameters params = jsonToCarbohydrateParameters(j);
+            plantarch->setPlantCarbohydrateModelParameters(plantID, params);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPlantCarbohydrateParametersFromJSON): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPlantCarbohydrateParametersFromJSON): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API const char* getDefaultNitrogenParametersJSON() {
+        try {
+            clearError();
+            NitrogenParameters params;
+            static thread_local std::string json_string;
+            json_string = nitrogenParametersToJSON(params).dump();
+            return json_string.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getDefaultNitrogenParameters): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getDefaultNitrogenParameters): Unknown error.");
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API int setPlantNitrogenParametersFromJSON(PlantArchitecture* plantarch, unsigned int plantID, const char* json_params) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!json_params) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "JSON parameters are null");
+                return -1;
+            }
+            nlohmann::json j = nlohmann::json::parse(json_params);
+            NitrogenParameters params = jsonToNitrogenParameters(j);
+            plantarch->setPlantNitrogenParameters(plantID, params);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPlantNitrogenParametersFromJSON): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPlantNitrogenParametersFromJSON): Unknown error.");
+            return -1;
+        }
+    }
+
     // Phenological control functions
     PYHELIOS_API int setPlantPhenologicalThresholds(
         PlantArchitecture* plantarch,
@@ -1042,7 +1506,8 @@ extern "C" {
         float time_to_fruit_set,
         float time_to_fruit_maturity,
         float time_to_dormancy,
-        float max_leaf_lifespan
+        float max_leaf_lifespan,
+        int is_evergreen
     ) {
         try {
             clearError();
@@ -1059,7 +1524,8 @@ extern "C" {
                 time_to_fruit_set,
                 time_to_fruit_maturity,
                 time_to_dormancy,
-                max_leaf_lifespan
+                max_leaf_lifespan,
+                is_evergreen != 0
             );
             return 0;
         } catch (const std::exception& e) {
@@ -1179,6 +1645,23 @@ extern "C" {
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN,
                      "ERROR (plantarch_setProgressCallback): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void plantarch_setCancelFlag(PlantArchitecture* pa_ptr, volatile int* flag) {
+        try {
+            clearError();
+            if (!pa_ptr) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+            pa_ptr->setCancelFlag(flag);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME,
+                     std::string("ERROR (plantarch_setCancelFlag): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN,
+                     "ERROR (plantarch_setCancelFlag): Unknown error.");
         }
     }
 

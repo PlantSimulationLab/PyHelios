@@ -332,6 +332,12 @@ try:
     ]
     helios_lib.plantarch_setProgressCallback.restype = None
 
+    helios_lib.plantarch_setCancelFlag.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.POINTER(ctypes.c_int),  # cancellation flag (0/non-zero), or NULL
+    ]
+    helios_lib.plantarch_setCancelFlag.restype = None
+
     _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE = True
 
 except AttributeError:
@@ -382,9 +388,31 @@ try:
         ctypes.c_float,   # time_to_fruit_set
         ctypes.c_float,   # time_to_fruit_maturity
         ctypes.c_float,   # time_to_dormancy
-        ctypes.c_float    # max_leaf_lifespan
+        ctypes.c_float,   # max_leaf_lifespan
+        ctypes.c_int      # is_evergreen
     ]
     helios_lib.setPlantPhenologicalThresholds.restype = ctypes.c_int
+
+    # Carbohydrate / nitrogen model parameter functions
+    helios_lib.getDefaultCarbohydrateParametersJSON.argtypes = []
+    helios_lib.getDefaultCarbohydrateParametersJSON.restype = ctypes.c_char_p
+
+    helios_lib.setPlantCarbohydrateParametersFromJSON.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_char_p   # json_params
+    ]
+    helios_lib.setPlantCarbohydrateParametersFromJSON.restype = ctypes.c_int
+
+    helios_lib.getDefaultNitrogenParametersJSON.argtypes = []
+    helios_lib.getDefaultNitrogenParametersJSON.restype = ctypes.c_char_p
+
+    helios_lib.setPlantNitrogenParametersFromJSON.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_char_p   # json_params
+    ]
+    helios_lib.setPlantNitrogenParametersFromJSON.restype = ctypes.c_int
 
     _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE = True
 
@@ -438,11 +466,16 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.readPlantStructureXML.errcheck = _check_error
     # Progress callback error checking
     helios_lib.plantarch_setProgressCallback.errcheck = _check_error
+    helios_lib.plantarch_setCancelFlag.errcheck = _check_error
 
 # Set up error checking for parameter functions
 if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
     helios_lib.defineShootTypeFromJSON.errcheck = _check_error
     helios_lib.setPlantPhenologicalThresholds.errcheck = _check_error
+    helios_lib.getDefaultCarbohydrateParametersJSON.errcheck = _check_error
+    helios_lib.setPlantCarbohydrateParametersFromJSON.errcheck = _check_error
+    helios_lib.getDefaultNitrogenParametersJSON.errcheck = _check_error
+    helios_lib.setPlantNitrogenParametersFromJSON.errcheck = _check_error
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -623,6 +656,19 @@ def setProgressCallback(plantarch_ptr, callback):
         plantarch_ptr,
         callback if callback is not None else PROGRESS_CALLBACK(0)
     )
+
+
+def setCancelFlag(plantarch_ptr, flag):
+    """Register an external cancellation flag polled during long plant builds.
+
+    `flag` is a ctypes.c_int (passed by ref) that, when set non-zero from
+    another thread, stops the canopy build loop / advanceTime growth loop
+    between plants/timesteps. Pass None to clear.
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("PlantArchitecture functions not available")
+    ptr = ctypes.byref(flag) if flag is not None else None
+    helios_lib.plantarch_setCancelFlag(plantarch_ptr, ptr)
 
 
 # Custom plant building wrapper functions
@@ -1413,15 +1459,16 @@ def setPlantPhenologicalThresholds(
     time_to_fruit_set: float,
     time_to_fruit_maturity: float,
     time_to_dormancy: float,
-    max_leaf_lifespan: float
+    max_leaf_lifespan: float,
+    is_evergreen: bool = False
 ) -> None:
     """Set phenological timing thresholds for a plant"""
     if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("Phenological control functions not available. Rebuild with latest plantarchitecture support.")
-    
+
     if plant_id < 0:
         raise ValueError("Plant ID must be non-negative")
-    
+
     result = helios_lib.setPlantPhenologicalThresholds(
         plantarch_ptr, plant_id,
         time_to_dormancy_break,
@@ -1430,8 +1477,62 @@ def setPlantPhenologicalThresholds(
         time_to_fruit_set,
         time_to_fruit_maturity,
         time_to_dormancy,
-        max_leaf_lifespan
+        max_leaf_lifespan,
+        1 if is_evergreen else 0
     )
     
     if result != 0:
         raise RuntimeError(f"Failed to set phenological thresholds for plant {plant_id}")
+
+# Carbohydrate / nitrogen model parameter wrapper functions
+def getDefaultCarbohydrateParameters() -> dict:
+    """Get a default-constructed CarbohydrateParameters as a dict template."""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Carbohydrate parameter functions not available. Rebuild with latest plantarchitecture support.")
+
+    json_str = helios_lib.getDefaultCarbohydrateParametersJSON()
+    if not json_str:
+        raise RuntimeError("Failed to get default carbohydrate parameters")
+
+    import json
+    return json.loads(json_str.decode('utf-8'))
+
+def setPlantCarbohydrateParameters(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int, parameters: dict) -> None:
+    """Set carbohydrate model parameters for a plant from a dict."""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Carbohydrate parameter functions not available. Rebuild with latest plantarchitecture support.")
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if not isinstance(parameters, dict):
+        raise ValueError("Parameters must be a dict")
+
+    import json
+    json_bytes = json.dumps(parameters).encode('utf-8')
+    helios_lib.setPlantCarbohydrateParametersFromJSON(plantarch_ptr, plant_id, json_bytes)
+
+def getDefaultNitrogenParameters() -> dict:
+    """Get a default-constructed NitrogenParameters as a dict template."""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Nitrogen parameter functions not available. Rebuild with latest plantarchitecture support.")
+
+    json_str = helios_lib.getDefaultNitrogenParametersJSON()
+    if not json_str:
+        raise RuntimeError("Failed to get default nitrogen parameters")
+
+    import json
+    return json.loads(json_str.decode('utf-8'))
+
+def setPlantNitrogenParameters(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int, parameters: dict) -> None:
+    """Set nitrogen model parameters for a plant from a dict."""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Nitrogen parameter functions not available. Rebuild with latest plantarchitecture support.")
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if not isinstance(parameters, dict):
+        raise ValueError("Parameters must be a dict")
+
+    import json
+    json_bytes = json.dumps(parameters).encode('utf-8')
+    helios_lib.setPlantNitrogenParametersFromJSON(plantarch_ptr, plant_id, json_bytes)

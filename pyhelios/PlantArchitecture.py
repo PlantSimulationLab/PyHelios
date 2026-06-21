@@ -44,6 +44,11 @@ except ImportError:
         raise ValueError(f"{name} must be int2 or 2-element list/tuple")
 from .validation.core import validate_positive_value
 from .assets import get_asset_manager
+from .plant_architecture_params import (
+    ShootParameters,
+    CarbohydrateParameters,
+    NitrogenParameters,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -662,22 +667,39 @@ class PlantArchitecture:
             plantarch_wrapper.setProgressCallback(self._plantarch_ptr, None)
             self._progress_callback_ref = None
 
-    def getCurrentShootParameters(self, shoot_type_label: str) -> dict:
+    def setCancelFlag(self, cancel_flag):
+        """Register an external cancellation flag polled during long plant builds.
+
+        ``cancel_flag`` is a ctypes.c_int that, when set non-zero from another
+        thread, stops the canopy build loop and the advanceTime() growth loop
+        between plants/timesteps — so a long generation can be aborted mid-build
+        (returning whatever was built so far). Set it before the build call; pass
+        None to clear. The flag is caller-owned and must outlive the build.
+        """
+        plantarch_wrapper.setCancelFlag(self._plantarch_ptr, cancel_flag)
+
+    def getCurrentShootParameters(self, shoot_type_label: str, return_typed: bool = False):
         """
         Get current shoot parameters for a shoot type.
 
-        Returns a nested dictionary containing all shoot and phytomer parameters
-        including RandomParameter specifications with distribution types.
+        Returns the full nested shoot and phytomer parameter set, including the
+        internode/petiole/leaf/peduncle/inflorescence sub-structures and the leaf
+        prototype. Every numeric field is a RandomParameter spec with a
+        'distribution' and 'parameters'.
 
         Args:
             shoot_type_label: Label for the shoot type (e.g., "stem", "branch")
+            return_typed: If True, return a typed
+                :class:`pyhelios.plant_architecture_params.ShootParameters`
+                object instead of a plain nested dict.
 
         Returns:
-            Dictionary with shoot parameters including:
+            A nested ``dict`` (default) or a ``ShootParameters`` object containing:
             - Geometric parameters (max_nodes, insertion_angle_tip, etc.)
             - Growth parameters (phyllochron_min, elongation_rate_max, etc.)
             - Boolean flags (flowers_require_dormancy, etc.)
-            - RandomParameter fields include 'distribution' and 'parameters' keys
+            - ``phytomer_parameters`` with nested internode/petiole/leaf/peduncle/
+              inflorescence parameters and the leaf prototype
 
         Raises:
             ValueError: If shoot_type_label is empty
@@ -688,6 +710,8 @@ class PlantArchitecture:
             >>> params = plantarch.getCurrentShootParameters("stem")
             >>> print(params['max_nodes'])
             {'distribution': 'constant', 'parameters': [15.0]}
+            >>> print(params['phytomer_parameters']['leaf']['pitch'])
+            {'distribution': 'constant', 'parameters': [0.0]}
         """
         if not shoot_type_label:
             raise ValueError("Shoot type label cannot be empty")
@@ -697,40 +721,40 @@ class PlantArchitecture:
 
         try:
             with _plantarchitecture_working_directory():
-                return plantarch_wrapper.getCurrentShootParameters(
+                params = plantarch_wrapper.getCurrentShootParameters(
                     self._plantarch_ptr, shoot_type_label.strip()
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get shoot parameters for '{shoot_type_label}': {e}")
 
-    def defineShootType(self, shoot_type_label: str, parameters: dict) -> None:
+        return ShootParameters.from_dict(params) if return_typed else params
+
+    def defineShootType(self, shoot_type_label: str, parameters: Union[dict, ShootParameters]) -> None:
         """
         Define a custom shoot type with specified parameters.
 
-        Allows creating new shoot types or modifying existing ones by providing
-        a parameter dictionary. Use getCurrentShootParameters() to get a template
-        that can be modified.
+        Allows creating new shoot types or modifying existing ones. Pass either a
+        nested parameter ``dict`` (use :meth:`getCurrentShootParameters` as a
+        template) or a typed
+        :class:`pyhelios.plant_architecture_params.ShootParameters` object.
 
         Args:
             shoot_type_label: Unique name for this shoot type
-            parameters: Dictionary matching ShootParameters structure.
-                       Use getCurrentShootParameters() to get proper structure.
+            parameters: A nested dict matching the ShootParameters structure, or a
+                ShootParameters object.
 
         Raises:
-            ValueError: If shoot_type_label is empty or parameters is not a dict
+            ValueError: If shoot_type_label is empty, or parameters is not a dict
+                or ShootParameters
             PlantArchitectureError: If shoot type definition fails
 
         Example:
-            >>> # Get existing parameters as template
+            >>> from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
             >>> plantarch.loadPlantModelFromLibrary("bean")
-            >>> params = plantarch.getCurrentShootParameters("stem")
-            >>>
-            >>> # Modify parameters
-            >>> params['max_nodes'] = {'distribution': 'constant', 'parameters': [20.0]}
-            >>> params['insertion_angle_tip'] = {'distribution': 'uniform', 'parameters': [40.0, 50.0]}
-            >>>
-            >>> # Define new shoot type
-            >>> plantarch.defineShootType("TallStem", params)
+            >>> sp = plantarch.getCurrentShootParameters("stem", return_typed=True)
+            >>> sp.max_nodes = RandomParameterFloat.constant(20)
+            >>> sp.phytomer_parameters.leaf.pitch = RandomParameterFloat.uniform(40, 50)
+            >>> plantarch.defineShootType("TallStem", sp)
         """
         if not shoot_type_label:
             raise ValueError("Shoot type label cannot be empty")
@@ -738,8 +762,12 @@ class PlantArchitecture:
         if not shoot_type_label.strip():
             raise ValueError("Shoot type label cannot be only whitespace")
 
-        if not isinstance(parameters, dict):
-            raise ValueError("Parameters must be a dict")
+        if isinstance(parameters, ShootParameters):
+            parameters = parameters.to_dict()
+        elif not isinstance(parameters, dict):
+            raise ValueError(
+                f"Parameters must be a dict or ShootParameters, got {type(parameters).__name__}"
+            )
 
         try:
             with _plantarchitecture_working_directory():
@@ -748,6 +776,98 @@ class PlantArchitecture:
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to define shoot type '{shoot_type_label}': {e}")
+
+    def getDefaultCarbohydrateParameters(self, return_typed: bool = False):
+        """
+        Get a default-constructed set of carbohydrate-model parameters.
+
+        The native API exposes no per-plant getter for carbohydrate parameters, so
+        this returns the C++ defaults as a template to modify and apply via
+        :meth:`setPlantCarbohydrateParameters`.
+
+        Args:
+            return_typed: If True, return a typed
+                :class:`pyhelios.plant_architecture_params.CarbohydrateParameters`.
+
+        Returns:
+            A flat ``dict`` (default) or ``CarbohydrateParameters`` object.
+        """
+        try:
+            with _plantarchitecture_working_directory():
+                params = plantarch_wrapper.getDefaultCarbohydrateParameters()
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get default carbohydrate parameters: {e}")
+        return CarbohydrateParameters.from_dict(params) if return_typed else params
+
+    def setPlantCarbohydrateParameters(self, plant_id: int, parameters: Union[dict, CarbohydrateParameters]) -> None:
+        """
+        Set carbohydrate-model parameters for a plant.
+
+        Args:
+            plant_id: Target plant instance ID
+            parameters: A flat dict or a CarbohydrateParameters object.
+
+        Raises:
+            ValueError: If parameters is not a dict or CarbohydrateParameters
+            PlantArchitectureError: If the operation fails
+        """
+        if isinstance(parameters, CarbohydrateParameters):
+            parameters = parameters.to_dict()
+        elif not isinstance(parameters, dict):
+            raise ValueError(
+                f"Parameters must be a dict or CarbohydrateParameters, got {type(parameters).__name__}"
+            )
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPlantCarbohydrateParameters(self._plantarch_ptr, plant_id, parameters)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set carbohydrate parameters for plant {plant_id}: {e}")
+
+    def getDefaultNitrogenParameters(self, return_typed: bool = False):
+        """
+        Get a default-constructed set of nitrogen-model parameters.
+
+        The native API exposes no per-plant getter for nitrogen parameters, so this
+        returns the C++ defaults as a template to modify and apply via
+        :meth:`setPlantNitrogenParameters`.
+
+        Args:
+            return_typed: If True, return a typed
+                :class:`pyhelios.plant_architecture_params.NitrogenParameters`.
+
+        Returns:
+            A flat ``dict`` (default) or ``NitrogenParameters`` object.
+        """
+        try:
+            with _plantarchitecture_working_directory():
+                params = plantarch_wrapper.getDefaultNitrogenParameters()
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get default nitrogen parameters: {e}")
+        return NitrogenParameters.from_dict(params) if return_typed else params
+
+    def setPlantNitrogenParameters(self, plant_id: int, parameters: Union[dict, NitrogenParameters]) -> None:
+        """
+        Set nitrogen-model parameters for a plant.
+
+        Args:
+            plant_id: Target plant instance ID
+            parameters: A flat dict or a NitrogenParameters object.
+
+        Raises:
+            ValueError: If parameters is not a dict or NitrogenParameters
+            PlantArchitectureError: If the operation fails
+        """
+        if isinstance(parameters, NitrogenParameters):
+            parameters = parameters.to_dict()
+        elif not isinstance(parameters, dict):
+            raise ValueError(
+                f"Parameters must be a dict or NitrogenParameters, got {type(parameters).__name__}"
+            )
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPlantNitrogenParameters(self._plantarch_ptr, plant_id, parameters)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set nitrogen parameters for plant {plant_id}: {e}")
 
     def getAvailablePlantModels(self) -> List[str]:
         """
@@ -985,7 +1105,8 @@ class PlantArchitecture:
         time_to_fruit_set: float,
         time_to_fruit_maturity: float,
         time_to_dormancy: float,
-        max_leaf_lifespan: float = 1e6
+        max_leaf_lifespan: float = 1e6,
+        is_evergreen: bool = False
     ) -> None:
         """
         Set phenological timing thresholds for plant developmental stages.
@@ -1002,6 +1123,8 @@ class PlantArchitecture:
             time_to_fruit_maturity: Time until fruit reaches maturity
             time_to_dormancy: Time until plant enters dormancy
             max_leaf_lifespan: Maximum leaf lifespan in days (default: 1e6)
+            is_evergreen: If True, the plant retains leaves through dormancy
+                instead of shedding them at senescence (default: False)
 
         Raises:
             ValueError: If plant_id is negative
@@ -1034,7 +1157,8 @@ class PlantArchitecture:
                     time_to_fruit_set,
                     time_to_fruit_maturity,
                     time_to_dormancy,
-                    max_leaf_lifespan
+                    max_leaf_lifespan,
+                    is_evergreen
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to set phenological thresholds for plant {plant_id}: {e}")

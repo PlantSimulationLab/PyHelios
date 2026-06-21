@@ -79,8 +79,14 @@ PYHELIOS_API int readPlantStructureXML(PlantArchitecture* plantarch, const char*
 PYHELIOS_API const char* getCurrentShootParametersJSON(PlantArchitecture* plantarch, const char* shoot_type_label);
 PYHELIOS_API int defineShootTypeFromJSON(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, const char* json_params);
 
+// Carbohydrate / nitrogen model parameters (get returns default-constructed template; set applies to a plant)
+PYHELIOS_API const char* getDefaultCarbohydrateParametersJSON();
+PYHELIOS_API int setPlantCarbohydrateParametersFromJSON(PlantArchitecture* plantarch, unsigned int plantID, const char* json_params);
+PYHELIOS_API const char* getDefaultNitrogenParametersJSON();
+PYHELIOS_API int setPlantNitrogenParametersFromJSON(PlantArchitecture* plantarch, unsigned int plantID, const char* json_params);
+
 // Phenological control functions
-PYHELIOS_API int setPlantPhenologicalThresholds(PlantArchitecture* plantarch, unsigned int plantID, float time_to_dormancy_break, float time_to_flower_initiation, float time_to_flower_opening, float time_to_fruit_set, float time_to_fruit_maturity, float time_to_dormancy, float max_leaf_lifespan);
+PYHELIOS_API int setPlantPhenologicalThresholds(PlantArchitecture* plantarch, unsigned int plantID, float time_to_dormancy_break, float time_to_flower_initiation, float time_to_flower_opening, float time_to_fruit_set, float time_to_fruit_maturity, float time_to_dormancy, float max_leaf_lifespan, int is_evergreen);
 
 // Plant state query functions
 PYHELIOS_API float getPlantAge(PlantArchitecture* plantarch, unsigned int plantID);
@@ -89,6 +95,10 @@ PYHELIOS_API float sumPlantLeafArea(PlantArchitecture* plantarch, unsigned int p
 
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
+
+// Cancellation flag — set before a build/canopy/advanceTime call so a non-zero
+// flag (written from another thread) stops the build between plants/timesteps.
+PYHELIOS_API void plantarch_setCancelFlag(PlantArchitecture* pa_ptr, volatile int* flag);
 
 #ifdef __cplusplus
 }

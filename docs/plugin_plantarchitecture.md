@@ -115,6 +115,85 @@ PlantArchitecture includes 28 scientifically-validated plant models:
 - `"grapevine_VSP"` - Grapevine with vertical shoot positioned trellis
 - `"grapevine_Wye"` - Grapevine with Wye trellis (quadrilateral)
 
+## Shoot, Phenology, and Resource Parameters
+
+Beyond loading a named library model, PyHelios exposes the underlying parameter
+structures so shoot growth, phenology, and the carbohydrate/nitrogen resource
+models can be inspected and customized.
+
+### Typed parameter model
+
+`pyhelios.plant_architecture_params` provides a typed, discoverable mirror of the
+native nested `ShootParameters` / `PhytomerParameters` / `LeafPrototype` structures
+(plus the flat `CarbohydrateParameters` and `NitrogenParameters`). Random
+distributions are expressed with `RandomParameterFloat` / `RandomParameterInt`
+(`.constant(...)`, `.uniform(...)`, etc.), and every object round-trips with
+`from_dict()` / `to_dict()`.
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
+from pyhelios.types import vec3
+
+with Context() as context, PlantArchitecture(context) as plant:
+    plant.loadPlantModelFromLibrary("almond")
+
+    # Inspect the current shoot parameters as a typed object
+    sp = plant.getCurrentShootParameters("trunk", return_typed=True)
+    print(sp.max_nodes)
+    print(sp.phytomer_parameters.leaf.pitch.to_dict())
+
+    # Modify and re-register a shoot type (accepts a ShootParameters or a nested dict)
+    sp.phytomer_parameters.internode.length_segments = 3
+    plant.defineShootType("trunk", sp)
+```
+
+`getCurrentShootParameters()` returns a plain nested `dict` by default; pass
+`return_typed=True` to get a `ShootParameters` object. The returned structure
+surfaces the full `phytomer_parameters` sub-structure (internode, petiole, leaf,
+peduncle, inflorescence, and the leaf prototype). `defineShootType()` accepts
+either a nested `dict` or a `ShootParameters`.
+
+### Phenological thresholds
+
+`setPlantPhenologicalThresholds()` controls the timing of the developmental
+stages. Pass `is_evergreen=True` for species that retain leaves through dormancy
+rather than shedding them at senescence:
+
+```python
+plant.setPlantPhenologicalThresholds(
+    plant_id,
+    time_to_dormancy_break=60,
+    time_to_flower_initiation=90,
+    time_to_flower_opening=105,
+    time_to_fruit_set=120,
+    time_to_fruit_maturity=200,
+    time_to_dormancy=280,
+    max_leaf_lifespan=180,   # deciduous: ~6 month leaf life
+    is_evergreen=False,
+)
+```
+
+### Carbohydrate and nitrogen model parameters
+
+`getDefaultCarbohydrateParameters()` and `getDefaultNitrogenParameters()` return
+the C++ default-constructed template (a flat `dict`, or a typed object with
+`return_typed=True`) to modify and apply to a plant instance via
+`setPlantCarbohydrateParameters()` / `setPlantNitrogenParameters()`. The native
+API has no per-plant getter for these, so the get methods return the default
+template rather than the values currently in effect on a specific plant.
+
+```python
+from pyhelios.plant_architecture_params import CarbohydrateParameters
+
+carb = plant.getDefaultCarbohydrateParameters(return_typed=True)
+carb.SLA = 0.025
+plant.setPlantCarbohydrateParameters(plant_id, carb)
+```
+
+See `docs/examples/plantarch_phytomer_parameters_sample.py` for a complete,
+runnable example.
+
 ## Examples
 
 ### Basic Plant Creation

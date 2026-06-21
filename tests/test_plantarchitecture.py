@@ -2349,7 +2349,7 @@ class TestPhenologicalControl:
                 
                 plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365.0)
                 
-                # Set typical apple phenology
+                # Set typical apple phenology, exercising the is_evergreen flag (1.3.76)
                 plantarch.setPlantPhenologicalThresholds(
                     plant_id=plant_id,
                     time_to_dormancy_break=60,
@@ -2358,9 +2358,10 @@ class TestPhenologicalControl:
                     time_to_fruit_set=120,
                     time_to_fruit_maturity=200,
                     time_to_dormancy=280,
-                    max_leaf_lifespan=180
+                    max_leaf_lifespan=180,
+                    is_evergreen=True
                 )
-                
+
                 assert True
                 
         except PlantArchitectureError as e:

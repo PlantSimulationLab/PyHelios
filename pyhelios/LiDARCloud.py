@@ -25,14 +25,58 @@ class LiDARError(HeliosError):
 
 
 class ScanPattern(IntEnum):
-    """Scan pattern returned by :meth:`LiDARCloud.getScanPattern`.
+    """Geometric beam pattern returned by :meth:`LiDARCloud.getScanPattern`.
 
     RASTER is the uniform-angular-grid pattern produced by :meth:`LiDARCloud.addScan`;
     SPINNING_MULTIBEAM is the rotating multi-channel pattern produced by
-    :meth:`LiDARCloud.addScanMultibeam`.
+    :meth:`LiDARCloud.addScanSpinning` (each row is a laser channel at a fixed zenith angle).
+
+    This is the geometric pattern, orthogonal to :class:`ScanMode` (the acquisition mode). Use
+    :meth:`LiDARCloud.getScanBeamZenithAngles` to read a spinning scan's per-channel angles.
     """
     RASTER = 0
     SPINNING_MULTIBEAM = 1
+
+
+class ScanMode(IntEnum):
+    """High-level acquisition mode returned by :meth:`LiDARCloud.getScanMode`.
+
+    STATIC_RASTER is a uniform angular grid from a single fixed origin (terrestrial/tripod);
+    MOVING_RASTER is a fixed angular fan swept along a trajectory (mobile/airborne raster),
+    produced by :meth:`LiDARCloud.addScanMovingRaster`; SPINNING is a continuously-rotating
+    multi-channel sensor, produced by :meth:`LiDARCloud.addScanSpinning`.
+    """
+    STATIC_RASTER = 0
+    MOVING_RASTER = 1
+    SPINNING = 2
+
+
+class ReturnMode(IntEnum):
+    """Return-reporting mode for analytic-waveform synthetic scans (see
+    :meth:`LiDARCloud.getScanReturnMode`/:meth:`LiDARCloud.setScanReturnMode`).
+
+    MULTI reports every detected return (discrete multi-return, no limit); SINGLE reports at
+    most :meth:`LiDARCloud.getScanMaxReturns` returns per pulse, selected by the scan's
+    :class:`SingleReturnSelection` policy.
+    """
+    MULTI = 0
+    SINGLE = 1
+
+
+class SingleReturnSelection(IntEnum):
+    """Which return(s) a limited-return instrument keeps when a pulse resolves more returns
+    than the return limit (see :meth:`LiDARCloud.setScanSingleReturnSelection`).
+
+    The kept subset is always reported nearest-first.
+    """
+    STRONGEST = 0
+    FIRST = 1
+    LAST = 2
+    #: Dual return: keep the strongest return AND the last (farthest) return of the
+    #: pulse, deduplicated to one when they are the same return. Models the
+    #: "strongest + last" dual-return mode of real discrete-return scanners.
+    #: Intrinsically yields 1 or 2 returns and ignores the per-scan maxReturns.
+    STRONGEST_PLUS_LAST = 3
 
 
 class LiDARCloud:
@@ -199,78 +243,6 @@ class LiDARCloud:
             scan_tilt_roll, scan_tilt_pitch, scan_azimuth_offset
         )
 
-    def addScanMultibeam(self, origin: Union[vec3, List[float], Tuple[float, float, float]],
-                         beam_zenith_angles: List[float],
-                         Nphi: int, phi_range: Tuple[float, float],
-                         exit_diameter: float, beam_divergence: float,
-                         column_format: Optional[List[str]] = None,
-                         range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
-                         scan_tilt_roll: float = 0.0, scan_tilt_pitch: float = 0.0,
-                         scan_azimuth_offset: float = 0.0) -> int:
-        """
-        Add a spinning multibeam LiDAR scan (rotating multi-channel sensor, e.g. Velodyne/Ouster/Hesai).
-
-        Each laser channel is fired at a fixed zenith angle (taken from ``beam_zenith_angles``) as the
-        sensor head rotates through ``Nphi`` uniform azimuth steps. The scan is stored as an
-        (len(beam_zenith_angles) x Nphi) table, so all downstream processing is shared with raster scans.
-
-        Args:
-            origin: Scanner position (vec3 or 3-element list/tuple)
-            beam_zenith_angles: Per-channel zenith angles in radians (0 = upward, pi/2 = horizontal,
-                pi = downward). Manufacturer spec sheets typically list channel angles as elevation
-                above the horizon; zenith = pi/2 - elevation. Its length sets Ntheta (number of channels).
-            Nphi: Number of azimuth steps (columns) per rotation
-            phi_range: Azimuthal angle range (min, max) in radians
-            exit_diameter: Laser beam exit diameter (meters)
-            beam_divergence: Beam divergence angle (radians)
-            column_format: Optional list of column-format labels (see addScan)
-            range_noise_stddev: Std. dev. of Gaussian range noise in meters (default 0)
-            angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
-            scan_tilt_roll: Global scanner tilt roll angle in radians (default 0, level)
-            scan_tilt_pitch: Global scanner tilt pitch angle in radians (default 0, level)
-            scan_azimuth_offset: Global scanner azimuth (heading) offset in radians, a right-hand
-                rotation about the world +z axis applied on top of the azimuth sweep (default 0, no offset)
-
-        Returns:
-            Scan ID for referencing this scan
-        """
-        if isinstance(origin, (list, tuple)):
-            if len(origin) != 3:
-                raise ValueError("Origin must have 3 elements [x, y, z]")
-            origin = vec3(*origin)
-        elif not hasattr(origin, 'x'):
-            raise ValueError("Origin must be vec3 or 3-element list/tuple")
-
-        origin_list = [origin.x, origin.y, origin.z]
-
-        if not isinstance(beam_zenith_angles, (list, tuple)) or len(beam_zenith_angles) == 0:
-            raise ValueError("beam_zenith_angles must be a non-empty list of per-channel angles")
-        if not all(isinstance(a, (int, float)) for a in beam_zenith_angles):
-            raise ValueError("beam_zenith_angles must be a list of numbers (radians)")
-
-        validate_positive_value(Nphi, 'Nphi', 'addScanMultibeam')
-
-        if not isinstance(phi_range, (list, tuple)) or len(phi_range) != 2:
-            raise ValueError("phi_range must be a tuple (min, max)")
-
-        if column_format is not None:
-            if not isinstance(column_format, (list, tuple)) or \
-                    not all(isinstance(c, str) for c in column_format):
-                raise ValueError("column_format must be a list of strings")
-            column_format = list(column_format)
-
-        if range_noise_stddev < 0:
-            raise ValueError("range_noise_stddev must be non-negative")
-        if angle_noise_stddev < 0:
-            raise ValueError("angle_noise_stddev must be non-negative")
-
-        return lidar_wrapper.addLiDARScanMultibeam(
-            self._cloud_ptr, origin_list, list(beam_zenith_angles),
-            Nphi, phi_range, exit_diameter, beam_divergence, column_format,
-            range_noise_stddev, angle_noise_stddev,
-            scan_tilt_roll, scan_tilt_pitch, scan_azimuth_offset
-        )
-
     def addScanMoving(self, Ntheta: int, theta_range: Tuple[float, float],
                       Nphi: int, phi_range: Tuple[float, float],
                       exit_diameter: float, beam_divergence: float,
@@ -329,16 +301,51 @@ class LiDARCloud:
             raise ValueError("theta_range must be a tuple (min, max)")
         if not isinstance(phi_range, (list, tuple)) or len(phi_range) != 2:
             raise ValueError("phi_range must be a tuple (min, max)")
+        if pulse_rate_hz <= 0:
+            raise ValueError("pulse_rate_hz must be greater than 0")
+        if range_noise_stddev < 0:
+            raise ValueError("range_noise_stddev must be non-negative")
+        if angle_noise_stddev < 0:
+            raise ValueError("angle_noise_stddev must be non-negative")
 
+        rot_stride = 4 if rot_is_quaternion else 3
+        _, pos_list, rot_list = self._validate_trajectory(
+            traj_t, traj_pos, traj_rot, rot_stride, 'addScanMoving')
+
+        lever_list = ([lever_arm.x, lever_arm.y, lever_arm.z] if hasattr(lever_arm, 'x')
+                      else list(lever_arm)) if lever_arm is not None else None
+        boresight_list = ([boresight_rpy.x, boresight_rpy.y, boresight_rpy.z] if hasattr(boresight_rpy, 'x')
+                          else list(boresight_rpy)) if boresight_rpy is not None else None
+
+        if column_format is not None:
+            if not isinstance(column_format, (list, tuple)) or \
+                    not all(isinstance(c, str) for c in column_format):
+                raise ValueError("column_format must be a list of strings")
+            column_format = list(column_format)
+
+        return lidar_wrapper.addLiDARScanMoving(
+            self._cloud_ptr, Ntheta, theta_range, Nphi, phi_range,
+            exit_diameter, beam_divergence,
+            [float(t) for t in traj_t], pos_list, rot_list, bool(rot_is_quaternion),
+            float(pulse_rate_hz), lever_list, boresight_list, column_format,
+            range_noise_stddev, angle_noise_stddev, float(t0)
+        )
+
+    @staticmethod
+    def _validate_trajectory(traj_t, traj_pos, traj_rot, rot_stride, method):
+        """Shared trajectory validation/marshalling for moving/spinning scans.
+
+        Returns (t_list, pos_list, rot_list) of plain Python floats. rot_stride is 4 for
+        quaternions or 3 for Euler triples; pass rot_stride=None to skip rotation validation.
+        """
         if not isinstance(traj_t, (list, tuple)) or len(traj_t) == 0:
             raise ValueError("traj_t must be a non-empty list of trajectory sample times")
         M = len(traj_t)
-        if len(traj_pos) != M or len(traj_rot) != M:
-            raise ValueError("traj_t, traj_pos, and traj_rot must all have length M")
-        if pulse_rate_hz <= 0:
-            raise ValueError("pulse_rate_hz must be greater than 0")
-        # Fail fast on a non-monotonic trajectory rather than deferring to a C++
-        # exception inside poseAt() at syntheticScan time.
+        if len(traj_pos) != M:
+            raise ValueError("traj_t and traj_pos must have the same length M")
+        if rot_stride is not None and len(traj_rot) != M:
+            raise ValueError("traj_t and the trajectory orientation list must have the same length M")
+        # Fail fast on a non-monotonic trajectory rather than deferring to a C++ exception.
         if any(traj_t[i] >= traj_t[i + 1] for i in range(M - 1)):
             raise ValueError("traj_t must be strictly monotonically increasing")
 
@@ -351,18 +358,83 @@ class LiDARCloud:
 
         pos_list = [_to_xyz(p, "Each traj_pos entry") for p in traj_pos]
 
-        rot_stride = 4 if rot_is_quaternion else 3
-        rot_list = []
-        for r in traj_rot:
-            if not isinstance(r, (list, tuple)) or len(r) != rot_stride:
-                raise ValueError(
-                    f"Each traj_rot entry must have {rot_stride} elements "
-                    f"({'qx,qy,qz,qw' if rot_is_quaternion else 'roll,pitch,yaw'})"
-                )
-            rot_list.append([float(c) for c in r])
+        rot_list = None
+        if rot_stride is not None:
+            rot_list = []
+            for r in traj_rot:
+                if not isinstance(r, (list, tuple)) or len(r) != rot_stride:
+                    label = 'qx,qy,qz,qw' if rot_stride == 4 else 'roll,pitch,yaw'
+                    raise ValueError(
+                        f"Each trajectory orientation entry must have {rot_stride} elements ({label})"
+                    )
+                rot_list.append([float(c) for c in r])
+        return [float(t) for t in traj_t], pos_list, rot_list
 
-        lever_list = _to_xyz(lever_arm, "lever_arm") if lever_arm is not None else None
-        boresight_list = _to_xyz(boresight_rpy, "boresight_rpy") if boresight_rpy is not None else None
+    def addScanSpinning(self, beam_elevation_angles: List[float],
+                        azimuth_step: float, pulse_rate_hz: float,
+                        traj_t: List[float],
+                        traj_pos: List[Union[vec3, List[float], Tuple[float, float, float]]],
+                        traj_rot: List[List[float]],
+                        rot_is_quaternion: bool = True,
+                        exit_diameter: float = 0.0, beam_divergence: float = 0.0,
+                        lever_arm: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                        boresight_rpy: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                        column_format: Optional[List[str]] = None,
+                        range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                        t0: float = 0.0) -> int:
+        """
+        Add a continuously-spinning multibeam scan from physical instrument parameters.
+
+        High-level entry point for a rotating multi-channel sensor (Velodyne/Ouster/Hesai) on a moving
+        (or stationary) platform. The azimuth grid, rotation rate, and revolution count are derived
+        internally from the azimuth resolution, PRF, and trajectory duration; you never specify an
+        azimuth range or step count. Sets the scan's :class:`ScanMode` to ``SPINNING``. For a stationary
+        "spin in place" capture (a tripod), supply two coincident poses (same position and orientation)
+        separated in time by the acquisition duration.
+
+        Args:
+            beam_elevation_angles: Per-channel beam ELEVATION angles above the horizon, in radians
+                (NOT zenith — elevation above the horizon, where zenith = pi/2 - elevation; this matches
+                manufacturer spec sheets)
+            azimuth_step: Azimuth angular resolution in radians per firing step (must be > 0)
+            pulse_rate_hz: Pulse repetition rate (PRF) in Hz (must be > 0)
+            traj_t: Monotonically increasing trajectory sample times in seconds (length M)
+            traj_pos: Platform positions in world coordinates, one [x, y, z] (or vec3) per traj_t entry
+            traj_rot: Platform orientations, one per traj_t entry. Length-4 quaternion (qx, qy, qz, qw,
+                Hamilton body->world) when ``rot_is_quaternion`` is True, otherwise length-3 roll/pitch/yaw
+                Euler triple in radians (intrinsic Z-Y-X).
+            rot_is_quaternion: Whether traj_rot holds quaternions (default True) or Euler angles
+            exit_diameter: Laser beam exit diameter (meters, default 0)
+            beam_divergence: Beam divergence angle (radians, default 0)
+            lever_arm: Sensor optical center in the platform body frame [x, y, z] meters (default origin)
+            boresight_rpy: Fixed sensor rotational misalignment [roll, pitch, yaw] radians (default 0)
+            column_format: Optional list of column-format labels (default ["x", "y", "z"])
+            range_noise_stddev: Std. dev. of Gaussian range noise in meters (default 0)
+            angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
+            t0: Time of the first pulse in seconds (relative time; default 0)
+
+        Returns:
+            Scan ID for referencing this scan
+        """
+        if not isinstance(beam_elevation_angles, (list, tuple)) or len(beam_elevation_angles) == 0:
+            raise ValueError("beam_elevation_angles must be a non-empty list of per-channel angles")
+        if azimuth_step <= 0:
+            raise ValueError("azimuth_step must be greater than 0")
+        if pulse_rate_hz <= 0:
+            raise ValueError("pulse_rate_hz must be greater than 0")
+        if range_noise_stddev < 0:
+            raise ValueError("range_noise_stddev must be non-negative")
+        if angle_noise_stddev < 0:
+            raise ValueError("angle_noise_stddev must be non-negative")
+
+        rot_stride = 4 if rot_is_quaternion else 3
+        t_list, pos_list, rot_list = self._validate_trajectory(
+            traj_t, traj_pos, traj_rot, rot_stride, 'addScanSpinning')
+
+        lever_list = ([lever_arm.x, lever_arm.y, lever_arm.z] if hasattr(lever_arm, 'x')
+                      else list(lever_arm)) if lever_arm is not None else None
+        boresight_list = ([boresight_rpy.x, boresight_rpy.y, boresight_rpy.z] if hasattr(boresight_rpy, 'x')
+                          else list(boresight_rpy)) if boresight_rpy is not None else None
 
         if column_format is not None:
             if not isinstance(column_format, (list, tuple)) or \
@@ -370,16 +442,89 @@ class LiDARCloud:
                 raise ValueError("column_format must be a list of strings")
             column_format = list(column_format)
 
+        return lidar_wrapper.addLiDARScanSpinning(
+            self._cloud_ptr, [float(a) for a in beam_elevation_angles],
+            float(azimuth_step), float(pulse_rate_hz),
+            t_list, pos_list, rot_list, bool(rot_is_quaternion),
+            exit_diameter, beam_divergence,
+            lever_list, boresight_list, column_format,
+            range_noise_stddev, angle_noise_stddev, float(t0)
+        )
+
+    def addScanMovingRaster(self, Ntheta: int, theta_range: Tuple[float, float],
+                            Nphi: int, phi_range: Tuple[float, float],
+                            pulse_rate_hz: float,
+                            traj_t: List[float],
+                            traj_pos: List[Union[vec3, List[float], Tuple[float, float, float]]],
+                            traj_quat: List[List[float]],
+                            exit_diameter: float = 0.0, beam_divergence: float = 0.0,
+                            lever_arm: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                            boresight_rpy: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                            column_format: Optional[List[str]] = None,
+                            range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                            t0: float = 0.0) -> int:
+        """
+        Add a moving-platform raster scan: a fixed angular fan swept along a quaternion trajectory.
+
+        High-level wrapper around :meth:`addScanMoving` for a non-spinning sensor on a moving platform.
+        Specify the per-frame angular fan resolution plus the trajectory and PRF; Helios derives the
+        per-pulse time sampling along the trajectory. Sets the scan's :class:`ScanMode` to ``MOVING_RASTER``.
+
+        Args:
+            Ntheta: Number of zenith samples in the angular fan
+            theta_range: Zenith angle range (min, max) in radians
+            Nphi: Number of azimuth samples in the angular fan
+            phi_range: Azimuthal angle range (min, max) in radians
+            pulse_rate_hz: Pulse repetition rate (PRF) in Hz (must be > 0)
+            traj_t: Monotonically increasing trajectory sample times in seconds (length M)
+            traj_pos: Platform positions in world coordinates, one [x, y, z] (or vec3) per traj_t entry
+            traj_quat: Platform orientation quaternions (qx, qy, qz, qw, Hamilton body->world), one per
+                traj_t entry
+            exit_diameter: Laser beam exit diameter (meters, default 0)
+            beam_divergence: Beam divergence angle (radians, default 0)
+            lever_arm: Sensor optical center in the platform body frame [x, y, z] meters (default origin)
+            boresight_rpy: Fixed sensor rotational misalignment [roll, pitch, yaw] radians (default 0)
+            column_format: Optional list of column-format labels (default ["x", "y", "z"])
+            range_noise_stddev: Std. dev. of Gaussian range noise in meters (default 0)
+            angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
+            t0: Time of the first pulse in seconds (relative time; default 0)
+
+        Returns:
+            Scan ID for referencing this scan
+        """
+        validate_positive_value(Ntheta, 'Ntheta', 'addScanMovingRaster')
+        validate_positive_value(Nphi, 'Nphi', 'addScanMovingRaster')
+        if not isinstance(theta_range, (list, tuple)) or len(theta_range) != 2:
+            raise ValueError("theta_range must be a tuple (min, max)")
+        if not isinstance(phi_range, (list, tuple)) or len(phi_range) != 2:
+            raise ValueError("phi_range must be a tuple (min, max)")
+        if pulse_rate_hz <= 0:
+            raise ValueError("pulse_rate_hz must be greater than 0")
         if range_noise_stddev < 0:
             raise ValueError("range_noise_stddev must be non-negative")
         if angle_noise_stddev < 0:
             raise ValueError("angle_noise_stddev must be non-negative")
 
-        return lidar_wrapper.addLiDARScanMoving(
+        t_list, pos_list, quat_list = self._validate_trajectory(
+            traj_t, traj_pos, traj_quat, 4, 'addScanMovingRaster')
+
+        lever_list = ([lever_arm.x, lever_arm.y, lever_arm.z] if hasattr(lever_arm, 'x')
+                      else list(lever_arm)) if lever_arm is not None else None
+        boresight_list = ([boresight_rpy.x, boresight_rpy.y, boresight_rpy.z] if hasattr(boresight_rpy, 'x')
+                          else list(boresight_rpy)) if boresight_rpy is not None else None
+
+        if column_format is not None:
+            if not isinstance(column_format, (list, tuple)) or \
+                    not all(isinstance(c, str) for c in column_format):
+                raise ValueError("column_format must be a list of strings")
+            column_format = list(column_format)
+
+        return lidar_wrapper.addLiDARScanMovingRaster(
             self._cloud_ptr, Ntheta, theta_range, Nphi, phi_range,
+            float(pulse_rate_hz),
+            t_list, pos_list, quat_list,
             exit_diameter, beam_divergence,
-            [float(t) for t in traj_t], pos_list, rot_list, bool(rot_is_quaternion),
-            float(pulse_rate_hz), lever_list, boresight_list, column_format,
+            lever_list, boresight_list, column_format,
             range_noise_stddev, angle_noise_stddev, float(t0)
         )
 
@@ -461,6 +606,109 @@ class LiDARCloud:
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
         return lidar_wrapper.getLiDARScanBeamZenithAngles(self._cloud_ptr, scanID)
+
+    def getScanMode(self, scanID: int) -> ScanMode:
+        """Get the high-level acquisition mode of a scan as a :class:`ScanMode`.
+
+        STATIC_RASTER (fixed-origin grid), MOVING_RASTER (fan swept along a trajectory), or
+        SPINNING (continuously-rotating multi-channel sensor).
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return ScanMode(lidar_wrapper.getLiDARScanMode(self._cloud_ptr, scanID))
+
+    def getScanStepsPerRev(self, scanID: int) -> int:
+        """Get the number of azimuth firing steps per revolution (spinning scans; 0 otherwise)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanStepsPerRev(self._cloud_ptr, scanID)
+
+    def getScanRotationRate(self, scanID: int) -> float:
+        """Get the sensor-head rotation rate in revolutions/second (spinning scans; 0 otherwise)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanRotationRate(self._cloud_ptr, scanID)
+
+    def getScanRevolutions(self, scanID: int) -> float:
+        """Get the number of revolutions the sensor head made (spinning scans; 0 otherwise)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanRevolutions(self._cloud_ptr, scanID)
+
+    def getScanReturnMode(self, scanID: int) -> ReturnMode:
+        """Get the return-reporting mode of a scan as a :class:`ReturnMode` (MULTI or SINGLE)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return ReturnMode(lidar_wrapper.getLiDARScanReturnMode(self._cloud_ptr, scanID))
+
+    def setScanReturnMode(self, scanID: int, return_mode: Union[ReturnMode, int]):
+        """Set the return-reporting mode of a scan (ReturnMode.MULTI or ReturnMode.SINGLE).
+
+        Only affects analytic-waveform synthetic scans (more than one ray per pulse).
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        lidar_wrapper.setLiDARScanReturnMode(self._cloud_ptr, scanID, int(return_mode))
+
+    def getScanSingleReturnSelection(self, scanID: int) -> SingleReturnSelection:
+        """Get the single/limited-return selection policy as a :class:`SingleReturnSelection`."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return SingleReturnSelection(
+            lidar_wrapper.getLiDARScanSingleReturnSelection(self._cloud_ptr, scanID))
+
+    def setScanSingleReturnSelection(self, scanID: int, selection: Union[SingleReturnSelection, int]):
+        """Set the single/limited-return selection policy (STRONGEST, FIRST, LAST, or STRONGEST_PLUS_LAST).
+
+        Used when the scan's return mode is SINGLE and a pulse resolves more returns than maxReturns.
+        STRONGEST_PLUS_LAST is a dual-return mode that intrinsically yields 1 or 2 returns and
+        ignores maxReturns.
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        lidar_wrapper.setLiDARScanSingleReturnSelection(self._cloud_ptr, scanID, int(selection))
+
+    def getScanMaxReturns(self, scanID: int) -> int:
+        """Get the maximum returns per pulse used in single/limited-return mode (1 = single, N = N-return)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanMaxReturns(self._cloud_ptr, scanID)
+
+    def setScanMaxReturns(self, scanID: int, max_returns: int):
+        """Set the maximum returns per pulse used in single/limited-return mode (must be >= 1)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        if max_returns < 1:
+            raise ValueError("max_returns must be >= 1")
+        lidar_wrapper.setLiDARScanMaxReturns(self._cloud_ptr, scanID, int(max_returns))
+
+    def getScanPulseWidth(self, scanID: int) -> float:
+        """Get the pulse width / range resolution (meters) of a scan (0 = use syntheticScan argument)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanPulseWidth(self._cloud_ptr, scanID)
+
+    def setScanPulseWidth(self, scanID: int, pulse_width: float):
+        """Set the pulse width / range resolution (meters) of a scan (0 = use syntheticScan argument)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        if pulse_width < 0:
+            raise ValueError("pulse_width must be non-negative")
+        lidar_wrapper.setLiDARScanPulseWidth(self._cloud_ptr, scanID, float(pulse_width))
+
+    def getScanDetectionThreshold(self, scanID: int) -> float:
+        """Get the detection threshold (energy fraction, noise floor) of a scan."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanDetectionThreshold(self._cloud_ptr, scanID)
+
+    def setScanDetectionThreshold(self, scanID: int, detection_threshold: float):
+        """Set the detection threshold (energy fraction, noise floor) of a scan."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        if detection_threshold < 0:
+            raise ValueError("detection_threshold must be non-negative")
+        lidar_wrapper.setLiDARScanDetectionThreshold(self._cloud_ptr, scanID, float(detection_threshold))
 
     def addHitPoint(self, scanID: int,
                     xyz: Union[vec3, List[float], Tuple[float, float, float]],
@@ -723,6 +971,28 @@ class LiDARCloud:
             return np.empty((0,), np.float32)
         return lidar_wrapper.getLiDARHitData_all_np(self._cloud_ptr, label, n)
 
+    def getHitDataColumn(self, label: str, absent_value: float = -9999.0) -> List[float]:
+        """Bulk-export a named scalar column via the native cache-linear columnar path.
+
+        Faster than :meth:`getHitDataAll` for whole-field reads (a single cache-linear pass over
+        the contiguous native column rather than per-hit tree lookups), and returns full float64
+        precision. Entries are ``absent_value`` where the label is absent for a hit. Returns a list
+        of length getHitCount().
+        """
+        n = self.getHitCount()
+        if n == 0:
+            return []
+        return lidar_wrapper.getLiDARHitDataColumn(self._cloud_ptr, label, n, absent_value)
+
+    def getHitDataColumnArray(self, label: str, absent_value: float = -9999.0):
+        """Bulk-export a named scalar column as an (getHitCount(),) float64 numpy array
+        via the columnar path (``absent_value`` where the label is absent for a hit)."""
+        import numpy as np
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0,), np.float64)
+        return lidar_wrapper.getLiDARHitDataColumn_np(self._cloud_ptr, label, n, absent_value)
+
     def getHitScanIDArray(self):
         """Bulk-export the scan ID of every hit as an (getHitCount(),) int32 array."""
         import numpy as np
@@ -848,6 +1118,42 @@ class LiDARCloud:
         """
         return lidar_wrapper.getLiDARTriangleVertices_all(
             self._cloud_ptr, self.getTriangleCount())
+
+    def setExternalTriangulation(self, vertices, scan_ids):
+        """Replace the internal triangulation with an externally-supplied mesh.
+
+        Bypasses the internal Delaunay triangulation so a mesh produced elsewhere
+        (a re-used Helios triangulation, or a per-scan open3d Ball-Pivot mesh) can
+        drive leaf-area inversion without a recompute. After this call,
+        ``calculateLeafArea()`` runs unchanged.
+
+        Args:
+            vertices: Triangle vertices in world coordinates, accepted as a
+                (T, 9) array laid out [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z] per
+                triangle, a (T, 3, 3) array, or a flat (T*9,) array -- the same
+                layout :meth:`getTriangleVerticesAll` exports, so a Helios mesh
+                round-trips directly.
+            scan_ids: Source scan index for each triangle, shape (T,). Required;
+                every entry must be a valid scan index (see :meth:`addScan`),
+                since the leaf-angle G(theta) term needs each triangle's ray
+                direction. A merged mesh with no scan association is not valid.
+
+        A grid must already be defined (see :meth:`addGrid`).
+        """
+        import numpy as np
+        verts = np.ascontiguousarray(vertices, dtype=np.float32).reshape(-1)
+        if verts.size % 9 != 0:
+            raise ValueError(
+                f"vertices has {verts.size} floats, must be a multiple of 9 (9 per triangle)")
+        tri_count = verts.size // 9
+
+        scans = np.ascontiguousarray(scan_ids, dtype=np.int32).reshape(-1)
+        if scans.size != tri_count:
+            raise ValueError(
+                f"scan_ids has {scans.size} entries, expected {tri_count} (one per triangle)")
+
+        lidar_wrapper.lidarSetExternalTriangulation(
+            self._cloud_ptr, verts, scans, tri_count)
 
     def distanceFilter(self, maxdistance: float):
         """Filter hit points by maximum distance from scanner"""
@@ -1117,7 +1423,9 @@ class LiDARCloud:
                      pulse_distance_threshold: Optional[float] = None,
                      scan_grid_only: bool = False,
                      record_misses: bool = True,
-                     append: bool = False):
+                     append: bool = False,
+                     return_mode: Optional[Union[ReturnMode, int]] = None,
+                     cancel_flag=None):
         """
         Perform synthetic LiDAR scan of geometry in Context.
 
@@ -1131,6 +1439,11 @@ class LiDARCloud:
             scan_grid_only: If True, only scan within defined grid cells
             record_misses: If True, record miss/sky points where rays don't hit geometry
             append: If True, append to existing hits; if False, clear existing hits
+            return_mode: Optional :class:`ReturnMode` (MULTI or SINGLE) for analytic-waveform scans.
+                Overrides each scan's stored return mode for this call only. Only valid when
+                rays_per_pulse is set (waveform mode); raises ValueError otherwise. In SINGLE mode
+                up to each scan's getScanMaxReturns() returns per pulse are reported, selected by the
+                scan's single-return selection policy.
 
         Example (Discrete-return):
             >>> from pyhelios import Context, LiDARCloud
@@ -1164,8 +1477,27 @@ class LiDARCloud:
 
         context_ptr = context.getNativePtr()
 
+        # Register an external cancellation flag (a ctypes.c_int set non-zero from
+        # another thread) so a long ray trace can be aborted mid-pass. Cleared in
+        # the finally below so a later scan on this cloud isn't pre-cancelled.
+        if cancel_flag is not None:
+            lidar_wrapper.setLiDARCancelFlag(self._cloud_ptr, cancel_flag)
+        try:
+            self._dispatch_synthetic_scan(
+                context_ptr, rays_per_pulse, pulse_distance_threshold,
+                scan_grid_only, record_misses, append, return_mode)
+        finally:
+            if cancel_flag is not None:
+                lidar_wrapper.setLiDARCancelFlag(self._cloud_ptr, None)
+
+    def _dispatch_synthetic_scan(self, context_ptr, rays_per_pulse,
+                                 pulse_distance_threshold, scan_grid_only,
+                                 record_misses, append, return_mode):
         # Discrete-return mode (single ray per pulse)
         if rays_per_pulse is None:
+            if return_mode is not None:
+                raise ValueError(
+                    "return_mode is only valid for analytic-waveform scans; pass rays_per_pulse (> 1)")
             # Honor scan_grid_only and record_misses for discrete scans too. record_misses
             # defaults to True so the cloud carries the transmitted beams that
             # calculateLeafArea() requires.
@@ -1179,11 +1511,18 @@ class LiDARCloud:
             validate_positive_value(rays_per_pulse, 'rays_per_pulse', 'syntheticScan')
             validate_positive_value(pulse_distance_threshold, 'pulse_distance_threshold', 'syntheticScan')
 
-            lidar_wrapper.syntheticLiDARScanFull(
-                self._cloud_ptr, context_ptr,
-                rays_per_pulse, pulse_distance_threshold,
-                scan_grid_only, record_misses, append
-            )
+            if return_mode is None:
+                lidar_wrapper.syntheticLiDARScanFull(
+                    self._cloud_ptr, context_ptr,
+                    rays_per_pulse, pulse_distance_threshold,
+                    scan_grid_only, record_misses, append
+                )
+            else:
+                lidar_wrapper.syntheticLiDARScanReturnMode(
+                    self._cloud_ptr, context_ptr,
+                    rays_per_pulse, pulse_distance_threshold, int(return_mode),
+                    scan_grid_only, record_misses, append
+                )
 
     def calculateLeafArea(self, context: Context, min_voxel_hits: Optional[int] = None,
                           element_width: Optional[float] = None, Gtheta: Optional[float] = None):

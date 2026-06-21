@@ -76,39 +76,6 @@ PYHELIOS_API unsigned int addLiDARScan(LiDARcloud* cloud, const float* origin,
                                        float scanTiltRoll, float scanTiltPitch, float scanAzimuthOffset);
 
 /**
- * @brief Add a spinning multibeam LiDAR scan (e.g. Velodyne/Ouster/Hesai rotating multi-channel sensor)
- *
- * Each laser channel is fired at a fixed zenith angle (from beamZenithAngles) as the head rotates
- * through uniform azimuth steps. The scan is stored as an (nAngles x Nphi) table so all downstream
- * processing is shared with raster scans.
- * @param cloud Pointer to the LiDARcloud instance
- * @param origin Scanner position as [x, y, z]
- * @param beamZenithAngles Per-channel zenith angles in radians (0 = upward, pi/2 = horizontal, pi = downward)
- * @param nAngles Number of channels (sets Ntheta); must be >= 1
- * @param Nphi Number of azimuth steps (columns) per rotation
- * @param phiMin Minimum azimuthal angle (radians)
- * @param phiMax Maximum azimuthal angle (radians)
- * @param exitDiameter Laser beam exit diameter (meters)
- * @param beamDivergence Beam divergence angle (radians)
- * @param rangeNoiseStdDev Standard deviation of Gaussian range noise in meters (0 disables)
- * @param angleNoiseStdDev Standard deviation of Gaussian angular jitter in radians (0 disables)
- * @param columnFormat Array of column-format label strings (may be nullptr)
- * @param nCols Number of entries in columnFormat
- * @param scanTiltRoll Global scanner tilt roll angle in radians (0 = level)
- * @param scanTiltPitch Global scanner tilt pitch angle in radians (0 = level)
- * @param scanAzimuthOffset Global scanner azimuth (heading) offset in radians, a right-hand rotation
- *                          about the world +z axis applied on top of the azimuth sweep (0 = no offset).
- * @return Scan ID for referencing this scan
- */
-PYHELIOS_API unsigned int addLiDARScanMultibeam(LiDARcloud* cloud, const float* origin,
-                                                const float* beamZenithAngles, unsigned int nAngles,
-                                                unsigned int Nphi, float phiMin, float phiMax,
-                                                float exitDiameter, float beamDivergence,
-                                                float rangeNoiseStdDev, float angleNoiseStdDev,
-                                                const char** columnFormat, unsigned int nCols,
-                                                float scanTiltRoll, float scanTiltPitch, float scanAzimuthOffset);
-
-/**
  * @brief Add a moving-platform (mobile/airborne) raster LiDAR scan driven by a 6-DOF pose trajectory
  *
  * The scanner pose changes during the sweep. For each pulse the synthetic-scan generator computes its
@@ -152,6 +119,173 @@ PYHELIOS_API unsigned int addLiDARScanMoving(LiDARcloud* cloud,
                                              const float* traj_rot, unsigned int M, int rotIsQuaternion,
                                              const float* lever_arm, const float* boresight_rpy,
                                              float pulse_rate_hz, double t0);
+
+/**
+ * @brief Add a continuously-spinning multibeam scan from physical instrument parameters
+ *
+ * High-level entry point for a rotating multi-channel sensor (Velodyne/Ouster/Hesai) on a moving (or
+ * stationary) platform. The azimuth grid, rotation rate, and revolution count are derived internally from the
+ * azimuth resolution, PRF, and trajectory duration; the caller never specifies an azimuth range or step count.
+ * The scan's ScanMode is set to SCAN_MODE_SPINNING. For a stationary "spin in place" capture (a tripod),
+ * supply two coincident poses separated in time by the acquisition duration.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param beamElevationAngles Per-channel beam ELEVATION angles above the horizon, in radians (NOT zenith;
+ *                            elevation above the horizon, where zenith = pi/2 - elevation)
+ * @param nAngles Number of channels (must be >= 1)
+ * @param azimuthStep_rad Azimuth angular resolution in radians per firing step (must be > 0)
+ * @param pulse_rate_hz Pulse repetition rate (PRF) in Hz (must be > 0)
+ * @param exitDiameter Laser beam exit diameter (meters)
+ * @param beamDivergence Beam divergence angle (radians)
+ * @param rangeNoiseStdDev Standard deviation of Gaussian range noise in meters (0 disables)
+ * @param angleNoiseStdDev Standard deviation of Gaussian angular jitter in radians (0 disables)
+ * @param columnFormat Array of column-format label strings (may be nullptr)
+ * @param nCols Number of entries in columnFormat
+ * @param traj_t Monotonically increasing trajectory sample times in seconds (length M)
+ * @param traj_pos Platform positions in world coordinates, 3*M floats [x0,y0,z0, ...]
+ * @param traj_rot Platform orientations. If rotIsQuaternion != 0: 4*M floats (qx,qy,qz,qw), Hamilton
+ *                 body->world. Otherwise: 3*M floats (roll,pitch,yaw) radians, intrinsic Z-Y-X.
+ * @param M Number of trajectory samples (must be >= 1)
+ * @param rotIsQuaternion 1 = traj_rot holds quaternions (4*M); 0 = traj_rot holds roll/pitch/yaw Euler (3*M)
+ * @param lever_arm Sensor optical center in the platform body frame as [x,y,z] meters (may be nullptr = 0)
+ * @param boresight_rpy Fixed sensor rotational misalignment as [roll,pitch,yaw] radians (may be nullptr = 0)
+ * @param t0 Time of the first pulse in seconds (relative time)
+ * @return Scan ID for referencing this scan
+ */
+PYHELIOS_API unsigned int addLiDARScanSpinning(LiDARcloud* cloud,
+                                               const float* beamElevationAngles, unsigned int nAngles,
+                                               float azimuthStep_rad, float pulse_rate_hz,
+                                               float exitDiameter, float beamDivergence,
+                                               float rangeNoiseStdDev, float angleNoiseStdDev,
+                                               const char** columnFormat, unsigned int nCols,
+                                               const double* traj_t, const float* traj_pos,
+                                               const float* traj_rot, unsigned int M, int rotIsQuaternion,
+                                               const float* lever_arm, const float* boresight_rpy,
+                                               double t0);
+
+/**
+ * @brief Add a moving-platform raster scan: a fixed angular fan swept along a trajectory
+ *
+ * High-level wrapper that takes the per-frame angular fan resolution plus a quaternion trajectory and PRF, and
+ * derives the per-pulse time sampling internally. Sets the scan's ScanMode to SCAN_MODE_MOVING_RASTER.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param Ntheta Number of zenith samples in the angular fan
+ * @param thetaMin Minimum zenith angle (radians)
+ * @param thetaMax Maximum zenith angle (radians)
+ * @param Nphi Number of azimuth samples in the angular fan
+ * @param phiMin Minimum azimuth angle (radians)
+ * @param phiMax Maximum azimuth angle (radians)
+ * @param pulse_rate_hz Pulse repetition rate (PRF) in Hz (must be > 0)
+ * @param exitDiameter Laser beam exit diameter (meters)
+ * @param beamDivergence Beam divergence angle (radians)
+ * @param rangeNoiseStdDev Standard deviation of Gaussian range noise in meters (0 disables)
+ * @param angleNoiseStdDev Standard deviation of Gaussian angular jitter in radians (0 disables)
+ * @param columnFormat Array of column-format label strings (may be nullptr)
+ * @param nCols Number of entries in columnFormat
+ * @param traj_t Monotonically increasing trajectory sample times in seconds (length M)
+ * @param traj_pos Platform positions in world coordinates, 3*M floats
+ * @param traj_quat Platform orientation quaternions (qx,qy,qz,qw), Hamilton body->world, 4*M floats
+ * @param M Number of trajectory samples (must be >= 1)
+ * @param lever_arm Sensor optical center in the platform body frame as [x,y,z] meters (may be nullptr = 0)
+ * @param boresight_rpy Fixed sensor rotational misalignment as [roll,pitch,yaw] radians (may be nullptr = 0)
+ * @param t0 Time of the first pulse in seconds (relative time)
+ * @return Scan ID for referencing this scan
+ */
+PYHELIOS_API unsigned int addLiDARScanMovingRaster(LiDARcloud* cloud,
+                                                   unsigned int Ntheta, float thetaMin, float thetaMax,
+                                                   unsigned int Nphi, float phiMin, float phiMax,
+                                                   float pulse_rate_hz,
+                                                   float exitDiameter, float beamDivergence,
+                                                   float rangeNoiseStdDev, float angleNoiseStdDev,
+                                                   const char** columnFormat, unsigned int nCols,
+                                                   const double* traj_t, const float* traj_pos,
+                                                   const float* traj_quat, unsigned int M,
+                                                   const float* lever_arm, const float* boresight_rpy,
+                                                   double t0);
+
+//=============================================================================
+// Scan Acquisition-Mode Introspection
+//=============================================================================
+
+/**
+ * @brief Get the high-level acquisition mode of a scan
+ * @return 0 = SCAN_MODE_STATIC_RASTER, 1 = SCAN_MODE_MOVING_RASTER, 2 = SCAN_MODE_SPINNING, or -1 on error
+ */
+PYHELIOS_API int getLiDARScanMode(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the number of azimuth firing steps per full revolution (spinning scans; 0 otherwise)
+ */
+PYHELIOS_API unsigned int getLiDARScanStepsPerRev(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the sensor-head rotation rate in revolutions per second (spinning scans; 0 otherwise)
+ */
+PYHELIOS_API double getLiDARScanRotationRate(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the number of revolutions the sensor head made (spinning scans; 0 otherwise)
+ */
+PYHELIOS_API double getLiDARScanRevolutions(LiDARcloud* cloud, unsigned int scanID);
+
+//=============================================================================
+// Return-Mode Configuration (analytic-waveform synthetic scans)
+//=============================================================================
+
+/**
+ * @brief Get the return-reporting mode of a scan
+ * @return 0 = RETURN_MODE_MULTI, 1 = RETURN_MODE_SINGLE, or -1 on error
+ */
+PYHELIOS_API int getLiDARScanReturnMode(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Set the return-reporting mode of a scan
+ * @param returnMode 0 = RETURN_MODE_MULTI, 1 = RETURN_MODE_SINGLE
+ */
+PYHELIOS_API void setLiDARScanReturnMode(LiDARcloud* cloud, unsigned int scanID, int returnMode);
+
+/**
+ * @brief Get the single/limited-return selection policy of a scan
+ * @return 0 = STRONGEST, 1 = FIRST, 2 = LAST, or -1 on error
+ */
+PYHELIOS_API int getLiDARScanSingleReturnSelection(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Set the single/limited-return selection policy of a scan
+ * @param selection 0 = STRONGEST, 1 = FIRST, 2 = LAST
+ */
+PYHELIOS_API void setLiDARScanSingleReturnSelection(LiDARcloud* cloud, unsigned int scanID, int selection);
+
+/**
+ * @brief Get the maximum returns per pulse used in single/limited-return mode
+ * @return Maximum returns (>= 1), or 0 on error
+ */
+PYHELIOS_API int getLiDARScanMaxReturns(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Set the maximum returns per pulse used in single/limited-return mode
+ * @param maxReturns Maximum returns per pulse (must be >= 1)
+ */
+PYHELIOS_API void setLiDARScanMaxReturns(LiDARcloud* cloud, unsigned int scanID, int maxReturns);
+
+/**
+ * @brief Get the pulse width / range resolution (meters) of a scan (0 = use syntheticScan argument)
+ */
+PYHELIOS_API float getLiDARScanPulseWidth(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Set the pulse width / range resolution (meters) of a scan (0 = use syntheticScan argument)
+ */
+PYHELIOS_API void setLiDARScanPulseWidth(LiDARcloud* cloud, unsigned int scanID, float pulseWidth);
+
+/**
+ * @brief Get the detection threshold (energy fraction, noise floor) of a scan
+ */
+PYHELIOS_API float getLiDARScanDetectionThreshold(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Set the detection threshold (energy fraction, noise floor) of a scan
+ */
+PYHELIOS_API void setLiDARScanDetectionThreshold(LiDARcloud* cloud, unsigned int scanID, float detectionThreshold);
 
 /**
  * @brief Get the number of scans in the cloud
@@ -422,6 +556,22 @@ PYHELIOS_API double getLiDARHitData(LiDARcloud* cloud, unsigned int index, const
 PYHELIOS_API void getLiDARHitData_all(LiDARcloud* cloud, const char* label, float* out, unsigned int n);
 
 /**
+ * @brief Bulk-export a named scalar data column via the native cache-linear columnar path
+ *
+ * Faster than getLiDARHitData_all for whole-field reads: the native getHitDataColumn does a single
+ * cache-linear pass over the contiguous column instead of per-hit red-black-tree lookups. Entries are
+ * absent_value where the label is not present for a hit. If the label has never been registered as a
+ * column the whole output is filled with absent_value.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Data label to retrieve
+ * @param out Caller-allocated output array of length n (double); absent entries set to absent_value
+ * @param n Capacity of the output array (export is clamped to min(n, hit count))
+ * @param absent_value Value written where the label is absent for a hit (default convention: -9999)
+ */
+PYHELIOS_API void getLiDARHitDataColumn(LiDARcloud* cloud, const char* label, double* out,
+                                        unsigned int n, double absent_value);
+
+/**
  * @brief Bulk-export XYZ coordinates and RGB colors for all hit points in one call
  * @param cloud Pointer to the LiDARcloud instance
  * @param xyz_out Caller-allocated output array of length 3*n (x,y,z per hit)
@@ -518,6 +668,25 @@ PYHELIOS_API void getLiDARTriangulationStats(LiDARcloud* cloud, unsigned int* ou
  */
 PYHELIOS_API void getLiDARTriangleVertices_all(LiDARcloud* cloud, float* out_xyz,
                                                int* out_scan, unsigned int triCount);
+
+/**
+ * @brief Replace the internal triangulation with an externally-supplied world-space mesh.
+ *
+ * Bypasses the internal Delaunay triangulation so a mesh produced elsewhere (a re-used Helios
+ * triangulation, or a per-scan open3d Ball-Pivot mesh) can drive leaf-area inversion without a
+ * recompute. xyz is laid out row-major [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z] per triangle
+ * (triCount×9 floats) -- the same layout getLiDARTriangleVertices_all() exports, so a Helios mesh
+ * round-trips directly. scanIDs supplies each triangle's source scan (triCount ints) and is
+ * required: every entry must be a valid scan index, since the leaf-angle G(theta) term needs each
+ * triangle's ray direction. A grid must already be defined (see addGrid()).
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param xyz Input buffer of triCount×9 floats
+ * @param scanIDs Input buffer of triCount ints (required; one source scan per triangle)
+ * @param triCount Number of triangles supplied
+ */
+PYHELIOS_API void lidarSetExternalTriangulation(LiDARcloud* cloud, const float* xyz,
+                                                const int* scanIDs, unsigned int triCount);
 
 //=============================================================================
 // Filters
@@ -739,6 +908,19 @@ PYHELIOS_API void syntheticLiDARScanDiscrete(LiDARcloud* cloud, helios::Context*
                                              bool scan_grid_only, bool record_misses, bool append);
 
 /**
+ * @brief Register an external cancellation flag polled during syntheticScan.
+ *
+ * Call before a syntheticLiDARScan* function. When the pointed-to int becomes
+ * non-zero (written from another thread, e.g. a ctypes c_int from Python), the
+ * scan's ray loop aborts and the scan returns early. The flag is owned by the
+ * caller and must outlive the scan. Pass nullptr to clear.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param flag Pointer to a 0/non-zero cancellation int, or nullptr
+ */
+PYHELIOS_API void setLiDARCancelFlag(LiDARcloud* cloud, volatile int* flag);
+
+/**
  * @brief Perform synthetic full-waveform LiDAR scan
  * @param cloud Pointer to the LiDARcloud instance
  * @param context Pointer to the Helios context containing geometry
@@ -761,6 +943,29 @@ PYHELIOS_API void syntheticLiDARScanWaveform(LiDARcloud* cloud, helios::Context*
 PYHELIOS_API void syntheticLiDARScanFull(LiDARcloud* cloud, helios::Context* context,
                                          int rays_per_pulse, float pulse_distance_threshold,
                                          bool scan_grid_only, bool record_misses, bool append);
+
+/**
+ * @brief Perform an analytic-waveform synthetic scan with an explicit return mode
+ *
+ * Like syntheticLiDARScanFull but takes an explicit return mode that overrides each scan's stored returnMode
+ * for this call only (the stored value is restored afterward). In RETURN_MODE_SINGLE up to the scan's
+ * getScanMaxReturns returns per pulse are reported, selected by the scan's singleReturnSelection policy; in
+ * RETURN_MODE_MULTI every detected return is reported. The range resolution used to merge returns is the
+ * scan's pulseWidth when set, otherwise pulse_distance_threshold; the noise floor is the scan's
+ * detectionThreshold.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context containing geometry
+ * @param rays_per_pulse Number of rays to cast per pulse (must be > 0; 1 yields the idealized exact intersection)
+ * @param pulse_distance_threshold Distance threshold for merging returns (meters; used when pulseWidth is 0)
+ * @param return_mode 0 = RETURN_MODE_MULTI, 1 = RETURN_MODE_SINGLE
+ * @param scan_grid_only If true, only scan within defined grid cells
+ * @param record_misses If true, record miss/sky points (transmitted beams)
+ * @param append If true, append to existing hits; if false, clear existing hits
+ */
+PYHELIOS_API void syntheticLiDARScanReturnMode(LiDARcloud* cloud, helios::Context* context,
+                                               int rays_per_pulse, float pulse_distance_threshold,
+                                               int return_mode, bool scan_grid_only,
+                                               bool record_misses, bool append);
 
 //=============================================================================
 // Advanced Grid Operations

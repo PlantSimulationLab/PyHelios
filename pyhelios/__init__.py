@@ -136,6 +136,22 @@ except (AttributeError, ImportError):
     PlantArchitecture = None
     PlantArchitectureError = None
 
+# Typed plant architecture parameter model (pure Python, always importable)
+from .plant_architecture_params import (
+    RandomParameterFloat,
+    RandomParameterInt as RandomParameterIntTyped,
+    LeafPrototype,
+    InternodeParameters,
+    PetioleParameters,
+    LeafParameters,
+    PeduncleParameters,
+    InflorescenceParameters,
+    PhytomerParameters,
+    ShootParameters,
+    CarbohydrateParameters,
+    NitrogenParameters,
+)
+
 try:
     from .LeafOptics import LeafOptics, LeafOpticsError, LeafOpticsProperties
 except (AttributeError, ImportError):
@@ -145,12 +161,18 @@ except (AttributeError, ImportError):
     LeafOpticsProperties = None
 
 try:
-    from .LiDARCloud import LiDARCloud, LiDARError, ScanPattern
+    from .LiDARCloud import (
+        LiDARCloud, LiDARError, ScanPattern,
+        ScanMode, ReturnMode, SingleReturnSelection,
+    )
 except (AttributeError, ImportError):
     # LiDARCloud functions not available in current library
     LiDARCloud = None
     LiDARError = None
     ScanPattern = None
+    ScanMode = None
+    ReturnMode = None
+    SingleReturnSelection = None
 
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils

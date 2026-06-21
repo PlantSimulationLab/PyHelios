@@ -9,6 +9,7 @@ PROJECT_NAME           = "PyHelios"
 PROJECT_NUMBER         = 0.0.4.post0
 PROJECT_BRIEF          =
 PROJECT_LOGO           = docs/images/PyHelios_logo_whiteborder.png
+PROJECT_ICON           = docs/images/Helios_icon.png
 OUTPUT_DIRECTORY       = docs/generated
 CREATE_SUBDIRS         = NO
 ALLOW_UNICODE_NAMES    = NO

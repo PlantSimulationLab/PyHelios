@@ -1,5 +1,24 @@
 # Changelog
 
+# [v0.1.24] 2026-06-21
+
+- Updated helios-core to v1.3.76
+
+## LiDAR
+- Added physical-parameter spinning and moving-platform raster scans mirroring helios-core 1.3.76: `addScanSpinning()` registers a continuously-rotating multibeam sensor (Velodyne/Ouster/Hesai) from per-channel **elevation** angles, an azimuth resolution, a pulse repetition rate (PRF), and a 6-DOF trajectory — deriving the azimuth grid, rotation rate, and revolution count internally — and `addScanMovingRaster()` sweeps a fixed angular fan along a quaternion trajectory. Both set a self-describing acquisition mode.
+- **Removed `addScanMultibeam()` (breaking change).** In helios-core 1.3.76 a spinning scan must be created through the physical-parameter path; the legacy grid constructor that `addScanMultibeam()` wrapped produces a non-self-describing `STATIC_RASTER`-mode scan that no longer round-trips through XML as a spinning scan. Use `addScanSpinning()` instead (pass per-channel **elevation** angles, an `azimuth_step`, a `pulse_rate_hz`, and a trajectory in place of zenith angles, `Nphi`, and `phi_range`).
+- Added scan acquisition-mode introspection: `getScanMode()` (new `ScanMode` enum: `STATIC_RASTER`/`MOVING_RASTER`/`SPINNING`), `getScanStepsPerRev()`, `getScanRotationRate()`, and `getScanRevolutions()`.
+- Added analytic-waveform N-return configuration: `setScanReturnMode()`/`getScanReturnMode()` (new `ReturnMode` enum: `MULTI`/`SINGLE`), `setScanSingleReturnSelection()`/`getScanSingleReturnSelection()` (new `SingleReturnSelection` enum: `STRONGEST`/`FIRST`/`LAST`/`STRONGEST_PLUS_LAST`), `setScanMaxReturns()`/`getScanMaxReturns()`, `setScanPulseWidth()`/`getScanPulseWidth()`, `setScanDetectionThreshold()`/`getScanDetectionThreshold()`, and a `return_mode` argument on `syntheticScan()` that overrides the stored mode for one call. The new `echo_width` per-hit data field (return range spread) is now available.
+- Added the columnar fast-path bulk reads `getHitDataColumn(label)` / `getHitDataColumnArray(label)`, which use the native cache-linear column storage and return full float64 precision (with an `absent_value` placeholder), versus the float32 of `getHitDataAll`/`getHitDataArray`.
+- Added `setExternalTriangulation(vertices, scan_ids)` to drive leaf-area inversion from an externally-supplied mesh (a re-used Helios triangulation or a per-scan open3d Ball-Pivot mesh) instead of the internal Delaunay triangulation, accepting the `(T,9)`/`(T,3,3)`/flat layouts `getTriangleVerticesAll()` exports plus a per-triangle source scan ID (required for the G(theta) ray direction); `calculateLeafArea()` then runs unchanged.
+- `syntheticScan()` gained a `cancel_flag` argument (a caller-owned `ctypes.c_int`) that aborts a long scan between pulses when set non-zero from another thread, returning whatever was scanned so far.
+
+## Plant Architecture
+- Added a typed, discoverable parameter model (`pyhelios.plant_architecture_params`) mirroring the nested C++ `ShootParameters`/`PhytomerParameters`/`LeafPrototype` structures (plus flat `CarbohydrateParameters`/`NitrogenParameters`), with `RandomParameterFloat`/`RandomParameterInt` distribution specs and `from_dict()`/`to_dict()` round-tripping to the plain-dict JSON transport. `getCurrentShootParameters()` gained a `return_typed` keyword to return a `ShootParameters` object, and `defineShootType()` now accepts either a nested dict or a `ShootParameters`. `getCurrentShootParameters()` now also surfaces the full `phytomer_parameters` sub-structure (internode/petiole/leaf/peduncle/inflorescence and the leaf prototype).
+- Added carbohydrate- and nitrogen-model parameter access: `getDefaultCarbohydrateParameters()`/`setPlantCarbohydrateParameters()` and `getDefaultNitrogenParameters()`/`setPlantNitrogenParameters()`. The native API has no per-plant getter for these, so the get methods return the C++ default-constructed template (flat dict or typed object via `return_typed`) to modify and apply to a plant instance.
+- `setPlantPhenologicalThresholds()` gained an `is_evergreen` keyword (default `False`) that retains leaves through dormancy instead of shedding them at senescence, matching the helios-core 1.3.76 signature.
+- Added `setCancelFlag(cancel_flag)` to register a caller-owned `ctypes.c_int` that, when set non-zero from another thread, stops the canopy-build and `advanceTime()` growth loops between plants/timesteps (returning whatever was built so far) — so a long generation can be aborted mid-build.
+
 # [v0.1.23] 2026-06-16
 
 - Updated helios-core to v1.3.75

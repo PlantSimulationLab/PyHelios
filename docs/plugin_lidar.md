@@ -101,9 +101,9 @@ Each scan has a set of parameters or "metadata" that must be specified in order 
 The tags in the table below are common to *all* scan types. The tags that define the *geometry* of the scan depend on the scan pattern (selected with the \<scanPattern> tag) and are listed separately for each pattern in \ref ScanRaster and \ref ScanSpinningMultibeam below.
 
 <table>
-<tr><th>Metadata</th><th>XML tag</th><th>Description</th><th>Python parameter (addScan/addScanMultibeam)</th><th>Default behavior</th></tr>
+<tr><th>Metadata</th><th>XML tag</th><th>Description</th><th>Python parameter (addScan/addScanSpinning)</th><th>Default behavior</th></tr>
 <tr><td>Scanner origin</td><td>\<origin></td><td>(x,y,z) coordinate of the scanner. This is the position where the scanner rays are sent from.</td><td>origin (vec3)</td><td>None: REQUIRED</td></tr>
-<tr><td>Scan pattern</td><td>\<scanPattern></td><td>Geometric pattern of beam directions: either raster (a uniform angular grid in zenith and azimuth — the default panoramic terrestrial-scanner pattern) or spinning_multibeam (a rotating multi-channel sensor such as a Velodyne, Ouster, or Hesai unit). The geometry of each pattern is defined by additional tags listed below.</td><td>addScan() (raster) or addScanMultibeam() (spinning multibeam)</td><td>raster</td></tr>
+<tr><td>Scan pattern</td><td>\<scanPattern></td><td>Geometric pattern of beam directions: either raster (a uniform angular grid in zenith and azimuth — the default panoramic terrestrial-scanner pattern) or spinning_multibeam (a rotating multi-channel sensor such as a Velodyne, Ouster, or Hesai unit). The geometry of each pattern is defined by additional tags listed below.</td><td>addScan() (raster) or addScanSpinning() (spinning multibeam)</td><td>raster</td></tr>
 <tr><td>Translation</td><td>\<translation></td><td>Global (x,y,z) translation to be applied to entire scan, including the origin and all hit points.</td><td>Use coordinateShift()</td><td>No translation</td></tr>
 <tr><td>Rotation</td><td>\<rotation></td><td>Global spherical rotation (theta,phi) to be applied to the entire scan, including the origin and all hit points.</td><td>Use coordinateRotation()</td><td>No rotation</td></tr>
 <tr><td>Beam exit diameter (meters)</td><td>\<exitDiameter></td><td>Effective diameter of laser beam exiting the instrument. Only used for multi-return synthetic data generation.</td><td>exit_diameter</td><td>0 (single return)</td></tr>
@@ -111,6 +111,11 @@ The tags in the table below are common to *all* scan types. The tags that define
 <tr><td>Range noise std. dev. (meters)</td><td>\<rangeNoiseStdDev></td><td>Standard deviation of zero-mean Gaussian noise added to the measured range (distance) of each return during synthetic scan generation. The hit point is displaced along the beam direction, producing the along-beam component of the positional error. Only used for synthetic data generation.</td><td>range_noise_stddev</td><td>0 (no noise)</td></tr>
 <tr><td>Angular noise std. dev. (rad)</td><td>\<angleNoiseStdDev></td><td>Standard deviation of zero-mean Gaussian jitter applied to the pointing direction of each pulse during synthetic scan generation. This produces the across-beam (lateral) component of the positional error, which grows with range. Only used for synthetic data generation.</td><td>angle_noise_stddev</td><td>0 (no jitter)</td></tr>
 <tr><td>Scanner tilt (roll, pitch)</td><td>\<scanTilt></td><td>Global scanner tilt applied to the entire scan frame about the scanner origin during synthetic scan generation. This models the residual tilt of the scanner spin axis away from true vertical (plumb) that a real terrestrial scanner's dual-axis inclinometer reports. Two angles are given (roll then pitch), applied in that order, in a right-handed, Z-up body frame: roll is a right-hand rotation about the body lateral axis and pitch is a right-hand rotation about the body forward (azimuth-zero) axis. Commercial scanners do not share a universal inclinometer sign convention, so verify signs against the specific instrument. Only used for synthetic data generation. **XML uses degrees; Python API uses radians.**</td><td>scan_tilt_roll, scan_tilt_pitch (radians)</td><td>0 0 (perfectly level)</td></tr>
+<tr><td>Return mode</td><td>\<returnMode></td><td>How a pulse reports detected returns during analytic-waveform synthetic scan generation (more than one ray per pulse): <tt>multi</tt> reports every detected return with no limit (discrete multi-return instrument), while <tt>single</tt> reports a limited number of points per pulse — at most \<maxReturns> of them, selected by \<singleReturnSelection>. A single ray per pulse always produces an idealized exact intersection. Set in Python with `setScanReturnMode()` (`ReturnMode.MULTI`/`ReturnMode.SINGLE`) or the `return_mode` argument of `syntheticScan()`. Only used for synthetic data generation.</td><td>setScanReturnMode() / syntheticScan(return_mode=...)</td><td>multi</td></tr>
+<tr><td>Single-return selection</td><td>\<singleReturnSelection></td><td>Which return(s) are kept when \<returnMode> is <tt>single</tt> and more returns than \<maxReturns> are resolved: <tt>strongest</tt> (largest echo amplitude), <tt>first</tt> (nearest), or <tt>last</tt> (farthest). The kept returns are always reported nearest-first. Only used for synthetic data generation.</td><td>setScanSingleReturnSelection() (SingleReturnSelection enum)</td><td>strongest</td></tr>
+<tr><td>Maximum returns per pulse</td><td>\<maxReturns></td><td>Maximum number of returns reported per pulse when \<returnMode> is <tt>single</tt>: <tt>1</tt> = single-return, <tt>2</tt> = dual-return, <tt>N</tt> = N-return. When a pulse resolves more returns than this, the \<singleReturnSelection> policy chooses which to keep. Must be at least 1. Ignored when \<returnMode> is <tt>multi</tt>. Only used for synthetic data generation.</td><td>setScanMaxReturns()</td><td>1 (single-return)</td></tr>
+<tr><td>Pulse width / range resolution (meters)</td><td>\<pulseWidth></td><td>Range-resolution distance used to merge sub-ray hits into discrete returns: two surfaces closer than this distance merge into a single return, reproducing the range-resolution (dead-zone) limit of a real instrument. (Alternatively specify \<pulseDuration> in seconds in XML.) When 0, the synthetic scanner uses the `pulse_distance_threshold` argument of `syntheticScan()` instead. Only used for synthetic data generation.</td><td>setScanPulseWidth()</td><td>0 (use syntheticScan argument)</td></tr>
+<tr><td>Detection threshold (energy fraction)</td><td>\<detectionThreshold></td><td>Minimum return energy fraction (range-normalized echo amplitude as a fraction of total per-pulse beam energy) for a return to be detected. Returns weaker than this are discarded, modeling the noise floor of a real instrument. Only used for synthetic data generation.</td><td>setScanDetectionThreshold()</td><td>0 (no suppression)</td></tr>
 <tr><td>ASCII point cloud file</td><td>\<filename></td><td>File containing point cloud data to be read.</td><td>Loaded via loadXML()</td><td>No file will be read</td></tr>
 <tr><td>ASCII file column format</td><td>\<ASCII_format></td><td>Labels for columns in ASCII point cloud file. See \ref ScanIO for possible values and examples.</td><td>column_format, or loaded via loadXML()</td><td>x y z</td></tr>
 </table>
@@ -141,28 +146,9 @@ The default scan pattern (\<scanPattern> raster \</scanPattern>, or simply omitt
 
 #### Spinning multibeam scan pattern {#ScanSpinningMultibeam}
 
-Setting \<scanPattern> spinning_multibeam \</scanPattern> models a rotating multi-channel sensor (e.g. Velodyne, Ouster, Hesai), which is the most common pattern for mobile and UAV plant scanning. \f$\mathrm{N}_\theta\f$ laser channels are each fixed at their own (generally non-uniformly spaced) elevation angle, and the whole head rotates through \f$\mathrm{N}_\varphi\f$ uniform azimuth steps. The pattern is represented internally as the same \f$\mathrm{N}_\theta\times\mathrm{N}_\varphi\f$ scan table used by a raster scan, so all downstream processing — ray tracing, hit tables, leaf-area and leaf-angle inversion — is identical to a raster scan. In the Python API a spinning multibeam scan is created with `addScanMultibeam()`. The geometry is defined by the following tags, in addition to the common tags above:
+A rotating multi-channel sensor (e.g. Velodyne, Ouster, Hesai) is the most common pattern for mobile and UAV plant scanning. \f$\mathrm{N}_\theta\f$ laser channels are each fixed at their own (generally non-uniformly spaced) elevation angle, and the whole head rotates continuously while the platform moves along a trajectory. The pattern is represented internally as the same \f$\mathrm{N}_\theta\times\mathrm{N}_\varphi\f$ scan table used by a raster scan, so all downstream processing — ray tracing, hit tables, leaf-area and leaf-angle inversion — is identical to a raster scan. Each synthetic hit additionally records a `channel` data value giving the laser channel (scan-table row) that produced it.
 
-<table>
-<tr><th>Metadata</th><th>XML tag</th><th>Description</th><th>Python parameter (addScanMultibeam)</th><th>Default behavior</th></tr>
-<tr><td>Channel elevation angles</td><td>\<beamElevationAngles></td><td>Space-separated list of per-channel elevation angles above the horizon (e.g. a 16-channel sensor spanning \f$-15\f$ to \f$+15^\circ\f$). The number of entries sets the number of channels / zenithal rows \f$\mathrm{N}_\theta\f$. **XML lists elevation angles in degrees; the Python API takes per-channel zenith angles in radians** (zenith = π/2 − elevation).</td><td>beam_zenith_angles (radians)</td><td>None: REQUIRED</td></tr>
-<tr><td>Number of azimuth steps</td><td>\<Nphi></td><td>Number of azimuth steps (columns) \f$\mathrm{N}_\varphi\f$ per rotation. May alternatively be given as the second value of a \<size> tag; if both are present, \<Nphi> takes precedence.</td><td>Nphi (int)</td><td>None: REQUIRED</td></tr>
-<tr><td>\f$\varphi\f$<sub>min</sub></td><td>\<phiMin></td><td>Minimum scan phi (azimuthal) angle. A full rotation spans \f$\varphi\f$<sub>min</sub>=0 to \f$\varphi\f$<sub>max</sub>=360°. **XML uses degrees; Python API uses radians.**</td><td>phi_range[0] (radians)</td><td>0</td></tr>
-<tr><td>\f$\varphi\f$<sub>max</sub></td><td>\<phiMax></td><td>Maximum scan phi (azimuthal) angle. For a full rotation use 360° (2π rad). **XML uses degrees; Python API uses radians.**</td><td>phi_range[1] (radians)</td><td>360</td></tr>
-</table>
-
-An example spinning multibeam scan, configured like a 16-channel sensor with 2-degree channel spacing making a full azimuth rotation:
-
-```xml
-<scan>
-  <origin> 0 0 1.5 </origin>
-  <scanPattern> spinning_multibeam </scanPattern>
-  <beamElevationAngles> -15 -13 -11 -9 -7 -5 -3 -1 1 3 5 7 9 11 13 15 </beamElevationAngles>
-  <Nphi> 1800 </Nphi>
-  <phiMin> 0 </phiMin>
-  <phiMax> 360 </phiMax>
-</scan>
-```
+A spinning sensor is set up from its **physical parameters** — channel elevation angles, azimuth resolution, pulse repetition rate (PRF), and a platform trajectory — not from a hand-sized azimuth grid. In the Python API this is `addScanSpinning()`; in XML it is the `<azimuthStep>`, `<PRF>`, and trajectory tags. See \ref LiDARphysical for the full setup (including a stationary "spin in place" capture) and \ref LiDARspinning for the `addScanSpinning()` reference. The geometric pattern of a stored scan can be queried with `getScanPattern()` (returns `ScanPattern.SPINNING_MULTIBEAM`) and its per-channel zenith angles with `getScanBeamZenithAngles()`; the acquisition mode is `getScanMode()` (`ScanMode.SPINNING`).
 
 \note Leaf-area inversion requires the population of transmitted (miss) beams. For raster scans loaded from real instruments these can be reconstructed with `gapfillMisses()`, which assumes a regular angular grid. For non-raster patterns, generate synthetic scans with miss recording enabled by calling `syntheticScan()` with `record_misses=True` (see \ref LiDARsynthmisses), which records the misses directly and does not rely on grid reconstruction.
 
@@ -222,6 +208,7 @@ The ASCII text file containing the data is a plain text file, where each row cor
 <tr><td>column</td><td>Scan-grid column index (azimuthal/phi direction) of the hit point. Used by gapfillMisses() to reconstruct miss directions when timestamps are unavailable (see below).</td><td>N/A</td></tr>
 <tr><td>is_miss</td><td>Miss flag for the hit (1 = miss/transmitted beam, 0 = return). When present in the imported file, misses are read directly and no reconstruction is needed (see \ref LiDARmisses).</td><td>N/A</td></tr>
 <tr><td>deviation</td><td>Indication of variability in return within a given hit point. Note: this is never used for real data, but can be output for synthetic data.</td><td>N/A</td></tr>
+<tr><td>echo_width</td><td>Range spread (width) of the return in meters: the transmit pulse range-extent combined in quadrature with the range spread of the surfaces that merged into the return. Note: this is computed for synthetic data only (analytic-waveform multi-ray scans).</td><td>N/A</td></tr>
 <tr><td>intensity</td><td>Range-normalized intensity of return, equal to \f$\rho\,\cos\theta\f$ (per-primitive reflectivity times the incidence-angle cosine) with the \f$1/R^2\f$ range loss of the LiDAR range equation normalized out, so it is independent of the scanner-to-target range. Note: this is never used for real data, but can be output for synthetic data.</td><td>N/A</td></tr>
 <tr><td>reflectance</td><td>Synthetic return reflectance in decibels, \f$10\,\log_{10}|I|\f$ where \f$I\f$ is the range-normalized intensity, relative to a perfect Lambertian reflector at normal incidence (0 dB). Output only when "reflectance" is listed in the ASCII_format. Note: this is computed for synthetic data only.</td><td>N/A</td></tr>
 <tr><td>(label)</td><td>User-defined floating-point data value. "label" can be any string describing data. For example, "temperature", etc.</td><td>N/A</td></tr>
@@ -301,7 +288,7 @@ If the file already contains the misses (approach 1, e.g. converted from a PTX g
 
 ### Adding scan data programmatically {#ScanIOAPI}
 
-Scans do not have to be defined in an XML file — they can also be created entirely in code through the API, which is useful when scan parameters are computed at runtime, when hit points come from another source, or when building automated tests. A raster scan is registered with `addScan()` (a spinning multibeam scan with `addScanMultibeam()`), which returns the integer scan ID. Hit points are then added to that scan with `addHitPoint()`.
+Scans do not have to be defined in an XML file — they can also be created entirely in code through the API, which is useful when scan parameters are computed at runtime, when hit points come from another source, or when building automated tests. A raster scan is registered with `addScan()` (a spinning multibeam scan with `addScanSpinning()`, see \ref LiDARphysical), which returns the integer scan ID. Hit points are then added to that scan with `addHitPoint()`.
 
 The example below creates a rectangular raster scan, adds it to the point cloud, and adds a single hit point. Angles passed to `addScan()` are in **radians**.
 
@@ -329,7 +316,7 @@ with LiDARCloud() as pointcloud:
     )
 ```
 
-A spinning multibeam scan is created with `addScanMultibeam()`, passing a list of per-channel zenith angles (in radians) in place of `Ntheta` and the zenith range:
+A spinning multibeam scan is created with `addScanSpinning()` from physical instrument parameters — per-channel **elevation** angles, an azimuth resolution, a PRF, and a trajectory — rather than a hand-sized azimuth grid. See \ref LiDARphysical for the full reference; a stationary tripod capture is shown below:
 
 ```python
 import math
@@ -337,13 +324,15 @@ from pyhelios import LiDARCloud
 from pyhelios.types import vec3
 
 with LiDARCloud() as pointcloud:
-    # Define a 16-channel spinning multibeam scan spanning -15 deg to +15 deg elevation
-    beam_zenith = [0.5 * math.pi - math.radians(e) for e in range(-15, 16, 2)]  # elevation -> zenith
-    scan_id = pointcloud.addScanMultibeam(
-        origin=vec3(0.0, 0.0, 1.5),
-        beam_zenith_angles=beam_zenith,
-        Nphi=1800, phi_range=(0.0, 2.0 * math.pi),
-        exit_diameter=0.0, beam_divergence=0.0
+    # Define a 16-channel spinning sensor spanning -15 deg to +15 deg elevation, spun in place for 1 s
+    beam_elev = [math.radians(e) for e in range(-15, 16, 2)]  # elevation above horizon (radians)
+    scan_id = pointcloud.addScanSpinning(
+        beam_elevation_angles=beam_elev,
+        azimuth_step=math.radians(0.2),     # 0.2 deg azimuth resolution
+        pulse_rate_hz=600000.0,             # 600 kHz PRF
+        traj_t=[0.0, 1.0],
+        traj_pos=[[0, 0, 1.5], [0, 0, 1.5]],     # two coincident poses = spin in place
+        traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
     )
 ```
 
@@ -353,7 +342,7 @@ A raster scan can also carry a global azimuth (heading) offset via the `scan_azi
 
 ### Moving-platform (mobile/airborne) scans {#LiDARmoving}
 
-Terrestrial scans (`addScan()`/`addScanMultibeam()`) fire all pulses from a single fixed origin. For mobile or airborne LiDAR the scanner moves during the sweep, so PyHelios provides `addScanMoving()`, which drives the scanner pose from a timestamped 6-DOF trajectory. For each pulse the synthetic-scan generator computes its acquisition time \f$t = t_0 + \mathrm{ordinal}/\mathrm{pulse\_rate\_hz}\f$, interpolates the platform pose at that time (linear position, SLERP orientation), and emits a per-pulse origin \f$\mathbf{o} = \mathbf{pos} + R(\mathbf{q})\,\mathbf{lever\_arm}\f$ and direction \f$\mathbf{d} = R(\mathbf{q})\,R(\mathbf{boresight})\,\mathbf{d}_{body}\f$. Every resulting hit and miss records its own origin (queryable with `getHitOrigin()`), real timestamp, and firing index. The static tilt fields are not used in this mode — attitude comes entirely from the trajectory quaternions composed with the fixed boresight misalignment.
+Terrestrial scans (`addScan()`) fire all pulses from a single fixed origin. For mobile or airborne LiDAR the scanner moves during the sweep, so PyHelios provides `addScanMoving()`, which drives the scanner pose from a timestamped 6-DOF trajectory. For each pulse the synthetic-scan generator computes its acquisition time \f$t = t_0 + \mathrm{ordinal}/\mathrm{pulse\_rate\_hz}\f$, interpolates the platform pose at that time (linear position, SLERP orientation), and emits a per-pulse origin \f$\mathbf{o} = \mathbf{pos} + R(\mathbf{q})\,\mathbf{lever\_arm}\f$ and direction \f$\mathbf{d} = R(\mathbf{q})\,R(\mathbf{boresight})\,\mathbf{d}_{body}\f$. Every resulting hit and miss records its own origin (queryable with `getHitOrigin()`), real timestamp, and firing index. The static tilt fields are not used in this mode — attitude comes entirely from the trajectory quaternions composed with the fixed boresight misalignment.
 
 The orientation trajectory may be supplied either as quaternions `(qx, qy, qz, qw)` (Hamilton body→world; `rot_is_quaternion=True`, the default) or as roll/pitch/yaw Euler angles in radians (`rot_is_quaternion=False`). Prefer quaternions when the trajectory comes from an INS/IMU.
 
@@ -382,6 +371,62 @@ with Context() as context:
 ```
 
 Because the pulses of a moving scan do not lie on a fixed zenith/azimuth grid, they **cannot be triangulated**, so the usual G(theta)-from-triangulation path is unavailable. Leaf area for moving scans is computed with the `Gtheta` overload of `calculateLeafArea()` (see \ref LiDARleafarea), which takes a caller-supplied G(theta) and uses each hit's per-pulse beam origin.
+
+### Physical-parameter spinning and moving-raster scans {#LiDARphysical}
+
+`addScan()` and `addScanMoving()` are the lower-level entry points that take the internal \f$\mathrm{N}_\theta\times\mathrm{N}_\varphi\f$ scan grid directly. For a real mobile, UAV, or airborne instrument PyHelios also provides two **physical-parameter** entry points that take the instrument's real parameters and derive the internal sampling grid, rotation rate, revolution count, and per-pulse timing for you. A scan created this way is self-describing: query `getScanMode()` (a `ScanMode`), `getScanRotationRate()`, `getScanRevolutions()`, and `getScanStepsPerRev()` to introspect it.
+
+#### Spinning multibeam (`addScanSpinning()`) {#LiDARspinning}
+
+A spinning multibeam sensor rotates continuously through 360° while the platform moves along a trajectory, so there is no partial-arc azimuth range — the only azimuth control is the angular resolution. `addScanSpinning()` takes per-channel beam **elevation** angles (radians above the horizon, where zenith = π/2 − elevation), an azimuth resolution, a pulse repetition rate (PRF), a 6-DOF trajectory, and the lever arm / boresight. Helios derives the azimuth step count, rotation rate (`PRF / (channels × steps_per_rev)`), revolution count, and full multi-revolution azimuth sweep; you never specify an azimuth range, step count, or revolution count. The scan's `getScanMode()` is `ScanMode.SPINNING`.
+
+```python
+import math
+from pyhelios import Context, LiDARCloud, ScanMode
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    context.addPatch(center=vec3(0, 0, 0), size=vec2(20, 20))
+    with LiDARCloud() as pointcloud:
+        beam_elev = [math.radians(e) for e in range(-15, 16, 2)]  # elevation above horizon (radians)
+        scan_id = pointcloud.addScanSpinning(
+            beam_elevation_angles=beam_elev,
+            azimuth_step=math.radians(0.2),     # 0.2 deg azimuth resolution
+            pulse_rate_hz=600000.0,             # 600 kHz PRF
+            traj_t=[0.0, 1.0],
+            traj_pos=[[-5, 0, 10], [5, 0, 10]],
+            traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],  # identity quaternions
+            rot_is_quaternion=True,
+            column_format=["x", "y", "z", "origin_x", "origin_y", "origin_z", "timestamp"],
+        )
+        print(pointcloud.getScanMode(scan_id) == ScanMode.SPINNING)   # True
+        print(pointcloud.getScanStepsPerRev(scan_id), pointcloud.getScanRotationRate(scan_id))
+        pointcloud.syntheticScan(context, record_misses=True)
+```
+
+A free-spinning sensor cannot be held at a fixed pose without overlapping itself, so for a **stationary** capture (a spinning sensor on a tripod) supply a trajectory of two coincident poses — the same position and orientation — separated in time by the acquisition duration. The time gap determines how long the sensor spins and therefore how many revolutions it makes.
+
+#### Moving raster (`addScanMovingRaster()`) {#LiDARmovingraster}
+
+For a non-spinning sensor carried on a moving platform, `addScanMovingRaster()` takes the per-frame angular fan resolution (\f$\mathrm{N}_\theta\times\mathrm{N}_\varphi\f$ over the zenith and azimuth ranges), a quaternion trajectory, and a PRF, and derives the per-pulse time sampling along the trajectory. The scan's `getScanMode()` is `ScanMode.MOVING_RASTER`.
+
+```python
+import math
+from pyhelios import LiDARCloud
+from pyhelios.types import vec3
+
+with LiDARCloud() as pointcloud:
+    scan_id = pointcloud.addScanMovingRaster(
+        Ntheta=16, theta_range=(2.8, 3.14),       # near-nadir fan (radians)
+        Nphi=64, phi_range=(-0.2, 0.2),
+        pulse_rate_hz=100000.0,
+        traj_t=[0.0, 1.0],
+        traj_pos=[[-5, 0, 10], [5, 0, 10]],
+        traj_quat=[[0, 0, 0, 1], [0, 0, 0, 1]],   # identity quaternions
+    )
+```
+
+\note Both physical-parameter entry points round-trip through XML: `exportScans()` writes the physical parameters plus a trajectory sidecar CSV, and `loadXML()` reads spinning/moving-raster scans back from `<azimuthStep>`, `<PRF>`, `<leverArm>`, `<boresight>`, and inline `<trajectory>`/`<pose>` (or `<trajectoryFile>`) tags. Like all moving scans, they cannot be triangulated, so leaf area uses the `Gtheta` overload of `calculateLeafArea()`.
 
 ## Establishing Grid Cells {#LiDARgrid}
 
@@ -597,15 +642,46 @@ To simulate single-return data, each laser pulse is modeled by a single ray eman
 
 The synthetic return intensity is computed as \f$I = \rho\,\cos\theta\f$, where \f$\rho\f$ is the per-primitive reflectivity (primitive data `reflectivity_lidar`, default 1) and \f$\theta\f$ is the angle between the laser beam and the surface normal at the hit point. The intensity reported by Helios is **range-normalized**: the \f$1/R^2\f$ geometric loss that a real instrument's return amplitude incurs over the scanner-to-target range \f$R\f$ is normalized out, so a given surface produces the same intensity regardless of how far it is from the scanner. The model does not currently include atmospheric attenuation, transmitted-pulse energy, detector gain, leaf transmittance, or multiple scattering. If the ASCII_format of the scan includes the `reflectance` tag, the scanner additionally records the return reflectance in decibels, \f$10\,\log_{10}|I|\f$, relative to a perfect Lambertian reflector at normal incidence (0 dB).
 
-For multi-return data simulation, multiple rays are cast for a single laser beam pulse. The density of rays is Gaussian, with the peak at the center of the beam. The model will also record the target count, target index, and timestamp associated with each hit point.
+For multi-return data simulation, multiple sub-rays are cast for a single laser beam pulse, spread over the beam divergence cone and (if a finite `exit_diameter` is given) the exit aperture. Each sub-ray carries a **Gaussian footprint weight** \f$w=\exp(-2(r/r_0)^2)\f$ set by its offset \f$r\f$ from the beam axis, so the beam has the Gaussian transverse irradiance profile of a real laser rather than a uniform "top-hat". The sorted sub-ray hits of a pulse are treated as an **analytic sum-of-Gaussians waveform** from which discrete returns are detected:
+- Sub-ray hits separated by less than the **range resolution** (the scan's `setScanPulseWidth()`, or the `pulse_distance_threshold` argument when the pulse width is 0) merge into a single return at the energy-weighted range. Two surfaces within one pulse width therefore blend into one intermediate-range "ghost"/"mixed pixel" point.
+- A return whose intensity falls below the **detection threshold** (`setScanDetectionThreshold()`) is discarded, modeling the noise floor of a real instrument.
+- In **single/limited-return** mode (`setScanReturnMode(scanID, ReturnMode.SINGLE)`) at most `getScanMaxReturns()` returns per pulse are reported, chosen by the scan's `SingleReturnSelection` policy; in **multi-return** mode (the default) every surviving return is reported.
 
-Per-hit synthetic data values (`intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `nRaysHit`, plus any primitive-data labels listed in the scan's `column_format`) can be queried after the scan with `getHitData()` (guard with `doesHitDataExist()`), or bulk-exported for all hits with `getHitDataAll(label)`. For large clouds (millions of points) prefer the NumPy bulk exports, which pull a whole field across a single FFI call: `getHitsXYZRGBArrays()` (returns `(N,3)` float32 coordinates and colors), `getHitDataArray(label)` (`(N,)` float32, NaN where the label is absent), `getHitScanIDArray()` (`(N,)` int32), and `getHitMissArray()` (`(N,)` int32, 1 = miss).
+The model also records the target count, target index, timestamp, and an `echo_width` (pulse range-extent in quadrature with the merged-surface range spread) for each hit point. Note that single-return waveform mode is no cheaper than multi-return — the full sub-ray bundle is still traced; only the idealized one-ray-per-pulse mode (`rays_per_pulse` omitted) avoids the bundle.
+
+The return mode can also be chosen per `syntheticScan()` call via the `return_mode` argument, which overrides each scan's stored mode for that call only:
+
+```python
+from pyhelios import Context, LiDARCloud, ReturnMode, SingleReturnSelection
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+    with LiDARCloud() as lidar:
+        scan_id = lidar.addScan(
+            origin=vec3(0, 0, 2),
+            Ntheta=100, theta_range=(0.0, 1.57),
+            Nphi=100, phi_range=(0.0, 6.28),
+            exit_diameter=0.005, beam_divergence=0.003,
+        )
+        # Configure a dual-return, first/last-favoring instrument
+        lidar.setScanMaxReturns(scan_id, 2)
+        lidar.setScanSingleReturnSelection(scan_id, SingleReturnSelection.FIRST)
+
+        # Single/limited-return analytic-waveform scan
+        lidar.syntheticScan(
+            context, rays_per_pulse=100, pulse_distance_threshold=0.02,
+            return_mode=ReturnMode.SINGLE, record_misses=True,
+        )
+```
+
+Per-hit synthetic data values (`intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `echo_width`, `nRaysHit`, plus any primitive-data labels listed in the scan's `column_format`) can be queried after the scan with `getHitData()` (guard with `doesHitDataExist()`), or bulk-exported for all hits with `getHitDataAll(label)`. For large clouds (millions of points) prefer the NumPy bulk exports, which pull a whole field across a single FFI call: `getHitsXYZRGBArrays()` (returns `(N,3)` float32 coordinates and colors), `getHitDataArray(label)` (`(N,)` float32, NaN where the label is absent), `getHitScanIDArray()` (`(N,)` int32), and `getHitMissArray()` (`(N,)` int32, 1 = miss). For the fastest whole-field scalar read, `getHitDataColumn(label)` / `getHitDataColumnArray(label)` use the native cache-linear columnar path and return full float64 precision (with an `absent_value` placeholder where the label is absent for a hit) rather than the float32 of `getHitDataAll`/`getHitDataArray`.
 
 \note Synthetic scanning requires the CollisionDetection plugin for ray tracing. PyHelios initializes it automatically when needed; you can also initialize it explicitly with `initializeCollisionDetection(context)`.
 
 ### XML parameter file for synthetic data {#LiDARsynthxml}
 
-To generate synthetic single-return LiDAR data, first add all desired model geometry to the Context. Then create a LiDARCloud instance and load an XML file containing the scan parameters (or define the scan in code with `addScan()`/`addScanMultibeam()`). As in the case of importing a real point cloud dataset, the XML file must specify the scan origin and the scan resolution at a minimum. However, for synthetic data generation, you will not specify a filename to read containing point cloud data, as this data will be generated by the simulation. You can optionally specify the ASCII_format tag, which will determine which additional data fields should be recorded for each hit point.
+To generate synthetic single-return LiDAR data, first add all desired model geometry to the Context. Then create a LiDARCloud instance and load an XML file containing the scan parameters (or define the scan in code with `addScan()`/`addScanSpinning()`). As in the case of importing a real point cloud dataset, the XML file must specify the scan origin and the scan resolution at a minimum. However, for synthetic data generation, you will not specify a filename to read containing point cloud data, as this data will be generated by the simulation. You can optionally specify the ASCII_format tag, which will determine which additional data fields should be recorded for each hit point.
 
 If no ASCII_format tag is provided in the XML file, the default is to record the (x,y,z) position of the hit point. Note that you can add multiple \<scan>\</scan> blocks in a single XML file to perform multiple scans.
 
@@ -749,7 +825,7 @@ By default, synthetic hit points lie exactly on the surface that the ray interse
 - **Range (along-beam) error** — an error in the measured distance, which displaces the point *along* the beam direction. This is usually the dominant term and, for most instruments, is roughly independent of range.
 - **Angular (across-beam) error** — a small random error in the pointing direction of each pulse, which displaces the point *across* the beam. The resulting lateral error is approximately \f$\rho\,\sigma_\theta\f$ (range times the angular standard deviation), so it *grows with range* and tends to dominate at long range.
 
-The two components are configured independently. In the Python API they are set with the `range_noise_stddev` (meters) and `angle_noise_stddev` (radians) arguments to `addScan()`/`addScanMultibeam()`; in an XML scan file they are the \<rangeNoiseStdDev> and \<angleNoiseStdDev> tags. Typical terrestrial laser scanner range precision is on the order of 0.002–0.012 m. Misses are not perturbed by either term. If a value is 0 (the default), that component is disabled; with both disabled, points lie exactly on the surface. The appropriate magnitudes should be taken from the instrument datasheet. The stored noise standard deviations can be queried with `getScanRangeNoiseStdDev()` and `getScanAngleNoiseStdDev()`.
+The two components are configured independently. In the Python API they are set with the `range_noise_stddev` (meters) and `angle_noise_stddev` (radians) arguments to `addScan()`/`addScanSpinning()`/`addScanMovingRaster()`; in an XML scan file they are the \<rangeNoiseStdDev> and \<angleNoiseStdDev> tags. Typical terrestrial laser scanner range precision is on the order of 0.002–0.012 m. Misses are not perturbed by either term. If a value is 0 (the default), that component is disabled; with both disabled, points lie exactly on the surface. The appropriate magnitudes should be taken from the instrument datasheet. The stored noise standard deviations can be queried with `getScanRangeNoiseStdDev()` and `getScanAngleNoiseStdDev()`.
 
 For example, to emulate an instrument with a 3 mm range precision and 0.2 mrad pointing jitter via XML:
 
@@ -788,7 +864,7 @@ with LiDARCloud() as pointcloud:
 
 \note Both noise components are applied to single-return and multi-return synthetic scans, and are independent of the beam-divergence/exit-diameter footprint sampling (which models the within-beam spread, not measurement error). The noise draws use the Context's random number generator; call `context.seedRandomGenerator(seed)` before `syntheticScan()` to obtain reproducible noisy scans.
 
-A global scanner tilt away from plumb can also be modeled with the `scan_tilt_roll` / `scan_tilt_pitch` arguments (radians) of `addScan()`/`addScanMultibeam()`, or the \<scanTilt> XML tag (degrees) — see \ref ScanMetadata. The stored values can be read back with `getScanTiltRoll()` and `getScanTiltPitch()`.
+A global scanner tilt away from plumb can also be modeled with the `scan_tilt_roll` / `scan_tilt_pitch` arguments (radians) of `addScan()`, or the \<scanTilt> XML tag (degrees) — see \ref ScanMetadata. (Static tilt does not apply to moving or spinning scans, whose attitude comes entirely from the trajectory and boresight.) The stored values can be read back with `getScanTiltRoll()` and `getScanTiltPitch()`.
 
 ## Visualizing Results {#LiDARvis}
 
@@ -841,12 +917,13 @@ with Context() as context:
 
 ## PyHelios API Coverage
 
-The PyHelios `LiDARCloud` binding covers the full standard workflow — scan definition (raster and spinning multibeam, with noise and tilt), hit-point import/bulk-add, miss handling (`gapfillMisses()`, synthetic `record_misses`), triangulation, leaf-area inversion with uncertainty/confidence intervals, G(theta), GPU control, and all of the file-export routines above.
+The PyHelios `LiDARCloud` binding covers the full standard workflow — scan definition (raster, spinning multibeam, moving-platform, and physical-parameter spinning/moving-raster, with noise and tilt), scan-mode introspection (`getScanMode()`, `getScanStepsPerRev()`, `getScanRotationRate()`, `getScanRevolutions()`), analytic-waveform return-mode configuration (`setScanReturnMode()`/`setScanMaxReturns()`/`setScanSingleReturnSelection()`/`setScanPulseWidth()`/`setScanDetectionThreshold()` and the `syntheticScan(return_mode=...)` override), hit-point import/bulk-add, columnar bulk reads (`getHitDataColumn()`/`getHitDataColumnArray()`), miss handling (`gapfillMisses()`, synthetic `record_misses`), triangulation, leaf-area inversion with uncertainty/confidence intervals, G(theta), GPU control, and all of the file-export routines above.
 
 The following C++ features are documented in the native LiDAR plugin but **not yet wrapped** in PyHelios. For these, use the C++ API:
 
 - **Plant reconstruction**: `leafReconstructionAlphaMask()`, `addReconstructedTriangleGroupsToContext()`, `addLeafReconstructionToContext()`, `trunkReconstruction()`
 - **Direct Visualizer integration**: `addHitsToVisualizer()`, `addGridToVisualizer()`, `addTrianglesToVisualizer()`
+- **Synthetic-scan progress callback**: `setProgressCallback()` (per-scan progress reporting; not wrapped because it requires a C callback trampoline across the FFI boundary)
 - **Additional I/O**: `exportPointCloudPTX()` (PTX format), `loadASCIIFile()` (direct ASCII loading without XML), `loadTreeQSM()`
 - **Triangle distribution exports**: `exportTriangleInclinationDistribution()`, `exportTriangleAzimuthDistribution()`
 - **Additional scan/grid queries**: `getScanRangeTheta()`, `getScanRangePhi()`, `getScanBeamExitDiameter()`, `getScanBeamDivergence()`, `getGridBoundingBox()`
