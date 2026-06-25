@@ -30,7 +30,7 @@ LEAF_OPTICS_SPECTRAL_POINTS = 2101
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all leaf optics functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Try to set up LeafOptics function prototypes

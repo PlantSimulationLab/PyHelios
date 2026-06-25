@@ -10,7 +10,7 @@ def _check_error(result, func, args):
     Errcheck callback that automatically checks for Helios errors after each logger function call.
     This ensures that C++ exceptions are properly converted to Python exceptions.
     """
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Check if logger functions are available (they may not be in all builds)

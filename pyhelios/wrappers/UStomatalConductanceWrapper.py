@@ -22,7 +22,7 @@ from .UContextWrapper import UContext
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all stomatal conductance functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Try to set up StomatalConductanceModel function prototypes

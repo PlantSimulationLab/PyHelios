@@ -16,7 +16,7 @@ def _check_error_wpt(result, func, args):
     Errcheck callback that automatically checks for Helios errors after each WeberPennTree function call.
     This ensures that C++ exceptions are properly converted to Python exceptions.
     """
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Try to set up WeberPennTree function prototypes

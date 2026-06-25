@@ -34,7 +34,9 @@ with LiDARCloud() as pointcloud:
     pointcloud.enableCDGPUAcceleration()   # Enable GPU acceleration before running scans
 ```
 
-GPU acceleration can be turned off again with `disableCDGPUAcceleration()`.
+GPU acceleration can be turned off again with `disableCDGPUAcceleration()`. To check whether a usable GPU is present before enabling it, call `isGPUAvailable()` (true only if the plugin was compiled with CUDA, a CUDA device is present at runtime, and `HELIOS_NO_GPU` is unset); `isGPUAccelerationEnabled()` reports whether GPU acceleration is currently toggled on.
+
+For long-running synthetic scans you can observe progress without blocking: `setSyntheticScanProgressPointer(ctypes.c_int)` registers a caller-owned counter that `syntheticScan()` updates with the 0-based index of the scan currently being ray-traced (set to `getScanCount()` when finished), and `setProgressCallback(fn)` registers a Python callback invoked with `(progress_fraction, message)` during the scan (pass `None` to clear either one).
 
 ## Class Constructor {#LiDARConstructor}
 
@@ -427,6 +429,35 @@ with LiDARCloud() as pointcloud:
 ```
 
 \note Both physical-parameter entry points round-trip through XML: `exportScans()` writes the physical parameters plus a trajectory sidecar CSV, and `loadXML()` reads spinning/moving-raster scans back from `<azimuthStep>`, `<PRF>`, `<leverArm>`, `<boresight>`, and inline `<trajectory>`/`<pose>` (or `<trajectoryFile>`) tags. Like all moving scans, they cannot be triangulated, so leaf area uses the `Gtheta` overload of `calculateLeafArea()`.
+
+#### Rotating-Risley-prism rosette (`addScanRisley()`) {#LiDARrisley}
+
+A Livox rosette-pattern sensor (Mid-40/Mid-70/Avia) fires a single beam through a stack of continuously rotating wedge prisms, tracing a non-repetitive rosette inside a circular field of view (denser toward the center). `addScanRisley()` takes the prism stack — a list of `RisleyPrism` objects (`wedge_angle`, `refractive_index`, `rotor_rate`, `phase`, all SI/radians) in beam-traversal order — the refractive index of the surrounding air, a pulse repetition rate, and a 6-DOF trajectory (quaternion or Euler). The per-pulse beam direction is computed by full Snell's-law refraction through the rotating prisms at each pulse's time; the field of view is an emergent property of the wedge angles and refractive indices, not a directly specified parameter. The scan is stored as a single-row (\f$\mathrm{N}_\theta=1\f$) table with `getScanMode()` `ScanMode.RISLEY_PRISM` and `getScanPattern()` `ScanPattern.RISLEY_PRISM`; query the prisms with `getScanRisleyPrisms()` and the air index with `getScanRisleyRefractiveIndexAir()`. Like a spinning scan it is always trajectory-driven, so a stationary tripod capture is two coincident poses separated in time by the acquisition duration.
+
+```python
+import math
+from pyhelios import Context, LiDARCloud, RisleyPrism, ScanMode
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    context.addPatch(center=vec3(0, 0, 0), size=vec2(20, 20))
+    with LiDARCloud() as pointcloud:
+        # Two counter-rotating wedge prisms (the canonical Livox configuration).
+        prisms = [RisleyPrism(wedge_angle=math.radians(15), refractive_index=1.51,
+                              rotor_rate=420.0, phase=0.0),
+                  RisleyPrism(wedge_angle=math.radians(15), refractive_index=1.51,
+                              rotor_rate=-380.0, phase=0.0)]
+        scan_id = pointcloud.addScanRisley(
+            prisms=prisms, refractive_index_air=1.0003, pulse_rate_hz=100000.0,
+            traj_t=[0.0, 0.1],
+            traj_pos=[[0, 0, 1.5], [0, 0, 1.5]],     # stationary tripod capture
+            traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],   # identity quaternions
+        )
+        print(pointcloud.getScanMode(scan_id) == ScanMode.RISLEY_PRISM)   # True
+        pointcloud.syntheticScan(context, record_misses=True)
+```
+
+\note Only the rotating-Risley-prism rosette mechanism is modeled; Livox's deterministic line-scan mode and the newer MEMS/galvanometer non-repetitive patterns are different mechanisms not covered by this entry point.
 
 ## Establishing Grid Cells {#LiDARgrid}
 

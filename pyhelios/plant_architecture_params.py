@@ -40,6 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple
 __all__ = [
     "RandomParameterFloat",
     "RandomParameterInt",
+    "RandomParameter",
     "LeafPrototype",
     "InternodeParameters",
     "PetioleParameters",
@@ -73,14 +74,22 @@ class RandomParameterFloat:
 
     @classmethod
     def uniform(cls, min_val: float, max_val: float) -> "RandomParameterFloat":
+        if min_val > max_val:
+            raise ValueError(f"min_val ({min_val}) must be <= max_val ({max_val})")
         return cls("uniform", [float(min_val), float(max_val)])
 
     @classmethod
     def normal(cls, mean: float, std_dev: float) -> "RandomParameterFloat":
+        if std_dev < 0:
+            raise ValueError(f"std_dev ({std_dev}) must be >= 0")
         return cls("normal", [float(mean), float(std_dev)])
 
     @classmethod
     def weibull(cls, shape: float, scale: float) -> "RandomParameterFloat":
+        if shape <= 0:
+            raise ValueError(f"shape ({shape}) must be > 0")
+        if scale <= 0:
+            raise ValueError(f"scale ({scale}) must be > 0")
         return cls("weibull", [float(shape), float(scale)])
 
     def to_dict(self) -> Dict[str, Any]:
@@ -104,10 +113,14 @@ class RandomParameterInt:
 
     @classmethod
     def uniform(cls, min_val: int, max_val: int) -> "RandomParameterInt":
+        if min_val > max_val:
+            raise ValueError(f"min_val ({min_val}) must be <= max_val ({max_val})")
         return cls("uniform", [int(min_val), int(max_val)])
 
     @classmethod
     def discrete(cls, values: List[int]) -> "RandomParameterInt":
+        if not values:
+            raise ValueError("values list cannot be empty")
         return cls("discretevalues", [int(v) for v in values])
 
     def to_dict(self) -> Dict[str, Any]:
@@ -117,6 +130,11 @@ class RandomParameterInt:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "RandomParameterInt":
         return cls(str(d["distribution"]), [int(round(float(p))) for p in d["parameters"]])
+
+
+# Backward-compatible name for the float-valued parameter, retained from the
+# original dict-returning ``PlantArchitecture.RandomParameter`` helper.
+RandomParameter = RandomParameterFloat
 
 
 # --------------------------------------------------------------------------- #

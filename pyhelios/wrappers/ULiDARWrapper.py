@@ -21,8 +21,12 @@ class ULiDARcloud(ctypes.Structure):
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all LiDAR functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
+
+
+# Progress-callback function-pointer type fired during syntheticScan: void(float progress, const char* message)
+LiDARProgressCallback = ctypes.CFUNCTYPE(None, ctypes.c_float, ctypes.c_char_p)
 
 
 # Function prototypes with availability detection
@@ -135,6 +139,30 @@ try:
     helios_lib.addLiDARScanMovingRaster.restype = ctypes.c_uint
     helios_lib.addLiDARScanMovingRaster.errcheck = _check_error
 
+    helios_lib.addLiDARScanRisley.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_double),  # prisms[4*nPrisms]
+        ctypes.c_uint,    # nPrisms
+        ctypes.c_double,  # refractive_index_air
+        ctypes.c_float,   # pulse_rate_hz
+        ctypes.c_float,   # exitDiameter
+        ctypes.c_float,   # beamDivergence
+        ctypes.c_float,   # rangeNoiseStdDev
+        ctypes.c_float,   # angleNoiseStdDev
+        ctypes.POINTER(ctypes.c_char_p),  # columnFormat
+        ctypes.c_uint,    # nCols
+        ctypes.POINTER(ctypes.c_double),  # traj_t[M]
+        ctypes.POINTER(ctypes.c_float),   # traj_pos[3*M]
+        ctypes.POINTER(ctypes.c_float),   # traj_rot[4*M or 3*M]
+        ctypes.c_uint,    # M
+        ctypes.c_int,     # rotIsQuaternion
+        ctypes.POINTER(ctypes.c_float),   # lever_arm[3]
+        ctypes.POINTER(ctypes.c_float),   # boresight_rpy[3]
+        ctypes.c_double   # t0
+    ]
+    helios_lib.addLiDARScanRisley.restype = ctypes.c_uint
+    helios_lib.addLiDARScanRisley.errcheck = _check_error
+
     # Scan acquisition-mode introspection
     helios_lib.getLiDARScanMode.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.getLiDARScanMode.restype = ctypes.c_int
@@ -151,6 +179,22 @@ try:
     helios_lib.getLiDARScanRevolutions.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.getLiDARScanRevolutions.restype = ctypes.c_double
     helios_lib.getLiDARScanRevolutions.errcheck = _check_error
+
+    helios_lib.getLiDARScanRisleyPrismCount.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanRisleyPrismCount.restype = ctypes.c_uint
+    helios_lib.getLiDARScanRisleyPrismCount.errcheck = _check_error
+
+    helios_lib.getLiDARScanRisleyPrisms.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_double),  # out[4*count]
+        ctypes.c_uint,                    # count (in prisms)
+    ]
+    helios_lib.getLiDARScanRisleyPrisms.restype = None
+    helios_lib.getLiDARScanRisleyPrisms.errcheck = _check_error
+
+    helios_lib.getLiDARScanRisleyRefractiveIndexAir.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanRisleyRefractiveIndexAir.restype = ctypes.c_double
+    helios_lib.getLiDARScanRisleyRefractiveIndexAir.errcheck = _check_error
 
     # Return-mode configuration
     helios_lib.getLiDARScanReturnMode.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
@@ -380,6 +424,13 @@ try:
     ]
     helios_lib.getLiDARHitDataColumn.restype = None
     helios_lib.getLiDARHitDataColumn.errcheck = _check_error
+
+    helios_lib.getLiDARHitDataColumnIndex.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_char_p,
+    ]
+    helios_lib.getLiDARHitDataColumnIndex.restype = ctypes.c_int
+    helios_lib.getLiDARHitDataColumnIndex.errcheck = _check_error
 
     helios_lib.getLiDARHitsXYZRGB_all.argtypes = [
         ctypes.POINTER(ULiDARcloud),
@@ -614,6 +665,31 @@ try:
     helios_lib.setLiDARCancelFlag.restype = None
     helios_lib.setLiDARCancelFlag.errcheck = _check_error
 
+    helios_lib.setLiDARSyntheticScanMemoryBudget.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_size_t,  # soft cap (bytes) on ray-tracing scratch buffers; must be > 0
+    ]
+    helios_lib.setLiDARSyntheticScanMemoryBudget.restype = None
+    helios_lib.setLiDARSyntheticScanMemoryBudget.errcheck = _check_error
+
+    helios_lib.getLiDARSyntheticScanMemoryBudget.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.getLiDARSyntheticScanMemoryBudget.restype = ctypes.c_size_t
+    helios_lib.getLiDARSyntheticScanMemoryBudget.errcheck = _check_error
+
+    helios_lib.setLiDARSyntheticScanProgressPointer.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_int),  # per-scan progress counter, or NULL
+    ]
+    helios_lib.setLiDARSyntheticScanProgressPointer.restype = None
+    helios_lib.setLiDARSyntheticScanProgressPointer.errcheck = _check_error
+
+    helios_lib.setLiDARProgressCallback.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        LiDARProgressCallback,  # void(float, const char*), or NULL to clear
+    ]
+    helios_lib.setLiDARProgressCallback.restype = None
+    helios_lib.setLiDARProgressCallback.errcheck = _check_error
+
     helios_lib.syntheticLiDARScanDiscrete.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.POINTER(UContext),
@@ -762,6 +838,14 @@ try:
     helios_lib.disableLiDARCDGPUAcceleration.argtypes = [ctypes.POINTER(ULiDARcloud)]
     helios_lib.disableLiDARCDGPUAcceleration.restype = None
     helios_lib.disableLiDARCDGPUAcceleration.errcheck = _check_error
+
+    helios_lib.isLiDARGPUAvailable.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.isLiDARGPUAvailable.restype = ctypes.c_int
+    helios_lib.isLiDARGPUAvailable.errcheck = _check_error
+
+    helios_lib.isLiDARGPUAccelerationEnabled.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.isLiDARGPUAccelerationEnabled.restype = ctypes.c_int
+    helios_lib.isLiDARGPUAccelerationEnabled.errcheck = _check_error
 
     _LIDAR_FUNCTIONS_AVAILABLE = True
 
@@ -1030,8 +1114,85 @@ def addLiDARScanMovingRaster(cloud_ptr: ctypes.POINTER(ULiDARcloud),
     )
 
 
+def addLiDARScanRisley(cloud_ptr: ctypes.POINTER(ULiDARcloud),
+                       prisms: List[List[float]], refractive_index_air: float,
+                       pulse_rate_hz: float,
+                       traj_t: List[float], traj_pos: List[List[float]],
+                       traj_rot: List[List[float]], rot_is_quaternion: bool,
+                       exit_diameter: float = 0.0, beam_divergence: float = 0.0,
+                       lever_arm: Optional[List[float]] = None,
+                       boresight_rpy: Optional[List[float]] = None,
+                       column_format: Optional[List[str]] = None,
+                       range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                       t0: float = 0.0) -> int:
+    """Add a rotating-Risley-prism (Livox-style rosette) scan from physical instrument parameters.
+
+    prisms is a list of 4-element [wedge_angle, refractive_index, rotor_rate, phase] entries in
+    beam-traversal order (at least one). traj_rot entries are length-4 quaternions (qx,qy,qz,qw)
+    if rot_is_quaternion is True, otherwise length-3 roll/pitch/yaw Euler angles (radians).
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    n_prisms = len(prisms)
+    if n_prisms == 0:
+        raise ValueError("prisms must contain at least one Risley prism")
+    if any(len(p) != 4 for p in prisms):
+        raise ValueError("Each prism must be a 4-element [wedge_angle, refractive_index, rotor_rate, phase]")
+    if pulse_rate_hz <= 0.0:
+        raise ValueError("pulse_rate_hz must be greater than 0")
+
+    M = len(traj_t)
+    if M == 0:
+        raise ValueError("traj_t must contain at least one trajectory sample")
+    if len(traj_pos) != M or len(traj_rot) != M:
+        raise ValueError("traj_t, traj_pos, and traj_rot must all have the same length M")
+
+    rot_stride = 4 if rot_is_quaternion else 3
+    if any(len(p) != 3 for p in traj_pos):
+        raise ValueError("Each traj_pos entry must be a 3-element [x, y, z]")
+    if any(len(r) != rot_stride for r in traj_rot):
+        raise ValueError(
+            f"Each traj_rot entry must have {rot_stride} elements "
+            f"({'qx,qy,qz,qw' if rot_is_quaternion else 'roll,pitch,yaw'})"
+        )
+
+    prism_flat = [float(c) for p in prisms for c in p]
+    prism_array = (ctypes.c_double * (4 * n_prisms))(*prism_flat)
+    t_array = (ctypes.c_double * M)(*[float(t) for t in traj_t])
+    pos_flat = [float(c) for p in traj_pos for c in p]
+    pos_array = (ctypes.c_float * (3 * M))(*pos_flat)
+    rot_flat = [float(c) for r in traj_rot for c in r]
+    rot_array = (ctypes.c_float * (rot_stride * M))(*rot_flat)
+
+    lever = lever_arm if lever_arm is not None else [0.0, 0.0, 0.0]
+    boresight = boresight_rpy if boresight_rpy is not None else [0.0, 0.0, 0.0]
+    if len(lever) != 3 or len(boresight) != 3:
+        raise ValueError("lever_arm and boresight_rpy must each be 3-element arrays")
+    lever_array = (ctypes.c_float * 3)(*[float(c) for c in lever])
+    boresight_array = (ctypes.c_float * 3)(*[float(c) for c in boresight])
+
+    if column_format:
+        column_array = (ctypes.c_char_p * len(column_format))(
+            *[c.encode('utf-8') for c in column_format]
+        )
+        n_cols = len(column_format)
+    else:
+        column_array = None
+        n_cols = 0
+
+    return helios_lib.addLiDARScanRisley(
+        cloud_ptr, prism_array, n_prisms, float(refractive_index_air), float(pulse_rate_hz),
+        float(exit_diameter), float(beam_divergence),
+        float(range_noise_stddev), float(angle_noise_stddev),
+        column_array, n_cols,
+        t_array, pos_array, rot_array, M, 1 if rot_is_quaternion else 0,
+        lever_array, boresight_array, float(t0)
+    )
+
+
 def getLiDARScanMode(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> int:
-    """Get the acquisition mode (0 = static raster, 1 = moving raster, 2 = spinning)."""
+    """Get the acquisition mode (0 = static raster, 1 = moving raster, 2 = spinning, 3 = Risley prism)."""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
     return helios_lib.getLiDARScanMode(cloud_ptr, scanID)
@@ -1056,6 +1217,29 @@ def getLiDARScanRevolutions(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int)
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
     return helios_lib.getLiDARScanRevolutions(cloud_ptr, scanID)
+
+
+def getLiDARScanRisleyPrisms(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> List[List[float]]:
+    """Get the rotating wedge prisms of a Risley-prism scan.
+
+    Returns a list of [wedge_angle, refractive_index, rotor_rate, phase] entries in
+    beam-traversal order (empty for scans that are not Risley-prism)."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    count = helios_lib.getLiDARScanRisleyPrismCount(cloud_ptr, scanID)
+    if count == 0:
+        return []
+    out = (ctypes.c_double * (4 * count))()
+    helios_lib.getLiDARScanRisleyPrisms(cloud_ptr, scanID, out, count)
+    return [[float(out[4 * i]), float(out[4 * i + 1]), float(out[4 * i + 2]), float(out[4 * i + 3])]
+            for i in range(count)]
+
+
+def getLiDARScanRisleyRefractiveIndexAir(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> float:
+    """Get the refractive index of the medium surrounding the prisms of a Risley-prism scan (1.0 for non-Risley)."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARScanRisleyRefractiveIndexAir(cloud_ptr, scanID)
 
 
 def getLiDARScanReturnMode(cloud_ptr: ctypes.POINTER(ULiDARcloud), scanID: int) -> int:
@@ -1459,6 +1643,13 @@ def getLiDARHitDataColumn(cloud_ptr: ctypes.POINTER(ULiDARcloud), label: str, n:
     return list(out)
 
 
+def getLiDARHitDataColumnIndex(cloud_ptr: ctypes.POINTER(ULiDARcloud), label: str) -> int:
+    """Get the internal column slot index for a hit-data label (-1 if never set on any hit)."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARHitDataColumnIndex(cloud_ptr, label.encode('utf-8'))
+
+
 def getLiDARHitDataColumn_np(cloud_ptr: ctypes.POINTER(ULiDARcloud), label: str, n: int,
                              absent_value: float = -9999.0):
     """Bulk-export a named scalar column as an (n,) float64 numpy array via the columnar path
@@ -1794,6 +1985,53 @@ def setLiDARCancelFlag(cloud_ptr: ctypes.POINTER(ULiDARcloud), flag) -> None:
     helios_lib.setLiDARCancelFlag(cloud_ptr, ptr)
 
 
+def setLiDARSyntheticScanMemoryBudget(cloud_ptr: ctypes.POINTER(ULiDARcloud), bytes: int) -> None:
+    """Set the soft memory budget (bytes) for syntheticScan's transient trace buffers.
+
+    Bounds the live ray-tracing scratch buffers so large scans are chunked rather
+    than traced in one OOM-prone batch. `bytes` must be > 0; if never set, Helios
+    uses an automatic path-dependent default (4 GiB CPU / 8 GiB GPU)."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    helios_lib.setLiDARSyntheticScanMemoryBudget(cloud_ptr, ctypes.c_size_t(bytes))
+
+
+def getLiDARSyntheticScanMemoryBudget(cloud_ptr: ctypes.POINTER(ULiDARcloud)) -> int:
+    """Get the soft memory budget (bytes) for syntheticScan's transient buffers.
+
+    Returns the explicitly configured budget, or 0 if using the automatic
+    path-dependent default (4 GiB CPU / 8 GiB GPU)."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return int(helios_lib.getLiDARSyntheticScanMemoryBudget(cloud_ptr))
+
+
+def setLiDARSyntheticScanProgressPointer(cloud_ptr: ctypes.POINTER(ULiDARcloud), ptr) -> None:
+    """Register an external per-scan progress counter polled during syntheticScan.
+
+    `ptr` is a ctypes.c_int (pass by ref) into which syntheticScan writes the 0-based
+    index of the scan currently being ray-traced, set to getScanCount() when finished.
+    Pass None to clear."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    p = ctypes.byref(ptr) if ptr is not None else None
+    helios_lib.setLiDARSyntheticScanProgressPointer(cloud_ptr, p)
+
+
+def setLiDARProgressCallback(cloud_ptr: ctypes.POINTER(ULiDARcloud), callback) -> None:
+    """Register a progress callback fired with (progress_fraction, message) during syntheticScan.
+
+    `callback` must be a LiDARProgressCallback ctypes instance (or None to clear). The
+    caller is responsible for keeping the LiDARProgressCallback alive for as long as it is
+    registered (ctypes does not hold a reference)."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    # A bare None is NOT accepted for a CFUNCTYPE argtype (ctypes wants a CFunctionType instance);
+    # cast None to the callback type to pass a null function pointer that clears the callback.
+    cb = callback if callback is not None else ctypes.cast(None, LiDARProgressCallback)
+    helios_lib.setLiDARProgressCallback(cloud_ptr, cb)
+
+
 def syntheticLiDARScanDiscrete(cloud_ptr: ctypes.POINTER(ULiDARcloud),
                                context_ptr: ctypes.POINTER(UContext),
                                scan_grid_only: bool, record_misses: bool, append: bool) -> None:
@@ -2050,6 +2288,20 @@ def disableLiDARCDGPUAcceleration(cloud_ptr: ctypes.POINTER(ULiDARcloud)) -> Non
     if not _LIDAR_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("LiDAR functions not available")
     helios_lib.disableLiDARCDGPUAcceleration(cloud_ptr)
+
+
+def isLiDARGPUAvailable(cloud_ptr: ctypes.POINTER(ULiDARcloud)) -> bool:
+    """Return True if a CUDA-capable GPU is available for collision-detection acceleration."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return bool(helios_lib.isLiDARGPUAvailable(cloud_ptr))
+
+
+def isLiDARGPUAccelerationEnabled(cloud_ptr: ctypes.POINTER(ULiDARcloud)) -> bool:
+    """Return True if GPU acceleration is currently enabled for collision detection."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return bool(helios_lib.isLiDARGPUAccelerationEnabled(cloud_ptr))
 
 
 # Mock mode for development

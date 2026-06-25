@@ -119,21 +119,30 @@ def create_exception_from_error_code(error_code, error_message):
     return exception_class(f"Helios error {error_code}: {error_message}")
 
 
-def check_helios_error(get_error_func, get_message_func):
+def check_helios_error(get_error_func, get_message_func, clear_error_func=None):
     """
     Check for Helios errors and raise appropriate Python exceptions.
-    
+
     This function is designed to be used as an errcheck callback for ctypes
     function calls.
-    
+
     Args:
         get_error_func: Function to get the last error code
         get_message_func: Function to get the last error message
-        
+        clear_error_func: Optional function to reset the native error state once
+            it has been read. The native error code lives in thread-local storage
+            that persists across calls, so a handled error must be cleared or it
+            will resurface on the next native call. This is harmless under pytest's
+            forked isolation (each test gets fresh state) but causes spurious
+            re-raises when tests share one process — e.g. on Windows, where
+            pytest-forked is unavailable.
+
     Raises:
         HeliosError: If an error is detected
     """
     error_code = get_error_func()
     if error_code != 0:  # 0 is PYHELIOS_SUCCESS
         error_message = get_message_func().decode('utf-8') if get_message_func() else "Unknown error"
+        if clear_error_func is not None:
+            clear_error_func()
         raise create_exception_from_error_code(error_code, error_message)

@@ -78,9 +78,15 @@ class TestNativeBuild:
         if hasattr(loader, '_loader_instance'):
             loader._loader_instance = None
         
-        # Clear any cached modules (but preserve validation modules to avoid breaking pytest exception handling)
-        modules_to_clear = [m for m in sys.modules.keys() 
-                           if m.startswith('pyhelios') and not m.startswith('pyhelios.validation')]
+        # Clear any cached modules, but preserve modules whose class identities must stay
+        # stable across the reload. pyhelios.exceptions defines the HeliosError hierarchy;
+        # reimporting it creates new class objects, so a later pytest.raises(HeliosError)
+        # would no longer match exceptions raised by wrappers still bound to the old classes.
+        # That breaks exception tests in any process that shares state with this one, e.g.
+        # Windows, where pytest-forked is unavailable and sys.modules mutations leak.
+        _preserved_prefixes = ('pyhelios.validation', 'pyhelios.exceptions')
+        modules_to_clear = [m for m in sys.modules.keys()
+                           if m.startswith('pyhelios') and not m.startswith(_preserved_prefixes)]
         for mod in modules_to_clear:
             if mod in sys.modules:
                 del sys.modules[mod]

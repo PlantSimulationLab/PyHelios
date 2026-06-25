@@ -4463,8 +4463,17 @@ class TestTileSubdivision:
     def test_set_subdivision_by_area_ratio(self, basic_context):
         objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
                                             rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
-        # Just verify the call completes; subdivision count depends on tile size and ratio.
-        basic_context.setTileObjectSubdivisionByAreaRatio(objID, 0.5)
+        # area_ratio is the ratio of the whole tile area to a sub-patch area (>= 1); 4 -> ~2x2.
+        basic_context.setTileObjectSubdivisionByAreaRatio(objID, 4.0)
+        assert basic_context.getObjectPrimitiveCount(objID) >= 4
+
+    def test_set_subdivision_by_area_ratio_rejects_below_one(self, basic_context):
+        # helios-core 1.3.77 requires area_ratio >= 1 (a sub-patch cannot exceed the tile);
+        # PyHelios fails fast before the FFI call.
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                            rotation=SphericalCoord(1, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="area_ratio must be >= 1"):
+            basic_context.setTileObjectSubdivisionByAreaRatio(objID, 0.5)
 
 
 # =============================================================================

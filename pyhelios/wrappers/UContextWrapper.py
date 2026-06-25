@@ -19,7 +19,7 @@ def _check_error(result, func, args):
     Errcheck callback that automatically checks for Helios errors after each function call.
     This ensures that C++ exceptions are properly converted to Python exceptions.
     """
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Function prototypes
@@ -3505,7 +3505,7 @@ except AttributeError:
 # Error checking callback for time/date functions
 def _check_error_time_date(result, func, args):
     """Automatic error checking for time/date functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Set up automatic error checking for time/date functions
@@ -3637,7 +3637,7 @@ except AttributeError:
 
 def _check_error_timeseries(result, func, args):
     """Automatic error checking for timeseries functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 if _TIMESERIES_FUNCTIONS_AVAILABLE:

@@ -305,6 +305,63 @@ class TestPlantArchitectureNative:
             assert isinstance(plant_id, int)
             assert plant_id >= 0  # Plant IDs can be 0 or positive
 
+    def test_optional_output_object_data_single(self, plantarch):
+        """Enabling an optional object data label writes it onto the Context objects"""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+
+        # Enable an optional object data field before building
+        plantarch.optionalOutputObjectData("age")
+
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 30.0)
+        object_ids = plantarch.getAllPlantObjectIDs(plant_id)
+        assert len(object_ids) > 0
+
+        # At least one of the plant's objects should now carry "age" object data
+        assert any(plantarch.context.doesObjectDataExist(obj_id, "age")
+                   for obj_id in object_ids)
+
+    def test_optional_output_object_data_list(self, plantarch):
+        """A list of labels can be enabled in one call"""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+
+        plantarch.optionalOutputObjectData(["age", "rank"])
+
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 30.0)
+        object_ids = plantarch.getAllPlantObjectIDs(plant_id)
+        assert len(object_ids) > 0
+
+        for label in ("age", "rank"):
+            assert any(plantarch.context.doesObjectDataExist(obj_id, label)
+                       for obj_id in object_ids)
+
+    def test_optional_output_object_data_all(self, plantarch):
+        """The special 'all' label is accepted without error"""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+        # Should not raise
+        plantarch.optionalOutputObjectData("all")
+
+    def test_optional_output_object_data_invalid_label(self, plantarch):
+        """An invalid object data label raises a PlantArchitectureError"""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+        with pytest.raises(PlantArchitectureError):
+            plantarch.optionalOutputObjectData("not_a_real_label")
+
 
 @pytest.mark.cross_platform
 class TestPlantArchitectureValidation:
@@ -321,6 +378,20 @@ class TestPlantArchitectureValidation:
         assert validate_vec2 is not None
         assert validate_int2 is not None
         assert validate_positive_value is not None
+
+    def test_optional_output_object_data_empty_label(self):
+        """Empty object data label is rejected before reaching native code"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture parameter functions not available")
+        with pytest.raises(ValueError, match="cannot be empty"):
+            plantarch_wrapper.optionalOutputObjectData(None, "")
+
+    def test_optional_output_object_data_wrong_type(self):
+        """Non-string object data label is rejected with a clear error"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture parameter functions not available")
+        with pytest.raises(ValueError, match="must be a str"):
+            plantarch_wrapper.optionalOutputObjectData(None, 123)
 
 
 @pytest.mark.cross_platform
@@ -2078,15 +2149,15 @@ class TestRandomParameterHelpers:
         from pyhelios import RandomParameter
         
         param = RandomParameter.constant(45.0)
-        assert param == {'distribution': 'constant', 'parameters': [45.0]}
+        assert param.to_dict() == {'distribution': 'constant', 'parameters': [45.0]}
 
     def test_random_parameter_uniform(self):
         """Test RandomParameter.uniform()"""
         from pyhelios import RandomParameter
         
         param = RandomParameter.uniform(40.0, 50.0)
-        assert param['distribution'] == 'uniform'
-        assert param['parameters'] == [40.0, 50.0]
+        assert param.distribution == 'uniform'
+        assert param.parameters == [40.0, 50.0]
 
     def test_random_parameter_uniform_validation(self):
         """Test uniform distribution validation"""
@@ -2100,8 +2171,8 @@ class TestRandomParameterHelpers:
         from pyhelios import RandomParameter
         
         param = RandomParameter.normal(45.0, 5.0)
-        assert param['distribution'] == 'normal'
-        assert param['parameters'] == [45.0, 5.0]
+        assert param.distribution == 'normal'
+        assert param.parameters == [45.0, 5.0]
 
     def test_random_parameter_normal_validation(self):
         """Test normal distribution validation"""
@@ -2115,8 +2186,8 @@ class TestRandomParameterHelpers:
         from pyhelios import RandomParameter
         
         param = RandomParameter.weibull(2.0, 50.0)
-        assert param['distribution'] == 'weibull'
-        assert param['parameters'] == [2.0, 50.0]
+        assert param.distribution == 'weibull'
+        assert param.parameters == [2.0, 50.0]
 
     def test_random_parameter_weibull_validation(self):
         """Test Weibull distribution validation"""
@@ -2133,15 +2204,15 @@ class TestRandomParameterHelpers:
         from pyhelios import RandomParameterInt
         
         param = RandomParameterInt.constant(15)
-        assert param == {'distribution': 'constant', 'parameters': [15.0]}
+        assert param.to_dict() == {'distribution': 'constant', 'parameters': [15.0]}
 
     def test_random_parameter_int_uniform(self):
         """Test RandomParameterInt.uniform()"""
         from pyhelios import RandomParameterInt
         
         param = RandomParameterInt.uniform(10, 20)
-        assert param['distribution'] == 'uniform'
-        assert param['parameters'] == [10.0, 20.0]
+        assert param.distribution == 'uniform'
+        assert param.to_dict()['parameters'] == [10.0, 20.0]
 
     def test_random_parameter_int_uniform_validation(self):
         """Test integer uniform validation"""
@@ -2155,8 +2226,8 @@ class TestRandomParameterHelpers:
         from pyhelios import RandomParameterInt
         
         param = RandomParameterInt.discrete([1, 2, 3, 5])
-        assert param['distribution'] == 'discretevalues'
-        assert param['parameters'] == [1.0, 2.0, 3.0, 5.0]
+        assert param.distribution == 'discretevalues'
+        assert param.to_dict()['parameters'] == [1.0, 2.0, 3.0, 5.0]
 
     def test_random_parameter_int_discrete_validation(self):
         """Test discrete distribution validation"""

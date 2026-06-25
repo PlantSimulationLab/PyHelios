@@ -1782,13 +1782,20 @@ class TestLiDARMultiReturn:
                 lidar.disableMessages()
 
                 # Match C++ test parameters exactly
-                lidar.addScan(
+                scan_id = lidar.addScan(
                     origin=vec3(-5.0, 0.0, 0.5),
                     Ntheta=10000, theta_range=(0, math.pi),
                     Nphi=14000, phi_range=(0, 2 * math.pi),
                     exit_diameter=0.0,       # Point source (C++ test uses 0.0)
                     beam_divergence=0.0004   # Small divergence for multi-return
                 )
+
+                # helios-core 1.3.77 changed the default detectionThreshold from 0 to 0.05 (a ~5%
+                # noise floor that pairs with ~40 rays/pulse). This equal-weighting test reports
+                # every return at 100 rays/pulse, where the weakest single-sub-ray return is 0.01 <
+                # 0.05 and would be suppressed, skewing the LAD reconstruction. Disable suppression to
+                # reproduce the "report every detected return" behavior this test validates.
+                lidar.setScanDetectionThreshold(scan_id, 0.0)
 
                 lidar.addGrid(
                     center=vec3(0, 0, 0.5),
@@ -2752,3 +2759,305 @@ class TestLiDARSpinningReturnModeFunctionality:
                            lidar.getScanSingleReturnSelection):
                 with pytest.raises((HeliosError, ValueError)):
                     getter(0)
+
+
+class TestLiDARRisleyReturnInterface:
+    """Cross-platform interface tests for the helios-core 1.3.77 LiDAR additions:
+    Risley-prism rosette scans, the RisleyPrism type, GPU-availability queries, the per-scan
+    progress pointer/callback, and the prev-merge gap accessors (column index, memory-budget
+    getter). These run in mock mode (Python-level checks)."""
+
+    @pytest.mark.cross_platform
+    def test_risley_enum_values_exist(self):
+        """ScanPattern.RISLEY_PRISM (2) and ScanMode.RISLEY_PRISM (3) are present."""
+        from pyhelios import ScanPattern, ScanMode
+
+        assert int(ScanPattern.RISLEY_PRISM) == 2
+        assert int(ScanMode.RISLEY_PRISM) == 3
+
+    @pytest.mark.cross_platform
+    def test_risleyprism_type(self):
+        """RisleyPrism stores its four parameters and round-trips through to_list()."""
+        from pyhelios import RisleyPrism
+
+        p = RisleyPrism(wedge_angle=0.3, refractive_index=1.51, rotor_rate=420.0, phase=0.1)
+        assert p.wedge_angle == pytest.approx(0.3)
+        assert p.refractive_index == pytest.approx(1.51)
+        assert p.rotor_rate == pytest.approx(420.0)
+        assert p.phase == pytest.approx(0.1)
+        assert p.to_list() == [0.3, 1.51, 420.0, 0.1]
+        # phase defaults to 0.0
+        assert RisleyPrism(0.3, 1.51, -420.0).phase == 0.0
+        assert RisleyPrism(0.3, 1.51, 420.0, 0.1) == RisleyPrism(0.3, 1.51, 420.0, 0.1)
+
+    @pytest.mark.cross_platform
+    def test_new_methods_exist(self):
+        """The 1.3.77 high-level methods are present on LiDARCloud."""
+        from pyhelios import LiDARCloud
+
+        for name in ('addScanRisley', 'getScanRisleyPrisms', 'getScanRisleyRefractiveIndexAir',
+                     'isGPUAvailable', 'isGPUAccelerationEnabled',
+                     'setSyntheticScanProgressPointer', 'setProgressCallback',
+                     'getHitDataColumnIndex', 'getSyntheticScanMemoryBudget'):
+            assert hasattr(LiDARCloud, name), name
+
+    @pytest.mark.cross_platform
+    def test_addscanrisley_empty_prisms_validation(self):
+        """addScanRisley rejects an empty prism list before any FFI call."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanRisley(
+                prisms=[], refractive_index_air=1.0, pulse_rate_hz=100000.0,
+                traj_t=[0.0, 1.0], traj_pos=[[0, 0, 1], [0, 0, 1]],
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+            )
+
+    @pytest.mark.cross_platform
+    def test_addscanrisley_prism_shape_validation(self):
+        """addScanRisley rejects a prism that is not a 4-element entry / RisleyPrism."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanRisley(
+                prisms=[[0.3, 1.51, 420.0]],   # length 3, not 4
+                refractive_index_air=1.0, pulse_rate_hz=100000.0,
+                traj_t=[0.0, 1.0], traj_pos=[[0, 0, 1], [0, 0, 1]],
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+            )
+
+    @pytest.mark.cross_platform
+    def test_addscanrisley_pulse_rate_validation(self):
+        """addScanRisley requires a positive pulse_rate_hz."""
+        from pyhelios import LiDARCloud, RisleyPrism
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanRisley(
+                prisms=[RisleyPrism(0.3, 1.51, 420.0), RisleyPrism(0.3, 1.51, -380.0)],
+                refractive_index_air=1.0, pulse_rate_hz=0.0,
+                traj_t=[0.0, 1.0], traj_pos=[[0, 0, 1], [0, 0, 1]],
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+            )
+
+    @pytest.mark.cross_platform
+    def test_addscanrisley_trajectory_length_validation(self):
+        """traj_pos/traj_rot must match traj_t length, caught before any FFI call."""
+        from pyhelios import LiDARCloud, RisleyPrism
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanRisley(
+                prisms=[RisleyPrism(0.3, 1.51, 420.0)],
+                refractive_index_air=1.0, pulse_rate_hz=100000.0,
+                traj_t=[0.0, 1.0], traj_pos=[[0, 0, 1]],   # length 1 != 2
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+            )
+
+    @pytest.mark.cross_platform
+    def test_setprogresscallback_type_validation(self):
+        """setProgressCallback rejects a non-callable, non-None argument."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        lidar._progress_callback_ref = None
+        with pytest.raises(TypeError):
+            lidar.setProgressCallback(42)
+
+    @pytest.mark.cross_platform
+    def test_addscanrisley_refractive_index_air_validation(self):
+        """addScanRisley requires a positive refractive_index_air, caught before any FFI call."""
+        from pyhelios import LiDARCloud, RisleyPrism
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(ValueError):
+            lidar.addScanRisley(
+                prisms=[RisleyPrism(0.3, 1.51, 420.0)],
+                refractive_index_air=0.0, pulse_rate_hz=100000.0,
+                traj_t=[0.0, 1.0], traj_pos=[[0, 0, 1], [0, 0, 1]],
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+            )
+
+    @pytest.mark.cross_platform
+    def test_gethitdatacolumnindex_type_validation(self):
+        """getHitDataColumnIndex rejects a non-str label with a clear TypeError."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(TypeError):
+            lidar.getHitDataColumnIndex(123)
+
+    @pytest.mark.cross_platform
+    def test_setsyntheticscanprogresspointer_type_validation(self):
+        """setSyntheticScanProgressPointer rejects a non-c_int pointer with a clear TypeError."""
+        from pyhelios import LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+        with pytest.raises(TypeError):
+            lidar.setSyntheticScanProgressPointer(0)   # plain int, not ctypes.c_int
+
+
+@pytest.mark.native_only
+class TestLiDARRisleyReturnFunctionality:
+    """Native functional tests for the helios-core 1.3.77 LiDAR additions."""
+
+    @staticmethod
+    def _two_prisms():
+        from pyhelios import RisleyPrism
+        # Two counter-rotating wedge prisms, the canonical Livox configuration.
+        return [RisleyPrism(wedge_angle=math.radians(15), refractive_index=1.51,
+                            rotor_rate=420.0, phase=0.0),
+                RisleyPrism(wedge_angle=math.radians(15), refractive_index=1.51,
+                            rotor_rate=-380.0, phase=0.0)]
+
+    def test_risley_scan_reports_risley_mode(self):
+        """addScanRisley() reports the RISLEY_PRISM pattern and acquisition mode and round-trips prisms."""
+        from pyhelios import LiDARCloud, RisleyPrism
+        from pyhelios.LiDARCloud import ScanPattern, ScanMode
+
+        prisms = self._two_prisms()
+        with LiDARCloud() as lidar:
+            lidar.disableMessages()
+            scan_id = lidar.addScanRisley(
+                prisms=prisms, refractive_index_air=1.0003, pulse_rate_hz=100000.0,
+                traj_t=[0.0, 0.1],
+                traj_pos=[[0, 0, 1.5], [0, 0, 1.5]],   # stationary tripod capture
+                traj_rot=[[0, 0, 0, 1], [0, 0, 0, 1]],
+            )
+            assert lidar.getScanPattern(scan_id) == ScanPattern.RISLEY_PRISM
+            assert lidar.getScanMode(scan_id) == ScanMode.RISLEY_PRISM
+            # Stored as a single-row (Ntheta=1) table.
+            assert lidar.getScanSizeTheta(scan_id) == 1
+            assert lidar.getScanRisleyRefractiveIndexAir(scan_id) == pytest.approx(1.0003, abs=1e-6)
+            returned = lidar.getScanRisleyPrisms(scan_id)
+            assert len(returned) == len(prisms)
+            for got, want in zip(returned, prisms):
+                assert isinstance(got, RisleyPrism)
+                assert got.wedge_angle == pytest.approx(want.wedge_angle, abs=1e-6)
+                assert got.refractive_index == pytest.approx(want.refractive_index, abs=1e-6)
+                assert got.rotor_rate == pytest.approx(want.rotor_rate, abs=1e-4)
+                assert got.phase == pytest.approx(want.phase, abs=1e-6)
+
+    def test_risley_scan_euler_overload(self):
+        """addScanRisley(rot_is_quaternion=False) accepts roll/pitch/yaw trajectory orientations."""
+        from pyhelios import LiDARCloud
+        from pyhelios.LiDARCloud import ScanMode
+
+        with LiDARCloud() as lidar:
+            lidar.disableMessages()
+            scan_id = lidar.addScanRisley(
+                prisms=self._two_prisms(), refractive_index_air=1.0, pulse_rate_hz=100000.0,
+                traj_t=[0.0, 0.1],
+                traj_pos=[[0, 0, 1.5], [0, 0, 1.5]],
+                traj_rot=[[0, 0, 0], [0, 0, 0]],   # roll/pitch/yaw
+                rot_is_quaternion=False,
+            )
+            assert lidar.getScanMode(scan_id) == ScanMode.RISLEY_PRISM
+
+    def test_non_risley_scan_has_no_prisms(self):
+        """A raster scan reports an empty prism stack and a 1.0 air index."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            scan_id = lidar.addScan(
+                origin=vec3(0, 0, 2),
+                Ntheta=8, theta_range=(0.2, 1.4), Nphi=8, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+            )
+            assert lidar.getScanRisleyPrisms(scan_id) == []
+            assert lidar.getScanRisleyRefractiveIndexAir(scan_id) == pytest.approx(1.0, abs=1e-6)
+
+    def test_memory_budget_roundtrip(self):
+        """setSyntheticScanMemoryBudget()/getSyntheticScanMemoryBudget() round-trip; default is 0 (automatic)."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            # Unset -> automatic, reported as 0.
+            assert lidar.getSyntheticScanMemoryBudget() == 0
+            lidar.setSyntheticScanMemoryBudget(2 * 1024 * 1024 * 1024)
+            assert lidar.getSyntheticScanMemoryBudget() == 2 * 1024 * 1024 * 1024
+
+    def test_hit_data_column_index(self):
+        """getHitDataColumnIndex() returns -1 for an unknown label and a valid slot for a present one."""
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 2),
+                    Ntheta=12, theta_range=(0, 1.0), Nphi=12, phi_range=(0, 6.28),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                    column_format=["x", "y", "z", "timestamp"],
+                )
+                lidar.syntheticScan(context, record_misses=True)
+                assert lidar.getHitDataColumnIndex("definitely_not_a_label") == -1
+                assert lidar.getHitDataColumnIndex("timestamp") >= 0
+
+    def test_gpu_availability_queries(self):
+        """isGPUAvailable()/isGPUAccelerationEnabled() are callable and return booleans."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            assert isinstance(lidar.isGPUAvailable(), bool)
+            assert isinstance(lidar.isGPUAccelerationEnabled(), bool)
+
+    def test_synthetic_scan_progress_pointer(self):
+        """setSyntheticScanProgressPointer() ends at getScanCount() after the batch finishes."""
+        import ctypes
+        from pyhelios import Context, LiDARCloud
+
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 2),
+                    Ntheta=10, theta_range=(0, 1.0), Nphi=10, phi_range=(0, 6.28),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                )
+                progress = ctypes.c_int(-1)
+                lidar.setSyntheticScanProgressPointer(progress)
+                try:
+                    lidar.syntheticScan(context, record_misses=True)
+                    # Set to getScanCount() when the batch finishes.
+                    assert progress.value == lidar.getScanCount()
+                finally:
+                    lidar.setSyntheticScanProgressPointer(None)
+
+    def test_progress_callback_invoked(self):
+        """setProgressCallback() receives (fraction, message) during a waveform syntheticScan."""
+        from pyhelios import Context, LiDARCloud
+
+        events = []
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 2),
+                    Ntheta=16, theta_range=(0, 1.0), Nphi=16, phi_range=(0, 6.28),
+                    exit_diameter=0.0, beam_divergence=0.0,
+                )
+                lidar.setProgressCallback(lambda frac, msg: events.append((frac, msg)))
+                try:
+                    lidar.syntheticScan(context, rays_per_pulse=8,
+                                        pulse_distance_threshold=0.02, record_misses=True)
+                finally:
+                    lidar.setProgressCallback(None)
+                # The callback fired with in-range fractions and string messages.
+                assert len(events) > 0
+                for frac, msg in events:
+                    assert 0.0 <= frac <= 1.0
+                    assert isinstance(msg, str)

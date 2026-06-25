@@ -354,7 +354,73 @@ class HeliosBuilder:
         os.environ['CIBUILDWHEEL'] = '1'
         
         print("Manylinux environment configured for CMake")
-    
+
+    def apply_helios_core_patches(self) -> None:
+        """Apply in-place source patches to the pinned helios-core submodule.
+
+        These patch known upstream issues that PyHelios cannot otherwise work around
+        without shipping a helios-core commit. Each patch is idempotent and self-
+        detecting: if the target text is absent (already fixed upstream or refactored),
+        the patch is a no-op. When a future helios-core version incorporates the fix,
+        these patches silently do nothing and can be removed.
+        """
+        self._patch_lidar_openmp_guards()
+
+    def _patch_lidar_openmp_guards(self) -> None:
+        """Guard unguarded OpenMP runtime calls in LiDAR.cpp behind ``#ifdef _OPENMP``.
+
+        The synthetic-scan label-merge block calls ``omp_get_max_threads()`` and
+        ``omp_get_thread_num()`` directly. ``<omp.h>`` is only included when
+        ``_OPENMP`` is defined, so on compilers without OpenMP (Apple Clang on macOS)
+        these are undeclared identifiers and the build fails. Guard them so the code
+        degrades to single-threaded behavior when OpenMP is unavailable.
+
+        Tracked against helios-core commit 559ffe4af. Remove once upstream guards
+        these calls (this method will already be a no-op at that point).
+        """
+        lidar_cpp = self.helios_root / 'plugins' / 'lidar' / 'src' / 'LiDAR.cpp'
+        if not lidar_cpp.exists():
+            # lidar plugin not present in this checkout; nothing to patch.
+            return
+
+        original = lidar_cpp.read_text()
+
+        # Each entry: (unguarded source, guarded replacement). The guarded form is
+        # checked for first so re-running the patch is a no-op.
+        replacements = [
+            (
+                "                std::vector<std::set<std::string>> thread_label_sets(static_cast<size_t>(omp_get_max_threads()));",
+                "#ifdef _OPENMP\n"
+                "                std::vector<std::set<std::string>> thread_label_sets(static_cast<size_t>(omp_get_max_threads()));\n"
+                "#else\n"
+                "                std::vector<std::set<std::string>> thread_label_sets(1);\n"
+                "#endif",
+            ),
+            (
+                "                    std::set<std::string> &my_labels = thread_label_sets[static_cast<size_t>(omp_get_thread_num())];",
+                "#ifdef _OPENMP\n"
+                "                    std::set<std::string> &my_labels = thread_label_sets[static_cast<size_t>(omp_get_thread_num())];\n"
+                "#else\n"
+                "                    std::set<std::string> &my_labels = thread_label_sets[0];\n"
+                "#endif",
+            ),
+        ]
+
+        patched = original
+        applied = 0
+        for unguarded, guarded in replacements:
+            if guarded in patched:
+                continue  # already patched
+            if unguarded in patched:
+                patched = patched.replace(unguarded, guarded, 1)
+                applied += 1
+
+        if patched != original:
+            lidar_cpp.write_text(patched)
+            print(f"[patch] Guarded {applied} unguarded OpenMP call(s) in {lidar_cpp.name}")
+        else:
+            print("[patch] LiDAR.cpp OpenMP guards already present or not needed (no-op)")
+
     def _configure_for_architecture(self):
         """Configure build settings based on detected architecture."""
         print(f"Detected architecture: {self.architecture}")
@@ -1551,8 +1617,12 @@ class HeliosBuilder:
         
         self.check_prerequisites()
         self.setup_build_directory()
-        
-        # Add plugin configuration to CMake args  
+
+        # Apply in-place patches to the pinned helios-core submodule for issues
+        # PyHelios cannot work around without shipping a helios-core commit.
+        self.apply_helios_core_patches()
+
+        # Add plugin configuration to CMake args
         if cmake_args is None:
             cmake_args = []
         # Use absolute path for plugin config file to avoid path resolution issues

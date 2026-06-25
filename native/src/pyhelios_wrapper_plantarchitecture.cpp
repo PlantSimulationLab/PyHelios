@@ -1589,6 +1589,26 @@ extern "C" {
         }
     }
 
+    // Enable an optional output object data field to be written to the Context
+    PYHELIOS_API void plantArchitectureOptionalOutputObjectData(PlantArchitecture* plantarch, const char* object_data_label) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+            if (!object_data_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object data label is null");
+                return;
+            }
+            plantarch->optionalOutputObjectData(std::string(object_data_label));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::optionalOutputObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::optionalOutputObjectData): Unknown error.");
+        }
+    }
+
     // Define shoot type from JSON
     PYHELIOS_API int defineShootTypeFromJSON(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, const char* json_params) {
         try {

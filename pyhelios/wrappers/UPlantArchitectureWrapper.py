@@ -414,6 +414,13 @@ try:
     ]
     helios_lib.setPlantNitrogenParametersFromJSON.restype = ctypes.c_int
 
+    # Optional output object data
+    helios_lib.plantArchitectureOptionalOutputObjectData.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_char_p   # object_data_label
+    ]
+    helios_lib.plantArchitectureOptionalOutputObjectData.restype = None
+
     _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE = True
 
 except (AttributeError, OSError):
@@ -422,7 +429,7 @@ except (AttributeError, OSError):
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all plugin functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Set up automatic error checking
@@ -476,6 +483,7 @@ if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
     helios_lib.setPlantCarbohydrateParametersFromJSON.errcheck = _check_error
     helios_lib.getDefaultNitrogenParametersJSON.errcheck = _check_error
     helios_lib.setPlantNitrogenParametersFromJSON.errcheck = _check_error
+    helios_lib.plantArchitectureOptionalOutputObjectData.errcheck = _check_error
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -1395,6 +1403,19 @@ def getCurrentShootParameters(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
     import json
     return json.loads(json_str.decode('utf-8'))
 
+def _json_default(obj):
+    """JSON encoder hook for RandomParameter objects embedded in a parameter dict.
+
+    The raw-dict workflow lets users drop RandomParameterFloat/RandomParameterInt
+    objects directly into a nested parameter dict; convert any such object to its
+    dict form. Anything else is unserializable and raised, preserving fail-fast.
+    """
+    to_dict = getattr(obj, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def defineShootType(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), context_ptr: ctypes.POINTER(UContext), shoot_type_label: str, parameters: dict) -> None:
     """Define custom shoot type from parameter dict"""
     if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
@@ -1411,7 +1432,7 @@ def defineShootType(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), context_p
 
     # Convert dict to JSON
     import json
-    json_str = json.dumps(parameters)
+    json_str = json.dumps(parameters, default=_json_default)
     json_bytes = json_str.encode('utf-8')
     label_bytes = shoot_type_label.encode('utf-8')
 
@@ -1536,3 +1557,18 @@ def setPlantNitrogenParameters(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)
     import json
     json_bytes = json.dumps(parameters).encode('utf-8')
     helios_lib.setPlantNitrogenParametersFromJSON(plantarch_ptr, plant_id, json_bytes)
+
+def optionalOutputObjectData(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), object_data_label: str) -> None:
+    """Enable an optional output object data field to be written to the Context."""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "optionalOutputObjectData not available. Rebuild with latest plantarchitecture support:\n"
+            "  build_scripts/build_helios --plugins plantarchitecture"
+        )
+
+    if not isinstance(object_data_label, str):
+        raise ValueError(f"Object data label must be a str, got {type(object_data_label).__name__}")
+    if not object_data_label:
+        raise ValueError("Object data label cannot be empty")
+
+    helios_lib.plantArchitectureOptionalOutputObjectData(plantarch_ptr, object_data_label.encode('utf-8'))

@@ -22,7 +22,7 @@ from .UContextWrapper import UContext
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all photosynthesis functions"""
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # Try to set up PhotosynthesisModel function prototypes
@@ -566,7 +566,7 @@ def setFarquharVcmax(photosynthesis_model: ctypes.POINTER(UPhotosynthesisModel),
     helios_lib.setFarquharVcmax(photosynthesis_model, vcmax_at_25c, dha_val, topt_val, dhd_val, uuid_array, uuid_count)
     
     # Check for errors after the C++ call
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
 
 
 def setFarquharJmax(photosynthesis_model: ctypes.POINTER(UPhotosynthesisModel), jmax_at_25c: float, 

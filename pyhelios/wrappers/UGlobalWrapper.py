@@ -10,7 +10,7 @@ def _check_error(result, func, args):
     Errcheck callback that automatically checks for Helios errors after each global function call.
     This ensures that C++ exceptions are properly converted to Python exceptions.
     """
-    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage)
+    check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
     return result
 
 # TODO: Implement global functions for build plugin root directory management

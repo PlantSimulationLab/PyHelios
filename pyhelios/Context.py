@@ -5913,10 +5913,17 @@ class Context:
     def setTileObjectSubdivisionByAreaRatio(self, objIDs_or_objID, area_ratio: float) -> None:
         """Set tile object subdivision dynamically based on a target area ratio.
 
-        Each tile is subdivided so that its sub-tile area is approximately
-        ``area_ratio`` times the tile's full area.
+        ``area_ratio`` is the approximate ratio between the whole tile's area and an
+        individual sub-patch's area, so each tile is subdivided into roughly
+        ``area_ratio`` sub-patches. It must be >= 1 (a sub-patch cannot be larger than
+        the tile). The tile's position, size, and orientation are preserved.
         """
         self._check_context_available()
+        if area_ratio < 1:
+            raise ValueError(
+                f"area_ratio must be >= 1 (it is the ratio of the whole tile area to an "
+                f"individual sub-patch area), got {area_ratio}"
+            )
         if isinstance(objIDs_or_objID, (list, tuple)):
             ids = list(objIDs_or_objID)
         else:

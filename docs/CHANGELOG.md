@@ -1,5 +1,24 @@
 # Changelog
 
+# [v0.1.25] 2026-06-25
+
+- Updated helios-core to v1.3.77
+
+## Context
+- `setTileObjectSubdivisionByAreaRatio()` now validates that `area_ratio >= 1` (raising `ValueError` otherwise) and its documentation is corrected: `area_ratio` is the ratio of the whole tile's area to an individual sub-patch's area (i.e. the approximate sub-patch count), not the sub-patch-to-tile fraction.
+
+## LiDAR
+- Added rotating-Risley-prism (Livox-style rosette) scans mirroring helios-core 1.3.77: `addScanRisley()` registers a non-repetitive rosette scan from a stack of rotating wedge prisms (the new `RisleyPrism` type — `wedge_angle`, `refractive_index`, `rotor_rate`, `phase`), a refractive index of air, a pulse repetition rate, and a 6-DOF trajectory (quaternion or Euler). The per-pulse beam direction is computed by full Snell's-law refraction through the prisms; the scan is stored as a single-row table with `ScanMode.RISLEY_PRISM` / `ScanPattern.RISLEY_PRISM` (new enum values). Query it with `getScanRisleyPrisms()` and `getScanRisleyRefractiveIndexAir()`.
+- Added GPU-capability introspection: `isGPUAvailable()` (compiled with CUDA, a device present, and `HELIOS_NO_GPU` unset) and `isGPUAccelerationEnabled()` (whether GPU acceleration is currently toggled on).
+- Added per-scan progress reporting for `syntheticScan()`: `setSyntheticScanProgressPointer(ctypes.c_int)` writes the 0-based index of the scan currently being ray-traced (set to `getScanCount()` when finished), and `setProgressCallback(fn)` invokes a Python callback with `(progress_fraction, message)` during the scan.
+- Added `setSyntheticScanMemoryBudget(bytes)` to cap the transient ray-tracing scratch buffers `syntheticScan()` allocates when fanning each pulse into sub-rays, so a high-resolution scan is traced in chunks sized to the budget instead of one OOM-prone batch, plus `getSyntheticScanMemoryBudget()` to read it back (0 = automatic, path-dependent: 8 GiB on a GPU build, 4 GiB otherwise). The budget bounds only the live trace buffers, not the output cloud.
+- Added `getHitDataColumnIndex(label)` to resolve a hit-data label to its internal column slot (−1 if never set), for repeated bulk access without re-resolving the label by string.
+- The synthetic-scan return detection threshold now defaults to a realistic ~5% noise floor (helios-core 1.3.77), pairing with the recommended ~40 rays/pulse to suppress single-sub-ray phantom returns; set it per scan with `setScanDetectionThreshold()` (0 disables suppression, reproducing the previous "report every return" behavior).
+
+## Plant Architecture
+- Added `optionalOutputObjectData(labels)` to enable additional per-object output fields to be written onto the Context's compound objects after building (e.g. `age`, `rank`, `plantID`, `plant_height`, `phenology_stage`, `leafID`, `fruitID`, `carbohydrate_concentration`, or `"all"`); accepts a single label or a list.
+- Consolidated the random-parameter helpers onto the typed model: `RandomParameter` (now an alias for `RandomParameterFloat`) and `RandomParameterInt` are the typed classes from `pyhelios.plant_architecture_params` and now return `RandomParameterFloat`/`RandomParameterInt` objects (round-trippable via `to_dict()`) rather than the previous plain dicts, with their factory methods (`constant`/`uniform`/`normal`/`weibull` and `constant`/`uniform`/`discrete`) now validating their arguments. `defineShootType()` accepts these objects embedded directly in a raw parameter dict.
+
 # [v0.1.24] 2026-06-21
 
 - Updated helios-core to v1.3.76

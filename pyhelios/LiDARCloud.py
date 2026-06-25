@@ -36,6 +36,9 @@ class ScanPattern(IntEnum):
     """
     RASTER = 0
     SPINNING_MULTIBEAM = 1
+    #: Rotating-Risley-prism rosette (Livox-style), produced by :meth:`LiDARCloud.addScanRisley`.
+    #: Stored as a single-row (Ntheta=1) table; the per-pulse direction comes from the prism optics.
+    RISLEY_PRISM = 2
 
 
 class ScanMode(IntEnum):
@@ -49,6 +52,48 @@ class ScanMode(IntEnum):
     STATIC_RASTER = 0
     MOVING_RASTER = 1
     SPINNING = 2
+    #: Rotating-Risley-prism rosette sensor (Livox-style; always trajectory-driven), produced by
+    #: :meth:`LiDARCloud.addScanRisley`. A stationary capture is two coincident poses separated in time.
+    RISLEY_PRISM = 3
+
+
+class RisleyPrism:
+    """A single rotating wedge prism in a Risley-prism beam deflector (see :meth:`LiDARCloud.addScanRisley`).
+
+    A pair of such prisms with different (and generally incommensurate) rotation rates traces the
+    characteristic non-repetitive rosette of a Livox sensor. The beam direction is computed by
+    non-paraxial ray tracing through the wedges; the field of view is an emergent property of the
+    wedge angles and refractive indices, not a directly specified parameter.
+
+    Args:
+        wedge_angle: Wedge (inclination) angle of the prism in radians.
+        refractive_index: Refractive index of the prism glass.
+        rotor_rate: Rotation rate about the optical axis in radians/second (the sign sets the rotation
+            direction; a counter-rotating pair traces a rosette).
+        phase: Initial clocking angle of the wedge about the optical axis in radians at scan time t=0.
+    """
+
+    __slots__ = ("wedge_angle", "refractive_index", "rotor_rate", "phase")
+
+    def __init__(self, wedge_angle: float, refractive_index: float,
+                 rotor_rate: float, phase: float = 0.0):
+        self.wedge_angle = float(wedge_angle)
+        self.refractive_index = float(refractive_index)
+        self.rotor_rate = float(rotor_rate)
+        self.phase = float(phase)
+
+    def to_list(self) -> List[float]:
+        """Return the prism as a 4-element [wedge_angle, refractive_index, rotor_rate, phase] list."""
+        return [self.wedge_angle, self.refractive_index, self.rotor_rate, self.phase]
+
+    def __repr__(self) -> str:
+        return (f"RisleyPrism(wedge_angle={self.wedge_angle}, refractive_index={self.refractive_index}, "
+                f"rotor_rate={self.rotor_rate}, phase={self.phase})")
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, RisleyPrism):
+            return NotImplemented
+        return self.to_list() == other.to_list()
 
 
 class ReturnMode(IntEnum):
@@ -129,6 +174,10 @@ class LiDARCloud:
         self._cloud_ptr = lidar_wrapper.createLiDARcloud()
         if not self._cloud_ptr:
             raise LiDARError("Failed to create LiDAR cloud")
+
+        # Keeps the ctypes progress-callback bridge alive while native code holds it (see
+        # setProgressCallback); ctypes does not retain a reference on its own.
+        self._progress_callback_ref = None
 
     def __enter__(self):
         """Context manager entry"""
@@ -528,6 +577,95 @@ class LiDARCloud:
             range_noise_stddev, angle_noise_stddev, float(t0)
         )
 
+    def addScanRisley(self, prisms: List[Union['RisleyPrism', List[float], Tuple[float, ...]]],
+                      refractive_index_air: float, pulse_rate_hz: float,
+                      traj_t: List[float],
+                      traj_pos: List[Union[vec3, List[float], Tuple[float, float, float]]],
+                      traj_rot: List[List[float]],
+                      rot_is_quaternion: bool = True,
+                      exit_diameter: float = 0.0, beam_divergence: float = 0.0,
+                      lever_arm: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                      boresight_rpy: Optional[Union[vec3, List[float], Tuple[float, float, float]]] = None,
+                      column_format: Optional[List[str]] = None,
+                      range_noise_stddev: float = 0.0, angle_noise_stddev: float = 0.0,
+                      t0: float = 0.0) -> int:
+        """
+        Add a rotating-Risley-prism (Livox-style rosette) scan from physical instrument parameters.
+
+        High-level entry point for a Livox rosette-pattern sensor (Mid-40/Mid-70/Avia). A single beam is
+        refracted through a stack of continuously rotating wedge prisms, tracing a non-repetitive rosette
+        that fills a circular field of view. The scan is stored as an Ntheta=1, Nphi=Npulses table, where
+        Npulses = round(pulse_rate_hz * trajectory_duration). Sets the scan's :class:`ScanMode` to
+        ``RISLEY_PRISM`` and :class:`ScanPattern` to ``RISLEY_PRISM``. Like a spinning scan it is always
+        trajectory-driven; a stationary tripod capture is two coincident poses (same position and
+        orientation) separated in time by the acquisition duration.
+
+        Args:
+            prisms: Rotating wedge prisms in beam-traversal order (at least one; a Livox sensor uses two
+                counter-rotating prisms). Each entry is a :class:`RisleyPrism` or a 4-element
+                [wedge_angle, refractive_index, rotor_rate, phase] list/tuple (radians / unitless / rad-per-s / radians).
+            refractive_index_air: Refractive index of the medium surrounding the prisms (typically 1.0)
+            pulse_rate_hz: Pulse repetition rate (PRF) in Hz (must be > 0)
+            traj_t: Monotonically increasing trajectory sample times in seconds (length M)
+            traj_pos: Platform positions in world coordinates, one [x, y, z] (or vec3) per traj_t entry
+            traj_rot: Platform orientations, one per traj_t entry. Length-4 quaternion (qx, qy, qz, qw,
+                Hamilton body->world) when ``rot_is_quaternion`` is True, otherwise length-3 roll/pitch/yaw
+                Euler triple in radians (intrinsic Z-Y-X).
+            rot_is_quaternion: Whether traj_rot holds quaternions (default True) or Euler angles
+            exit_diameter: Laser beam exit diameter (meters, default 0)
+            beam_divergence: Beam divergence angle (radians, default 0)
+            lever_arm: Sensor optical center in the platform body frame [x, y, z] meters (default origin)
+            boresight_rpy: Fixed sensor rotational misalignment [roll, pitch, yaw] radians (default 0)
+            column_format: Optional list of column-format labels (default ["x", "y", "z"])
+            range_noise_stddev: Std. dev. of Gaussian range noise in meters (default 0)
+            angle_noise_stddev: Std. dev. of Gaussian angular jitter in radians (default 0)
+            t0: Time of the first pulse in seconds (relative time; default 0)
+
+        Returns:
+            Scan ID for referencing this scan
+        """
+        if not isinstance(prisms, (list, tuple)) or len(prisms) == 0:
+            raise ValueError("prisms must be a non-empty list of RisleyPrism or 4-element [wedge_angle, refractive_index, rotor_rate, phase]")
+        prism_lists = []
+        for p in prisms:
+            if isinstance(p, RisleyPrism):
+                prism_lists.append(p.to_list())
+            elif isinstance(p, (list, tuple)) and len(p) == 4:
+                prism_lists.append([float(c) for c in p])
+            else:
+                raise ValueError("Each prism must be a RisleyPrism or a 4-element [wedge_angle, refractive_index, rotor_rate, phase]")
+        if refractive_index_air <= 0:
+            raise ValueError("refractive_index_air must be greater than 0")
+        if pulse_rate_hz <= 0:
+            raise ValueError("pulse_rate_hz must be greater than 0")
+        if range_noise_stddev < 0:
+            raise ValueError("range_noise_stddev must be non-negative")
+        if angle_noise_stddev < 0:
+            raise ValueError("angle_noise_stddev must be non-negative")
+
+        rot_stride = 4 if rot_is_quaternion else 3
+        t_list, pos_list, rot_list = self._validate_trajectory(
+            traj_t, traj_pos, traj_rot, rot_stride, 'addScanRisley')
+
+        lever_list = ([lever_arm.x, lever_arm.y, lever_arm.z] if hasattr(lever_arm, 'x')
+                      else list(lever_arm)) if lever_arm is not None else None
+        boresight_list = ([boresight_rpy.x, boresight_rpy.y, boresight_rpy.z] if hasattr(boresight_rpy, 'x')
+                          else list(boresight_rpy)) if boresight_rpy is not None else None
+
+        if column_format is not None:
+            if not isinstance(column_format, (list, tuple)) or \
+                    not all(isinstance(c, str) for c in column_format):
+                raise ValueError("column_format must be a list of strings")
+            column_format = list(column_format)
+
+        return lidar_wrapper.addLiDARScanRisley(
+            self._cloud_ptr, prism_lists, float(refractive_index_air), float(pulse_rate_hz),
+            t_list, pos_list, rot_list, bool(rot_is_quaternion),
+            exit_diameter, beam_divergence,
+            lever_list, boresight_list, column_format,
+            range_noise_stddev, angle_noise_stddev, float(t0)
+        )
+
     def getScanCount(self) -> int:
         """Get total number of scans in the cloud"""
         return lidar_wrapper.getLiDARScanCount(self._cloud_ptr)
@@ -591,8 +729,8 @@ class LiDARCloud:
         """Get the scan pattern for a scan.
 
         Returns an integer: 0 = raster (uniform angular grid), 1 = spinning multibeam
-        (rotating multi-channel sensor). Compare against ``ScanPattern.RASTER`` /
-        ``ScanPattern.SPINNING_MULTIBEAM``.
+        (rotating multi-channel sensor), 2 = Risley-prism (Livox-style rosette). Compare against
+        ``ScanPattern.RASTER`` / ``ScanPattern.SPINNING_MULTIBEAM`` / ``ScanPattern.RISLEY_PRISM``.
         """
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
@@ -610,8 +748,8 @@ class LiDARCloud:
     def getScanMode(self, scanID: int) -> ScanMode:
         """Get the high-level acquisition mode of a scan as a :class:`ScanMode`.
 
-        STATIC_RASTER (fixed-origin grid), MOVING_RASTER (fan swept along a trajectory), or
-        SPINNING (continuously-rotating multi-channel sensor).
+        STATIC_RASTER (fixed-origin grid), MOVING_RASTER (fan swept along a trajectory),
+        SPINNING (continuously-rotating multi-channel sensor), or RISLEY_PRISM (Livox-style rosette).
         """
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
@@ -634,6 +772,22 @@ class LiDARCloud:
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
         return lidar_wrapper.getLiDARScanRevolutions(self._cloud_ptr, scanID)
+
+    def getScanRisleyPrisms(self, scanID: int) -> List[RisleyPrism]:
+        """Get the rotating wedge prisms of a Risley-prism scan as a list of :class:`RisleyPrism`.
+
+        Returns the prism stack in beam-traversal order (empty for non-Risley scans).
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        raw = lidar_wrapper.getLiDARScanRisleyPrisms(self._cloud_ptr, scanID)
+        return [RisleyPrism(p[0], p[1], p[2], p[3]) for p in raw]
+
+    def getScanRisleyRefractiveIndexAir(self, scanID: int) -> float:
+        """Get the refractive index of the medium surrounding a Risley scan's prisms (1.0 for non-Risley)."""
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanRisleyRefractiveIndexAir(self._cloud_ptr, scanID)
 
     def getScanReturnMode(self, scanID: int) -> ReturnMode:
         """Get the return-reporting mode of a scan as a :class:`ReturnMode` (MULTI or SINGLE)."""
@@ -681,6 +835,34 @@ class LiDARCloud:
         if max_returns < 1:
             raise ValueError("max_returns must be >= 1")
         lidar_wrapper.setLiDARScanMaxReturns(self._cloud_ptr, scanID, int(max_returns))
+
+    def setSyntheticScanMemoryBudget(self, bytes: int):
+        """Set the soft memory budget (bytes) for :meth:`syntheticScan`'s transient buffers.
+
+        :meth:`syntheticScan` fans each pulse into ``rays_per_pulse`` sub-rays; for a
+        large scan the simultaneously-traced sub-rays can demand many gigabytes if
+        traced in one batch. This caps the live trace scratch buffers, so the per-scan
+        beam fan-out is processed in chunks sized to stay near this budget regardless of
+        scan resolution. It bounds only the transient buffers, not the output cloud.
+
+        If never called, the budget is automatic and path-dependent (8 GiB on a GPU
+        build, 4 GiB otherwise). Call this to override that with a fixed cap, typically
+        to lower peak memory on a constrained host.
+
+        Args:
+            bytes: Soft cap in bytes on the live ray-tracing scratch buffers. Must be > 0.
+        """
+        if bytes <= 0:
+            raise ValueError("memory budget must be greater than zero")
+        lidar_wrapper.setLiDARSyntheticScanMemoryBudget(self._cloud_ptr, int(bytes))
+
+    def getSyntheticScanMemoryBudget(self) -> int:
+        """Get the soft memory budget (bytes) for :meth:`syntheticScan`'s transient buffers.
+
+        Returns the explicitly configured budget set via :meth:`setSyntheticScanMemoryBudget`, or
+        0 if using the automatic path-dependent default (8 GiB on a GPU build, 4 GiB otherwise).
+        """
+        return lidar_wrapper.getLiDARSyntheticScanMemoryBudget(self._cloud_ptr)
 
     def getScanPulseWidth(self, scanID: int) -> float:
         """Get the pulse width / range resolution (meters) of a scan (0 = use syntheticScan argument)."""
@@ -983,6 +1165,17 @@ class LiDARCloud:
         if n == 0:
             return []
         return lidar_wrapper.getLiDARHitDataColumn(self._cloud_ptr, label, n, absent_value)
+
+    def getHitDataColumnIndex(self, label: str) -> int:
+        """Get the internal column slot index for a hit-data label.
+
+        Per-hit scalar data is stored column-wise; this resolves a label to its column slot for
+        repeated bulk access without re-resolving the label by string. Returns -1 if the label has
+        never been set on any hit.
+        """
+        if not isinstance(label, str):
+            raise TypeError(f"label must be a str, got {type(label).__name__}")
+        return lidar_wrapper.getLiDARHitDataColumnIndex(self._cloud_ptr, label)
 
     def getHitDataColumnArray(self, label: str, absent_value: float = -9999.0):
         """Bulk-export a named scalar column as an (getHitCount(),) float64 numpy array
@@ -1694,6 +1887,55 @@ class LiDARCloud:
     def disableCDGPUAcceleration(self):
         """Disable GPU acceleration (use CPU ray tracing)"""
         lidar_wrapper.disableLiDARCDGPUAcceleration(self._cloud_ptr)
+
+    def isGPUAvailable(self) -> bool:
+        """Return True if a CUDA-capable GPU is available for collision-detection ray tracing.
+
+        Reports capability (compiled with CUDA, a device present, and HELIOS_NO_GPU not set); use
+        :meth:`isGPUAccelerationEnabled` to query whether GPU acceleration is currently toggled on.
+        """
+        return lidar_wrapper.isLiDARGPUAvailable(self._cloud_ptr)
+
+    def isGPUAccelerationEnabled(self) -> bool:
+        """Return True if GPU acceleration is currently enabled for collision-detection ray tracing."""
+        return lidar_wrapper.isLiDARGPUAccelerationEnabled(self._cloud_ptr)
+
+    def setSyntheticScanProgressPointer(self, ptr):
+        """Register an external per-scan progress counter polled during :meth:`syntheticScan`.
+
+        ``ptr`` is a ``ctypes.c_int`` into which syntheticScan writes the 0-based index of the scan
+        currently being ray-traced (set to :meth:`getScanCount` when the batch finishes), letting a
+        host thread poll progress while the blocking scan runs. The counter is owned by the caller and
+        must outlive the scan. Pass ``None`` to clear.
+        """
+        import ctypes
+        if ptr is not None and not isinstance(ptr, ctypes.c_int):
+            raise TypeError("ptr must be a ctypes.c_int (or None to clear)")
+        lidar_wrapper.setLiDARSyntheticScanProgressPointer(self._cloud_ptr, ptr)
+
+    def setProgressCallback(self, callback):
+        """Register a progress callback fired with ``(progress_fraction, message)`` during :meth:`syntheticScan`.
+
+        ``progress_fraction`` is a float in [0, 1]; ``message`` is a ``str`` describing the current
+        phase. Pass ``None`` to clear the callback. The callback bridge is kept alive on this
+        :class:`LiDARCloud` for as long as it is registered.
+        """
+        if callback is None:
+            # Clear the native callback first, then drop our reference, so a failure in the native
+            # call cannot leave C++ holding a freed bridge.
+            lidar_wrapper.setLiDARProgressCallback(self._cloud_ptr, None)
+            self._progress_callback_ref = None
+            return
+
+        if not callable(callback):
+            raise TypeError("callback must be callable or None")
+
+        def _trampoline(progress, message):
+            callback(float(progress), message.decode('utf-8') if message else "")
+
+        # Keep the ctypes callback object alive for as long as native code holds it; ctypes does not.
+        self._progress_callback_ref = lidar_wrapper.LiDARProgressCallback(_trampoline)
+        lidar_wrapper.setLiDARProgressCallback(self._cloud_ptr, self._progress_callback_ref)
 
     def is_available(self) -> bool:
         """

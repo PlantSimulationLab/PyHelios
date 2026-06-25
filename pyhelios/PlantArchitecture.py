@@ -48,177 +48,12 @@ from .plant_architecture_params import (
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
+    RandomParameter,
+    RandomParameterFloat,
+    RandomParameterInt,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class RandomParameter:
-    """
-    Helper class for creating RandomParameter specifications for float parameters.
-
-    Provides convenient static methods to create parameter dictionaries with
-    statistical distributions for plant architecture modeling.
-    """
-
-    @staticmethod
-    def constant(value: float) -> Dict[str, Any]:
-        """
-        Create a constant (non-random) parameter.
-
-        Args:
-            value: The constant value
-
-        Returns:
-            Dict with constant distribution specification
-
-        Example:
-            >>> param = RandomParameter.constant(45.0)
-            >>> # Returns: {'distribution': 'constant', 'parameters': [45.0]}
-        """
-        return {'distribution': 'constant', 'parameters': [float(value)]}
-
-    @staticmethod
-    def uniform(min_val: float, max_val: float) -> Dict[str, Any]:
-        """
-        Create a uniform distribution parameter.
-
-        Args:
-            min_val: Minimum value
-            max_val: Maximum value
-
-        Returns:
-            Dict with uniform distribution specification
-
-        Raises:
-            ValueError: If min_val > max_val
-
-        Example:
-            >>> param = RandomParameter.uniform(40.0, 50.0)
-            >>> # Returns: {'distribution': 'uniform', 'parameters': [40.0, 50.0]}
-        """
-        if min_val > max_val:
-            raise ValueError(f"min_val ({min_val}) must be <= max_val ({max_val})")
-        return {'distribution': 'uniform', 'parameters': [float(min_val), float(max_val)]}
-
-    @staticmethod
-    def normal(mean: float, std_dev: float) -> Dict[str, Any]:
-        """
-        Create a normal (Gaussian) distribution parameter.
-
-        Args:
-            mean: Mean value
-            std_dev: Standard deviation
-
-        Returns:
-            Dict with normal distribution specification
-
-        Raises:
-            ValueError: If std_dev < 0
-
-        Example:
-            >>> param = RandomParameter.normal(45.0, 5.0)
-            >>> # Returns: {'distribution': 'normal', 'parameters': [45.0, 5.0]}
-        """
-        if std_dev < 0:
-            raise ValueError(f"std_dev ({std_dev}) must be >= 0")
-        return {'distribution': 'normal', 'parameters': [float(mean), float(std_dev)]}
-
-    @staticmethod
-    def weibull(shape: float, scale: float) -> Dict[str, Any]:
-        """
-        Create a Weibull distribution parameter.
-
-        Args:
-            shape: Shape parameter (k)
-            scale: Scale parameter (λ)
-
-        Returns:
-            Dict with Weibull distribution specification
-
-        Raises:
-            ValueError: If shape or scale <= 0
-
-        Example:
-            >>> param = RandomParameter.weibull(2.0, 50.0)
-            >>> # Returns: {'distribution': 'weibull', 'parameters': [2.0, 50.0]}
-        """
-        if shape <= 0:
-            raise ValueError(f"shape ({shape}) must be > 0")
-        if scale <= 0:
-            raise ValueError(f"scale ({scale}) must be > 0")
-        return {'distribution': 'weibull', 'parameters': [float(shape), float(scale)]}
-
-
-class RandomParameterInt:
-    """
-    Helper class for creating RandomParameter specifications for integer parameters.
-
-    Provides convenient static methods to create parameter dictionaries with
-    statistical distributions for integer-valued plant parameters.
-    """
-
-    @staticmethod
-    def constant(value: int) -> Dict[str, Any]:
-        """
-        Create a constant (non-random) integer parameter.
-
-        Args:
-            value: The constant integer value
-
-        Returns:
-            Dict with constant distribution specification
-
-        Example:
-            >>> param = RandomParameterInt.constant(15)
-            >>> # Returns: {'distribution': 'constant', 'parameters': [15.0]}
-        """
-        return {'distribution': 'constant', 'parameters': [float(value)]}
-
-    @staticmethod
-    def uniform(min_val: int, max_val: int) -> Dict[str, Any]:
-        """
-        Create a uniform distribution for integer parameter.
-
-        Args:
-            min_val: Minimum value (inclusive)
-            max_val: Maximum value (inclusive)
-
-        Returns:
-            Dict with uniform distribution specification
-
-        Raises:
-            ValueError: If min_val > max_val
-
-        Example:
-            >>> param = RandomParameterInt.uniform(10, 20)
-            >>> # Returns: {'distribution': 'uniform', 'parameters': [10.0, 20.0]}
-        """
-        if min_val > max_val:
-            raise ValueError(f"min_val ({min_val}) must be <= max_val ({max_val})")
-        return {'distribution': 'uniform', 'parameters': [float(min_val), float(max_val)]}
-
-    @staticmethod
-    def discrete(values: List[int]) -> Dict[str, Any]:
-        """
-        Create a discrete value distribution (random choice from list).
-
-        Args:
-            values: List of possible integer values (equal probability)
-
-        Returns:
-            Dict with discrete distribution specification
-
-        Raises:
-            ValueError: If values list is empty
-
-        Example:
-            >>> param = RandomParameterInt.discrete([1, 2, 3, 5])
-            >>> # Returns: {'distribution': 'discretevalues', 'parameters': [1.0, 2.0, 3.0, 5.0]}
-        """
-        if not values:
-            raise ValueError("values list cannot be empty")
-        return {'distribution': 'discretevalues', 'parameters': [float(v) for v in values]}
 
 
 def _resolve_user_path(filepath: Union[str, Path]) -> str:
@@ -1095,6 +930,46 @@ class PlantArchitecture:
                 return plantarch_wrapper.sumPlantLeafArea(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get leaf area for plant {plant_id}: {e}")
+
+    def optionalOutputObjectData(self, object_data_labels: Union[str, List[str]]) -> None:
+        """
+        Enable optional output object data to be written to the Context.
+
+        By default, the plant architecture model only writes a minimal set of
+        object data. This method enables additional object data fields so that
+        they are available on the Context's compound objects after building.
+
+        Args:
+            object_data_labels: A single label or a list of labels to enable.
+                Valid labels include: "age", "rank", "plantID", "plant_name",
+                "plant_height", "plant_type", "phenology_stage", "leafID",
+                "peduncleID", "closedflowerID", "openflowerID", "fruitID",
+                "carbohydrate_concentration". The special label "all" enables
+                every available field.
+
+        Raises:
+            ValueError: If a label is empty or not a string
+            PlantArchitectureError: If an invalid label is supplied or the
+                operation otherwise fails
+
+        Example:
+            >>> plantarch.optionalOutputObjectData("age")
+            >>> plantarch.optionalOutputObjectData(["rank", "plant_height"])
+            >>> plantarch.optionalOutputObjectData("all")
+        """
+        if isinstance(object_data_labels, str):
+            labels = [object_data_labels]
+        else:
+            labels = list(object_data_labels)
+
+        try:
+            with _plantarchitecture_working_directory():
+                for label in labels:
+                    plantarch_wrapper.optionalOutputObjectData(self._plantarch_ptr, label)
+        except ValueError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable optional output object data: {e}")
 
     def setPlantPhenologicalThresholds(
         self,

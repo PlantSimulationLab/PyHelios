@@ -21,6 +21,14 @@ namespace helios {
 extern "C" {
 #endif
 
+/**
+ * @brief Progress-callback function pointer fired during syntheticScan.
+ *
+ * Receives the progress fraction in [0, 1] and a UTF-8 message describing the current phase. The
+ * message pointer is only valid for the duration of the call. Registered via setLiDARProgressCallback.
+ */
+typedef void (*LiDARProgressCallback)(float progress, const char* message);
+
 //=============================================================================
 // LiDAR Cloud Lifecycle
 //=============================================================================
@@ -202,13 +210,58 @@ PYHELIOS_API unsigned int addLiDARScanMovingRaster(LiDARcloud* cloud,
                                                    const float* lever_arm, const float* boresight_rpy,
                                                    double t0);
 
+/**
+ * @brief Add a rotating-Risley-prism (Livox-style rosette) scan from physical instrument parameters
+ *
+ * High-level entry point for a Livox rosette-pattern sensor (Mid-40/Mid-70/Avia). A single beam is
+ * refracted through a stack of continuously rotating wedge prisms, tracing a non-repetitive rosette
+ * inside a circular field of view; the per-pulse direction is computed by full Snell's-law refraction
+ * through the prisms at the pulse's time. The scan is stored as an Ntheta=1, Nphi=Npulses table, where
+ * Npulses = round(pulse_rate_hz * trajectory_duration). Sets the scan's ScanMode to SCAN_MODE_RISLEY_PRISM
+ * and ScanPattern to SCAN_PATTERN_RISLEY_PRISM. Like a spinning scan it is always trajectory-driven; a
+ * stationary tripod capture is two coincident poses separated in time by the acquisition duration.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param prisms Rotating wedge prisms in beam-traversal order, flattened 4 doubles per prism
+ *               [wedge_angle, refractive_index, rotor_rate, phase]; length 4*nPrisms (at least one prism)
+ * @param nPrisms Number of prisms (must be >= 1; a Livox sensor uses two counter-rotating prisms)
+ * @param refractive_index_air Refractive index of the medium surrounding the prisms (typically 1.0)
+ * @param pulse_rate_hz Pulse repetition rate (PRF) in Hz (must be > 0)
+ * @param exitDiameter Laser beam exit diameter (meters)
+ * @param beamDivergence Beam divergence angle (radians)
+ * @param rangeNoiseStdDev Standard deviation of Gaussian range noise in meters (0 disables)
+ * @param angleNoiseStdDev Standard deviation of Gaussian angular jitter in radians (0 disables)
+ * @param columnFormat Array of column-format label strings (may be nullptr)
+ * @param nCols Number of entries in columnFormat
+ * @param traj_t Monotonically increasing trajectory sample times in seconds (length M)
+ * @param traj_pos Platform positions in world coordinates, 3*M floats [x0,y0,z0, ...]
+ * @param traj_rot Platform orientations. If rotIsQuaternion != 0: 4*M floats (qx,qy,qz,qw), Hamilton
+ *                 body->world. Otherwise: 3*M floats (roll,pitch,yaw) radians, intrinsic Z-Y-X.
+ * @param M Number of trajectory samples (must be >= 1)
+ * @param rotIsQuaternion 1 = traj_rot holds quaternions (4*M); 0 = traj_rot holds roll/pitch/yaw Euler (3*M)
+ * @param lever_arm Sensor optical center in the platform body frame as [x,y,z] meters (may be nullptr = 0)
+ * @param boresight_rpy Fixed sensor rotational misalignment as [roll,pitch,yaw] radians (may be nullptr = 0)
+ * @param t0 Time of the first pulse in seconds (relative time)
+ * @return Scan ID for referencing this scan
+ */
+PYHELIOS_API unsigned int addLiDARScanRisley(LiDARcloud* cloud,
+                                             const double* prisms, unsigned int nPrisms,
+                                             double refractive_index_air, float pulse_rate_hz,
+                                             float exitDiameter, float beamDivergence,
+                                             float rangeNoiseStdDev, float angleNoiseStdDev,
+                                             const char** columnFormat, unsigned int nCols,
+                                             const double* traj_t, const float* traj_pos,
+                                             const float* traj_rot, unsigned int M, int rotIsQuaternion,
+                                             const float* lever_arm, const float* boresight_rpy,
+                                             double t0);
+
 //=============================================================================
 // Scan Acquisition-Mode Introspection
 //=============================================================================
 
 /**
  * @brief Get the high-level acquisition mode of a scan
- * @return 0 = SCAN_MODE_STATIC_RASTER, 1 = SCAN_MODE_MOVING_RASTER, 2 = SCAN_MODE_SPINNING, or -1 on error
+ * @return 0 = SCAN_MODE_STATIC_RASTER, 1 = SCAN_MODE_MOVING_RASTER, 2 = SCAN_MODE_SPINNING,
+ *         3 = SCAN_MODE_RISLEY_PRISM, or -1 on error
  */
 PYHELIOS_API int getLiDARScanMode(LiDARcloud* cloud, unsigned int scanID);
 
@@ -226,6 +279,29 @@ PYHELIOS_API double getLiDARScanRotationRate(LiDARcloud* cloud, unsigned int sca
  * @brief Get the number of revolutions the sensor head made (spinning scans; 0 otherwise)
  */
 PYHELIOS_API double getLiDARScanRevolutions(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the number of rotating wedge prisms of a Risley-prism (Livox-style rosette) scan
+ * @return Number of prisms (0 for scans that are not SCAN_MODE_RISLEY_PRISM), or 0 on error
+ */
+PYHELIOS_API unsigned int getLiDARScanRisleyPrismCount(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Get the rotating wedge prisms of a Risley-prism scan, flattened 4 doubles per prism
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID
+ * @param out Caller-allocated array of 4*count doubles; fills min(count, available) prisms as
+ *            [wedge_angle, refractive_index, rotor_rate, phase] per prism, in beam-traversal order
+ * @param count Capacity of out in prisms (out must hold 4*count doubles)
+ */
+PYHELIOS_API void getLiDARScanRisleyPrisms(LiDARcloud* cloud, unsigned int scanID,
+                                           double* out, unsigned int count);
+
+/**
+ * @brief Get the refractive index of the medium surrounding the prisms of a Risley-prism scan
+ * @return Refractive index of air (typically 1.0; 1.0 for non-Risley scans), or 0 on error
+ */
+PYHELIOS_API double getLiDARScanRisleyRefractiveIndexAir(LiDARcloud* cloud, unsigned int scanID);
 
 //=============================================================================
 // Return-Mode Configuration (analytic-waveform synthetic scans)
@@ -362,7 +438,8 @@ PYHELIOS_API float getLiDARScanAzimuthOffset(LiDARcloud* cloud, unsigned int sca
  * @brief Get the scan pattern for a scan
  * @param cloud Pointer to the LiDARcloud instance
  * @param scanID Scan ID
- * @return 0 = SCAN_PATTERN_RASTER, 1 = SCAN_PATTERN_SPINNING_MULTIBEAM, or -1 on error
+ * @return 0 = SCAN_PATTERN_RASTER, 1 = SCAN_PATTERN_SPINNING_MULTIBEAM,
+ *         2 = SCAN_PATTERN_RISLEY_PRISM, or -1 on error
  */
 PYHELIOS_API int getLiDARScanPattern(LiDARcloud* cloud, unsigned int scanID);
 
@@ -570,6 +647,17 @@ PYHELIOS_API void getLiDARHitData_all(LiDARcloud* cloud, const char* label, floa
  */
 PYHELIOS_API void getLiDARHitDataColumn(LiDARcloud* cloud, const char* label, double* out,
                                         unsigned int n, double absent_value);
+
+/**
+ * @brief Get the internal column slot index for a hit-data label.
+ *
+ * Per-hit scalar data is stored column-wise; this resolves a label to its column slot, which is
+ * useful for repeated bulk access without re-resolving the label by string each time.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Data label to look up (e.g. "intensity")
+ * @return Column index for the label, or -1 if the label has never been set on any hit / on error
+ */
+PYHELIOS_API int getLiDARHitDataColumnIndex(LiDARcloud* cloud, const char* label);
 
 /**
  * @brief Bulk-export XYZ coordinates and RGB colors for all hit points in one call
@@ -921,6 +1009,47 @@ PYHELIOS_API void syntheticLiDARScanDiscrete(LiDARcloud* cloud, helios::Context*
 PYHELIOS_API void setLiDARCancelFlag(LiDARcloud* cloud, volatile int* flag);
 
 /**
+ * @brief Set the soft memory budget (in bytes) for syntheticScan's transient ray-tracing buffers.
+ *
+ * Bounds the live ray-tracing scratch buffers so a large scan is processed in chunks rather than one
+ * OOM-prone batch. Must be > 0. If never set, the budget is automatic and path-dependent (8 GiB on a
+ * GPU build, 4 GiB otherwise). Bounds only scratch buffers, not the output point cloud.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param bytes Soft cap in bytes (> 0)
+ */
+PYHELIOS_API void setLiDARSyntheticScanMemoryBudget(LiDARcloud* cloud, size_t bytes);
+
+/**
+ * @brief Get the soft memory budget (in bytes) for syntheticScan's transient ray-tracing buffers.
+ * @return The explicitly configured budget in bytes, or 0 if using the automatic path-dependent
+ *         default (8 GiB on a GPU build, 4 GiB otherwise), or 0 on error
+ */
+PYHELIOS_API size_t getLiDARSyntheticScanMemoryBudget(LiDARcloud* cloud);
+
+/**
+ * @brief Register an external per-scan progress counter polled during syntheticScan.
+ *
+ * syntheticScan writes the 0-based index of the scan it is currently ray-tracing into the pointed-to
+ * int (updated at the start of each scan) and sets it to getScanCount() when the batch finishes. Lets a
+ * host thread poll per-scan progress while the blocking scan runs. The counter is owned by the caller
+ * (e.g. a ctypes c_int from Python) and must outlive the scan. Pass nullptr to clear.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param ptr Pointer to a caller-owned progress counter, or nullptr
+ */
+PYHELIOS_API void setLiDARSyntheticScanProgressPointer(LiDARcloud* cloud, volatile int* ptr);
+
+/**
+ * @brief Register a progress callback fired with (progress_fraction, message) during syntheticScan.
+ *
+ * Pass nullptr to clear the callback. The callback receives the progress fraction in [0, 1] and a
+ * UTF-8 message; the message pointer is valid only for the duration of the call. The callback must
+ * outlive any syntheticScan call it is registered for.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param cb Progress callback function pointer, or nullptr to clear
+ */
+PYHELIOS_API void setLiDARProgressCallback(LiDARcloud* cloud, LiDARProgressCallback cb);
+
+/**
  * @brief Perform synthetic full-waveform LiDAR scan
  * @param cloud Pointer to the LiDARcloud instance
  * @param context Pointer to the Helios context containing geometry
@@ -1088,6 +1217,24 @@ PYHELIOS_API void enableLiDARCDGPUAcceleration(LiDARcloud* cloud);
  * @param cloud Pointer to the LiDARcloud instance
  */
 PYHELIOS_API void disableLiDARCDGPUAcceleration(LiDARcloud* cloud);
+
+/**
+ * @brief Check whether a CUDA-capable GPU is available for collision-detection acceleration.
+ *
+ * Reports capability: true only if the CollisionDetection plugin was compiled with CUDA support, a
+ * CUDA device is present at runtime, and the GPU path is not disabled via HELIOS_NO_GPU. Use
+ * isLiDARGPUAccelerationEnabled to query whether GPU acceleration is currently toggled on.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return 1 if a usable GPU is available, 0 otherwise (or on error)
+ */
+PYHELIOS_API int isLiDARGPUAvailable(LiDARcloud* cloud);
+
+/**
+ * @brief Check whether GPU acceleration is currently enabled for collision detection.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return 1 if GPU acceleration is enabled, 0 otherwise (or on error)
+ */
+PYHELIOS_API int isLiDARGPUAccelerationEnabled(LiDARcloud* cloud);
 
 //=============================================================================
 // Additional Export Functions

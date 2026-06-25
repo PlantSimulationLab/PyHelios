@@ -130,7 +130,7 @@ except (AttributeError, ImportError):
     AVAILABLE_C4_SPECIES = []
 
 try:
-    from .PlantArchitecture import PlantArchitecture, PlantArchitectureError, RandomParameter, RandomParameterInt
+    from .PlantArchitecture import PlantArchitecture, PlantArchitectureError
 except (AttributeError, ImportError):
     # PlantArchitecture functions not available in current library
     PlantArchitecture = None
@@ -138,8 +138,9 @@ except (AttributeError, ImportError):
 
 # Typed plant architecture parameter model (pure Python, always importable)
 from .plant_architecture_params import (
+    RandomParameter,
     RandomParameterFloat,
-    RandomParameterInt as RandomParameterIntTyped,
+    RandomParameterInt,
     LeafPrototype,
     InternodeParameters,
     PetioleParameters,
@@ -163,7 +164,7 @@ except (AttributeError, ImportError):
 try:
     from .LiDARCloud import (
         LiDARCloud, LiDARError, ScanPattern,
-        ScanMode, ReturnMode, SingleReturnSelection,
+        ScanMode, ReturnMode, SingleReturnSelection, RisleyPrism,
     )
 except (AttributeError, ImportError):
     # LiDARCloud functions not available in current library
@@ -173,6 +174,7 @@ except (AttributeError, ImportError):
     ScanMode = None
     ReturnMode = None
     SingleReturnSelection = None
+    RisleyPrism = None
 
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
