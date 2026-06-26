@@ -1421,7 +1421,8 @@ class LiDARCloud:
     def addGrid(self, center: Union[vec3, List[float], Tuple[float, float, float]],
                 size: Union[vec3, List[float], Tuple[float, float, float]],
                 ndiv: Union[List[int], Tuple[int, int, int]],
-                rotation: float = 0.0):
+                rotation: float = 0.0,
+                column_offsets: Optional[List[float]] = None):
         """
         Add a rectangular grid of voxel cells.
 
@@ -1430,6 +1431,9 @@ class LiDARCloud:
             size: Grid dimensions [x, y, z] (vec3 or 3-element list)
             ndiv: Number of divisions [nx, ny, nz] (3-element list)
             rotation: Azimuthal rotation angle (radians, default 0.0)
+            column_offsets: Optional per-(x,y)-column vertical offset for terrain following,
+                row-major as [j*nx + i], length nx*ny. When provided, each voxel column is
+                shifted vertically by its offset so the grid follows a terrain surface.
 
         Example:
             >>> lidar.addGrid(
@@ -1463,7 +1467,14 @@ class LiDARCloud:
         if not isinstance(ndiv, (list, tuple)) or len(ndiv) != 3:
             raise ValueError("Ndiv must be a 3-element list [nx, ny, nz]")
 
-        lidar_wrapper.addLiDARGrid(self._cloud_ptr, center_list, size_list, list(ndiv), rotation)
+        if column_offsets is not None:
+            ncols = int(ndiv[0]) * int(ndiv[1])
+            if len(column_offsets) != ncols:
+                raise ValueError(f"column_offsets must have length ndiv[0]*ndiv[1]={ncols}, got {len(column_offsets)}")
+            lidar_wrapper.addLiDARGridWithColumnOffsets(
+                self._cloud_ptr, center_list, size_list, list(ndiv), rotation, list(column_offsets))
+        else:
+            lidar_wrapper.addLiDARGrid(self._cloud_ptr, center_list, size_list, list(ndiv), rotation)
 
     def addGridCell(self, center: Union[vec3, List[float], Tuple[float, float, float]],
                     size: Union[vec3, List[float], Tuple[float, float, float]],

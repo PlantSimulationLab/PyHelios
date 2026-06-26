@@ -858,6 +858,18 @@ PYHELIOS_API void addLiDARGrid(LiDARcloud* cloud, const float* center, const flo
                                const int* ndiv, float rotation);
 
 /**
+ * @brief Add a rectangular grid of voxel cells with per-column vertical offsets (terrain following)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param center Center position of grid [x, y, z]
+ * @param size Grid dimensions [x, y, z]
+ * @param ndiv Number of divisions [nx, ny, nz]
+ * @param rotation Azimuthal rotation angle (radians)
+ * @param column_offsets Per-(x,y)-column vertical offset, row-major as [j*nx + i], length nx*ny
+ */
+PYHELIOS_API void addLiDARGridWithColumnOffsets(LiDARcloud* cloud, const float* center, const float* size,
+                                                const int* ndiv, float rotation, const float* column_offsets);
+
+/**
  * @brief Add a single grid cell
  * @param cloud Pointer to the LiDARcloud instance
  * @param center Center position of cell [x, y, z]

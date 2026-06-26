@@ -1905,6 +1905,36 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void addLiDARGridWithColumnOffsets(LiDARcloud* cloud, const float* center, const float* size,
+                                                    const int* ndiv, float rotation, const float* column_offsets) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!center || !size || !ndiv || !column_offsets) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Input arrays are null");
+                return;
+            }
+
+            helios::vec3 grid_center(center[0], center[1], center[2]);
+            helios::vec3 grid_size(size[0], size[1], size[2]);
+            helios::int3 grid_ndiv = helios::make_int3(ndiv[0], ndiv[1], ndiv[2]);
+
+            // column_offsets holds one vertical offset per (x,y) column, row-major as [j*nx + i].
+            const size_t ncols = size_t(ndiv[0]) * size_t(ndiv[1]);
+            std::vector<float> offsets(column_offsets, column_offsets + ncols);
+
+            cloud->addGrid(grid_center, grid_size, grid_ndiv, rotation, offsets);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (addLiDARGridWithColumnOffsets): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addLiDARGridWithColumnOffsets): Unknown error");
+        }
+    }
+
     PYHELIOS_API void addLiDARGridCell(LiDARcloud* cloud, const float* center, const float* size,
                                         float rotation) {
         try {

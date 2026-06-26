@@ -568,6 +568,17 @@ try:
     helios_lib.addLiDARGrid.restype = None
     helios_lib.addLiDARGrid.errcheck = _check_error
 
+    helios_lib.addLiDARGridWithColumnOffsets.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_float,
+        ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.addLiDARGridWithColumnOffsets.restype = None
+    helios_lib.addLiDARGridWithColumnOffsets.errcheck = _check_error
+
     helios_lib.addLiDARGridCell.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.POINTER(ctypes.c_float),
@@ -1891,6 +1902,34 @@ def addLiDARGrid(cloud_ptr: ctypes.POINTER(ULiDARcloud), center: List[float],
     size_array = (ctypes.c_float * 3)(*size)
     ndiv_array = (ctypes.c_int * 3)(*ndiv)
     helios_lib.addLiDARGrid(cloud_ptr, center_array, size_array, ndiv_array, rotation)
+
+
+def addLiDARGridWithColumnOffsets(cloud_ptr: ctypes.POINTER(ULiDARcloud), center: List[float],
+                                  size: List[float], ndiv: List[int], rotation: float,
+                                  column_offsets: List[float]) -> None:
+    """Add a rectangular grid of voxel cells with per-column vertical offsets (terrain following).
+
+    column_offsets holds one vertical offset per (x,y) column, row-major as [j*nx + i],
+    so its length must equal ndiv[0]*ndiv[1].
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    if len(center) != 3:
+        raise ValueError("Center must be a 3-element array [x, y, z]")
+    if len(size) != 3:
+        raise ValueError("Size must be a 3-element array [x, y, z]")
+    if len(ndiv) != 3:
+        raise ValueError("Ndiv must be a 3-element array [nx, ny, nz]")
+    ncols = int(ndiv[0]) * int(ndiv[1])
+    if len(column_offsets) != ncols:
+        raise ValueError(f"column_offsets must have length ndiv[0]*ndiv[1]={ncols}, got {len(column_offsets)}")
+
+    center_array = (ctypes.c_float * 3)(*center)
+    size_array = (ctypes.c_float * 3)(*size)
+    ndiv_array = (ctypes.c_int * 3)(*ndiv)
+    offsets_array = (ctypes.c_float * ncols)(*column_offsets)
+    helios_lib.addLiDARGridWithColumnOffsets(cloud_ptr, center_array, size_array, ndiv_array, rotation, offsets_array)
 
 
 def addLiDARGridCell(cloud_ptr: ctypes.POINTER(ULiDARcloud), center: List[float],
