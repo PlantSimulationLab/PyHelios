@@ -1187,6 +1187,23 @@ PYHELIOS_API void calculateLiDARLeafAreaGtheta(LiDARcloud* cloud, helios::Contex
                                                float Gtheta, int min_voxel_hits, float element_width);
 
 /**
+ * @brief Calculate leaf area using a caller-supplied PER-VOXEL G(theta), without requiring triangulation
+ *
+ * Like calculateLiDARLeafAreaGtheta but takes one G(theta) per grid cell (in grid-cell order, the same order as
+ * getLiDARCellCenter), supporting a spatially-varying (e.g. vertically-varying) leaf-angle distribution.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context
+ * @param Gtheta Array of per-voxel mean leaf-projection coefficients, length n_cells, each in (0,1]
+ * @param n_cells Number of entries in Gtheta; must equal the grid-cell count
+ * @param min_voxel_hits Minimum number of hits required per voxel
+ * @param element_width Characteristic vegetation element width (m); <= 0 reports sampling-only uncertainty
+ */
+PYHELIOS_API void calculateLiDARLeafAreaGthetaPerCell(LiDARcloud* cloud, helios::Context* context,
+                                                      const float* Gtheta, unsigned int n_cells,
+                                                      int min_voxel_hits, float element_width);
+
+/**
  * @brief Calculate synthetic leaf area (for synthetic scan validation)
  * @param cloud Pointer to the LiDARcloud instance
  * @param context Pointer to the Helios context
