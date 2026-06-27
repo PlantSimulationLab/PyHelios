@@ -2045,11 +2045,13 @@ class LiDARCloud:
                 :meth:`getGroupLADConfidenceInterval`. ``element_width <= 0`` yields a
                 sampling-only variance.
             Gtheta: Optional caller-supplied mean leaf-projection coefficient G(theta), in (0,1]
-                (0.5 = spherical/random leaf-angle distribution). When provided, leaf area is
-                computed via a beam-based inversion that uses each hit's per-pulse beam origin and
-                does NOT require triangulation — the only supported path for moving-platform scans
-                (see :meth:`addScanMoving`). Requires both ``min_voxel_hits`` and ``element_width``
-                to also be specified.
+                (0.5 = spherical/random leaf-angle distribution). May be a single scalar (broadcast
+                to every voxel) or a sequence of one value per grid cell in grid-cell order — the
+                latter supports a spatially-varying (e.g. vertically-varying) leaf-angle
+                distribution. When provided, leaf area is computed via a beam-based inversion that
+                uses each hit's per-pulse beam origin and does NOT require triangulation — the only
+                supported path for moving-platform scans (see :meth:`addScanMoving`). Requires both
+                ``min_voxel_hits`` and ``element_width`` to also be specified.
 
         Example:
             >>> from pyhelios import Context, LiDARCloud
@@ -2061,13 +2063,28 @@ class LiDARCloud:
         if not isinstance(context, Context):
             raise TypeError("context must be a Context instance")
 
+        # Gtheta may be a scalar (broadcast to every voxel) or a sequence of one value per grid
+        # cell (a spatially-varying leaf-angle distribution). Detect which up front.
+        gtheta_is_sequence = Gtheta is not None and not isinstance(Gtheta, (int, float))
+
         # Validate argument combinations before touching native state (fail-fast).
         if Gtheta is not None:
             if min_voxel_hits is None or element_width is None:
                 raise ValueError(
                     "Gtheta requires both min_voxel_hits and element_width to also be specified "
                     "(the G(theta) overload takes all three)")
-            if Gtheta <= 0:
+            if gtheta_is_sequence:
+                g_list = [float(v) for v in Gtheta]
+                n_cells = self.getGridCellCount()
+                if len(g_list) != n_cells:
+                    raise ValueError(
+                        f"A per-voxel Gtheta sequence must have one value per grid cell "
+                        f"({n_cells}), but {len(g_list)} were given")
+                if any(not (0.0 < v <= 1.0) for v in g_list):
+                    raise ValueError(
+                        "Every per-voxel Gtheta value must be in (0, 1] "
+                        "(e.g. 0.5 for a spherical leaf-angle distribution)")
+            elif Gtheta <= 0:
                 # The native overload treats Gtheta <= 0 as the "compute from triangulation"
                 # sentinel, which silently disables the supplied-G(theta) path. Reject it here.
                 raise ValueError(
@@ -2078,7 +2095,10 @@ class LiDARCloud:
                 "(the uncertainty overload takes both)")
 
         context_ptr = context.getNativePtr()
-        if Gtheta is not None:
+        if gtheta_is_sequence:
+            lidar_wrapper.calculateLiDARLeafAreaGthetaPerCell(
+                self._cloud_ptr, context_ptr, g_list, min_voxel_hits, element_width)
+        elif Gtheta is not None:
             lidar_wrapper.calculateLiDARLeafAreaGtheta(
                 self._cloud_ptr, context_ptr, Gtheta, min_voxel_hits, element_width)
         elif element_width is not None:

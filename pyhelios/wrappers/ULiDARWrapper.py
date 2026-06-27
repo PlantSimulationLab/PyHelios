@@ -785,6 +785,17 @@ try:
     helios_lib.calculateLiDARLeafAreaGtheta.restype = None
     helios_lib.calculateLiDARLeafAreaGtheta.errcheck = _check_error
 
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(UContext),
+        ctypes.POINTER(ctypes.c_float),  # Gtheta array
+        ctypes.c_uint,                   # n_cells
+        ctypes.c_int,                    # min_voxel_hits
+        ctypes.c_float,                  # element_width
+    ]
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell.restype = None
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell.errcheck = _check_error
+
     helios_lib.calculateSyntheticLiDARLeafArea.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.POINTER(UContext)
@@ -2249,6 +2260,23 @@ def calculateLiDARLeafAreaGtheta(cloud_ptr: ctypes.POINTER(ULiDARcloud),
         raise NotImplementedError("LiDAR functions not available")
     helios_lib.calculateLiDARLeafAreaGtheta(
         cloud_ptr, context_ptr, float(Gtheta), min_voxel_hits, float(element_width))
+
+
+def calculateLiDARLeafAreaGthetaPerCell(cloud_ptr: ctypes.POINTER(ULiDARcloud),
+                                        context_ptr: ctypes.POINTER(UContext),
+                                        Gtheta, min_voxel_hits: int, element_width: float) -> None:
+    """Calculate leaf area using a caller-supplied PER-VOXEL G(theta), without requiring triangulation.
+
+    Supports a spatially-varying (e.g. vertically-varying) leaf-angle distribution. ``Gtheta`` is a
+    sequence of length equal to the grid-cell count, in grid-cell order (matching getLiDARCellCenter);
+    every value must be in (0,1]. The native overload validates the length and range.
+    """
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    g = list(Gtheta)
+    arr = (ctypes.c_float * len(g))(*[float(v) for v in g])
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell(
+        cloud_ptr, context_ptr, arr, len(g), min_voxel_hits, float(element_width))
 
 
 def getLiDARCellBeamCount(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> int:

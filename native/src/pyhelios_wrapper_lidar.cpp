@@ -2969,6 +2969,35 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void calculateLiDARLeafAreaGthetaPerCell(LiDARcloud* cloud, helios::Context* context,
+                                                          const float* Gtheta, unsigned int n_cells,
+                                                          int min_voxel_hits, float element_width) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!Gtheta) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Gtheta pointer is null");
+                return;
+            }
+            // Beam-based inversion with a caller-supplied PER-VOXEL G(theta); does not require triangulation. Used for a
+            // prescribed, spatially-varying (e.g. vertically-varying) leaf-angle distribution. The C++ overload validates
+            // that n_cells matches the grid-cell count and that every value is in (0,1].
+            std::vector<float> Gtheta_per_cell(Gtheta, Gtheta + n_cells);
+            cloud->calculateLeafArea(context, Gtheta_per_cell, min_voxel_hits, element_width);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (calculateLiDARLeafAreaGthetaPerCell): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (calculateLiDARLeafAreaGthetaPerCell): Unknown error");
+        }
+    }
+
     PYHELIOS_API void calculateSyntheticLiDARLeafArea(LiDARcloud* cloud, helios::Context* context) {
         try {
             clearError();
