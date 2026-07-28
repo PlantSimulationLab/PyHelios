@@ -49,11 +49,29 @@ MAX_RENDER_DIMENSION = 1000
 _render_scale = min(1.0, MAX_RENDER_DIMENSION / max(round(2 * CAMERA_CX), round(2 * CAMERA_CY)))
 IMAGE_WIDTH = round(2 * CAMERA_CX * _render_scale)
 IMAGE_HEIGHT = round(2 * CAMERA_CY * _render_scale)
-NUM_GRID_COLS = 8  # horizontal camera positions within the frontal plane
-NUM_GRID_ROWS = 3  # vertical camera positions within the frontal plane
 GRID_SPAN_FRACTION = 0.6  # how far the grid spans across the tree's own extent/height
 TEST_EVERY = 8
 DISTANCE_MARGIN = 1.05  # tight headroom so each tree nearly fills the frame
+
+# Design decision: rather than committing to one capture density, render and
+# train a separate case per entry here so "how many images" and "how many
+# viewing planes" can be compared against the same baseline instead of
+# guessing. Each case is fully independent (its own render pass + its own
+# per-strategy training runs below), so the total cost scales as
+# len(CAPTURE_CONFIGS) x len(SPLAT_STRATEGIES) full training runs -- trim
+# this list (or TRAIN_ITERS) for a quick smoke test.
+#   - num_planes: how many faces around each tree get their own flat grid
+#     (1 = frontal only, matching the original single-plane rig; N = N
+#     evenly-spaced azimuths, e.g. front/right/back/left for N=4). This is
+#     the "number of locations" axis -- it does NOT orbit smoothly, it's N
+#     discrete flat planes.
+#   - num_cols x num_rows: grid density *within* each plane. This is the
+#     "number of images" axis at fixed camera placement.
+CAPTURE_CONFIGS = (
+    {"name": "sparse", "num_planes": 1, "num_cols": 4, "num_rows": 2},   # fewer images, same 1 face as baseline
+    {"name": "default", "num_planes": 1, "num_cols": 8, "num_rows": 3},  # baseline
+    {"name": "multi_face", "num_planes": 4, "num_cols": 8, "num_rows": 3},  # baseline density, 4 faces per tree
+)
 
 OUTPUT_DIR = "renders/gaussian_splatting"
 DATASET_DIR = os.path.join(OUTPUT_DIR, "dataset")
@@ -225,36 +243,53 @@ def render_semantic_masks(context, class_uuids, camera_poses, out_dir, width=IMA
 # Splatting needs many views rather than a few fixed angles)
 # ---------------------------------------------------------------------------
 
-def plane_camera_poses(center, tree_height, tree_x_extent, tree_y_extent, num_cols=NUM_GRID_COLS,
-                        num_rows=NUM_GRID_ROWS, fov_deg=FOV_DEG, aspect_ratio=IMAGE_WIDTH / IMAGE_HEIGHT,
-                        margin=DISTANCE_MARGIN, span_fraction=GRID_SPAN_FRACTION):
-    """Camera poses for ONE tree: rather than orbiting around it, the camera
-    stays on a single frontal plane at a fixed distance from that tree's own
-    center (facing along -Y) and translates across a grid of horizontal/
-    vertical offsets within that plane. lookAt is pinned to the tree center
-    throughout, so each shot is a slightly different parallax view of the
-    same face rather than a new angle around the tree.
+def plane_camera_poses(center, tree_height, tree_x_extent, tree_y_extent, num_planes, num_cols, num_rows,
+                        fov_deg=FOV_DEG, aspect_ratio=IMAGE_WIDTH / IMAGE_HEIGHT, margin=DISTANCE_MARGIN,
+                        span_fraction=GRID_SPAN_FRACTION):
+    """Camera poses for ONE tree: rather than orbiting smoothly around it, the
+    camera sits on `num_planes` discrete flat planes facing the tree (evenly
+    spaced azimuths, starting from the original single-plane direction -Y)
+    and, within each plane, translates across a `num_cols` x `num_rows` grid
+    of horizontal/vertical offsets at a fixed distance. lookAt is pinned to
+    the tree center throughout, so each shot is a slightly different
+    parallax view of the same face rather than a new angle swept smoothly
+    around the tree. num_planes=1 reproduces the original frontal-only rig.
 
-    Distance is sized off THIS tree's own height/extent (not the whole
+    Distance is sized off THIS tree's own height/footprint (not the whole
     orchard), so each tree fills its frame the same way regardless of where
-    it sits in the row. It must also clear the tree's extent along the
-    approach direction (tree_y_extent), or a wide canopy would poke through
-    the near clipping plane."""
+    it sits in the row, computed per-plane the same way a single fixed
+    azimuth would: it must also clear the tree's footprint along the
+    approach direction, or a wide
+    canopy would poke through the near clipping plane."""
     half_fov_v = math.radians(fov_deg) / 2
     half_fov_h = math.atan(aspect_ratio * math.tan(half_fov_v))
+    half_x, half_y = tree_x_extent / 2, tree_y_extent / 2
     distance_for_height = (tree_height / 2) / math.tan(half_fov_v) * margin
-    distance_for_width = (tree_x_extent / 2) / math.tan(half_fov_h) * margin
-    distance_for_clearance = (tree_y_extent / 2) * margin
-    distance = max(distance_for_height, distance_for_width, distance_for_clearance)
 
-    half_span_x = (tree_x_extent / 2) * span_fraction
     half_span_z = (tree_height / 2) * span_fraction
+    base_az = -math.pi / 2  # -Y, matching the original single-plane rig this generalizes
 
     poses = []
-    for z_off in np.linspace(-half_span_z, half_span_z, num_rows):
-        for x_off in np.linspace(-half_span_x, half_span_x, num_cols):
-            eye = vec3(center.x + x_off, center.y - distance, center.z + z_off)
-            poses.append((eye, center))
+    for p in range(num_planes):
+        az = base_az + 2 * math.pi * p / num_planes
+        forward = (math.cos(az), math.sin(az))  # direction from tree center to camera
+        tangent = (-math.sin(az), math.cos(az))  # in-plane horizontal axis
+
+        half_width_at_az = abs(math.sin(az)) * half_x + abs(math.cos(az)) * half_y
+        depth_at_az = abs(math.cos(az)) * half_x + abs(math.sin(az)) * half_y
+        distance_for_width = half_width_at_az / math.tan(half_fov_h) * margin
+        distance_for_clearance = depth_at_az * margin
+        distance = max(distance_for_height, distance_for_width, distance_for_clearance)
+        half_span_t = half_width_at_az * span_fraction
+
+        for z_off in np.linspace(-half_span_z, half_span_z, num_rows):
+            for t_off in np.linspace(-half_span_t, half_span_t, num_cols):
+                eye = vec3(
+                    center.x + distance * forward[0] + t_off * tangent[0],
+                    center.y + distance * forward[1] + t_off * tangent[1],
+                    center.z + z_off,
+                )
+                poses.append((eye, center))
     return poses
 
 
@@ -547,6 +582,7 @@ def main():
     POSITIONS = [vec3(0, 0, 0), vec3(1.5, 0, 0), vec3(3, 0, 0)]
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    capture_datasets = []  # one entry per CAPTURE_CONFIGS case: {"name", "frames", "K", "mask_paths"}
 
     with Context() as context:
         with PlantArchitecture(context) as plantarch:
@@ -555,25 +591,13 @@ def main():
             all_uuids = [u for uuids in tree_uuids_list for u in uuids]
             print(f"Built {len(plant_ids)} apple trees, {len(all_uuids)} primitives total")
 
-            camera_poses = []
-            for tree_uuids in tree_uuids_list:
-                tree_center, _ = context.getDomainBoundingSphere(tree_uuids)
-                x_bounds, y_bounds, z_bounds = context.getDomainBoundingBox(tree_uuids)
-                tree_height = z_bounds.y - z_bounds.x
-                tree_x_extent = x_bounds.y - x_bounds.x
-                tree_y_extent = y_bounds.y - y_bounds.x
-                print(f"  tree center=({tree_center.x:.2f}, {tree_center.y:.2f}, {tree_center.z:.2f}) "
-                      f"height={tree_height:.2f}m x_extent={tree_x_extent:.2f}m y_extent={tree_y_extent:.2f}m")
-                camera_poses.extend(plane_camera_poses(tree_center, tree_height, tree_x_extent, tree_y_extent))
-
-            print(f"Rendering {len(camera_poses)} multi-view images...")
-            frames, K = render_dataset(context, all_uuids, camera_poses, DATASET_DIR)
-
             print("Classifying primitives by organ type...")
             class_uuids = classify_primitives(context, all_uuids)
             for name in CLASS_NAMES:
                 print(f"  {name}: {len(class_uuids[name])} primitives")
 
+            # Independent of camera/capture config -- seeded once from mesh
+            # geometry and reused for every capture config x strategy below.
             print(f"Sampling seed point cloud from tree geometry (class={TARGET_CLASS})...")
             positions, colors = sample_point_cloud(context, class_uuids[TARGET_CLASS])
             print(f"  {len(positions)} seed points")
@@ -583,39 +607,71 @@ def main():
             # a poor scale for the Gaussian init/LR heuristics below.
             point_cloud_radius = float(np.linalg.norm(positions - positions.mean(axis=0), axis=1).max())
 
-            # Mutates primitive colors, so it must run after sample_point_cloud
-            # (see render_semantic_masks docstring) -- reuses the same camera
-            # poses as the RGB dataset for pixel-perfect alignment.
-            print(f"Rendering {len(camera_poses)} semantic mask images...")
-            mask_paths = render_semantic_masks(context, class_uuids, camera_poses, DATASET_DIR)
+            for capture_config in CAPTURE_CONFIGS:
+                capture_name = capture_config["name"]
+                print(f"=== Capture config: {capture_name} (num_planes={capture_config['num_planes']}, "
+                      f"grid={capture_config['num_cols']}x{capture_config['num_rows']}) ===")
+
+                camera_poses = []
+                for tree_uuids in tree_uuids_list:
+                    tree_center, _ = context.getDomainBoundingSphere(tree_uuids)
+                    x_bounds, y_bounds, z_bounds = context.getDomainBoundingBox(tree_uuids)
+                    tree_height = z_bounds.y - z_bounds.x
+                    tree_x_extent = x_bounds.y - x_bounds.x
+                    tree_y_extent = y_bounds.y - y_bounds.x
+                    camera_poses.extend(plane_camera_poses(
+                        tree_center, tree_height, tree_x_extent, tree_y_extent,
+                        num_planes=capture_config["num_planes"],
+                        num_cols=capture_config["num_cols"], num_rows=capture_config["num_rows"],
+                    ))
+
+                dataset_dir = os.path.join(DATASET_DIR, capture_name)
+                print(f"Rendering {len(camera_poses)} multi-view images...")
+                frames, K = render_dataset(context, all_uuids, camera_poses, dataset_dir)
+
+                # Mutates primitive colors, so it must run after sample_point_cloud
+                # (see render_semantic_masks docstring) -- reuses this capture
+                # config's own camera poses for pixel-perfect alignment.
+                print(f"Rendering {len(camera_poses)} semantic mask images...")
+                mask_paths = render_semantic_masks(context, class_uuids, camera_poses, dataset_dir)
+
+                capture_datasets.append({"name": capture_name, "frames": frames, "K": K, "mask_paths": mask_paths})
 
     target_class_index = CLASS_NAMES.index(TARGET_CLASS) + 1
-    dataset, K_t = load_dataset_tensors(frames, K, mask_paths=mask_paths, target_class_index=target_class_index)
-    print(f"Train views: {len(dataset['train'])}  Test views: {len(dataset['test'])}")
 
-    # Same seed points/dataset, trained once per strategy the library ships
-    # (see SPLAT_STRATEGIES) so the two can be compared side by side.
+    # Cross product of capture config x splat strategy, each producing its own .ply.
     results = []
-    for strategy_name in SPLAT_STRATEGIES:
-        print(f"--- Strategy: {strategy_name} ---")
-        params = init_gaussians(positions, colors, point_cloud_radius)
-        print(f"Training {params['means'].shape[0]} Gaussians for {TRAIN_ITERS} iterations on {DEVICE}...")
-        params = train_gaussians(params, dataset, K_t, IMAGE_WIDTH, IMAGE_HEIGHT, BACKGROUND_RGB,
-                                  strategy_name=strategy_name, iters=TRAIN_ITERS, scene_radius=point_cloud_radius)
+    for capture_entry in capture_datasets:
+        capture_name = capture_entry["name"]
+        dataset, K_t = load_dataset_tensors(
+            capture_entry["frames"], capture_entry["K"],
+            mask_paths=capture_entry["mask_paths"], target_class_index=target_class_index,
+        )
+        print(f"[{capture_name}] Train views: {len(dataset['train'])}  Test views: {len(dataset['test'])}")
 
-        mean_psnr = evaluate(params, dataset, K_t, IMAGE_WIDTH, IMAGE_HEIGHT, BACKGROUND_RGB,
-                              os.path.join(EVAL_DIR, strategy_name))
+        for strategy_name in SPLAT_STRATEGIES:
+            print(f"--- Capture={capture_name} Strategy={strategy_name} ---")
+            params = init_gaussians(positions, colors, point_cloud_radius)
+            print(f"Training {params['means'].shape[0]} Gaussians for {TRAIN_ITERS} iterations on {DEVICE}...")
+            params = train_gaussians(params, dataset, K_t, IMAGE_WIDTH, IMAGE_HEIGHT, BACKGROUND_RGB,
+                                      strategy_name=strategy_name, iters=TRAIN_ITERS, scene_radius=point_cloud_radius)
 
-        output_ply_path = os.path.join(OUTPUT_DIR, f"apple_splats_{TARGET_CLASS}_{strategy_name}.ply")
-        export_ply(params, output_ply_path)
-        print(f"Saved trained splats to {output_ply_path}")
+            mean_psnr = evaluate(params, dataset, K_t, IMAGE_WIDTH, IMAGE_HEIGHT, BACKGROUND_RGB,
+                                  os.path.join(EVAL_DIR, capture_name, strategy_name))
 
-        results.append({
-            "strategy": strategy_name,
-            "num_gaussians": params["means"].shape[0],
-            "mean_psnr": mean_psnr,
-            "output_ply_path": output_ply_path,
-        })
+            output_ply_path = os.path.join(
+                OUTPUT_DIR, f"apple_splats_{TARGET_CLASS}_{capture_name}_{strategy_name}.ply"
+            )
+            export_ply(params, output_ply_path)
+            print(f"Saved trained splats to {output_ply_path}")
+
+            results.append({
+                "capture": capture_name,
+                "strategy": strategy_name,
+                "num_gaussians": params["means"].shape[0],
+                "mean_psnr": mean_psnr,
+                "output_ply_path": output_ply_path,
+            })
 
     return results
 
@@ -624,7 +680,8 @@ if __name__ == "__main__":
     try:
         results = main()
         summary = "; ".join(
-            f"{r['strategy']}: {r['num_gaussians']} Gaussians, PSNR={r['mean_psnr']:.2f}dB -> {r['output_ply_path']}"
+            f"{r['capture']}/{r['strategy']}: {r['num_gaussians']} Gaussians, "
+            f"PSNR={r['mean_psnr']:.2f}dB -> {r['output_ply_path']}"
             for r in results
         )
         notify_slack(f":white_check_mark: apple_tree_gaussian_splatting.py finished (class=fruit) — {summary}")

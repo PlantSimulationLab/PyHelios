@@ -19,8 +19,9 @@ poses, and train a real 3D Gaussian Splat (via the `gsplat` library) on that
 dataset — seeding the Gaussians from the tree's own mesh geometry instead of
 COLMAP/SfM, since PyHelios already knows exact 3D positions. Training is
 restricted to the fruit class only (the semantic mask acts as a prior, see
-§5), and is run once per densification strategy `gsplat` ships, so the two
-can be compared on identical seed points/cameras.
+§5), and is run once per (capture config, densification strategy) pair —
+sweeping image count, number of viewing planes, and `gsplat` strategy — so
+these can be compared on identical seed points/geometry.
 
 ## 2. Prerequisites check (do this first, automatable)
 
@@ -141,9 +142,16 @@ automated run can default to it without asking:
 | Camera pose convention | Manually derive OpenCV world-to-camera matrix (X-right, Y-down, Z-forward) from `eye`/`lookAt`/world-up=`(0,0,1)`, verified numerically (`right × down == forward`) | `gsplat` needs OpenCV-convention viewmats; Helios exposes no matrix getter, so it must be reconstructed to exactly match what Helios's internal `glm::lookAt` actually rendered |
 | Real camera intrinsics (`fx,fy,cx,cy` + distortion) given by user | Derive render resolution from `(cx,cy)`, vertical FOV from `fy`; drop distortion and off-center principal point; gsplat's K matrix is a **centered** pinhole matching what was actually rendered | Helios's renderer physically cannot produce `fx != fy`, off-center principal point, or lens distortion — passing the raw values into gsplat while training on Helios pixels would be geometrically inconsistent with the images themselves |
 | Loss function | `0.8 * L1 + 0.2 * (1 - SSIM)`, compact from-scratch SSIM (11×11 Gaussian window, `conv2d`) | Standard 3DGS recipe; no extra dependency needed for SSIM |
-| Camera rig | Treat each tree as independent: per-tree frontal-plane grid (`NUM_GRID_COLS x NUM_GRID_ROWS` positions on one plane at a fixed distance from *that tree's own* center, always looking at it) instead of one 360° orbit around the whole orchard | A single orbit around the combined bounding box over/under-frames trees that sit off-center in a multi-tree row; a fixed per-tree frontal plane keeps every tree consistently framed regardless of where it sits, without needing to circle it |
+| Camera rig | Treat each tree as independent: per-tree flat-plane grid at a fixed distance from *that tree's own* center, always looking at it, instead of one 360° orbit around the whole orchard | A single orbit around the combined bounding box over/under-frames trees that sit off-center in a multi-tree row; a fixed per-tree plane keeps every tree consistently framed regardless of where it sits, without needing to circle it |
 | Target class for training | Restrict to `TARGET_CLASS = "fruit"` always (not a toggle) — seed points, dataset masking, and export are all apples-only | User wants the deliverable to be an apple-only splat, not the whole tree; the semantic mask (§ render_semantic_masks) already exists as a clean prior for this |
 | Splat densification strategy | Train **once per strategy** gsplat ships (`DefaultStrategy`, `MCMCStrategy`) on the same seed points/dataset, exporting a separate `.ply` per strategy rather than picking one | Neither strategy is a strict upgrade — comparing both on the same data is cheap (just a second training pass) and avoids committing to one without evidence |
+| Number of images / number of viewing planes | Sweep both as separate `CAPTURE_CONFIGS` cases (`sparse`: 1 plane, 4x2 grid; `default`: 1 plane, 8x3 grid; `multi_face`: 4 planes, 8x3 grid each), one variable changed at a time from the `default` baseline, each producing its own dataset + its own `.ply` per strategy | Answers "does more images help" (`sparse` vs `default`) and "does seeing more of the tree help" (`default` vs `multi_face`) independently, rather than guessing one fixed capture density; a full cross product of every count x every plane count wasn't worth the extra training runs for this comparison |
+
+**Cost note:** `CAPTURE_CONFIGS x SPLAT_STRATEGIES` = 3 x 2 = 6 full training
+runs by default (each `TRAIN_ITERS` iterations), plus 3 separate render
+passes (48 + 144 + 576 = 768 renders total across `sparse`/`default`/
+`multi_face`). Trim `CAPTURE_CONFIGS` or lower `TRAIN_ITERS` for a quick
+smoke test rather than running the full matrix every time.
 
 ## 6. Known bug: PyHelios headless `Visualizer` heap corruption at large resolution
 
@@ -194,23 +202,24 @@ the real fix.
 ```
 apple_tree_gaussian_splatting.py
 ├── build_orchard()                 # reuses build_apple_tree() from apple_tree.py
-├── sample_point_cloud()            # mesh-surface sampling + texture-average color fallback
-├── plane_camera_poses()            # per-tree frontal-plane grid (NUM_GRID_COLS x NUM_GRID_ROWS),
-│                                    # called once per tree (extends the apple_tree_cameras.py
-│                                    # 3-shot rig; no orbiting, fixed distance per tree)
+├── sample_point_cloud()            # mesh-surface sampling + texture-average color fallback, once for all cases
+├── plane_camera_poses()            # per-tree grid across num_planes flat faces (num_cols x num_rows each),
+│                                    # called once per tree per CAPTURE_CONFIGS case (extends the
+│                                    # apple_tree_cameras.py 3-shot rig; no orbiting, fixed distance per tree)
 ├── look_at_view_matrix()           # OpenCV-convention world-to-camera matrix
 ├── intrinsics_matrix()             # K from (width, height, vertical FOV)
-├── render_dataset()                # headless multi-view render + transforms.json export
+├── render_dataset()                # headless multi-view render + transforms.json export, once per capture config
 ├── classify_primitives()           # fruit/leaf/tree split via Helios "object_label" data
-├── render_semantic_masks()         # flat-colored mask render -> class-index PNG per view
+├── render_semantic_masks()         # flat-colored mask render -> class-index PNG per view, once per capture config
 ├── init_gaussians()                # KDTree-based scale init, RGB->SH0 color init
 ├── train_gaussians()               # gsplat rasterization + L1/SSIM loss, strategy-agnostic
 ├── _build_strategy()               # DefaultStrategy or MCMCStrategy, per SPLAT_STRATEGIES
 ├── evaluate()                      # held-out PSNR + side-by-side comparison PNGs
-└── export_ply()                    # gsplat.export_splats -> one .ply per strategy
+└── export_ply()                    # gsplat.export_splats -> one .ply per (capture config, strategy) pair
 
-main() trains TARGET_CLASS="fruit" once per entry in SPLAT_STRATEGIES,
-reusing the same rendered dataset/seed points for each.
+main() renders CAPTURE_CONFIGS once each (shared seed points across all of
+them), then trains TARGET_CLASS="fruit" once per (capture config, strategy)
+pair -- see §5 for what each axis controls.
 ```
 
 ## 8. Validation checklist before trusting a full run
@@ -218,18 +227,22 @@ reusing the same rendered dataset/seed points for each.
 Always smoke-test at reduced scale first — this is what caught the crash in
 §6 before it wasted a full 5000-iteration run:
 
-1. 1 tree, ~16 views, small resolution (e.g. 200×200), ~300-700 iterations.
-   Confirms: tree build → render → point sampling → training forward/backward
-   → `DefaultStrategy` density-control path (needs `iters > refine_start_iter`,
-   default 500) → eval → PLY export, all with no exceptions.
+1. 1 tree, ~16 views, small resolution (e.g. 200×200), ~300-700 iterations,
+   a single `CAPTURE_CONFIGS` entry. Confirms: tree build → render → point
+   sampling → training forward/backward → `DefaultStrategy` density-control
+   path (needs `iters > refine_start_iter`, default 500) → eval → PLY
+   export, all with no exceptions.
 2. Visually inspect one ground-truth render and one eval comparison PNG
-   (`renders/.../eval/<strategy>/eval_*.png`, side-by-side GT|rendered) —
-   confirms camera orientation is correct (not flipped/mirrored) and colors
-   are sane, which numeric checks alone won't catch. Do this for **both**
-   strategies, not just the first — a strategy-specific bug (e.g. the
-   `MCMCStrategy` missing `lr` kwarg) can silently corrupt only one output.
-3. Only then run the full default (3 trees, `NUM_GRID_COLS x NUM_GRID_ROWS`
-   views per tree, fruit class only, 5000 iterations x 2 strategies).
+   (`renders/.../eval/<capture>/<strategy>/eval_*.png`, side-by-side
+   GT|rendered) — confirms camera orientation is correct (not
+   flipped/mirrored) and colors are sane, which numeric checks alone won't
+   catch. Do this for **both** strategies, not just the first — a
+   strategy-specific bug (e.g. the `MCMCStrategy` missing `lr` kwarg) can
+   silently corrupt only one output. For `multi_face`, check at least one
+   view from each of the 4 planes, not just the frontal one.
+3. Only then run the full default (3 trees, all of `CAPTURE_CONFIGS`, fruit
+   class only, 5000 iterations x 2 strategies each — see the cost note in
+   §5).
 
 ## 9. Reference full run (validates the fix in §6)
 
@@ -255,13 +268,19 @@ cd /home/yogesh/PyHelios
 python3 apple_tree_gaussian_splatting.py
 ```
 
-Trains `TARGET_CLASS="fruit"` once per entry in `SPLAT_STRATEGIES`
-(`default`, `mcmc`). Output:
+Trains `TARGET_CLASS="fruit"` once per (capture config, strategy) pair --
+`CAPTURE_CONFIGS` (`sparse`, `default`, `multi_face` by default) x
+`SPLAT_STRATEGIES` (`default`, `mcmc`). See the cost note in §5 before
+running the full matrix. Output:
 
 ```
 renders/gaussian_splatting/
-├── dataset/                              # shared RGB + mask renders, one set for both strategies
-├── eval/{default,mcmc}/                  # per-strategy held-out comparison PNGs
-├── apple_splats_fruit_default.ply
-└── apple_splats_fruit_mcmc.ply
+├── dataset/{sparse,default,multi_face}/            # per-capture-config RGB + mask renders
+├── eval/{sparse,default,multi_face}/{default,mcmc}/ # per-capture-config, per-strategy comparison PNGs
+├── apple_splats_fruit_sparse_default.ply
+├── apple_splats_fruit_sparse_mcmc.ply
+├── apple_splats_fruit_default_default.ply
+├── apple_splats_fruit_default_mcmc.ply
+├── apple_splats_fruit_multi_face_default.ply
+└── apple_splats_fruit_multi_face_mcmc.ply
 ```
