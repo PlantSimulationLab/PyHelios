@@ -1,0 +1,17 @@
+# pip constraints for the manylinux2014 build/test containers.
+#
+# The manylinux2014 image ships devtoolset-10 (gcc 10.2.1). numpy 2.5.0 raised
+# its build requirement to "GCC >= 10.3", so any numpy >= 2.5 that has to be
+# built from source in this image fails during metadata generation:
+#
+#     ../meson.build:25:4: ERROR: Problem encountered: NumPy requires GCC >= 10.3
+#
+# Source builds are unavoidable for some ABIs: numpy publishes manylinux2014
+# wheels only up to 2.2.6 (cp310-cp313), and none at all for cp314, whose Linux
+# wheels are manylinux_2_28 only. Capping below 2.5 keeps the sdist fallback
+# buildable, while PIP_PREFER_BINARY still picks the 2.2.6 wheel where one
+# exists.
+#
+# Remove this once the base image moves to manylinux_2_28 (gcc 12+), which has
+# wheels for every ABI we build.
+numpy<2.5

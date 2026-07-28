@@ -46,7 +46,7 @@ def is_weberpenntree_available():
     except Exception:
         return False
 
-from .Context import Context
+from .Context import Context, check_context_alive
 
 @contextmanager
 def _weberpenntree_working_directory():
@@ -175,6 +175,10 @@ class WeberPennTree:
         finally:
             os.chdir(original_cwd)
     
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "WeberPennTree")
+
     def __enter__(self):
         return self
 
@@ -234,56 +238,66 @@ class WeberPennTree:
         with _weberpenntree_working_directory():
             # Use scale-aware function if scale is not 1.0, otherwise use regular function
             if scale != 1.0:
+                self._check_context_alive()
                 return wpt_wrapper.buildTreeWithScale(self.wpt, tree_name, origin.to_list(), scale)
             else:
+                self._check_context_alive()
                 return wpt_wrapper.buildTree(self.wpt, tree_name, origin.to_list())
     
     @validate_tree_uuid_params
     def getTrunkUUIDs(self, tree_id:int) -> List[int]:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         return wpt_wrapper.getTrunkUUIDs(self.wpt, tree_id)
     
     @validate_tree_uuid_params
     def getBranchUUIDs(self, tree_id:int) -> List[int]:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         return wpt_wrapper.getBranchUUIDs(self.wpt, tree_id)
     
     @validate_tree_uuid_params
     def getLeafUUIDs(self, tree_id:int) -> List[int]:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         return wpt_wrapper.getLeafUUIDs(self.wpt, tree_id)
     
     @validate_tree_uuid_params
     def getAllUUIDs(self, tree_id:int) -> List[int]:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         return wpt_wrapper.getAllUUIDs(self.wpt, tree_id)
     
     @validate_recursion_params
     def setBranchRecursionLevel(self, level:int) -> None:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         wpt_wrapper.setBranchRecursionLevel(self.wpt, level)
 
     @validate_trunk_segment_params
     def setTrunkSegmentResolution(self, trunk_segs:int) -> None:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         wpt_wrapper.setTrunkSegmentResolution(self.wpt, trunk_segs)
 
     @validate_branch_segment_params
     def setBranchSegmentResolution(self, branch_segs:int) -> None:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         wpt_wrapper.setBranchSegmentResolution(self.wpt, branch_segs)
 
     @validate_leaf_subdivisions_params
     def setLeafSubdivisions(self, leaf_segs_x:int, leaf_segs_y:int) -> None:
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
         wpt_wrapper.setLeafSubdivisions(self.wpt, leaf_segs_x, leaf_segs_y)
 
     @validate_xml_file_params
@@ -324,4 +338,5 @@ class WeberPennTree:
 
         # Use working directory context manager for C++ asset access
         with _weberpenntree_working_directory():
+            self._check_context_alive()
             wpt_wrapper.loadXML(self.wpt, str(xml_path), silent)

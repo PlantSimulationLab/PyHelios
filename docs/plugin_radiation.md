@@ -83,13 +83,30 @@ with RadiationModel(context) as radiation:
     radiation.setDirectRayCount("PAR", 100)
     radiation.setDiffuseRayCount("PAR", 300)
     
+    # Push Context geometry into the radiation model. This is REQUIRED before
+    # runBand() - without it the ray trace sees no geometry and every result is 0.
+    radiation.updateGeometry()
+    
     # Run simulation
     radiation.runBand("PAR")
     
-    # Get results
+    # Get results. Values are flux DENSITY in W/m^2, one per primitive.
     results = radiation.getTotalAbsorbedFlux()
-    print(f"Total absorbed flux: {sum(results)} W")
+    print(f"Absorbed flux density: {results[0]:.2f} W/m^2")
+    
+    # To get absorbed POWER in W, weight each primitive by its area.
+    # Do NOT use sum(results) - summing W/m^2 across primitives is not meaningful.
+    power = sum(flux * context.getPrimitiveArea(uuid)
+                for flux, uuid in zip(results, context.getAllUUIDs()))
+    print(f"Total absorbed power: {power:.2f} W")
 ```
+
+> **Units:** `getTotalAbsorbedFlux()` returns absorbed flux **density** in W/m² for
+> each primitive (the `radiation_flux_<band>` primitive data), summed over all bands
+> — not power in watts. Because it is a density, it does **not** change when you
+> change a primitive's size: a 1×1 m and a 2×2 m patch under the same collimated
+> source both report 1000 W/m². Multiply by `context.getPrimitiveArea(uuid)` to
+> convert to watts before summing across primitives.
 
 ## Radiation Bands
 
@@ -143,8 +160,12 @@ source_id = radiation.addCollimatedRadiationSource(
     direction=vec3(0.3, 0.3, -0.9)  # vec3 object
 )
 
+import math
+
+# SphericalCoord takes (radius, elevation_radians, azimuth_radians) - note RADIANS,
+# so convert if you are working in degrees.
 source_id = radiation.addCollimatedRadiationSource(
-    direction=SphericalCoord(1.0, 45.0, 135.0)  # spherical coordinates
+    direction=SphericalCoord(1.0, math.radians(45.0), math.radians(135.0))
 )
 
 # Set source flux
@@ -252,6 +273,17 @@ radiation.enableEmission("thermal")
 radiation.disableEmission("PAR")  # PAR typically doesn't emit
 ```
 
+`runBand()` records each band's emission state as global data named `emission_enabled_<band>` (`uint`, 1 when emission is enabled for that band and 0 otherwise). This is what lets downstream plug-ins identify which band governs longwave emission — the energy balance model reads it to select the emitting band's emissivity. You can read it back through the Context:
+
+```python
+radiation.runBand(["PAR", "thermal"])
+
+context.getGlobalData("emission_enabled_thermal")  # 1
+context.getGlobalData("emission_enabled_PAR")      # 0
+```
+
+The value exists only for bands that have actually been run, since `runBand()` is what writes it.
+
 ## Simulation Execution
 
 ### Geometry Updates
@@ -314,25 +346,28 @@ print(f"Speedup: {sequential_time/multiband_time:.1f}x faster")
 ### Flux Results
 
 ```python
-# Get total absorbed flux for all primitives
+# Get absorbed flux density (W/m^2) for all primitives
 results = radiation.getTotalAbsorbedFlux()
-total_absorption = sum(results)
-print(f"Total absorbed flux: {total_absorption:.2f} W")
+all_uuids = context.getAllUUIDs()
+
+# Convert to absorbed power (W) by weighting each primitive by its area
+total_power = sum(flux * context.getPrimitiveArea(uuid)
+                  for flux, uuid in zip(results, all_uuids))
+print(f"Total absorbed power: {total_power:.2f} W")
 
 # Analyze results per primitive
-all_uuids = context.getAllUUIDs()
 for i, uuid in enumerate(all_uuids):
     if i < len(results):
-        flux = results[i]
+        flux_density = results[i]                      # W/m^2
         area = context.getPrimitiveArea(uuid)
-        flux_density = flux / area if area > 0 else 0
-        print(f"Primitive {uuid}: {flux:.2f} W ({flux_density:.2f} W/m²)")
+        power = flux_density * area                    # W
+        print(f"Primitive {uuid}: {flux_density:.2f} W/m² ({power:.2f} W)")
 ```
 
 ### Radiation Analysis
 
 ```python
-# Calculate radiation statistics
+# Calculate radiation statistics over the per-primitive flux densities (W/m^2)
 radiation_data = radiation.getTotalAbsorbedFlux()
 
 import statistics
@@ -341,12 +376,16 @@ max_flux = max(radiation_data)
 min_flux = min(radiation_data)
 std_flux = statistics.stdev(radiation_data)
 
-print(f"Radiation statistics:")
-print(f"  Mean: {mean_flux:.2f} W")
-print(f"  Max: {max_flux:.2f} W") 
-print(f"  Min: {min_flux:.2f} W")
-print(f"  Std Dev: {std_flux:.2f} W")
+print(f"Radiation statistics (flux density):")
+print(f"  Mean: {mean_flux:.2f} W/m²")
+print(f"  Max: {max_flux:.2f} W/m²")
+print(f"  Min: {min_flux:.2f} W/m²")
+print(f"  Std Dev: {std_flux:.2f} W/m²")
 ```
+
+Note that these statistics are unweighted: each primitive contributes equally
+regardless of its size. For an area-weighted scene average, divide total absorbed
+power by total area.
 
 ## Advanced Band Management
 
@@ -539,12 +578,14 @@ radiation.setDiffuseRadiationExtinctionCoeff(
     peak_direction=vec3(0, 0, 1)  # Zenith direction
 )
 
-# Or use spherical coordinates
+# Or use spherical coordinates. SphericalCoord takes elevation and azimuth in
+# RADIANS, so convert from degrees when needed.
+import math
 from pyhelios.types import SphericalCoord
 radiation.setDiffuseRadiationExtinctionCoeff(
     label="SW",
     K=0.3,
-    peak_direction=SphericalCoord(1.0, 45.0, 90.0)
+    peak_direction=SphericalCoord(1.0, math.radians(45.0), math.radians(90.0))
 )
 
 # Query diffuse flux
@@ -720,10 +761,12 @@ radiation.setCameraPixelData("cam1", "red", filtered.tolist())
 ### Periodic Boundary Conditions
 
 ```python
-# Enable periodic boundaries for large-scale simulations
+# Enable periodic boundaries for large-scale simulations.
+# Only "x", "y", and "xy" are valid - there is no periodic z mode. Passing any
+# other string prints a warning and silently enables no periodic boundary.
 radiation.enforcePeriodicBoundary("xy")   # Periodic in x and y
-radiation.enforcePeriodicBoundary("xyz")  # Periodic in all dimensions
 radiation.enforcePeriodicBoundary("x")    # Periodic in x only
+radiation.enforcePeriodicBoundary("y")    # Periodic in y only
 ```
 
 ### G-Function Calculation
@@ -754,10 +797,11 @@ print(f"G-function (horizontal): {g_horizontal}")
 sky_energy = radiation.getSkyEnergy()
 print(f"Sky energy: {sky_energy} W")
 
-# Enable optional primitive data outputs
-radiation.optionalOutputPrimitiveData("temperature")
-radiation.optionalOutputPrimitiveData("absorbed_PAR")
-radiation.optionalOutputPrimitiveData("transmitted_flux")
+# Enable optional primitive data outputs.
+# Only "reflectivity" and "transmissivity" are recognized; any other label
+# prints a warning and enables nothing.
+radiation.optionalOutputPrimitiveData("reflectivity")
+radiation.optionalOutputPrimitiveData("transmissivity")
 ```
 
 ## Spectral Modeling Workflows
@@ -838,6 +882,36 @@ radiation.blendSpectra(
 
 ## Multi-View Camera Imaging
 
+<a name="CameraRenderOrder"></a>
+### Camera rendering order
+
+`writeCameraImage()`, `writeNormCameraImage()` and `writeCameraImageData()` do not
+render anything. They only write out pixel data that a previous `runBand()` call
+produced. Three ordering rules follow from this:
+
+1. **Add the camera before calling `runBand()`.** `runBand()` renders only the
+   cameras that exist when it runs. A camera added afterwards has no pixel data
+   until the next `runBand()`.
+2. **Render every band you intend to write.** `runBand()` fills in pixel data
+   only for the bands passed to it, so `runBand(["red", "green", "blue"])`
+   followed by `writeCameraImage(..., bands=["NIR"])` fails even though the NIR
+   band exists.
+3. **Re-run `runBand()` after moving a camera or changing the scene.** Pixel data
+   reflects the scene as of the last render.
+
+```python
+# Correct order
+radiation.addRadiationCamera("cam", ["red", "green", "blue"], ...)  # 1. add camera
+radiation.updateGeometry()                                          # 2. push geometry
+radiation.runBand(["red", "green", "blue"])                         # 3. render
+radiation.writeCameraImage("cam", ["red", "green", "blue"], "out")  # 4. write
+```
+
+Getting this wrong raises a `RadiationModelError` naming the camera and band that
+were never rendered. On helios-core versions before v1.3.79 the underlying
+library reported this as a bare `invalid map<K, T> key`; PyHelios now checks the
+precondition itself and reports which `runBand()` call is missing.
+
 ### Time-Series Camera Capture
 
 ```python
@@ -861,12 +935,19 @@ for i, viewpoint in enumerate(viewpoints):
     # Update lookat to track target
     radiation.setCameraLookat("timelapse", vec3(0, 0, 5))
 
+    # Re-render from the new viewpoint. This is required: writeCameraImage()
+    # only reads pixel data produced by runBand(), so moving the camera without
+    # re-running would write the previous viewpoint's image.
+    radiation.runBand(["red", "green", "blue"])
+
     # Capture image
     radiation.writeCameraImage(
         "timelapse", ["red", "green", "blue"],
         f"view_{i}", frame=i
     )
 ```
+
+\note `writeCameraImage()` renders nothing itself -- it only writes out pixel data that `runBand()` has already produced. See [Camera rendering order](#CameraRenderOrder) for the ordering rules this implies.
 
 ### Multi-Spectral Imaging with Standard Cameras
 
@@ -903,7 +984,7 @@ for day in range(100):
     leaf_patches = context.getAllUUIDs("patch")
     for patch_id in leaf_patches:
         current_age = context.getPrimitiveData(patch_id, "age")[0]
-        context.setPrimitiveData(patch_id, "age", current_age + 1.0)
+        context.setPrimitiveDataFloat(patch_id, "age", current_age + 1.0)
 
     # Interpolate spectra based on updated ages
     radiation.interpolateSpectrumFromPrimitiveData(
@@ -917,9 +998,10 @@ for day in range(100):
     # Run radiation simulation
     radiation.runBand("PAR")
 
-    # Analyze results
+    # Analyze results - convert flux density (W/m^2) to absorbed power (W)
     flux = radiation.getTotalAbsorbedFlux()
-    daily_radiation[day] = sum(flux)
+    daily_radiation[day] = sum(f * context.getPrimitiveArea(u)
+                               for f, u in zip(flux, context.getAllUUIDs()))
 ```
 
 ### Multi-Source Lighting Scenarios
@@ -975,7 +1057,7 @@ for band in bands:
 
 ```python
 from pyhelios import Context, WeberPennTree, WPTType, RadiationModel
-from pyhelios.exceptions import RadiationModelError
+from pyhelios import RadiationModelError
 from pyhelios.types import *
 
 try:
@@ -1030,18 +1112,25 @@ try:
         # Analyze results
         results = radiation.getTotalAbsorbedFlux()
         
-        # Get leaf-specific results
+        # Get leaf-specific results. results[] is flux density (W/m^2), so each
+        # primitive must be area-weighted before the values can be summed.
         leaf_uuids = wpt.getLeafUUIDs(tree_id)
         leaf_absorption = 0
         
         all_uuids = context.getAllUUIDs()
         for i, uuid in enumerate(all_uuids):
             if uuid in leaf_uuids and i < len(results):
-                leaf_absorption += results[i]
+                leaf_absorption += results[i] * context.getPrimitiveArea(uuid)
         
-        print(f"Total scene absorption: {sum(results):.2f} W")
+        total_absorption = sum(f * context.getPrimitiveArea(u)
+                               for f, u in zip(results, all_uuids))
+        ground_index = all_uuids.index(ground_uuid)
+        ground_absorption = (results[ground_index]
+                             * context.getPrimitiveArea(ground_uuid))
+        
+        print(f"Total scene absorption: {total_absorption:.2f} W")
         print(f"Leaf absorption: {leaf_absorption:.2f} W")
-        print(f"Ground absorption: {results[all_uuids.index(ground_uuid)]:.2f} W")
+        print(f"Ground absorption: {ground_absorption:.2f} W")
         
         # Access band-specific data stored by radiation model
         for band in ["PAR", "NIR", "SW"]:
@@ -1065,13 +1154,12 @@ all_uuids = context.getAllUUIDs()
 
 for i, uuid in enumerate(all_uuids):
     if i < len(results):
-        # Store flux data
-        context.setPrimitiveDataFloat(uuid, "radiation_flux_PAR", results[i])
+        # results[i] is already a flux density in W/m^2
+        context.setPrimitiveDataFloat(uuid, "flux_density_PAR", results[i])
         
-        # Calculate flux density
+        # Absorbed power in W requires multiplying by area
         area = context.getPrimitiveArea(uuid)
-        flux_density = results[i] / area if area > 0 else 0
-        context.setPrimitiveDataFloat(uuid, "flux_density_PAR", flux_density)
+        context.setPrimitiveDataFloat(uuid, "absorbed_power_PAR", results[i] * area)
 
 # Use for visualization
 context.colorPrimitiveByDataPseudocolor(
@@ -1316,7 +1404,7 @@ for algorithm, description in algorithms.items():
 
 ```python
 from pyhelios import Context, WeberPennTree, WPTType, RadiationModel
-from pyhelios.exceptions import RadiationModelError
+from pyhelios import RadiationModelError
 from pyhelios.types import *
 
 # Create scene with labeled geometry
@@ -1361,6 +1449,17 @@ try:
         radiation.setSourceFlux(sun_id, "Blue", 200.0)
         radiation.setSourceFlux(sun_id, "NIR", 400.0)
         
+        # Add cameras BEFORE running: runBand() renders only the cameras that
+        # already exist, and only the bands passed to it.
+        radiation.addRadiationCamera(
+            "overhead_rgb", ["Red", "Green", "Blue"],
+            position=vec3(0, 0, 20),
+            lookat_or_direction=vec3(0, 0, 0))
+        radiation.addRadiationCamera(
+            "side_view", ["NIR"],
+            position=vec3(15, 0, 5),
+            lookat_or_direction=vec3(0, 0, 5))
+
         # Run simulation
         radiation.updateGeometry()
         radiation.runBand(["Red", "Green", "Blue", "NIR"])

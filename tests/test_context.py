@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 import tempfile
 import os
 import time
+import math
 import platform
 import numpy as np
 import pyhelios
@@ -4730,3 +4731,380 @@ class TestTextureTransparency:
         if result is not None:
             assert result.ndim == 2
             assert result.shape[0] > 0 and result.shape[1] > 0
+
+@pytest.mark.native_only
+class TestRotationOperations:
+    """Test primitive and object rotation.
+
+    These cover the 14 wrapped rotate entry points. The handedness assertions
+    exist specifically to pin the convention: helios-core 1.3.78 removed a
+    negation in CompoundObject::rotate()'s "z" string-axis branch that made
+    rotateObject(..., 'z') disagree with rotatePrimitive() and with the
+    vec3-axis rotateObject() overload. That defect was invisible to PyHelios
+    because none of these entry points had any test coverage.
+    """
+
+    @staticmethod
+    def _verts(context, uuid):
+        """Vertices of a primitive as a list of rounded (x, y, z) tuples."""
+        return [(round(v.x, 4), round(v.y, 4), round(v.z, 4))
+                for v in context.getPrimitiveVertices(uuid)]
+
+    # -------- handedness / cross-path consistency --------
+
+    def test_z_rotation_is_clockwise_viewed_from_positive_z(self, basic_context):
+        """A +90 deg z-rotation maps (x,y) -> (y,-x)."""
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(2, 1))
+        assert self._verts(basic_context, uuid)[0] == (-1.0, -0.5, 0.0)
+
+        basic_context.rotatePrimitive(uuid, math.pi / 2, 'z')
+
+        # (-1, -0.5) -> (-0.5, 1.0) under (x,y)->(y,-x). The vertex list is
+        # cyclically reordered by the rotation, so compare as a set.
+        assert set(self._verts(basic_context, uuid)) == {
+            (0.5, -1.0, 0.0), (0.5, 1.0, 0.0), (-0.5, 1.0, 0.0), (-0.5, -1.0, 0.0)
+        }
+
+    @pytest.mark.parametrize("axis", ['x', 'y', 'z'])
+    def test_object_and_primitive_string_axis_rotations_agree(self, basic_context, axis):
+        """rotateObject(str axis) and rotatePrimitive(str axis) share one handedness.
+
+        Before helios-core 1.3.78 the 'z' case alone disagreed, because
+        CompoundObject::rotate() negated the angle in its "z" branch.
+        """
+        patch = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(2, 1))
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(2, 1),
+                                            subdiv=int2(1, 1))
+        tile_prim = basic_context.getObjectPrimitiveUUIDs(objID)[0]
+
+        assert self._verts(basic_context, patch) == self._verts(basic_context, tile_prim)
+
+        basic_context.rotatePrimitive(patch, math.pi / 2, axis)
+        basic_context.rotateObject(objID, math.pi / 2, axis)
+
+        assert self._verts(basic_context, patch) == self._verts(basic_context, tile_prim), (
+            f"rotateObject and rotatePrimitive disagree about the '{axis}' axis"
+        )
+
+    def test_object_string_axis_and_vector_axis_rotations_agree(self, basic_context):
+        """rotateObject('z') and rotateObject(vec3(0,0,1)) share one handedness."""
+        a = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(2, 1), subdiv=int2(1, 1))
+        b = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(2, 1), subdiv=int2(1, 1))
+        a_prim = basic_context.getObjectPrimitiveUUIDs(a)[0]
+        b_prim = basic_context.getObjectPrimitiveUUIDs(b)[0]
+
+        basic_context.rotateObject(a, math.pi / 2, 'z')
+        basic_context.rotateObject(b, math.pi / 2, vec3(0, 0, 1))
+
+        assert self._verts(basic_context, a_prim) == self._verts(basic_context, b_prim)
+
+    def test_full_turn_restores_geometry(self, basic_context):
+        """Four quarter-turns about z return a primitive to its start."""
+        uuid = basic_context.addPatch(center=vec3(1, 2, 0), size=vec2(2, 1))
+        before = self._verts(basic_context, uuid)
+
+        for _ in range(4):
+            basic_context.rotatePrimitive(uuid, math.pi / 2, 'z')
+
+        # The vertex list may be cyclically reordered, so compare as a set.
+        assert set(before) == set(self._verts(basic_context, uuid))
+
+    def test_opposite_rotations_cancel(self, basic_context):
+        """Rotating by +theta then -theta is a no-op."""
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0), size=vec2(2, 1))
+        before = self._verts(basic_context, uuid)
+
+        basic_context.rotatePrimitive(uuid, 0.7, vec3(1, 1, 0))
+        assert self._verts(basic_context, uuid) != before
+        basic_context.rotatePrimitive(uuid, -0.7, vec3(1, 1, 0))
+
+        for (x0, y0, z0), (x1, y1, z1) in zip(before, self._verts(basic_context, uuid)):
+            assert abs(x0 - x1) < 1e-3
+            assert abs(y0 - y1) < 1e-3
+            assert abs(z0 - z1) < 1e-3
+
+    # -------- rotation about an explicit origin --------
+
+    def test_rotate_primitive_about_explicit_origin(self, basic_context):
+        """Rotating about a remote origin moves the primitive along an arc."""
+        uuid = basic_context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+
+        basic_context.rotatePrimitive(uuid, math.pi / 2, vec3(0, 0, 1), origin=vec3(0, 0, 0))
+
+        center = basic_context.getPatchCenter(uuid)
+        assert abs(center.x - 0.0) < 1e-3, f"x={center.x}"
+        assert abs(center.y - 2.0) < 1e-3, f"y={center.y}"
+        assert abs(center.z - 0.0) < 1e-3, f"z={center.z}"
+
+    def test_rotate_object_about_explicit_origin(self, basic_context):
+        """rotateObject with an explicit origin moves the object along an arc."""
+        objID = basic_context.addTileObject(center=vec3(2, 0, 0), size=vec2(1, 1),
+                                            subdiv=int2(1, 1))
+
+        basic_context.rotateObject(objID, math.pi / 2, vec3(0, 0, 1), origin=vec3(0, 0, 0))
+
+        center = basic_context.getObjectCenter(objID)
+        assert abs(center.x - 0.0) < 1e-3, f"x={center.x}"
+        assert abs(abs(center.y) - 2.0) < 1e-3, f"y={center.y}"
+
+    def test_rotate_object_about_origin_uses_object_origin_not_world_origin(self, basic_context):
+        """about_origin=True rotates about the OBJECT's own origin, not (0,0,0).
+
+        Native rotateObjectAboutOrigin() passes objects.at(ObjID)->object_origin,
+        so a tile centered at (2,0,0) spins in place rather than orbiting the
+        world origin.
+        """
+        objID = basic_context.addTileObject(center=vec3(2, 0, 0), size=vec2(1, 1),
+                                            subdiv=int2(1, 1))
+        prim = basic_context.getObjectPrimitiveUUIDs(objID)[0]
+
+        basic_context.rotateObject(objID, math.pi / 2, vec3(0, 0, 1), about_origin=True)
+
+        # Spun in place: every vertex stays in the original 1x1 footprint about x=2.
+        for x, y, _z in self._verts(basic_context, prim):
+            assert 1.4 < x < 2.6, f"x={x} left the in-place footprint"
+            assert -0.6 < y < 0.6, f"y={y} left the in-place footprint"
+
+    # -------- batch (list) overloads --------
+
+    def test_rotate_primitive_list_matches_individual(self, basic_context):
+        """The list overload rotates every primitive like the single overload."""
+        batch = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                 for i in range(3)]
+        singles = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                   for i in range(3)]
+
+        basic_context.rotatePrimitive(batch, math.pi / 3, 'z')
+        for uuid in singles:
+            basic_context.rotatePrimitive(uuid, math.pi / 3, 'z')
+
+        for b, s in zip(batch, singles):
+            assert self._verts(basic_context, b) == self._verts(basic_context, s)
+
+    def test_rotate_object_list_matches_individual(self, basic_context):
+        """The object list overload rotates every object like the single overload."""
+        batch = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(1, 1),
+                                             subdiv=int2(1, 1)) for i in range(3)]
+        singles = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(1, 1),
+                                               subdiv=int2(1, 1)) for i in range(3)]
+
+        basic_context.rotateObject(batch, math.pi / 3, 'z')
+        for objID in singles:
+            basic_context.rotateObject(objID, math.pi / 3, 'z')
+
+        for b, s in zip(batch, singles):
+            bp = basic_context.getObjectPrimitiveUUIDs(b)[0]
+            sp = basic_context.getObjectPrimitiveUUIDs(s)[0]
+            assert self._verts(basic_context, bp) == self._verts(basic_context, sp)
+
+    def test_rotate_primitive_list_axis_vector(self, basic_context):
+        """The list + vec3-axis overload reaches the native call and rotates."""
+        batch = [basic_context.addPatch(center=vec3(i, 0, 0), size=vec2(1, 1))
+                 for i in range(2)]
+        before = [self._verts(basic_context, u) for u in batch]
+
+        basic_context.rotatePrimitive(batch, math.pi / 2, vec3(0, 0, 1))
+
+        for uuid, was in zip(batch, before):
+            assert self._verts(basic_context, uuid) != was
+
+    def test_rotate_object_list_about_origin(self, basic_context):
+        """The object list + about_origin overload reaches the native call."""
+        batch = [basic_context.addTileObject(center=vec3(i, 0, 0), size=vec2(1, 1),
+                                             subdiv=int2(1, 1)) for i in range(2)]
+        prims = [basic_context.getObjectPrimitiveUUIDs(o)[0] for o in batch]
+        before = [self._verts(basic_context, p) for p in prims]
+
+        basic_context.rotateObject(batch, math.pi / 2, vec3(0, 0, 1), about_origin=True)
+
+        for prim, was in zip(prims, before):
+            assert self._verts(basic_context, prim) != was
+
+
+@pytest.mark.native_only
+class TestRotationValidation:
+    """Test argument validation on the rotation methods."""
+
+    def test_invalid_string_axis_rejected(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="axis must be"):
+            basic_context.rotatePrimitive(uuid, 1.0, 'w')
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="axis must be"):
+            basic_context.rotateObject(objID, 1.0, 'w')
+
+    def test_origin_with_string_axis_rejected(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="origin parameter cannot be used"):
+            basic_context.rotatePrimitive(uuid, 1.0, 'z', origin=vec3(0, 0, 0))
+
+    def test_about_origin_with_string_axis_rejected(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="about_origin parameter cannot be used"):
+            basic_context.rotateObject(objID, 1.0, 'z', about_origin=True)
+
+    def test_origin_and_about_origin_together_rejected(self, basic_context):
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="Cannot specify both"):
+            basic_context.rotateObject(objID, 1.0, vec3(0, 0, 1),
+                                       origin=vec3(0, 0, 0), about_origin=True)
+
+    def test_zero_length_axis_rejected(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="axis vector cannot be zero"):
+            basic_context.rotatePrimitive(uuid, 1.0, vec3(0, 0, 0))
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), subdiv=int2(1, 1))
+        with pytest.raises(ValueError, match="axis vector cannot be zero"):
+            basic_context.rotateObject(objID, 1.0, vec3(0, 0, 0))
+
+    def test_wrong_axis_type_rejected(self, basic_context):
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="axis must be str or vec3"):
+            basic_context.rotatePrimitive(uuid, 1.0, 42)
+
+    def test_non_vec3_origin_rejected(self, basic_context):
+        """A wrong-typed origin is rejected rather than reaching C++ as a bad buffer."""
+        uuid = basic_context.addPatch(center=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="origin must be a vec3"):
+            basic_context.rotatePrimitive(uuid, 1.0, vec3(0, 0, 1), origin=[0, 0, 0])
+
+
+@pytest.mark.native_only
+@pytest.mark.xfail(
+    reason="Requires the getObjectBoundingBox() fix landing in helios-core after v1.3.78. "
+           "The submodule currently pins v1.3.78, which still seeds the box from the first "
+           "primitive's first vertex and skips that primitive's remaining vertices. These "
+           "tests assert the fixed behavior and will XPASS once the submodule pointer "
+           "advances to a core containing the fix; drop this marker at that point.",
+    strict=False,
+)
+class TestObjectBoundingBox:
+    """Test getObjectBoundingBox.
+
+    Regression coverage for a native seeding bug: getObjectBoundingBox() seeded
+    min/max from the first primitive's first vertex and then `continue`d to the
+    next primitive, so the rest of that primitive's vertices were never compared.
+    A single-primitive object therefore reported min == max == its first vertex.
+
+    The fix lives in the Helios repository (core/src/Context.cpp), not in this
+    repo — PyHelios must never patch the vendored helios-core submodule.
+    """
+
+    @staticmethod
+    def _truth(context, objID):
+        """Ground-truth bounding box computed from every vertex of the object."""
+        verts = [v for uuid in context.getObjectPrimitiveUUIDs(objID)
+                 for v in context.getPrimitiveVertices(uuid)]
+        mn = vec3(min(v.x for v in verts), min(v.y for v in verts), min(v.z for v in verts))
+        mx = vec3(max(v.x for v in verts), max(v.y for v in verts), max(v.z for v in verts))
+        return mn, mx
+
+    def test_single_primitive_object_box_is_not_degenerate(self, basic_context):
+        """A 1x1 tile is one patch; its box must span the patch, not collapse to a corner."""
+        objID = basic_context.addTileObject(center=vec3(2, 0, 0), size=vec2(1, 1),
+                                            subdiv=int2(1, 1))
+
+        mn, mx = basic_context.getObjectBoundingBox(objID)
+
+        assert abs(mn.x - 1.5) < 1e-4, f"min.x={mn.x}"
+        assert abs(mx.x - 2.5) < 1e-4, f"max.x={mx.x}"
+        assert abs(mn.y - (-0.5)) < 1e-4, f"min.y={mn.y}"
+        assert abs(mx.y - 0.5) < 1e-4, f"max.y={mx.y}"
+        # The box must have real extent, not collapse to a single point.
+        assert mx.x > mn.x and mx.y > mn.y
+
+    def test_box_matches_vertex_ground_truth(self, basic_context):
+        """The reported box equals the box computed from all vertices."""
+        for objID in [
+            basic_context.addTileObject(center=vec3(2, 0, 0), size=vec2(1, 1), subdiv=int2(1, 1)),
+            basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(2, 2), subdiv=int2(2, 2)),
+            basic_context.addBoxObject(center=vec3(1, 1, 1), size=vec3(2, 2, 2), subdiv=int3(1, 1, 1)),
+            basic_context.addSphereObject(radius=1.5, center=vec3(0, 0, 3), ndivs=8),
+        ]:
+            mn, mx = basic_context.getObjectBoundingBox(objID)
+            tmn, tmx = self._truth(basic_context, objID)
+            for got, want, name in ((mn, tmn, "min"), (mx, tmx, "max")):
+                assert abs(got.x - want.x) < 1e-4, f"obj {objID} {name}.x {got.x} != {want.x}"
+                assert abs(got.y - want.y) < 1e-4, f"obj {objID} {name}.y {got.y} != {want.y}"
+                assert abs(got.z - want.z) < 1e-4, f"obj {objID} {name}.z {got.z} != {want.z}"
+
+    def test_first_object_contributes_its_full_extent_to_a_list(self, basic_context):
+        """The first object in a list must not lose its extent to the seeding path.
+
+        The bug was confined to the first primitive of the first object, so a list
+        whose FIRST object holds a unique extreme is the case that exposes it.
+        """
+        big = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(4, 4), subdiv=int2(1, 1))
+        small = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1), subdiv=int2(1, 1))
+
+        mn, mx = basic_context.getObjectBoundingBox([big, small])
+
+        # The big tile spans +/-2; if its first primitive were skipped the box would
+        # collapse toward the small tile's +/-0.5.
+        assert abs(mn.x - (-2.0)) < 1e-4, f"min.x={mn.x}"
+        assert abs(mx.x - 2.0) < 1e-4, f"max.x={mx.x}"
+        assert abs(mn.y - (-2.0)) < 1e-4, f"min.y={mn.y}"
+        assert abs(mx.y - 2.0) < 1e-4, f"max.y={mx.y}"
+
+    def test_single_object_box_matches_same_object_as_list(self, basic_context):
+        """getObjectBoundingBox(o) and getObjectBoundingBox([o]) agree."""
+        objID = basic_context.addTileObject(center=vec3(3, -1, 0), size=vec2(1, 1),
+                                            subdiv=int2(1, 1))
+
+        a_mn, a_mx = basic_context.getObjectBoundingBox(objID)
+        b_mn, b_mx = basic_context.getObjectBoundingBox([objID])
+
+        for x, y in ((a_mn, b_mn), (a_mx, b_mx)):
+            assert abs(x.x - y.x) < 1e-6
+            assert abs(x.y - y.y) < 1e-6
+            assert abs(x.z - y.z) < 1e-6
+
+    def test_rotated_object_box_encloses_rotated_geometry(self, basic_context):
+        """After rotation the box tracks the rotated vertices."""
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(4, 1),
+                                            subdiv=int2(1, 1))
+        basic_context.rotateObject(objID, math.pi / 2, 'z')
+
+        mn, mx = basic_context.getObjectBoundingBox(objID)
+        tmn, tmx = self._truth(basic_context, objID)
+
+        # The 4x1 tile becomes 1x4 after a quarter turn about z.
+        assert abs((mx.x - mn.x) - 1.0) < 1e-3, f"x extent={mx.x - mn.x}"
+        assert abs((mx.y - mn.y) - 4.0) < 1e-3, f"y extent={mx.y - mn.y}"
+        assert abs(mn.x - tmn.x) < 1e-4 and abs(mx.y - tmx.y) < 1e-4
+
+    def test_nonexistent_object_raises(self, basic_context):
+        """An unknown object ID is reported, not silently returned as garbage."""
+        with pytest.raises(Exception):
+            basic_context.getObjectBoundingBox(999999)
+
+    def test_empty_object_list_raises_instead_of_returning_origin_box(self, basic_context):
+        """A request covering no primitives raises rather than reporting a box at the origin.
+
+        The Python wrapper zero-initializes its output buffers, so before the fix
+        this returned a plausible-looking (0,0,0)-(0,0,0) box instead of failing.
+        """
+        basic_context.addTileObject(center=vec3(5, 5, 5), size=vec2(1, 1), subdiv=int2(1, 1))
+
+        from pyhelios.exceptions import HeliosError
+        with pytest.raises(HeliosError, match="contain any primitives"):
+            basic_context.getObjectBoundingBox([])
+
+    def test_partially_deleted_object_box_covers_remaining_primitives(self, basic_context):
+        """After deleting some sub-primitives the box tracks only what remains."""
+        objID = basic_context.addTileObject(center=vec3(0, 0, 0), size=vec2(2, 2),
+                                            subdiv=int2(2, 2))
+        uuids = basic_context.getObjectPrimitiveUUIDs(objID)
+        assert len(uuids) == 4
+
+        basic_context.deletePrimitive(uuids[:3])
+        remaining = basic_context.getObjectPrimitiveUUIDs(objID)
+        assert len(remaining) == 1
+
+        mn, mx = basic_context.getObjectBoundingBox(objID)
+        tmn, tmx = self._truth(basic_context, objID)
+
+        # One surviving 1x1 sub-patch: a real extent, not a collapsed point.
+        assert abs((mx.x - mn.x) - 1.0) < 1e-4, f"x extent={mx.x - mn.x}"
+        assert abs((mx.y - mn.y) - 1.0) < 1e-4, f"y extent={mx.y - mn.y}"
+        assert abs(mn.x - tmn.x) < 1e-4 and abs(mx.x - tmx.x) < 1e-4

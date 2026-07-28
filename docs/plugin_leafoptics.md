@@ -329,7 +329,7 @@ The method assigns primitive data using the same labels as \ref pyhelios.LeafOpt
 
 ## Optional Output Primitive Data {#LOOptionalOutput}
 
-By default, the LeafOptics plug-in writes all leaf constituent concentrations to primitive data. To selectively output only specific properties for improved performance, call \ref pyhelios.LeafOptics.LeafOptics::optionalOutputPrimitiveData "optionalOutputPrimitiveData()" with the desired labels before calling run().
+By default, the LeafOptics plug-in writes **no** leaf constituent concentrations to primitive data. Output is opt-in: call \ref pyhelios.LeafOptics.LeafOptics::optionalOutputPrimitiveData "optionalOutputPrimitiveData()" with the desired labels before calling run(), and only those labels will be written.
 
 ```python
 from pyhelios import Context, LeafOptics

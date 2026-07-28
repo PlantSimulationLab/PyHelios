@@ -189,15 +189,16 @@ The [loadOBJ()](pyhelios.Context.Context.loadOBJ) function requires inputs that 
 
 The last optional argument to the [loadOBJ()](pyhelios.Context.Context.loadOBJ) function allows the user to disable any messages output from the function while loading by setting silent=True.
 
-Example code is given below to load an OBJ model at the origin with no scaling (height=0) or rotation (rotation='SphericalCoord(1, 0, 0)') applied and default up axis of "z".
+Example code is given below to load an OBJ model at the origin with no scaling (height=0) or rotation (rotation=`SphericalCoord(1, 0, 0)`) applied. Note that `upaxis` defaults to `'YUP'`; pass `upaxis='ZUP'` explicitly if your model already uses Helios' z-up convention.
 
 ```python
 from pyhelios import Context
-from pyhelios.types import vec3, RGBcolor
+from pyhelios.types import vec3, RGBcolor, SphericalCoord
 
 context = Context()
 
-context.loadOBJ("relative/path/to/someobjfile.obj", vec3(0, 0, 0), 0, SphericalCoord(1, 0, 0), RGBcolor(1, 0, 0))
+context.loadOBJ("relative/path/to/someobjfile.obj", origin=vec3(0, 0, 0), height=0,
+                rotation=SphericalCoord(1, 0, 0), color=RGBcolor(1, 0, 0))
 ```
 
 ### Writing PLY (Stanford Polygon) Files {#PLYwrite}
@@ -242,7 +243,7 @@ context = Context()
 
 UUID = context.addPatch()
 
-context.setPrimitiveData(UUID, "somedata", 10.2)
+context.setPrimitiveDataFloat(UUID, "somedata", 10.2)
 
 context.writeXML("file.xml")
 ```

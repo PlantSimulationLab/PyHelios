@@ -5,9 +5,12 @@ This module tests the RadiationModel class and radiation simulation capabilities
 Tests are designed to work in both native and mock modes.
 """
 
+import functools
 import pytest
+import subprocess
 import sys
 import os
+import textwrap
 import numpy as np
 from typing import List
 
@@ -15,6 +18,7 @@ from typing import List
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from pyhelios import Context, RadiationModel, RadiationModelError, DataTypes
+from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.validation.exceptions import ValidationError
 
 # RadiationSourceType may not be available if RadiationModel is None
@@ -22,6 +26,49 @@ try:
     from pyhelios.RadiationModel import RadiationSourceType
 except (ImportError, AttributeError):
     RadiationSourceType = None
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+
+@functools.lru_cache(maxsize=1)
+def radiation_backend_constructible() -> bool:
+    """Whether a RadiationModel can be constructed here, probed out of process.
+
+    Constructing a RadiationModel where no ray-tracing backend can initialize is
+    not reliably survivable. It usually raises RadiationModelError, which callers
+    catch to skip -- but on some MoltenVK configurations (notably the macOS
+    cibuildwheel runner) it instead segfaults inside createRadiationModel, taking
+    the whole test process down. try/except cannot defend against SIGSEGV, so do
+    the probe in a child process and let the child absorb any crash.
+
+    Returns True only if the child constructed a model and exited cleanly, so a
+    crash, a non-zero exit, and a clean backend error all read as "unavailable".
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, '-c', textwrap.dedent("""
+                from pyhelios import Context, RadiationModel
+                from pyhelios.types import vec3
+                ctx = Context()
+                ctx.addPatch(center=vec3(0, 0, 0))
+                RadiationModel(ctx)
+                print("BACKEND_OK")
+            """)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=REPO_ROOT,
+            env=dict(os.environ, PYTHONPATH=REPO_ROOT),
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0 and "BACKEND_OK" in result.stdout
+
+
+def skip_without_radiation_backend() -> None:
+    """Skip the calling test unless a RadiationModel can actually be built."""
+    if not radiation_backend_constructible():
+        pytest.skip("no constructible ray-tracing backend in this environment")
 
 
 @pytest.mark.native_only
@@ -281,7 +328,46 @@ class TestContextPseudocolor:
 @pytest.mark.requires_gpu
 class TestRadiationModelIntegration:
     """Integration tests requiring native RadiationModel library"""
-    
+
+    def test_sun_sphere_zenith_follows_cosine_law(self):
+        """Sun sphere zenith angle must be interpreted as degrees-from-vertical.
+
+        Regression test: the C interface previously passed the caller's
+        degrees-zenith straight into SphericalCoord(radius, elevation_radians,
+        azimuth_radians) with no unit or zenith->elevation conversion, so the sun
+        was placed at an arbitrary wrong position. An overhead sun (zenith=0)
+        produced 0 W/m^2 instead of the source flux.
+
+        A horizontal patch under a sun of flux F must absorb F*cos(zenith).
+        """
+        import math
+
+        flux = 1000.0
+        for zenith_deg in (0.0, 30.0, 60.0, 85.0):
+            with Context() as context:
+                context.addPatch(center=DataTypes.vec3(0, 0, 0),
+                                 size=DataTypes.vec2(1, 1))
+                with RadiationModel(context) as radiation:
+                    radiation.addRadiationBand("SW")
+                    source = radiation.addSunSphereRadiationSource(
+                        radius=1.0, zenith=zenith_deg, azimuth=0.0)
+                    radiation.setSourceFlux(source, "SW", flux)
+                    radiation.setDirectRayCount("SW", 500)
+                    # Explicit updateGeometry() avoids the known upstream
+                    # isgeometryinitialized nondeterminism that can otherwise
+                    # return 0.0 flux regardless of sun position.
+                    radiation.updateGeometry()
+                    radiation.runBand("SW")
+                    absorbed = radiation.getTotalAbsorbedFlux()[0]
+
+            expected = flux * math.cos(math.radians(zenith_deg))
+            assert abs(absorbed - expected) < 0.05 * flux, (
+                f"zenith={zenith_deg} deg: absorbed {absorbed:.2f} W/m^2, "
+                f"expected ~{expected:.2f} W/m^2 (cosine law). "
+                f"Check degrees->radians and zenith->elevation conversion in "
+                f"native/src/pyhelios_wrapper_radiation.cpp."
+            )
+
     def test_stanford_bunny_workflow(self):
         """Test Stanford Bunny-style radiation workflow"""
         # This test requires native libraries and the actual Stanford Bunny PLY file
@@ -1999,6 +2085,11 @@ class TestCameraExposureSparseSubject:
         # have no compatible ray-tracing backend at all, so the constructor
         # cannot initialize. Skip there rather than fail; the exposure logic
         # under test is unreachable without a working backend.
+        #
+        # Probed out of process first: where the constructor segfaults instead of
+        # raising, the except clause below never runs and the crash takes down
+        # the test session.
+        skip_without_radiation_backend()
         try:
             return RadiationModel(context)
         except RadiationModelError as e:
@@ -2150,3 +2241,252 @@ class TestCameraExposureSparseSubject:
 if __name__ == "__main__":
     # Run tests with pytest
     pytest.main([__file__, "-v"])
+
+@pytest.mark.cross_platform
+class TestWriteCameraImagePixelDataPreflight:
+    """writeCameraImage must reject unrendered cameras with an actionable error.
+
+    Regression for GitHub issue #4. Native writeCameraImage indexes its
+    pixel_data map with std::map::at() while validating against a *different*
+    container (the camera's band_labels, populated at camera creation rather
+    than at render), so an unrendered camera/band surfaced as a bare
+    "invalid map<K, T> key". The upstream guard lands in helios-core v1.3.79;
+    this preflight fixes the message for users on earlier cores and stays
+    correct afterwards.
+
+    These tests drive the preflight against a stub wrapper so they run without a
+    GPU. They verify the guard's logic and its message, NOT the end-to-end
+    native behaviour -- see TestWriteCameraImagePixelDataPreflightNative for
+    that.
+    """
+
+    def _model_with_stub(self, monkeypatch, cameras, rendered):
+        """Build a RadiationModel shell wired to a fake native wrapper.
+
+        `rendered` maps camera label -> set of bands that runBand() has filled
+        in, mirroring how the native layer populates pixel_data.
+        """
+        # 'pyhelios.RadiationModel' is the module; the RadiationModel name
+        # re-exported from the package is the class and would shadow it here.
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+
+        # writeCameraImage is wrapped in @require_plugin('radiation'), which runs
+        # before any stubbed wrapper call. Stubbing only the wrapper leaves that
+        # gate live, so on a build without the radiation plugin these tests fail
+        # with PluginNotAvailableError instead of exercising the preflight. The
+        # preflight is pure Python and needs no plugin, so report it available.
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        model.context = None
+
+        def fake_get_all_camera_labels(_ptr):
+            return list(cameras)
+
+        def fake_get_camera_pixel_data(_ptr, camera_label, band_label):
+            if band_label not in rendered.get(camera_label, set()):
+                raise RuntimeError(
+                    f"ERROR (RadiationModel::getCameraPixelData): Band "
+                    f"'{band_label}' does not exist in camera '{camera_label}'."
+                )
+            return [0.0, 0.0, 0.0, 0.0]
+
+        monkeypatch.setattr(radiation_module.radiation_wrapper,
+                            'getAllCameraLabels', fake_get_all_camera_labels)
+        monkeypatch.setattr(radiation_module.radiation_wrapper,
+                            'getCameraPixelData', fake_get_camera_pixel_data)
+        monkeypatch.setattr(RadiationModel, '_check_context_alive', lambda self: None)
+        return model
+
+    def test_camera_never_rendered_raises_actionable_error(self, monkeypatch):
+        """The exact issue #4 sequence: camera added, runBand() never called."""
+        model = self._model_with_stub(monkeypatch, cameras=["overhead_rgb"], rendered={})
+
+        with pytest.raises(RadiationModelError) as excinfo:
+            model.writeCameraImage(camera="overhead_rgb",
+                                   bands=["Red", "Green", "Blue"],
+                                   imagefile_base="apple_tree_rgb")
+
+        message = str(excinfo.value)
+        assert "runBand()" in message, f"error must name the missing call: {message}"
+        assert "overhead_rgb" in message, f"error must name the camera: {message}"
+        assert "invalid map" not in message, f"raw STL message leaked: {message}"
+
+    def test_band_not_in_runband_call_raises_actionable_error(self, monkeypatch):
+        """runBand(['Red','Green','Blue']) then writeCameraImage(['NIR']).
+
+        The subtler failure: camera and band both exist, but that band was never
+        rendered, so pixel_data has no key for it.
+        """
+        model = self._model_with_stub(
+            monkeypatch,
+            cameras=["cam"],
+            rendered={"cam": {"Red", "Green", "Blue"}},
+        )
+
+        with pytest.raises(RadiationModelError) as excinfo:
+            model.writeCameraImage(camera="cam", bands=["NIR"],
+                                   imagefile_base="nir")
+
+        message = str(excinfo.value)
+        assert "NIR" in message, f"error must name the unrendered band: {message}"
+        assert "runBand()" in message
+
+    def test_nonexistent_camera_names_existing_cameras(self, monkeypatch):
+        model = self._model_with_stub(monkeypatch, cameras=["cam_a"],
+                                      rendered={"cam_a": {"Red"}})
+
+        with pytest.raises(RadiationModelError) as excinfo:
+            model.writeCameraImage(camera="typo_cam", bands=["Red"],
+                                   imagefile_base="x")
+
+        message = str(excinfo.value)
+        assert "typo_cam" in message
+        assert "cam_a" in message, f"error should list existing cameras: {message}"
+
+    def test_fully_rendered_camera_passes_preflight(self, monkeypatch):
+        """The guard must be a no-op for valid input."""
+        # 'pyhelios.RadiationModel' is the module; the RadiationModel name
+        # re-exported from the package is the class and would shadow it here.
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+
+        model = self._model_with_stub(
+            monkeypatch,
+            cameras=["cam"],
+            rendered={"cam": {"Red", "Green", "Blue"}},
+        )
+
+        calls = []
+
+        def fake_write(_ptr, camera, bands, base, path, frame, conversion):
+            calls.append((camera, list(bands)))
+            return "cam_out.jpeg"
+
+        monkeypatch.setattr(radiation_module.radiation_wrapper,
+                            'writeCameraImage', fake_write)
+
+        result = model.writeCameraImage(camera="cam",
+                                        bands=["Red", "Green", "Blue"],
+                                        imagefile_base="out")
+
+        assert result == "cam_out.jpeg"
+        assert calls == [("cam", ["Red", "Green", "Blue"])], (
+            "valid input must reach the native call unchanged"
+        )
+
+    def test_writenorm_camera_image_is_guarded_too(self, monkeypatch):
+        """writeNormCameraImage delegates to writeCameraImage natively."""
+        model = self._model_with_stub(monkeypatch, cameras=["cam"], rendered={})
+
+        with pytest.raises(RadiationModelError) as excinfo:
+            model.writeNormCameraImage(camera="cam", bands=["Red"],
+                                       imagefile_base="x")
+
+        assert "runBand()" in str(excinfo.value)
+
+
+@pytest.mark.native_only
+class TestWriteCameraImagePixelDataPreflightNative:
+    """End-to-end confirmation of the issue #4 preflight against a real GPU.
+
+    The stub-driven tests above cannot prove the native call is actually
+    avoided. These require a working radiation backend (OptiX/CUDA or Vulkan)
+    and are skipped on machines without one -- including Apple Silicon, where
+    the plugin compiles but has no runtime backend. They MUST be run on GPU
+    hardware or CI before this fix is considered verified end-to-end.
+    """
+
+    @staticmethod
+    def _radiation_or_skip(context):
+        """Construct a RadiationModel, skipping if no backend can initialize.
+
+        The plugin can be compiled in and still fail at construction when no
+        usable backend is present (e.g. Vulkan pipeline creation fails on Apple
+        Silicon). Without this, such machines report a misleading failure for a
+        defect these tests are not exercising.
+
+        The out-of-process probe runs first because the constructor does not
+        always fail cleanly: on the macOS cibuildwheel runner it segfaults, and
+        no except clause can catch SIGSEGV.
+        """
+        skip_without_radiation_backend()
+        try:
+            return RadiationModel(context)
+        except RadiationModelError as e:
+            pytest.skip(f"no working radiation backend on this machine: {e}")
+
+    def test_unrendered_camera_raises_instead_of_map_key_error(self):
+        """Camera added but runBand() never called -- the reported sequence."""
+        context = Context()
+        context.addPatch(center=DataTypes.vec3(0, 0, 0),
+                         size=DataTypes.vec2(10, 10))
+
+        with self._radiation_or_skip(context) as radiation:
+            radiation.addRadiationBand("Red")
+            radiation.addRadiationBand("Green")
+            radiation.addRadiationBand("Blue")
+            radiation.updateGeometry()
+            radiation.addRadiationCamera(
+                "overhead_rgb", ["Red", "Green", "Blue"],
+                position=DataTypes.vec3(0, 3, 10),
+                lookat_or_direction=DataTypes.vec3(0, 0, 0))
+
+            with pytest.raises(RadiationModelError) as excinfo:
+                radiation.writeCameraImage(camera="overhead_rgb",
+                                           bands=["Red", "Green", "Blue"],
+                                           imagefile_base="issue4_rgb")
+
+            message = str(excinfo.value)
+            assert "invalid map" not in message, (
+                f"raw STL error reached the user: {message}"
+            )
+            assert "runBand()" in message
+
+    def test_band_outside_runband_call_raises(self):
+        """runBand() on RGB, then request an image for the unrendered NIR band."""
+        context = Context()
+        context.addPatch(center=DataTypes.vec3(0, 0, 0),
+                         size=DataTypes.vec2(10, 10))
+
+        with self._radiation_or_skip(context) as radiation:
+            for band in ("Red", "Green", "Blue", "NIR"):
+                radiation.addRadiationBand(band)
+            radiation.addRadiationCamera(
+                "cam", ["Red", "Green", "Blue", "NIR"],
+                position=DataTypes.vec3(0, 3, 10),
+                lookat_or_direction=DataTypes.vec3(0, 0, 0))
+            radiation.updateGeometry()
+            radiation.runBand(["Red", "Green", "Blue"])
+
+            with pytest.raises(RadiationModelError) as excinfo:
+                radiation.writeCameraImage(camera="cam", bands=["NIR"],
+                                           imagefile_base="issue4_nir")
+
+            assert "invalid map" not in str(excinfo.value)
+
+    def test_rendered_camera_still_writes_image(self, tmp_path):
+        """The preflight must not break the working path."""
+        context = Context()
+        context.addPatch(center=DataTypes.vec3(0, 0, 0),
+                         size=DataTypes.vec2(10, 10))
+
+        with self._radiation_or_skip(context) as radiation:
+            for band in ("Red", "Green", "Blue"):
+                radiation.addRadiationBand(band)
+            radiation.addRadiationCamera(
+                "cam", ["Red", "Green", "Blue"],
+                position=DataTypes.vec3(0, 3, 10),
+                lookat_or_direction=DataTypes.vec3(0, 0, 0))
+            radiation.updateGeometry()
+            radiation.runBand(["Red", "Green", "Blue"])
+
+            filename = radiation.writeCameraImage(
+                camera="cam", bands=["Red", "Green", "Blue"],
+                imagefile_base="issue4_ok", image_path=str(tmp_path) + os.sep)
+
+            assert filename, "valid camera image write returned no filename"

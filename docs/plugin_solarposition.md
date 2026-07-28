@@ -36,8 +36,9 @@ with Context() as context:
     context.setDate(2015, 5, 1)  # May 1, 2015
     context.setTime(12, 30)      # 12:30
 
-    # Create SolarPosition with location (UTC offset, latitude, longitude)
-    with SolarPosition(7, 31.256, 119.947, context) as sun:
+    # Create SolarPosition. The Context is always the FIRST argument, followed
+    # by UTC offset, latitude, and longitude.
+    with SolarPosition(context, 7, 31.256, 119.947) as sun:
         # Get sun direction
         direction = sun.getSunDirectionVector()
         elevation = sun.getSunElevation()
@@ -99,7 +100,7 @@ This plugin calculates the position of the sun, and also implements other models
  The day angle \f$\Gamma\f$ given as the polar angle of the earth relative to the sun (\f$\Gamma=0\f$ on Jan. 1) is calculated as
 
  <center>
- \f$\Gamma = 2\pi(DOY-1)/365.25\f$,  (1)
+ \f$\Gamma = 2\pi(DOY-1)/365\f$,  (1)
  </center>
 
  where DOY is the <a href="https://en.wikipedia.org/wiki/Julian_day">Julian Day</a> of the year.

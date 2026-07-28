@@ -1905,6 +1905,43 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void addLiDARGridTerrainFollowing(LiDARcloud* cloud, const float* center, const float* size,
+                                                    const int* ndiv, float rotation,
+                                                    const float* column_z_offsets, unsigned int offset_count) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!center || !size || !ndiv) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Input arrays are null");
+                return;
+            }
+            if (offset_count > 0 && !column_z_offsets) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Column offset array is null");
+                return;
+            }
+
+            helios::vec3 grid_center(center[0], center[1], center[2]);
+            helios::vec3 grid_size(size[0], size[1], size[2]);
+            helios::int3 grid_ndiv = helios::make_int3(ndiv[0], ndiv[1], ndiv[2]);
+
+            std::vector<float> offsets_vec;
+            if (offset_count > 0) {
+                offsets_vec.reserve(offset_count);
+                offsets_vec.assign(column_z_offsets, column_z_offsets + offset_count);
+            }
+
+            cloud->addGrid(grid_center, grid_size, grid_ndiv, rotation, offsets_vec);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (addLiDARGridTerrainFollowing): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (addLiDARGridTerrainFollowing): Unknown error");
+        }
+    }
+
     PYHELIOS_API void addLiDARGridCell(LiDARcloud* cloud, const float* center, const float* size,
                                         float rotation) {
         try {
@@ -1992,6 +2029,23 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellSize): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellSize): Unknown error");
+        }
+    }
+
+    PYHELIOS_API float getLiDARCellRotation(LiDARcloud* cloud, unsigned int index) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0.0f;
+            }
+            return cloud->getCellRotation(index);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellRotation): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellRotation): Unknown error");
+            return 0.0f;
         }
     }
 

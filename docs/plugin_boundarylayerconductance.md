@@ -36,8 +36,8 @@ with Context() as context:
     leaf_uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
 
     # Set environmental conditions (optional - defaults used if not set)
-    context.setPrimitiveData(leaf_uuid, "wind_speed", 2.0)  # m/s
-    context.setPrimitiveData(leaf_uuid, "air_temperature", 298.0)  # K
+    context.setPrimitiveDataFloat(leaf_uuid, "wind_speed", 2.0)  # m/s
+    context.setPrimitiveDataFloat(leaf_uuid, "air_temperature", 298.0)  # K
 
     # Use boundary-layer conductance model
     with BoundaryLayerConductanceModel(context) as blc:
@@ -77,9 +77,9 @@ The \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "Bounda
 <tr><th>Primitive Data</th><th>Units</th><th>Data Type</th><th>Description</th><th>Available Plug-ins</th><th>Default Value</th></tr>
 <tr><td>wind\_speed</td><td>m/s</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Air wind speed just outside of primitive boundary-layer.</td><td>N/A</td><td>1 m/s</td></tr>
 <tr><td>object\_length</td><td>m</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Characteristic dimension of object formed by primitive.</td><td>N/A</td><td>Square root of primitive surface area</td></tr>
-<tr><td>air\_temperature</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Ambient air temperature outside of surface boundary layer.</td><td>N/A</td><td>290 K</td></tr>
-<tr><td>surface\_temperature</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Object surface temperature.</td><td>\ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel"</td><td>300 K</td></tr>
-<tr><td>twosided\_flag</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly</td><td>Number of primitive faces with energy transfer (must be 1 or 2).</td><td>N/A</td><td>2</td></tr>
+<tr><td>air\_temperature</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Ambient air temperature outside of surface boundary layer.</td><td>N/A</td><td>293 K</td></tr>
+<tr><td>temperature</td><td>Kelvin</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Object surface temperature.</td><td>\ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel"</td><td>303 K</td></tr>
+<tr><td>twosided\_flag</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">uint</span>\endhtmlonly</td><td>Whether energy is transferred across one or both primitive faces: 0 = one-sided, 1 = two-sided.</td><td>N/A</td><td>1 (two-sided)</td></tr>
 </table>
 
 ### Default Output Primitive Data {#BLOutputData}
@@ -149,11 +149,11 @@ Chen et al. (1986) mention that the equation for \f$\theta_L\leq 75^\circ\f$ is 
 
 #### 3. Laminar flow around a sphere {#BLC3}
 
- <a href="https://books.google.com/books?id=L5FnNlIaGfcC&dq=bird+lightfoot+Transport+Phenomena&lr=&source=gbs_navlinks_s">Bird et al. (1960)</a> provides correlation for forced convection heat transfer in laminar flow around a sphere
+ Following Eq. 4 of Smart and Sinclair (1976), forced convection heat transfer in laminar flow around a sphere is given by a Nusselt-Reynolds correlation
 
- \f$g_H = \frac{0.00164}{D} + 0.110\sqrt{\frac{U}{D}}\f$,
+ \f$g_H = \frac{k_a/c_p}{L}\left(2 + 0.6\,\sqrt{Re}\;Pr^{1/3}\right)\f$,
 
- where \f$D\f$ is the sphere diameter, and \f$U\f$ is the wind speed outside of the sphere boundary-layer.
+ where \f$L\f$ is the sphere diameter, \f$Re = UL/\nu\f$ is the Reynolds number, \f$U\f$ is the wind speed outside of the sphere boundary-layer, \f$Pr = 0.7\f$ is the Prandtl number of air, \f$\nu = 1.568\times10^{-5}\f$ m\f$^2\f$/s is the kinematic viscosity of air, \f$k_a = 0.024\f$ W/m-K is the thermal conductivity of air, and \f$c_p = 29.25\f$ J/mol-K is the molar heat capacity of air.
 
 #### 4. Flow over bare ground {#BLC4}
 

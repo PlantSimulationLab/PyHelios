@@ -251,7 +251,7 @@ with Context() as context:
     uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(0.1, 0.1))
 
     # Set required primitive data (plugin-specific)
-    context.setPrimitiveData(uuid, "some_data", value)
+    context.setPrimitiveDataFloat(uuid, "some_data", value)
 
     # Use plugin
     with PluginClassName(context) as plugin:

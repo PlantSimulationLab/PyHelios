@@ -94,6 +94,10 @@ def get_asset_files():
                     'plugins/*/data/*.txt',
                     'plugins/*/data/*.dat',
                     'plugins/*/data/*.json',
+                    # SolarPosition spectral tables (wehrli.dat, abscoef.dat).
+                    # Platform-independent, so kept out of the Windows/Linux-only
+                    # spectral_data block below.
+                    'plugins/*/ssolar_goa/*.dat',
                     # Camera and light models
                     'plugins/*/camera_light_models/*.xml',
                     'plugins/*/camera_light_models/*.json',

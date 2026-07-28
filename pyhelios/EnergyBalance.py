@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import UEnergyBalanceWrapper as energy_wrapper
-from .Context import Context
+from .Context import Context, check_context_alive
 from .exceptions import HeliosError
 from .validation.plugin_decorators import (
     validate_energy_run_params, validate_energy_band_params, validate_air_energy_params,
@@ -121,6 +121,10 @@ class EnergyBalanceModel:
         except Exception as e:
             raise EnergyBalanceModelError(f"Failed to initialize EnergyBalanceModel: {e}")
     
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(self.context, "EnergyBalanceModel")
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -157,6 +161,7 @@ class EnergyBalanceModel:
         Raises:
             EnergyBalanceModelError: If operation fails
         """
+        self._check_context_alive()
         try:
             energy_wrapper.enableMessages(self.energy_model)
         except Exception as e:
@@ -169,6 +174,7 @@ class EnergyBalanceModel:
         Raises:
             EnergyBalanceModelError: If operation fails
         """
+        self._check_context_alive()
         try:
             energy_wrapper.disableMessages(self.energy_model)
         except Exception as e:
@@ -206,6 +212,7 @@ class EnergyBalanceModel:
             >>> # Dynamic simulation for specific patches
             >>> energy_balance.run(uuids=[patch1_uuid, patch2_uuid], dt=30.0)
         """
+        self._check_context_alive()
         try:
             if uuids is None and dt is None:
                 # Steady state for all primitives
@@ -246,6 +253,7 @@ class EnergyBalanceModel:
         if isinstance(band, str):
             if not band:
                 raise ValueError("Band name must be a non-empty string")
+            self._check_context_alive()
             try:
                 energy_wrapper.addRadiationBand(self.energy_model, band)
             except Exception as e:
@@ -256,6 +264,7 @@ class EnergyBalanceModel:
             for b in band:
                 if not isinstance(b, str) or not b:
                     raise ValueError("All band names must be non-empty strings")
+            self._check_context_alive()
             try:
                 energy_wrapper.addRadiationBands(self.energy_model, band)
             except Exception as e:
@@ -295,6 +304,7 @@ class EnergyBalanceModel:
         if reference_height_m is not None and reference_height_m <= 0:
             raise ValueError("Reference height must be positive")
         
+        self._check_context_alive()
         try:
             if canopy_height_m is None and reference_height_m is None:
                 energy_wrapper.enableAirEnergyBalance(self.energy_model)
@@ -371,6 +381,7 @@ class EnergyBalanceModel:
         if not label or not isinstance(label, str):
             raise ValueError("Label must be a non-empty string")
         
+        self._check_context_alive()
         try:
             energy_wrapper.optionalOutputPrimitiveData(self.energy_model, label)
         except Exception as e:
@@ -442,6 +453,7 @@ class EnergyBalanceModel:
             Only available when PyHelios is compiled with CUDA support.
             OpenMP CPU mode is recommended for most workloads without GPU.
         """
+        self._check_context_alive()
         try:
             energy_wrapper.enableGPUAcceleration(self.energy_model)
         except NotImplementedError:
@@ -466,6 +478,7 @@ class EnergyBalanceModel:
             Only available when PyHelios is compiled with CUDA support.
             Has no effect if GPU support is not compiled in.
         """
+        self._check_context_alive()
         try:
             energy_wrapper.disableGPUAcceleration(self.energy_model)
         except Exception as e:

@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import UBoundaryLayerConductanceWrapper as bl_wrapper
-from .Context import Context
+from .Context import Context, check_context_alive
 from .exceptions import HeliosError
 
 logger = logging.getLogger(__name__)
@@ -127,6 +127,10 @@ class BoundaryLayerConductanceModel:
         except Exception as e:
             raise BoundaryLayerConductanceModelError(f"Failed to initialize BoundaryLayerConductanceModel: {e}")
 
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "BoundaryLayerConductanceModel")
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -163,6 +167,7 @@ class BoundaryLayerConductanceModel:
         Raises:
             BoundaryLayerConductanceModelError: If operation fails
         """
+        self._check_context_alive()
         try:
             bl_wrapper.enableMessages(self.bl_model)
         except Exception as e:
@@ -175,6 +180,7 @@ class BoundaryLayerConductanceModel:
         Raises:
             BoundaryLayerConductanceModelError: If operation fails
         """
+        self._check_context_alive()
         try:
             bl_wrapper.disableMessages(self.bl_model)
         except Exception as e:
@@ -221,6 +227,7 @@ class BoundaryLayerConductanceModel:
                 f"Must be one of: {', '.join(valid_models)}"
             )
 
+        self._check_context_alive()
         try:
             if uuids is None:
                 # Apply to all primitives
@@ -256,6 +263,7 @@ class BoundaryLayerConductanceModel:
             >>> # Calculate for specific primitives
             >>> bl_model.run(uuids=[leaf1_uuid, leaf2_uuid])
         """
+        self._check_context_alive()
         try:
             if uuids is None:
                 # Run for all primitives

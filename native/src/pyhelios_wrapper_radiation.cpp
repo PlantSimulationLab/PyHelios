@@ -275,7 +275,12 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
                 return 0;
             }
-            helios::SphericalCoord sun_direction(radius, zenith, azimuth);
+            // The Python API takes zenith/azimuth in DEGREES, but SphericalCoord's
+            // three-argument constructor takes (radius, elevation_radians, azimuth_radians).
+            // Convert units and zenith->elevation before constructing.
+            const float elevation_radians = helios::deg2rad(90.f - zenith);
+            const float azimuth_radians = helios::deg2rad(azimuth);
+            helios::SphericalCoord sun_direction(radius, elevation_radians, azimuth_radians);
             return radiation_model->addSunSphereRadiationSource(sun_direction);
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::addSunSphereRadiationSource): ") + e.what());

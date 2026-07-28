@@ -8,7 +8,7 @@ time-dependent solar functions for atmospheric physics and plant modeling.
 
 from typing import List, Tuple, Optional, Union
 from .wrappers import USolarPositionWrapper as solar_wrapper
-from .Context import Context
+from .Context import Context, check_context_alive
 from .plugins.registry import get_plugin_registry
 from .exceptions import HeliosError
 from .wrappers.DataTypes import Time, Date, vec3, SphericalCoord
@@ -118,6 +118,10 @@ class SolarPosition:
         if not self._solar_pos:
             raise SolarPositionError("Failed to initialize SolarPosition")
     
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "SolarPosition")
+
     def __enter__(self):
         """Context manager entry"""
         return self
@@ -181,6 +185,7 @@ class SolarPosition:
         if turbidity < 0.0:
             raise ValueError(f"Turbidity must be non-negative, got: {turbidity}")
 
+        self._check_context_alive()
         try:
             solar_wrapper.setAtmosphericConditions(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
         except Exception as e:
@@ -204,6 +209,7 @@ class SolarPosition:
             >>> pressure, temp, humidity, turbidity = solar.getAtmosphericConditions()
             >>> print(f"Pressure: {pressure} Pa, Temp: {temp} K")
         """
+        self._check_context_alive()
         try:
             return solar_wrapper.getAtmosphericConditions(self._solar_pos)
         except Exception as e:
@@ -224,6 +230,7 @@ class SolarPosition:
             >>> elevation = solar.getSunElevation()
             >>> print(f"Sun is {elevation:.1f}° above horizon")
         """
+        self._check_context_alive()
         try:
             return solar_wrapper.getSunElevation(self._solar_pos)
         except Exception as e:
@@ -243,6 +250,7 @@ class SolarPosition:
             >>> zenith = solar.getSunZenith()
             >>> print(f"Sun zenith angle: {zenith:.1f}°")
         """
+        self._check_context_alive()
         try:
             return solar_wrapper.getSunZenith(self._solar_pos)
         except Exception as e:
@@ -262,6 +270,7 @@ class SolarPosition:
             >>> azimuth = solar.getSunAzimuth()
             >>> print(f"Sun azimuth: {azimuth:.1f}° (compass bearing)")
         """
+        self._check_context_alive()
         try:
             return solar_wrapper.getSunAzimuth(self._solar_pos)
         except Exception as e:
@@ -282,6 +291,7 @@ class SolarPosition:
             >>> direction = solar.getSunDirectionVector()
             >>> print(f"Sun direction vector: ({direction.x:.3f}, {direction.y:.3f}, {direction.z:.3f})")
         """
+        self._check_context_alive()
         try:
             direction_list = solar_wrapper.getSunDirectionVector(self._solar_pos)
             return vec3(direction_list[0], direction_list[1], direction_list[2])
@@ -302,6 +312,7 @@ class SolarPosition:
             >>> spherical = solar.getSunDirectionSpherical()
             >>> print(f"Spherical: r={spherical.radius}, elev={spherical.elevation:.3f}, az={spherical.azimuth:.3f}")
         """
+        self._check_context_alive()
         try:
             spherical_list = solar_wrapper.getSunDirectionSpherical(self._solar_pos)
             return SphericalCoord(
@@ -349,6 +360,7 @@ class SolarPosition:
 
         if all(params_provided):
             # Legacy API: All parameters provided
+            self._check_context_alive()
             try:
                 return solar_wrapper.getSolarFlux(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
@@ -356,6 +368,7 @@ class SolarPosition:
 
         elif not any(params_provided):
             # Modern API: No parameters, use atmospheric conditions from Context
+            self._check_context_alive()
             try:
                 return solar_wrapper.getSolarFluxFromState(self._solar_pos)
             except Exception as e:
@@ -402,11 +415,13 @@ class SolarPosition:
                           humidity_rel is not None, turbidity is not None]
 
         if all(params_provided):
+            self._check_context_alive()
             try:
                 return solar_wrapper.getSolarFluxPAR(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate PAR flux: {e}")
         elif not any(params_provided):
+            self._check_context_alive()
             try:
                 return solar_wrapper.getSolarFluxPARFromState(self._solar_pos)
             except Exception as e:
@@ -446,11 +461,13 @@ class SolarPosition:
                           humidity_rel is not None, turbidity is not None]
 
         if all(params_provided):
+            self._check_context_alive()
             try:
                 return solar_wrapper.getSolarFluxNIR(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate NIR flux: {e}")
         elif not any(params_provided):
+            self._check_context_alive()
             try:
                 return solar_wrapper.getSolarFluxNIRFromState(self._solar_pos)
             except Exception as e:
@@ -492,11 +509,13 @@ class SolarPosition:
                           humidity_rel is not None, turbidity is not None]
 
         if all(params_provided):
+            self._check_context_alive()
             try:
                 return solar_wrapper.getDiffuseFraction(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate diffuse fraction: {e}")
         elif not any(params_provided):
+            self._check_context_alive()
             try:
                 return solar_wrapper.getDiffuseFractionFromState(self._solar_pos)
             except Exception as e:
@@ -545,6 +564,7 @@ class SolarPosition:
             # Legacy API: Both parameters provided
             # C++ has deprecated 2-parameter version, but we emulate it
             # by setting atmospheric conditions temporarily
+            self._check_context_alive()
             try:
                 # Get current conditions to restore later
                 saved_conditions = solar_wrapper.getAtmosphericConditions(self._solar_pos)
@@ -570,6 +590,7 @@ class SolarPosition:
 
         elif not any(params_provided):
             # Modern API: No parameters, use atmospheric conditions from Context
+            self._check_context_alive()
             try:
                 return solar_wrapper.getAmbientLongwaveFluxFromState(self._solar_pos)
             except Exception as e:
@@ -601,6 +622,7 @@ class SolarPosition:
             >>> sunrise = solar.getSunriseTime()
             >>> print(f"Sunrise: {sunrise}")  # Prints as HH:MM:SS
         """
+        self._check_context_alive()
         try:
             hour, minute, second = solar_wrapper.getSunriseTime(self._solar_pos)
             return Time(hour, minute, second)
@@ -621,6 +643,7 @@ class SolarPosition:
             >>> sunset = solar.getSunsetTime()
             >>> print(f"Sunset: {sunset}")  # Prints as HH:MM:SS
         """
+        self._check_context_alive()
         try:
             hour, minute, second = solar_wrapper.getSunsetTime(self._solar_pos)
             return Time(hour, minute, second)
@@ -645,6 +668,7 @@ class SolarPosition:
         if not timeseries_label:
             raise ValueError("Timeseries label cannot be empty")
         
+        self._check_context_alive()
         try:
             solar_wrapper.calibrateTurbidityFromTimeseries(self._solar_pos, timeseries_label)
         except Exception as e:
@@ -667,6 +691,7 @@ class SolarPosition:
         if not timeseries_label:
             raise ValueError("Timeseries label cannot be empty")
         
+        self._check_context_alive()
         try:
             solar_wrapper.enableCloudCalibration(self._solar_pos, timeseries_label)
         except Exception as e:
@@ -682,6 +707,7 @@ class SolarPosition:
         Example:
             >>> solar.disableCloudCalibration()
         """
+        self._check_context_alive()
         try:
             solar_wrapper.disableCloudCalibration(self._solar_pos)
         except Exception as e:
@@ -711,6 +737,7 @@ class SolarPosition:
             ...         solar.enablePragueSkyModel()
             ...         solar.updatePragueSkyModel()
         """
+        self._check_context_alive()
         try:
             solar_wrapper.enablePragueSkyModel(self._solar_pos)
         except Exception as e:
@@ -730,6 +757,7 @@ class SolarPosition:
             >>> if solar.isPragueSkyModelEnabled():
             ...     print("Prague Sky Model is active")
         """
+        self._check_context_alive()
         try:
             return solar_wrapper.isPragueSkyModelEnabled(self._solar_pos)
         except Exception as e:
@@ -760,6 +788,7 @@ class SolarPosition:
             >>> solar.setAtmosphericConditions(101325, 288.15, 0.6, 0.1)
             >>> solar.updatePragueSkyModel(ground_albedo=0.25)
         """
+        self._check_context_alive()
         try:
             solar_wrapper.updatePragueSkyModel(self._solar_pos, ground_albedo)
         except Exception as e:
@@ -794,6 +823,7 @@ class SolarPosition:
             >>> if solar.pragueSkyModelNeedsUpdate():
             ...     solar.updatePragueSkyModel()
         """
+        self._check_context_alive()
         try:
             return solar_wrapper.pragueSkyModelNeedsUpdate(self._solar_pos, ground_albedo,
                                                            sun_tolerance, turbidity_tolerance,
@@ -841,6 +871,7 @@ class SolarPosition:
         if resolution_nm < 1.0 or resolution_nm > 2300.0:
             raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
 
+        self._check_context_alive()
         try:
             solar_wrapper.calculateDirectSolarSpectrum(self._solar_pos, label, resolution_nm)
         except Exception as e:
@@ -884,6 +915,7 @@ class SolarPosition:
         if resolution_nm < 1.0 or resolution_nm > 2300.0:
             raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
 
+        self._check_context_alive()
         try:
             solar_wrapper.calculateDiffuseSolarSpectrum(self._solar_pos, label, resolution_nm)
         except Exception as e:
@@ -929,6 +961,7 @@ class SolarPosition:
         if resolution_nm < 1.0 or resolution_nm > 2300.0:
             raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
 
+        self._check_context_alive()
         try:
             solar_wrapper.calculateGlobalSolarSpectrum(self._solar_pos, label, resolution_nm)
         except Exception as e:

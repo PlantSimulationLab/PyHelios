@@ -320,7 +320,15 @@ jobs:
 
           # Manylinux-specific environment for zlib compatibility and OpenGL discovery
           # Use documented $PATH expansion to append devtoolset without overriding cibuildwheel's Python
-          CIBW_ENVIRONMENT_LINUX: "SHELL=/usr/bin/bash PATH=$PATH:/opt/rh/devtoolset-10/root/usr/bin:/opt/rh/devtoolset-9/root/usr/bin:/opt/rh/devtoolset-8/root/usr/bin CC=/opt/rh/devtoolset-10/root/usr/bin/gcc CXX=/opt/rh/devtoolset-10/root/usr/bin/g++ CFLAGS='-D_GNU_SOURCE -I/usr/include' CXXFLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0 -I/usr/include' CMAKE_C_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/gcc CMAKE_CXX_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/g++ CMAKE_C_FLAGS='-D_GNU_SOURCE' CMAKE_CXX_FLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0' PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig CMAKE_PREFIX_PATH=/usr"
+          # PIP_CONSTRAINT/PIP_PREFER_BINARY: the manylinux2014 image ships
+          # devtoolset-10 (gcc 10.2.1) and numpy 2.5.0 raised its build floor to
+          # gcc >= 10.3, so any numpy >= 2.5 built from source here dies during
+          # metadata generation. See .github/pip-constraints-manylinux.txt for why
+          # a cap is needed rather than simply refusing sdists (cp314 has no
+          # manylinux2014 numpy wheel at any version). PREFER_BINARY still takes
+          # the 2.2.6 wheel for the ABIs that have one, so only cp314 builds from
+          # source. cibuildwheel mounts the repo at /project in the container.
+          CIBW_ENVIRONMENT_LINUX: "SHELL=/usr/bin/bash PIP_PREFER_BINARY=1 PIP_CONSTRAINT=/project/.github/pip-constraints-manylinux.txt PATH=$PATH:/opt/rh/devtoolset-10/root/usr/bin:/opt/rh/devtoolset-9/root/usr/bin:/opt/rh/devtoolset-8/root/usr/bin CC=/opt/rh/devtoolset-10/root/usr/bin/gcc CXX=/opt/rh/devtoolset-10/root/usr/bin/g++ CFLAGS='-D_GNU_SOURCE -I/usr/include' CXXFLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0 -I/usr/include' CMAKE_C_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/gcc CMAKE_CXX_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/g++ CMAKE_C_FLAGS='-D_GNU_SOURCE' CMAKE_CXX_FLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0' PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig CMAKE_PREFIX_PATH=/usr"
 
           # Comprehensive wheel testing using pytest suite
           CIBW_TEST_COMMAND: |
@@ -694,6 +702,32 @@ jobs:
           echo "Python environment:"
           python --version
           pip list | grep -E "(cibuildwheel|auditwheel|delocate)" || echo "Wheel tools not found"
+
+      - name: Dump native crash reports (macOS)
+        if: failure() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          # faulthandler only prints Python frames, so a SIGSEGV inside the Vulkan
+          # backend shows up as "crashed in createRadiationModel" with no native
+          # stack. macOS writes a full .ips report per crash; print them so the
+          # actual crashing frame is visible in the job log.
+          echo "=== macOS crash reports ==="
+          shopt -s nullglob
+          found=0
+          for dir in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            for report in "$dir"/*.ips "$dir"/*.crash; do
+              found=1
+              echo ""
+              echo "--- $report ---"
+              # Reports are large; the header and the crashing thread are what matter.
+              head -c 20000 "$report"
+              echo ""
+            done
+          done
+          if [ "$found" = "0" ]; then
+            echo "No crash reports found (the crash may have been in a forked child"
+            echo "whose report was suppressed, or reporting is disabled on this runner)."
+          fi
 
       - name: Validate wheel contents
         if: always()  # Run even if build partially failed

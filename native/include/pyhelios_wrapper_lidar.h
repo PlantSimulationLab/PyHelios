@@ -852,10 +852,29 @@ PYHELIOS_API void loadLiDARXML(LiDARcloud* cloud, const char* filename);
  * @param center Center position of grid [x, y, z]
  * @param size Grid dimensions [x, y, z]
  * @param ndiv Number of divisions [nx, ny, nz]
- * @param rotation Azimuthal rotation angle (radians)
+ * @param rotation Azimuthal rotation angle (degrees)
  */
 PYHELIOS_API void addLiDARGrid(LiDARcloud* cloud, const float* center, const float* size,
                                const int* ndiv, float rotation);
+
+/**
+ * @brief Add a rectangular grid of voxel cells with per-column vertical offsets (terrain following)
+ *
+ * Each vertical column of voxels is shifted in z by a per-column offset so the grid can follow a
+ * terrain surface (e.g. a DEM). Cell centers are stored unrotated, so the offset is a pure
+ * vertical shift.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param center Center position of grid [x, y, z]
+ * @param size Grid dimensions [x, y, z]
+ * @param ndiv Number of divisions [nx, ny, nz]
+ * @param rotation Azimuthal rotation angle (degrees)
+ * @param column_z_offsets Per-(x,y)-column vertical offset, row-major as [j*ndiv.x + i]
+ * @param offset_count Number of entries in column_z_offsets; must equal ndiv[0]*ndiv[1]
+ */
+PYHELIOS_API void addLiDARGridTerrainFollowing(LiDARcloud* cloud, const float* center, const float* size,
+                                               const int* ndiv, float rotation,
+                                               const float* column_z_offsets, unsigned int offset_count);
 
 /**
  * @brief Add a single grid cell
@@ -876,6 +895,11 @@ PYHELIOS_API unsigned int getLiDARGridCellCount(LiDARcloud* cloud);
 
 /**
  * @brief Get the center position of a grid cell
+ *
+ * Returns the true world-space center. For a grid created with a non-zero azimuthal rotation this
+ * is the lattice center rotated about the grid anchor (about +z), i.e. it lies in the same rotated
+ * world frame as the hit points, scan origins, and grid bounding box.
+ *
  * @param cloud Pointer to the LiDARcloud instance
  * @param index Grid cell index
  * @param center_out Output array for center [x, y, z]
@@ -889,6 +913,14 @@ PYHELIOS_API void getLiDARCellCenter(LiDARcloud* cloud, unsigned int index, floa
  * @param size_out Output array for size [x, y, z]
  */
 PYHELIOS_API void getLiDARCellSize(LiDARcloud* cloud, unsigned int index, float* size_out);
+
+/**
+ * @brief Get the azimuthal rotation of a grid cell about the z-axis
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Grid cell index
+ * @return Rotation angle in degrees (matching the units expected by addLiDARGrid)
+ */
+PYHELIOS_API float getLiDARCellRotation(LiDARcloud* cloud, unsigned int index);
 
 /**
  * @brief Get the leaf area of a grid cell

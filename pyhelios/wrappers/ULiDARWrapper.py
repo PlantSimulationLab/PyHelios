@@ -568,6 +568,18 @@ try:
     helios_lib.addLiDARGrid.restype = None
     helios_lib.addLiDARGrid.errcheck = _check_error
 
+    helios_lib.addLiDARGridTerrainFollowing.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_float,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_uint
+    ]
+    helios_lib.addLiDARGridTerrainFollowing.restype = None
+    helios_lib.addLiDARGridTerrainFollowing.errcheck = _check_error
+
     helios_lib.addLiDARGridCell.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.POINTER(ctypes.c_float),
@@ -596,6 +608,10 @@ try:
     ]
     helios_lib.getLiDARCellSize.restype = None
     helios_lib.getLiDARCellSize.errcheck = _check_error
+
+    helios_lib.getLiDARCellRotation.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARCellRotation.restype = ctypes.c_float
+    helios_lib.getLiDARCellRotation.errcheck = _check_error
 
     helios_lib.getLiDARCellLeafArea.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
     helios_lib.getLiDARCellLeafArea.restype = ctypes.c_float
@@ -1893,6 +1909,35 @@ def addLiDARGrid(cloud_ptr: ctypes.POINTER(ULiDARcloud), center: List[float],
     helios_lib.addLiDARGrid(cloud_ptr, center_array, size_array, ndiv_array, rotation)
 
 
+def addLiDARGridTerrainFollowing(cloud_ptr: ctypes.POINTER(ULiDARcloud), center: List[float],
+                                 size: List[float], ndiv: List[int], rotation: float,
+                                 column_z_offsets: List[float]) -> None:
+    """Add a rectangular grid of voxel cells with per-column vertical offsets"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    if len(center) != 3:
+        raise ValueError("Center must be a 3-element array [x, y, z]")
+    if len(size) != 3:
+        raise ValueError("Size must be a 3-element array [x, y, z]")
+    if len(ndiv) != 3:
+        raise ValueError("Ndiv must be a 3-element array [nx, ny, nz]")
+
+    expected = ndiv[0] * ndiv[1]
+    if len(column_z_offsets) != expected:
+        raise ValueError(
+            f"column_z_offsets must have length ndiv[0]*ndiv[1] = {expected}, "
+            f"got {len(column_z_offsets)}"
+        )
+
+    center_array = (ctypes.c_float * 3)(*center)
+    size_array = (ctypes.c_float * 3)(*size)
+    ndiv_array = (ctypes.c_int * 3)(*ndiv)
+    offsets_array = (ctypes.c_float * len(column_z_offsets))(*column_z_offsets)
+    helios_lib.addLiDARGridTerrainFollowing(cloud_ptr, center_array, size_array, ndiv_array,
+                                            rotation, offsets_array, len(column_z_offsets))
+
+
 def addLiDARGridCell(cloud_ptr: ctypes.POINTER(ULiDARcloud), center: List[float],
                      size: List[float], rotation: float) -> None:
     """Add a single grid cell"""
@@ -1934,6 +1979,13 @@ def getLiDARCellSize(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List
     size = (ctypes.c_float * 3)()
     helios_lib.getLiDARCellSize(cloud_ptr, index, size)
     return list(size)
+
+
+def getLiDARCellRotation(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> float:
+    """Get azimuthal rotation of a grid cell about the z-axis, in degrees"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+    return helios_lib.getLiDARCellRotation(cloud_ptr, index)
 
 
 def getLiDARCellLeafArea(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> float:

@@ -672,6 +672,103 @@ class TestLiDARGrid:
             # Should have created 5*5*2 = 50 cells
             assert lidar.getGridCellCount() == 50
 
+    def test_add_grid_terrain_following(self):
+        """Terrain-following grid shifts each column in z by its offset (helios-core 1.3.78)"""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            # 2x2 columns, 1 layer. Each column gets a distinct vertical offset.
+            offsets = [0.0, 0.25, 0.5, 0.75]
+            lidar.addGrid(
+                center=vec3(0, 0, 0.5),
+                size=vec3(2, 2, 1),
+                ndiv=[2, 2, 1],
+                rotation=0.0,
+                column_z_offsets=offsets
+            )
+
+            assert lidar.getGridCellCount() == 4
+
+            # Cells are added in row-major column order [j*ndiv.x + i], so cell n's
+            # z-center is the un-shifted center (0.5) plus offsets[n].
+            for n, expected_offset in enumerate(offsets):
+                center = lidar.getCellCenter(n)
+                assert abs(center.z - (0.5 + expected_offset)) < 1e-4, (
+                    f"cell {n} z={center.z}, expected {0.5 + expected_offset}"
+                )
+
+    def test_add_grid_terrain_following_matches_plain_grid_when_zero(self):
+        """All-zero offsets reproduce the axis-regular grid exactly"""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as plain, LiDARCloud() as terrain:
+            args = dict(center=vec3(0, 0, 0.5), size=vec3(2, 2, 1), ndiv=[2, 2, 2])
+            plain.addGrid(**args)
+            terrain.addGrid(column_z_offsets=[0.0] * 4, **args)
+
+            assert plain.getGridCellCount() == terrain.getGridCellCount() == 8
+
+            for n in range(plain.getGridCellCount()):
+                a, b = plain.getCellCenter(n), terrain.getCellCenter(n)
+                assert abs(a.x - b.x) < 1e-6
+                assert abs(a.y - b.y) < 1e-6
+                assert abs(a.z - b.z) < 1e-6
+
+    def test_add_grid_terrain_following_rejects_wrong_length(self):
+        """column_z_offsets length must equal ndiv[0]*ndiv[1]"""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            with pytest.raises(ValueError, match="column_z_offsets"):
+                lidar.addGrid(
+                    center=vec3(0, 0, 0.5),
+                    size=vec3(2, 2, 1),
+                    ndiv=[2, 2, 1],
+                    column_z_offsets=[0.0, 0.1, 0.2]  # need 4, not 3
+                )
+
+            # Nothing should have been added
+            assert lidar.getGridCellCount() == 0
+
+    def test_get_cell_rotation_returns_degrees(self):
+        """getCellRotation reports degrees, matching addGrid's units (helios-core 1.3.78)"""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            lidar.addGrid(
+                center=vec3(0, 0, 0.5),
+                size=vec3(2, 2, 1),
+                ndiv=[1, 1, 1],
+                rotation=30.0
+            )
+
+            # addGrid takes degrees and getCellRotation returns degrees, so this
+            # round-trips. If either leaked radians the value would be ~0.52 or ~1718.
+            assert abs(lidar.getCellRotation(0) - 30.0) < 1e-3
+
+    def test_get_cell_center_is_rotated_world_frame(self):
+        """getCellCenter returns the rotated world-space center, not the lattice center"""
+        import math
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            # Single column offset from the grid anchor, rotated 90 degrees about +z.
+            # The lattice center sits at x=+0.5 relative to the anchor at the origin;
+            # rotating 90 degrees about +z maps it to y=+0.5.
+            lidar.addGrid(
+                center=vec3(0, 0, 0.5),
+                size=vec3(2, 1, 1),
+                ndiv=[2, 1, 1],
+                rotation=90.0
+            )
+
+            c0 = lidar.getCellCenter(0)
+            # Un-rotated lattice center of cell 0 is (-0.5, 0, 0.5). Rotated +90 deg
+            # about the anchor (0,0) that becomes (0, -0.5, 0.5).
+            assert abs(c0.x - 0.0) < 1e-4, f"x={c0.x}"
+            assert abs(c0.y - (-0.5)) < 1e-4, f"y={c0.y}"
+            assert abs(c0.z - 0.5) < 1e-4, f"z={c0.z}"
+
     def test_add_grid_cell(self):
         """Test adding individual grid cells"""
         from pyhelios import LiDARCloud

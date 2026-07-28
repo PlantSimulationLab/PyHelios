@@ -508,7 +508,7 @@ context = Context()
 center = vec3(0, 0, 0)
 size = vec2(1, 1)
 
-UUID = context.addPatch(center, size, RGBcolor(1, 0, 0))
+UUID = context.addPatch(center, size, color=RGBcolor(1, 0, 0))
 
 eps = 0.9
 context.setPrimitiveDataFloat(UUID, "emissivity", eps)
@@ -549,7 +549,7 @@ size = vec2(1, 1)
 UUID = context.addPatch(center, size)
 
 eps = 0.9
-context.setPrimitiveData(UUID, "emissivity", eps)
+context.setPrimitiveDataFloat(UUID, "emissivity", eps)
 
 emissivity = context.getPrimitiveData(UUID, "emissivity")
 ```
@@ -655,14 +655,14 @@ context.addTimeseriesData("temperature", 302.56, date, time)  # index #2
 time = Time(13, 45, 0)  # 13:45:00
 context.addTimeseriesData("temperature", 303.05, date, time)  # index #3
 
-T = context.queryTimeseriesData("temperature", 1)  # Here, T = 301.92
+T = context.queryTimeseriesData("temperature", index=1)  # Here, T = 301.92
 
 time = Time(13, 15, 0)
-T = context.queryTimeseriesData("temperature", date, time)  # Also here, T = 301.92
+T = context.queryTimeseriesData("temperature", date=date, time=time)  # Also here, T = 301.92
 
 for i in range(context.getTimeseriesLength("temperature")):
-    T = context.queryTimeseriesData("temperature", i)
-    time = context.getTimeseriesTime("temperature", i)
+    T = context.queryTimeseriesData("temperature", index=i)
+    time = context.queryTimeseriesTime("temperature", i)
     print(f"Temperature at time {time.hour:02d}:{time.minute:02d}:{time.second:02d} is {T}")
 ```
 

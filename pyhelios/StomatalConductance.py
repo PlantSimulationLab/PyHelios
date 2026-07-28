@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import UStomatalConductanceWrapper as stomatal_wrapper
-from .Context import Context
+from .Context import Context, check_context_alive
 from .exceptions import HeliosError
 
 logger = logging.getLogger(__name__)
@@ -175,6 +175,10 @@ class StomatalConductanceModel:
         except Exception as e:
             raise StomatalConductanceModelError(f"Failed to initialize StomatalConductanceModel: {e}")
     
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "StomatalConductanceModel")
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -211,6 +215,7 @@ class StomatalConductanceModel:
         Raises:
             StomatalConductanceModelError: If operation fails
         """
+        self._check_context_alive()
         try:
             stomatal_wrapper.enableMessages(self.stomatal_model)
         except Exception as e:
@@ -223,6 +228,7 @@ class StomatalConductanceModel:
         Raises:
             StomatalConductanceModelError: If operation fails
         """
+        self._check_context_alive()
         try:
             stomatal_wrapper.disableMessages(self.stomatal_model)
         except Exception as e:
@@ -259,6 +265,7 @@ class StomatalConductanceModel:
             >>> # Dynamic simulation for specific leaves
             >>> stomatal.run(uuids=[leaf1_uuid, leaf2_uuid], dt=30.0)
         """
+        self._check_context_alive()
         try:
             if dt is not None and uuids is not None:
                 # Dynamic simulation for specific UUIDs
@@ -300,6 +307,7 @@ class StomatalConductanceModel:
         if coeffs.a1 < 0.0:
             raise ValueError("a1 must be non-negative")
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setBWBCoefficientsForUUIDs(self.stomatal_model, coeffs.gs0, coeffs.a1, uuids)
@@ -334,6 +342,7 @@ class StomatalConductanceModel:
         if coeffs.D0 <= 0.0:
             raise ValueError("D0 must be positive")
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setBBLCoefficientsForUUIDs(self.stomatal_model, coeffs.gs0, coeffs.a1, coeffs.D0, uuids)
@@ -366,6 +375,7 @@ class StomatalConductanceModel:
         if coeffs.g1 <= 0.0:
             raise ValueError("g1 must be positive")
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setMOPTCoefficientsForUUIDs(self.stomatal_model, coeffs.gs0, coeffs.g1, uuids)
@@ -402,6 +412,7 @@ class StomatalConductanceModel:
         if coeffs.b <= 0.0:
             raise ValueError("b must be positive")
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setBMFCoefficientsForUUIDs(self.stomatal_model, coeffs.Em, coeffs.i0, coeffs.k, coeffs.b, uuids)
@@ -440,6 +451,7 @@ class StomatalConductanceModel:
         if coeffs.chi <= 0.0:
             raise ValueError("chi must be positive")
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setBBCoefficientsForUUIDs(self.stomatal_model, coeffs.pi_0, coeffs.pi_m, coeffs.theta, coeffs.sigma, coeffs.chi, uuids)
@@ -477,6 +489,7 @@ class StomatalConductanceModel:
             "Olive", "Orange", "Peach", "Pear", "Plum", "Walnut"
         ]
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setBMFCoefficientsFromLibraryForUUIDs(self.stomatal_model, species, uuids)
@@ -514,6 +527,7 @@ class StomatalConductanceModel:
         if tau_close <= 0.0:
             raise ValueError("Closing time constant must be positive")
         
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.setDynamicTimeConstantsForUUIDs(self.stomatal_model, tau_open, tau_close, uuids)
@@ -544,6 +558,7 @@ class StomatalConductanceModel:
         if not label:
             raise ValueError("Label cannot be empty")
         
+        self._check_context_alive()
         try:
             stomatal_wrapper.optionalOutputPrimitiveData(self.stomatal_model, label)
         except Exception as e:
@@ -566,6 +581,7 @@ class StomatalConductanceModel:
             >>> # Print report for specific leaves
             >>> stomatal.printDefaultValueReport(uuids=[leaf1_uuid, leaf2_uuid])
         """
+        self._check_context_alive()
         try:
             if uuids is not None:
                 stomatal_wrapper.printDefaultValueReportForUUIDs(self.stomatal_model, uuids)

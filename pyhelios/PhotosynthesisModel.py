@@ -7,7 +7,7 @@ and mechanistic models.
 """
 
 from typing import List, Optional, Union
-from .Context import Context
+from .Context import Context, check_context_alive
 from .wrappers import UPhotosynthesisWrapper as photosynthesis_wrapper
 from .types.photosynthesis import (
     PhotosyntheticTemperatureResponseParameters,
@@ -120,6 +120,10 @@ class PhotosynthesisModel:
             else:
                 raise PhotosynthesisModelError(f"Failed to initialize PhotosynthesisModel: {e}") from e
 
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "PhotosynthesisModel")
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -153,6 +157,7 @@ class PhotosynthesisModel:
         
         The empirical model uses light response curves with saturation kinetics.
         """
+        self._check_context_alive()
         photosynthesis_wrapper.setModelTypeEmpirical(self._native_ptr)
 
     def setModelTypeFarquhar(self):
@@ -162,6 +167,7 @@ class PhotosynthesisModel:
         The FvCB model is a mechanistic model accounting for biochemical
         limitations of C3 photosynthesis.
         """
+        self._check_context_alive()
         photosynthesis_wrapper.setModelTypeFarquhar(self._native_ptr)
 
     def setModelTypeC4(self):
@@ -178,6 +184,7 @@ class PhotosynthesisModel:
             NotImplementedError: If running against an older helios-core that does not
                 support the C4 bindings — rebuild with ``build_scripts/build_helios --clean``.
         """
+        self._check_context_alive()
         photosynthesis_wrapper.setModelTypeC4(self._native_ptr)
 
     def setFarquharMesophyllConductance(self, gm_at_25c: float,
@@ -210,6 +217,7 @@ class PhotosynthesisModel:
                 "setFarquharMesophyllConductance requires explicit UUIDs. "
                 "To configure all primitives use setFarquharModelCoefficients() with a populated coefficient set."
             )
+        self._check_context_alive()
         photosynthesis_wrapper.setFarquharMesophyllConductance(
             self._native_ptr, gm_at_25c, dha, topt, dhd, uuids,
         )
@@ -234,10 +242,12 @@ class PhotosynthesisModel:
         if uuids is not None and material_label is not None:
             raise ValueError("setC4CoefficientsFromLibrary: pass either uuids or material_label, not both.")
         if material_label is not None:
+            self._check_context_alive()
             photosynthesis_wrapper.setC4CoefficientsFromLibraryForMaterial(
                 self._native_ptr, species, material_label,
             )
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.setC4CoefficientsFromLibrary(self._native_ptr, species, uuids)
 
     def getC4CoefficientsFromLibrary(self, species: str) -> List[float]:
@@ -246,6 +256,7 @@ class PhotosynthesisModel:
 
         See ``native/include/pyhelios_wrapper_photosynthesis.h`` for the per-index meaning.
         """
+        self._check_context_alive()
         return photosynthesis_wrapper.getC4CoefficientsFromLibrary(self._native_ptr, species)
 
     def setC4ModelCoefficients(self, coefficients: List[float],
@@ -270,14 +281,17 @@ class PhotosynthesisModel:
         if uuids is not None and material_label is not None:
             raise ValueError("setC4ModelCoefficients: pass either uuids or material_label, not both.")
         if material_label is not None:
+            self._check_context_alive()
             photosynthesis_wrapper.setC4ModelCoefficientsForMaterial(
                 self._native_ptr, material_label, coefficients,
             )
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.setC4ModelCoefficients(self._native_ptr, coefficients, uuids)
 
     def getC4ModelCoefficients(self, uuid: int) -> List[float]:
         """Return the 43-float C4 coefficient array for a single primitive."""
+        self._check_context_alive()
         return photosynthesis_wrapper.getC4ModelCoefficients(self._native_ptr, uuid)
 
     def setCm(self, cm: float, uuids: List[int]):
@@ -298,6 +312,7 @@ class PhotosynthesisModel:
         """
         if not uuids:
             raise ValueError("setCm requires a non-empty list of UUIDs.")
+        self._check_context_alive()
         photosynthesis_wrapper.setCm(self._native_ptr, cm, uuids)
 
     # Model Execution
@@ -307,6 +322,7 @@ class PhotosynthesisModel:
         
         The model must be configured with appropriate coefficients before running.
         """
+        self._check_context_alive()
         photosynthesis_wrapper.run(self._native_ptr)
 
     @validate_photosynthesis_uuid_params
@@ -319,6 +335,7 @@ class PhotosynthesisModel:
         """
         if isinstance(uuids, int):
             uuids = [uuids]
+        self._check_context_alive()
         photosynthesis_wrapper.runForUUIDs(self._native_ptr, uuids)
 
     # Species Configuration
@@ -336,8 +353,10 @@ class PhotosynthesisModel:
             >>> model.setSpeciesCoefficients("SOYBEAN", [uuid1, uuid2])
         """
         if uuids is None:
+            self._check_context_alive()
             photosynthesis_wrapper.setFarquharCoefficientsFromLibrary(self._native_ptr, species)
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.setFarquharCoefficientsFromLibraryForUUIDs(self._native_ptr, species, uuids)
 
     def setFarquharCoefficientsFromLibrary(self, species: str, uuids: Optional[List[int]] = None):
@@ -355,8 +374,10 @@ class PhotosynthesisModel:
             >>> model.setFarquharCoefficientsFromLibrary("SOYBEAN", [uuid1, uuid2])
         """
         if uuids is None:
+            self._check_context_alive()
             photosynthesis_wrapper.setFarquharCoefficientsFromLibrary(self._native_ptr, species)
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.setFarquharCoefficientsFromLibraryForUUIDs(self._native_ptr, species, uuids)
 
     def getSpeciesCoefficients(self, species: str) -> List[float]:
@@ -370,6 +391,7 @@ class PhotosynthesisModel:
             List of Farquhar model coefficients for the species
         """
         species = validate_species_name(species)
+        self._check_context_alive()
         return photosynthesis_wrapper.getFarquharCoefficientsFromLibrary(self._native_ptr, species)
 
     @staticmethod
@@ -407,8 +429,10 @@ class PhotosynthesisModel:
         coeff_list = coefficients.to_array()
         
         if uuids is None:
+            self._check_context_alive()
             photosynthesis_wrapper.setEmpiricalModelCoefficients(self._native_ptr, coeff_list)
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.setEmpiricalModelCoefficientsForUUIDs(self._native_ptr, coeff_list, uuids)
 
     @validate_farquhar_model_params
@@ -425,8 +449,10 @@ class PhotosynthesisModel:
         coeff_list = coefficients.to_array()
         
         if uuids is None:
+            self._check_context_alive()
             photosynthesis_wrapper.setFarquharModelCoefficients(self._native_ptr, coeff_list)
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.setFarquharModelCoefficientsForUUIDs(self._native_ptr, coeff_list, uuids)
 
     # Individual Farquhar Parameter Setting
@@ -648,6 +674,7 @@ class PhotosynthesisModel:
         Returns:
             List of empirical model coefficients
         """
+        self._check_context_alive()
         return photosynthesis_wrapper.getEmpiricalModelCoefficients(self._native_ptr, uuid)
 
     def getFarquharModelCoefficients(self, uuid: int) -> List[float]:
@@ -660,6 +687,7 @@ class PhotosynthesisModel:
         Returns:
             List of Farquhar model coefficients
         """
+        self._check_context_alive()
         return photosynthesis_wrapper.getFarquharModelCoefficients(self._native_ptr, uuid)
 
     def exportResults(self, label: str):
@@ -669,15 +697,18 @@ class PhotosynthesisModel:
         Args:
             label: Data label for export
         """
+        self._check_context_alive()
         photosynthesis_wrapper.optionalOutputPrimitiveData(self._native_ptr, label)
 
     # Model Information and Utilities
     def enableMessages(self):
         """Enable photosynthesis model status messages."""
+        self._check_context_alive()
         photosynthesis_wrapper.enableMessages(self._native_ptr)
 
     def disableMessages(self):
         """Disable photosynthesis model status messages."""
+        self._check_context_alive()
         photosynthesis_wrapper.disableMessages(self._native_ptr)
 
     def printModelReport(self, uuids: Optional[List[int]] = None):
@@ -688,8 +719,10 @@ class PhotosynthesisModel:
             uuids: Optional list of UUIDs. If None, prints report for all primitives.
         """
         if uuids is None:
+            self._check_context_alive()
             photosynthesis_wrapper.printDefaultValueReport(self._native_ptr)
         else:
+            self._check_context_alive()
             photosynthesis_wrapper.printDefaultValueReportForUUIDs(self._native_ptr, uuids)
 
     # Utility Methods

@@ -608,11 +608,9 @@ In order to modify model coefficients from the default values, one should 1) dec
 ```python
 from pyhelios import BMFCoefficients
 
-modelcoeffs = BMFCoefficients()
-modelcoeffs.Em = 9.3
-modelcoeffs.i0 = 5.3
-modelcoeffs.k = 672
-modelcoeffs.b = 6.7
+# BMFCoefficients is an immutable NamedTuple - all four values are supplied
+# at construction. Use ._replace(...) to derive a modified copy.
+modelcoeffs = BMFCoefficients(Em=9.3, i0=5.3, k=672, b=6.7)
 
 # Apply to all primitives
 stomatal.setBMFCoefficients(modelcoeffs)
@@ -659,11 +657,7 @@ You can also set custom coefficients for specific primitives:
 ```python
 from pyhelios import BMFCoefficients
 
-custom_coeffs = BMFCoefficients()
-custom_coeffs.Em = 500.0
-custom_coeffs.i0 = 100.0
-custom_coeffs.k = 5000.0
-custom_coeffs.b = 1000.0
+custom_coeffs = BMFCoefficients(Em=500.0, i0=100.0, k=5000.0, b=1000.0)
 
 # Apply to specific primitives only
 stomatal.setBMFCoefficients(custom_coeffs, uuids=[uuid1, uuid2, uuid3])
@@ -687,7 +681,8 @@ with Context() as context:
     # Initialize the stomatal conductance model
     with StomatalConductanceModel(context) as stomatal:
         # Initialize model coefficients and modify their values
-        modelcoeffs = BMFCoefficients()  # values are initialized with default values
+        # BMFCoefficients is immutable; these are the model default values.
+        modelcoeffs = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
         modelcoeffs.Em = 9.3  # we can modify one or more parameters
         modelcoeffs.i0 = 5.3
         modelcoeffs.k = 672
@@ -733,7 +728,8 @@ with Context() as context:
     # Initialize the stomatal conductance model
     with StomatalConductanceModel(context) as stomatal:
         # Initialize model coefficients with default values
-        modelcoeffs = BMFCoefficients()  # values are initialized with default values
+        # BMFCoefficients is immutable; these are the model default values.
+        modelcoeffs = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
         stomatal.setBMFCoefficients(modelcoeffs)
 
         # Set the response time constants (seconds)
@@ -743,7 +739,7 @@ with Context() as context:
 
         # Set the initial stomatal conductance value
         gs_initial = 0.2
-        context.setPrimitiveData(UUID, "moisture_conductance", gs_initial)
+        context.setPrimitiveDataFloat(UUID, "moisture_conductance", gs_initial)
 
         dt = 1  # timestep (seconds)
         Nsteps = 50  # number of timesteps to run

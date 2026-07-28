@@ -206,9 +206,10 @@ def copy_assets_for_packaging(project_root):
         'xml': ['*.xml'],
         'spectral_data': ['*.csv', '*.txt', '*.dat', '*.xml'],
         'data': ['*.csv', '*.txt', '*.dat', '*.json'],
+        'ssolar_goa': ['*.dat'],
         'camera_light_models': ['*.xml', '*.json']
     }
-    
+
     # Plugin-specific asset directory mappings (actual directory names in helios-core)
     # Only include plugins that are integrated with PyHelios
     plugin_asset_dirs = {
@@ -217,7 +218,18 @@ def copy_assets_for_packaging(project_root):
         'plantarchitecture': ['assets/textures', 'assets/obj'],
         'leafoptics': ['spectral_data'],
         'lidar': ['xml', 'data'],
+        # SolarPosition::calculateSpectralIrradiance() loads wehrli.dat and
+        # abscoef.dat from "plugins/solarposition/ssolar_goa", so the source
+        # path assets/ssolar_goa must be flattened to ssolar_goa at the
+        # destination (see flatten_asset_dirs below).
+        'solarposition': ['assets/ssolar_goa'],
         # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
+    }
+
+    # Source subdirectories that must NOT keep their full nested path at the
+    # destination, because the C++ runtime looks them up without the prefix.
+    flatten_asset_dirs = {
+        'solarposition': {'assets/ssolar_goa': 'ssolar_goa'},
     }
 
     # Add radiation assets (Vulkan works on all platforms, OptiX on Windows/Linux)
@@ -348,8 +360,13 @@ def copy_assets_for_packaging(project_root):
             if not asset_src.exists():
                 continue
 
+            # Some plugins need a nested source path collapsed at the destination
+            # so it matches the path the C++ runtime actually opens.
+            flattened = flatten_asset_dirs.get(plugin_name, {}).get(asset_dir_path)
+            if flattened:
+                asset_dest = plugin_dest / flattened
             # For nested paths, preserve the directory structure
-            if '/' in asset_dir_path:
+            elif '/' in asset_dir_path:
                 # Create nested destination path to preserve structure
                 asset_dest = plugin_dest / asset_dir_path
             else:

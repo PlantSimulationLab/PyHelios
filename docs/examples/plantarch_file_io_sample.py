@@ -56,6 +56,10 @@ def example_save_and_load_xml():
     print("\nLoading saved plant in new context...")
     with Context() as context2:
         with PlantArchitecture(context2) as plantarch2:
+            # The plant model must be loaded before reading the XML so that the
+            # shoot types referenced by the file are defined in this context.
+            plantarch2.loadPlantModelFromLibrary("bean")
+
             # Load the saved plant
             loaded_plant_ids = plantarch2.readPlantStructureXML(output_file)
             print(f"✓ Loaded {len(loaded_plant_ids)} plant(s)")
@@ -65,12 +69,13 @@ def example_save_and_load_xml():
                 loaded_uuids = plantarch2.getAllPlantUUIDs(loaded_id)
                 print(f"  Loaded plant {loaded_id} has {len(loaded_uuids)} primitives")
 
-            # Continue growing the loaded plant
-            print("Growing loaded plant for 10 more days...")
-            plantarch2.advanceTime(10.0)
-
-            final_uuids = plantarch2.getAllPlantUUIDs(loaded_plant_ids[0])
-            print(f"After growth: {len(final_uuids)} primitives")
+            # NOTE: Calling advanceTime() on a plant restored from XML currently
+            # fails in the native library with
+            #   "ERROR (Tube::setTubeRadii): Number of radii in input vector must
+            #    match number of tube nodes."
+            # Growth of a reloaded plant is therefore not demonstrated here.
+            # Plants built in-process with buildPlantInstanceFromLibrary() can be
+            # grown normally -- see example_grow_and_save() below.
 
 
 def example_export_mesh_vertices():
@@ -215,14 +220,19 @@ def example_plant_library_workflow():
     print("\nLoading day 30 plant from library...")
     with Context() as context:
         with PlantArchitecture(context) as plantarch:
+            # The plant model must be loaded before reading the XML so that the
+            # shoot types referenced by the file are defined in this context.
+            plantarch.loadPlantModelFromLibrary("soybean")
+
             library_file = library_dir / "soybean_day30.xml"
             loaded_ids = plantarch.readPlantStructureXML(str(library_file))
             print(f"✓ Loaded plant {loaded_ids[0]} from library")
 
-            # Continue growing from library state
-            plantarch.advanceTime(10.0)
-            final_uuids = plantarch.getAllPlantUUIDs(loaded_ids[0])
-            print(f"After 10 days growth: {len(final_uuids)} primitives")
+            # NOTE: advanceTime() on a plant restored from XML currently fails in
+            # the native library (Tube::setTubeRadii node/radii mismatch), so
+            # growth from the library state is not demonstrated here.
+            loaded_uuids = plantarch.getAllPlantUUIDs(loaded_ids[0])
+            print(f"Loaded plant has {len(loaded_uuids)} primitives")
 
 
 def example_multi_plant_canopy_persistence():
@@ -278,6 +288,10 @@ def example_multi_plant_canopy_persistence():
     print("\nLoading saved canopy...")
     with Context() as context:
         with PlantArchitecture(context) as plantarch:
+            # The plant model must be loaded before reading the XML so that the
+            # shoot types referenced by the files are defined in this context.
+            plantarch.loadPlantModelFromLibrary("bean")
+
             loaded_plants = []
 
             for i in range(9):  # 3x3 = 9 plants

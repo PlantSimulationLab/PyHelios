@@ -10,6 +10,15 @@ from .core import is_finite_numeric
 from .exceptions import ValidationError, create_validation_error
 
 
+def _expected_vector_type(expected_dims: int):
+    """Return the concrete vector class for a dimension count, or None if unknown.
+
+    Imported lazily to avoid a circular import (DataTypes imports validation).
+    """
+    from ..wrappers.DataTypes import vec2, vec3, vec4
+    return {2: vec2, 3: vec3, 4: vec4}.get(expected_dims)
+
+
 def validate_color_component(value: float, component_name: str, param_name: str, function_name: str = None):
     """Validate a color component is in valid range [0,1]."""
     if not is_finite_numeric(value):
@@ -47,7 +56,20 @@ def validate_rgb_color(color: Any, param_name: str = "color", function_name: str
     """
     if color is None:
         return
-    
+
+    # Check the concrete type first. RGBAcolor also has .r/.g/.b, so an attribute
+    # check alone would accept it here and silently discard the alpha channel.
+    from ..wrappers.DataTypes import RGBcolor
+    if not isinstance(color, RGBcolor):
+        raise create_validation_error(
+            f"Parameter must be an RGBcolor, got {type(color).__name__}",
+            param_name=param_name,
+            function_name=function_name,
+            expected_type="RGBcolor",
+            actual_value=color,
+            suggestion="Use RGBcolor(r, g, b) where r, g, b are values between 0 and 1."
+        )
+
     # Check if it has the expected attributes
     if not hasattr(color, 'r') or not hasattr(color, 'g') or not hasattr(color, 'b'):
         raise create_validation_error(
@@ -58,7 +80,7 @@ def validate_rgb_color(color: Any, param_name: str = "color", function_name: str
             actual_value=color,
             suggestion="Use RGBcolor(r, g, b) where r, g, b are values between 0 and 1."
         )
-    
+
     validate_color_component(color.r, 'r', param_name, function_name)
     validate_color_component(color.g, 'g', param_name, function_name)
     validate_color_component(color.b, 'b', param_name, function_name)
@@ -111,10 +133,24 @@ def validate_vector_finite(vector: Any, param_name: str = "vector", expected_dim
     """
     if vector is None:
         return
-    
+
     # Get the expected attribute names based on dimensions
     attrs = ['x', 'y', 'z', 'w'][:expected_dims]
-    
+
+    # Check the concrete type first. Attribute checks alone cannot distinguish
+    # these types: a vec4 has .x/.y/.z, so it would satisfy a vec3 check and then
+    # silently reach C++ as a wrong-length buffer (to_list() returns 4 elements).
+    expected_type = _expected_vector_type(expected_dims)
+    if expected_type is not None and not isinstance(vector, expected_type):
+        raise create_validation_error(
+            f"Parameter must be a vec{expected_dims}, got {type(vector).__name__}",
+            param_name=param_name,
+            function_name=function_name,
+            expected_type=f"vec{expected_dims}",
+            actual_value=vector,
+            suggestion=f"Use vec{expected_dims}({', '.join(attrs)}) to construct this parameter."
+        )
+
     # Check if it has the expected attributes
     for attr in attrs:
         if not hasattr(vector, attr):
@@ -126,7 +162,7 @@ def validate_vector_finite(vector: Any, param_name: str = "vector", expected_dim
                 actual_value=vector,
                 suggestion=f"Use vec{expected_dims}() constructor or provide object with {'.'.join(attrs)} attributes."
             )
-        
+
         value = getattr(vector, attr)
         if not is_finite_numeric(value):
             raise create_validation_error(

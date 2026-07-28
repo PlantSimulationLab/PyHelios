@@ -469,7 +469,7 @@ Grid cells are defined by specifying the (x,y,z) position of its center, and the
 <tr><th>Tag</th><th>Description</th><th>Default behavior</th></tr>
 <tr><td>center</td><td>(x,y,z) Cartesian coordinates of cell center.</td><td>None: REQUIRED</td></tr>
 <tr><td>size</td><td>Length of cell sides in x, y, and z directions.</td><td>None: REQUIRED</td></tr>
-<tr><td>rotation</td><td>Azimuthal rotation of the cell (XML uses degrees; the Python addGrid()/addGridCell() rotation argument is in radians).</td><td>0</td></tr>
+<tr><td>rotation</td><td>Azimuthal rotation of the cell. XML uses degrees, as does the Python `addGrid()` rotation argument; `addGridCell()` takes radians (see the note below).</td><td>0</td></tr>
 <tr><td>Nx</td><td>Grid cell subdivisions in the x-direction.</td><td>1</td></tr>
 <tr><td>Ny</td><td>Grid cell subdivisions in the y-direction.</td><td>1</td></tr>
 <tr><td>Nz</td><td>Grid cell subdivisions in the z-direction.</td><td>1</td></tr>
@@ -494,7 +494,9 @@ Grid cell options can be specified in an XML file using the tags listed in the t
 
 ### Adding grid cells programmatically {#LiDARgridAPI}
 
-Grid cells can also be added programmatically using the `addGrid()` method, without needing to specify them in an XML file. This is useful when grid parameters are computed at runtime or when setting up scans entirely in code. The `addGrid()` method takes the (x,y,z) center of the grid, the size of the grid in each dimension, the number of subdivisions in each dimension, and the azimuthal rotation angle (in radians). A single grid cell can be added with `addGridCell()`.
+Grid cells can also be added programmatically using the `addGrid()` method, without needing to specify them in an XML file. This is useful when grid parameters are computed at runtime or when setting up scans entirely in code. The `addGrid()` method takes the (x,y,z) center of the grid, the size of the grid in each dimension, the number of subdivisions in each dimension, and the azimuthal rotation angle (in degrees). A single grid cell can be added with `addGridCell()`.
+
+\note The rotation units differ between the two methods, mirroring the native API: `addGrid()` takes **degrees** (it converts internally), while `addGridCell()` takes **radians** (it stores the angle directly). `getCellRotation()` reports **degrees**, matching `addGrid()`.
 
 ```python
 from pyhelios import LiDARCloud
@@ -506,10 +508,10 @@ with LiDARCloud() as pointcloud:
         center=vec3(0.0, 0.0, 0.5),   # (x,y,z) center of grid
         size=vec3(1.0, 1.0, 1.0),     # size in x,y,z directions
         ndiv=[3, 3, 3],               # number of subdivisions
-        rotation=0.0                  # azimuthal rotation in radians
+        rotation=0.0                  # azimuthal rotation in degrees
     )
 
-    # Or add an individual grid cell
+    # Or add an individual grid cell (rotation here is in radians)
     pointcloud.addGridCell(
         center=vec3(5.0, 5.0, 0.5),
         size=vec3(1.0, 1.0, 0.5),
@@ -520,8 +522,38 @@ with LiDARCloud() as pointcloud:
     for i in range(pointcloud.getGridCellCount()):
         center = pointcloud.getCellCenter(i)
         size = pointcloud.getCellSize(i)
+        rotation = pointcloud.getCellRotation(i)   # degrees
         print(f"Cell {i}: center=({center.x}, {center.y}, {center.z}), size=({size.x}, {size.y}, {size.z})")
 ```
+
+\note `getCellCenter()` returns the **true world-space center**. For a grid built with a non-zero `rotation`, this is the lattice center rotated about the grid anchor (about +z), so it lies in the same rotated frame as the hit points, scan origins, and grid bounding box.
+
+### Terrain-following grids {#LiDARgridTerrain}
+
+By default `addGrid()` builds an axis-regular lattice, which is a poor fit for a canopy over sloping ground: the bottom layer of voxels cuts through the terrain in some places and floats above it in others. Passing `column_z_offsets` shifts each vertical column of voxels in z by a per-column amount, so the grid can track an external terrain surface such as a DEM.
+
+The offsets are given row-major as `[j*ndiv[0] + i]`, one value per (x,y) column, so the list length must be `ndiv[0]*ndiv[1]`. Omitting the argument (or passing all zeros) reproduces the axis-regular grid exactly.
+
+```python
+from pyhelios import LiDARCloud
+from pyhelios.types import vec3
+
+nx, ny, nz = 4, 4, 5
+
+# Per-column ground elevation, e.g. sampled from a DEM at each column center.
+column_z_offsets = [dem_elevation(i, j) for j in range(ny) for i in range(nx)]
+
+with LiDARCloud() as pointcloud:
+    pointcloud.addGrid(
+        center=vec3(0.0, 0.0, 1.0),
+        size=vec3(4.0, 4.0, 2.0),
+        ndiv=[nx, ny, nz],
+        rotation=0.0,
+        column_z_offsets=column_z_offsets
+    )
+```
+
+The offset is a pure vertical shift applied to the stored lattice center before any rotation, and is also recorded on each cell as its ground height.
 
 ### Determining grid dimensions {#LiDARgridDimensions}
 
@@ -948,7 +980,7 @@ with Context() as context:
 
 ## PyHelios API Coverage
 
-The PyHelios `LiDARCloud` binding covers the full standard workflow — scan definition (raster, spinning multibeam, moving-platform, and physical-parameter spinning/moving-raster, with noise and tilt), scan-mode introspection (`getScanMode()`, `getScanStepsPerRev()`, `getScanRotationRate()`, `getScanRevolutions()`), analytic-waveform return-mode configuration (`setScanReturnMode()`/`setScanMaxReturns()`/`setScanSingleReturnSelection()`/`setScanPulseWidth()`/`setScanDetectionThreshold()` and the `syntheticScan(return_mode=...)` override), hit-point import/bulk-add, columnar bulk reads (`getHitDataColumn()`/`getHitDataColumnArray()`), miss handling (`gapfillMisses()`, synthetic `record_misses`), triangulation, leaf-area inversion with uncertainty/confidence intervals, G(theta), GPU control, and all of the file-export routines above.
+The PyHelios `LiDARCloud` binding covers the full standard workflow — scan definition (raster, spinning multibeam, moving-platform, and physical-parameter spinning/moving-raster, with noise and tilt), scan-mode introspection (`getScanMode()`, `getScanStepsPerRev()`, `getScanRotationRate()`, `getScanRevolutions()`), analytic-waveform return-mode configuration (`setScanReturnMode()`/`setScanMaxReturns()`/`setScanSingleReturnSelection()`/`setScanPulseWidth()`/`setScanDetectionThreshold()` and the `syntheticScan(return_mode=...)` override), hit-point import/bulk-add, columnar bulk reads (`getHitDataColumn()`/`getHitDataColumnArray()`), miss handling (`gapfillMisses()`, synthetic `record_misses`), grid definition including terrain-following columns (`addGrid(column_z_offsets=...)`) and cell queries (`getCellCenter()`, `getCellSize()`, `getCellRotation()`), triangulation, leaf-area inversion with uncertainty/confidence intervals, G(theta), GPU control, and all of the file-export routines above.
 
 The following C++ features are documented in the native LiDAR plugin but **not yet wrapped** in PyHelios. For these, use the C++ API:
 

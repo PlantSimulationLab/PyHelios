@@ -1,4 +1,5 @@
 import ctypes
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Union
 from enum import Enum
@@ -291,8 +292,16 @@ class Context:
                 self.context = None
                 self._lifecycle_state = 'cleaned_up'
             except Exception as e:
-                import warnings
-                warnings.warn(f"Error in Context.__del__: {e}")
+                # __del__ may run during interpreter shutdown, when module
+                # globals and the import machinery are already torn down. Both
+                # the warn and any fallback must therefore be able to fail
+                # without escaping: an exception here cannot propagate to the
+                # caller, it only produces an "Exception ignored in" traceback
+                # that hides the original error.
+                try:
+                    warnings.warn(f"Error in Context.__del__: {e}")
+                except BaseException:
+                    pass
 
     def getNativePtr(self):
         self._check_context_available()
@@ -639,6 +648,11 @@ class Context:
         vertices = self.getPrimitiveVertices(uuid)
         color = self.getPrimitiveColor(uuid)
 
+        # Texture/solid-fraction getters are absent from older library builds, in
+        # which case the wrappers raise NotImplementedError and these fields stay
+        # None. Only that specific case is tolerated - a genuine native failure
+        # must propagate rather than be reported as missing data, and each getter
+        # is attempted independently so one failure cannot suppress the others.
         texture_file = None
         texture_uv = None
         solid_fraction = None
@@ -646,12 +660,18 @@ class Context:
             tf = self.getPrimitiveTextureFile(uuid)
             if tf:
                 texture_file = tf
+        except NotImplementedError:
+            pass
+        try:
             texture_uv = self.getPrimitiveTextureUV(uuid)
             if not texture_uv:
                 texture_uv = None
+        except NotImplementedError:
+            texture_uv = None
+        try:
             solid_fraction = self.getPrimitiveSolidFraction(uuid)
-        except Exception:
-            pass
+        except NotImplementedError:
+            solid_fraction = None
 
         return PrimitiveInfo(
             uuid=uuid,
@@ -1779,7 +1799,12 @@ class Context:
             axis: Rotation axis - either 'x', 'y', 'z' or a vec3 direction vector
             origin: Optional rotation origin point. If None, rotates about object center.
                    If provided with string axis, raises ValueError.
-            about_origin: If True, rotate about global origin (0,0,0). Cannot be used with origin parameter.
+            about_origin: If True, rotate about the object's own stored origin point
+                   (``object_origin``), which for most objects is its construction center —
+                   NOT the global origin (0,0,0). An object built away from the world origin
+                   therefore spins in place rather than orbiting the world origin. To orbit a
+                   specific point, pass that point as ``origin`` instead. Cannot be used with
+                   the origin parameter.
 
         Raises:
             ValueError: If axis is invalid or if origin and about_origin are both specified
@@ -1896,7 +1921,9 @@ class Context:
             scale: Scale factors as vec3(x, y, z)
             point: Optional point to scale about
             about_center: If True, scale about object center (default behavior)
-            about_origin: If True, scale about global origin (0,0,0)
+            about_origin: If True, scale about the object's own stored origin point
+                   (``object_origin``), not the global origin (0,0,0). Pass ``point`` to
+                   scale about a specific location instead.
 
         Raises:
             ValueError: If parameters are invalid or conflicting options specified
@@ -4661,11 +4688,19 @@ class Context:
     def getObjectBoundingBox(self, objIDs):
         """Get axis-aligned bounding box for one object or a list of objects.
 
+        The box encloses every vertex of every primitive belonging to the given
+        object(s).
+
         Args:
             objIDs: Single object ID (int) or list of object IDs.
 
         Returns:
             Tuple of (min_corner: vec3, max_corner: vec3).
+
+        Raises:
+            HeliosRuntimeError: If an object ID does not exist, or if the given
+                object(s) contain no primitives at all (a bounding box would be
+                undefined; this previously returned a misleading box at the origin).
         """
         self._check_context_available()
         if isinstance(objIDs, (list, tuple)):
@@ -6110,5 +6145,42 @@ class Context:
             return None
         width, height, flat = result
         return np.array(flat, dtype=bool).reshape((height, width))
+
+
+def check_context_alive(context: 'Context', owner_name: str) -> None:
+    """Raise if `context`'s native Context has already been destroyed.
+
+    Plugin models pass ``context.getNativePtr()`` to a C++ constructor that
+    stores the raw pointer for the lifetime of the model. Destroying the
+    Context (via ``__exit__``, ``__del__``, or garbage collection) frees that
+    memory without invalidating the model's copy, so any later call
+    dereferences freed memory and segfaults.
+
+    Models must hold a Python reference to the owning Context (keeping it
+    alive) and call this before every native call (turning an explicit close
+    into an actionable error instead of a crash).
+
+    Args:
+        context: The Context the model was constructed from.
+        owner_name: Class name of the calling model, used in the message.
+
+    Raises:
+        RuntimeError: If the Context has been destroyed.
+    """
+    if context is None or getattr(context, 'context', None) is None:
+        raise RuntimeError(
+            f"{owner_name} is bound to a Context that has already been destroyed.\n"
+            "The native Context was freed while this model still referenced it; "
+            "continuing would dereference freed memory and crash the interpreter.\n"
+            "\n"
+            "This usually means the model outlived its Context's 'with' block:\n"
+            "  with Context() as context:\n"
+            f"      model = {owner_name}(context)\n"
+            "  model.run()   # <-- Context already destroyed here\n"
+            "\n"
+            f"Fix: keep all {owner_name} usage inside the Context's 'with' block, "
+            "or create the Context without a 'with' statement so it lives as long "
+            "as the model."
+        )
 
 

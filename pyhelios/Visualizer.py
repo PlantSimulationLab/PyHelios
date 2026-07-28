@@ -16,7 +16,7 @@ from .plugins.registry import get_plugin_registry
 from .plugins import helios_lib
 from .wrappers import UVisualizerWrapper as visualizer_wrapper
 from .wrappers.DataTypes import vec3, RGBcolor, SphericalCoord
-from .Context import Context
+from .Context import Context, check_context_alive
 from .validation.plugin_decorators import validate_build_geometry_params, validate_print_window_params
 from .assets import get_asset_manager
 
@@ -241,6 +241,11 @@ class Visualizer:
         except Exception as e:
             raise VisualizerError(f"Failed to initialize Visualizer: {e}")
     
+    def _check_context_alive(self):
+        """Raise if a Context was loaded and has since been destroyed."""
+        if getattr(self, "_context", None) is not None:
+            check_context_alive(self._context, "Visualizer")
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -277,7 +282,13 @@ class Visualizer:
             raise VisualizerError("Visualizer has been destroyed")
         if not isinstance(context, Context):
             raise ValueError("context must be a Context instance")
-        
+
+        # Retain a reference to the Context. The native visualizer stores the raw
+        # Context* and only dereferences it later, at render time, so without this
+        # a temporary Context (e.g. buildContextGeometry(make_scene())) would be
+        # garbage collected before the first plot call and crash the interpreter.
+        self._context = context
+
         try:
             with _visualizer_working_directory():
                 if uuids is None:
@@ -314,6 +325,7 @@ class Visualizer:
         Raises:
             VisualizerError: If visualization fails
         """
+        self._check_context_alive()
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
         
@@ -337,6 +349,7 @@ class Visualizer:
         Raises:
             VisualizerError: If visualization update fails
         """
+        self._check_context_alive()
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
 
@@ -377,6 +390,7 @@ class Visualizer:
             >>> visualizer.printWindow("output.png")  # Auto-detects PNG
             >>> visualizer.printWindow("output.img", image_format="png")  # Explicit PNG
         """
+        self._check_context_alive()
         if self.visualizer is None:
             raise VisualizerError("Visualizer has been destroyed")
         if not filename:
@@ -904,6 +918,7 @@ class Visualizer:
         Raises:
             VisualizerError: If operation fails
         """
+        self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
@@ -981,6 +996,7 @@ class Visualizer:
             ValueError: If buffer is invalid
             VisualizerError: If operation fails
         """
+        self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
@@ -1008,6 +1024,7 @@ class Visualizer:
         Raises:
             VisualizerError: If operation fails
         """
+        self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
@@ -1037,6 +1054,7 @@ class Visualizer:
         Raises:
             VisualizerError: If operation fails
         """
+        self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         
@@ -1828,6 +1846,7 @@ class Visualizer:
         Raises:
             VisualizerError: If operation fails
         """
+        self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
 

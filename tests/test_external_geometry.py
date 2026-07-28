@@ -380,8 +380,14 @@ class TestPrimitiveInfo:
                 DataTypes.vec3(1, 0, 0), 
                 DataTypes.vec3(0, 1, 0)
              ]), \
-             patch.object(Context, 'getPrimitiveColor', return_value=DataTypes.RGBcolor(1, 0, 0)):
-            
+             patch.object(Context, 'getPrimitiveColor', return_value=DataTypes.RGBcolor(1, 0, 0)), \
+             patch.object(Context, 'getPrimitiveTextureFile', return_value=""), \
+             patch.object(Context, 'getPrimitiveTextureUV', return_value=[]), \
+             patch.object(Context, 'getPrimitiveSolidFraction', return_value=1.0):
+            # The texture getters are mocked alongside the others because the UUID
+            # under test does not exist natively; getPrimitiveInfo propagates native
+            # errors from these rather than silently reporting the fields as None.
+
             context = Context()
             
             info = context.getPrimitiveInfo(123)

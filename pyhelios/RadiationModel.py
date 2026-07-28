@@ -28,7 +28,7 @@ from .validation.plugin_decorators import (
     validate_update_geometry_params, validate_run_band_params, validate_scattering_depth_params,
     validate_min_scatter_energy_params
 )
-from .Context import Context
+from .Context import Context, check_context_alive
 from .assets import get_asset_manager
 
 logger = logging.getLogger(__name__)
@@ -471,6 +471,50 @@ class RadiationModel:
         except Exception as e:
             raise RadiationModelError(f"Failed to initialize RadiationModel: {e}")
     
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "RadiationModel")
+
+    def _check_camera_has_pixel_data(self, camera: str, bands: List[str], operation: str):
+        """Raise an actionable error if a camera/band has no rendered pixel data.
+
+        A camera's pixel data is populated only by ``runBand()``, and only for
+        the bands passed to that call and for cameras that already existed when
+        it ran. Requesting an image for an unrendered camera/band otherwise
+        reaches the native layer as a bare ``invalid map<K, T> key`` from
+        ``std::map::at`` -- see GitHub issue #4 and the upstream fix landing in
+        helios-core v1.3.79. This preflight turns that into a message naming the
+        camera, the band, and the call the user is missing.
+
+        Kept after the upstream fix lands: it stays correct (merely redundant)
+        against a fixed core, and users on earlier versions still need it.
+        """
+        try:
+            known_cameras = radiation_wrapper.getAllCameraLabels(self.radiation_model)
+        except Exception:
+            # Camera enumeration is only used to sharpen the message. If it is
+            # unavailable, fall through and let the per-band probe report.
+            known_cameras = None
+
+        if known_cameras is not None and camera not in known_cameras:
+            raise RadiationModelError(
+                f"Cannot {operation}: camera '{camera}' does not exist. "
+                f"Add it with addRadiationCamera() before calling runBand(). "
+                f"Existing cameras: {sorted(known_cameras) if known_cameras else 'none'}"
+            )
+
+        for band in bands:
+            try:
+                radiation_wrapper.getCameraPixelData(self.radiation_model, camera, band)
+            except Exception:
+                raise RadiationModelError(
+                    f"Cannot {operation}: camera '{camera}' has no rendered pixel data "
+                    f"for band '{band}'. Call runBand() with this band after adding the "
+                    f"camera -- e.g. runBand({list(bands)!r}). Note that runBand() only "
+                    f"renders the bands passed to it, and only for cameras that already "
+                    f"exist when it runs."
+                ) from None
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -507,11 +551,13 @@ class RadiationModel:
     @require_plugin('radiation', 'disable status messages')
     def disableMessages(self):
         """Disable RadiationModel status messages."""
+        self._check_context_alive()
         radiation_wrapper.disableMessages(self.radiation_model)
     
     @require_plugin('radiation', 'enable status messages')
     def enableMessages(self):
         """Enable RadiationModel status messages."""
+        self._check_context_alive()
         radiation_wrapper.enableMessages(self.radiation_model)
     
     @require_plugin('radiation', 'add radiation band')
@@ -521,16 +567,18 @@ class RadiationModel:
         
         Args:
             band_label: Name/label for the radiation band
-            wavelength_min: Optional minimum wavelength (μm)
-            wavelength_max: Optional maximum wavelength (μm)
+            wavelength_min: Optional minimum wavelength (nm)
+            wavelength_max: Optional maximum wavelength (nm)
         """
         # Validate inputs
         validate_band_label(band_label, "band_label", "addRadiationBand")
         if wavelength_min is not None and wavelength_max is not None:
             validate_wavelength_range(wavelength_min, wavelength_max, "wavelength_min", "wavelength_max", "addRadiationBand")
+            self._check_context_alive()
             radiation_wrapper.addRadiationBandWithWavelengths(self.radiation_model, band_label, wavelength_min, wavelength_max)
-            logger.debug(f"Added radiation band {band_label}: {wavelength_min}-{wavelength_max} μm")
+            logger.debug(f"Added radiation band {band_label}: {wavelength_min}-{wavelength_max} nm")
         else:
+            self._check_context_alive()
             radiation_wrapper.addRadiationBand(self.radiation_model, band_label)
             logger.debug(f"Added radiation band: {band_label}")
     
@@ -543,8 +591,8 @@ class RadiationModel:
         Args:
             old_label: Existing band label to copy
             new_label: New label for the copied band
-            wavelength_min: Optional minimum wavelength for new band (μm)
-            wavelength_max: Optional maximum wavelength for new band (μm)
+            wavelength_min: Optional minimum wavelength for new band (nm)
+            wavelength_max: Optional maximum wavelength for new band (nm)
 
         Example:
             >>> # Copy band with same wavelength range
@@ -556,9 +604,10 @@ class RadiationModel:
         if wavelength_min is not None and wavelength_max is not None:
             validate_wavelength_range(wavelength_min, wavelength_max, "wavelength_min", "wavelength_max", "copyRadiationBand")
 
+        self._check_context_alive()
         radiation_wrapper.copyRadiationBand(self.radiation_model, old_label, new_label, wavelength_min, wavelength_max)
         if wavelength_min is not None:
-            logger.debug(f"Copied radiation band {old_label} to {new_label} with wavelengths {wavelength_min}-{wavelength_max} μm")
+            logger.debug(f"Copied radiation band {old_label} to {new_label} with wavelengths {wavelength_min}-{wavelength_max} nm")
         else:
             logger.debug(f"Copied radiation band {old_label} to {new_label}")
     
@@ -575,6 +624,7 @@ class RadiationModel:
             Source ID
         """
         if direction is None:
+            self._check_context_alive()
             source_id = radiation_wrapper.addCollimatedRadiationSourceDefault(self.radiation_model)
         else:
             # Handle vec3, SphericalCoord, and tuple types
@@ -592,6 +642,7 @@ class RadiationModel:
                 z = r * math.sin(elevation)
             else:
                 # Assume tuple-like object - validate it first
+                self._check_context_alive()
                 try:
                     if len(direction) != 3:
                         raise TypeError(f"Direction must be a 3-element tuple, vec3, or SphericalCoord, got {type(direction).__name__} with {len(direction)} elements")
@@ -623,6 +674,7 @@ class RadiationModel:
             x, y, z = position.x, position.y, position.z
         else:
             x, y, z = position
+        self._check_context_alive()
         source_id = radiation_wrapper.addSphereRadiationSource(self.radiation_model, x, y, z, radius)
         logger.debug(f"Added sphere radiation source: ID {source_id} at ({x}, {y}, {z}) with radius {radius}")
         return source_id
@@ -646,6 +698,7 @@ class RadiationModel:
         Returns:
             Source ID
         """
+        self._check_context_alive()
         source_id = radiation_wrapper.addSunSphereRadiationSource(
             self.radiation_model, radius, zenith, azimuth, position_scaling, angular_width, flux_scaling
         )
@@ -673,6 +726,7 @@ class RadiationModel:
         if not isinstance(source_id, int) or source_id < 0:
             raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
         validate_direction_like(position, "position", "setSourcePosition")
+        self._check_context_alive()
         radiation_wrapper.setSourcePosition(self.radiation_model, source_id, position)
         logger.debug(f"Updated position for radiation source {source_id}")
 
@@ -704,6 +758,7 @@ class RadiationModel:
         validate_position_like(position, "position", "addRectangleRadiationSource")
         validate_size_like(size, "size", "addRectangleRadiationSource")
         validate_position_like(rotation, "rotation", "addRectangleRadiationSource")
+        self._check_context_alive()
         return radiation_wrapper.addRectangleRadiationSource(self.radiation_model, position, size, rotation)
 
     @require_plugin('radiation', 'add disk radiation source')
@@ -735,6 +790,7 @@ class RadiationModel:
         validate_position_like(rotation, "rotation", "addDiskRadiationSource")
         if radius <= 0:
             raise ValueError(f"Radius must be positive, got {radius}")
+        self._check_context_alive()
         return radiation_wrapper.addDiskRadiationSource(self.radiation_model, position, radius, rotation)
 
     # Source spectrum methods
@@ -766,6 +822,7 @@ class RadiationModel:
             >>> # Apply same spectrum to multiple sources
             >>> radiation.setSourceSpectrum([src1, src2, src3], led_spectrum)
         """
+        self._check_context_alive()
         radiation_wrapper.setSourceSpectrum(self.radiation_model, source_id, spectrum)
         logger.debug(f"Set spectrum for source(s) {source_id}")
 
@@ -793,6 +850,7 @@ class RadiationModel:
         if source_integral < 0:
             raise ValueError(f"Source integral must be non-negative, got {source_integral}")
 
+        self._check_context_alive()
         radiation_wrapper.setSourceSpectrumIntegral(self.radiation_model, source_id, source_integral,
                                                     wavelength_min, wavelength_max)
         logger.debug(f"Set spectrum integral for source {source_id}: {source_integral}")
@@ -842,6 +900,7 @@ class RadiationModel:
             ...     leaf_reflectance, camera_spectrum=camera_response
             ... )
         """
+        self._check_context_alive()
         return radiation_wrapper.integrateSpectrum(self.radiation_model, object_spectrum,
                                                   wavelength_min, wavelength_max,
                                                   source_id, camera_spectrum)
@@ -864,6 +923,7 @@ class RadiationModel:
         """
         if not isinstance(source_id, int) or source_id < 0:
             raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        self._check_context_alive()
         return radiation_wrapper.integrateSourceSpectrum(self.radiation_model, source_id,
                                                         wavelength_min, wavelength_max)
 
@@ -895,6 +955,7 @@ class RadiationModel:
         if not isinstance(existing_label, str) or not existing_label.strip():
             raise ValueError("Existing label must be a non-empty string")
 
+        self._check_context_alive()
         radiation_wrapper.scaleSpectrum(self.radiation_model, existing_label,
                                        new_label_or_scale, scale_factor)
         logger.debug(f"Scaled spectrum '{existing_label}'")
@@ -925,6 +986,7 @@ class RadiationModel:
         if min_scale >= max_scale:
             raise ValueError(f"min_scale ({min_scale}) must be less than max_scale ({max_scale})")
 
+        self._check_context_alive()
         radiation_wrapper.scaleSpectrumRandomly(self.radiation_model, existing_label, new_label,
                                                min_scale, max_scale)
         logger.debug(f"Scaled spectrum '{existing_label}' randomly to '{new_label}'")
@@ -956,6 +1018,7 @@ class RadiationModel:
         if not spectrum_labels:
             raise ValueError("At least one spectrum label required")
 
+        self._check_context_alive()
         radiation_wrapper.blendSpectra(self.radiation_model, new_label, spectrum_labels, weights)
         logger.debug(f"Blended {len(spectrum_labels)} spectra into '{new_label}'")
 
@@ -982,6 +1045,7 @@ class RadiationModel:
         if not spectrum_labels:
             raise ValueError("At least one spectrum label required")
 
+        self._check_context_alive()
         radiation_wrapper.blendSpectraRandomly(self.radiation_model, new_label, spectrum_labels)
         logger.debug(f"Blended {len(spectrum_labels)} spectra randomly into '{new_label}'")
 
@@ -1024,6 +1088,7 @@ class RadiationModel:
         if len(spectra_labels) != len(values):
             raise ValueError(f"Number of spectra ({len(spectra_labels)}) must match number of values ({len(values)})")
 
+        self._check_context_alive()
         radiation_wrapper.interpolateSpectrumFromPrimitiveData(
             self.radiation_model, primitive_uuids, spectra_labels, values,
             primitive_data_query_label, primitive_data_radprop_label
@@ -1068,6 +1133,7 @@ class RadiationModel:
         if len(spectra_labels) != len(values):
             raise ValueError(f"Number of spectra ({len(spectra_labels)}) must match number of values ({len(values)})")
 
+        self._check_context_alive()
         radiation_wrapper.interpolateSpectrumFromObjectData(
             self.radiation_model, object_ids, spectra_labels, values,
             object_data_query_label, primitive_data_radprop_label
@@ -1079,6 +1145,7 @@ class RadiationModel:
         """Set direct ray count for radiation band."""
         validate_band_label(band_label, "band_label", "setDirectRayCount")
         validate_ray_count(ray_count, "ray_count", "setDirectRayCount")
+        self._check_context_alive()
         radiation_wrapper.setDirectRayCount(self.radiation_model, band_label, ray_count)
     
     @require_plugin('radiation', 'set ray count')
@@ -1086,6 +1153,7 @@ class RadiationModel:
         """Set diffuse ray count for radiation band."""
         validate_band_label(band_label, "band_label", "setDiffuseRayCount")
         validate_ray_count(ray_count, "ray_count", "setDiffuseRayCount")
+        self._check_context_alive()
         radiation_wrapper.setDiffuseRayCount(self.radiation_model, band_label, ray_count)
     
     @require_plugin('radiation', 'set radiation flux')
@@ -1093,6 +1161,7 @@ class RadiationModel:
         """Set diffuse radiation flux for band."""
         validate_band_label(label, "label", "setDiffuseRadiationFlux")
         validate_flux_value(flux, "flux", "setDiffuseRadiationFlux")
+        self._check_context_alive()
         radiation_wrapper.setDiffuseRadiationFlux(self.radiation_model, label, flux)
 
     @require_plugin('radiation', 'configure diffuse radiation')
@@ -1115,6 +1184,7 @@ class RadiationModel:
         if K < 0:
             raise ValueError(f"Extinction coefficient must be non-negative, got {K}")
         validate_direction_like(peak_direction, "peak_direction", "setDiffuseRadiationExtinctionCoeff")
+        self._check_context_alive()
         radiation_wrapper.setDiffuseRadiationExtinctionCoeff(self.radiation_model, label, K, peak_direction)
         logger.debug(f"Set diffuse extinction coefficient for band '{label}': K={K}")
 
@@ -1133,6 +1203,7 @@ class RadiationModel:
             >>> flux = radiation.getDiffuseFlux("SW")
         """
         validate_band_label(band_label, "band_label", "getDiffuseFlux")
+        self._check_context_alive()
         return radiation_wrapper.getDiffuseFlux(self.radiation_model, band_label)
 
     @require_plugin('radiation', 'configure diffuse spectrum')
@@ -1156,6 +1227,7 @@ class RadiationModel:
         if not isinstance(spectrum_label, str) or not spectrum_label.strip():
             raise ValueError("Spectrum label must be a non-empty string")
 
+        self._check_context_alive()
         radiation_wrapper.setDiffuseSpectrum(self.radiation_model, band_label, spectrum_label)
         logger.debug(f"Set diffuse spectrum for band(s) {band_label}")
 
@@ -1180,6 +1252,7 @@ class RadiationModel:
         if band_label is not None:
             validate_band_label(band_label, "band_label", "setDiffuseSpectrumIntegral")
 
+        self._check_context_alive()
         radiation_wrapper.setDiffuseSpectrumIntegral(self.radiation_model, spectrum_integral,
                                                      wavelength_min, wavelength_max, band_label)
         logger.debug(f"Set diffuse spectrum integral: {spectrum_integral}")
@@ -1193,10 +1266,12 @@ class RadiationModel:
         if isinstance(source_id, (list, tuple)):
             # Multiple sources
             validate_source_id_list(list(source_id), "source_id", "setSourceFlux")
+            self._check_context_alive()
             radiation_wrapper.setSourceFluxMultiple(self.radiation_model, source_id, label, flux)
         else:
             # Single source
             validate_source_id(source_id, "source_id", "setSourceFlux")
+            self._check_context_alive()
             radiation_wrapper.setSourceFlux(self.radiation_model, source_id, label, flux)
     
     
@@ -1204,6 +1279,7 @@ class RadiationModel:
     @validate_get_source_flux_params
     def getSourceFlux(self, source_id: int, label: str) -> float:
         """Get source flux for band."""
+        self._check_context_alive()
         return radiation_wrapper.getSourceFlux(self.radiation_model, source_id, label)
     
     @require_plugin('radiation', 'update geometry')
@@ -1216,9 +1292,11 @@ class RadiationModel:
             uuids: Optional list of specific UUIDs to update. If None, updates all geometry.
         """
         if uuids is None:
+            self._check_context_alive()
             radiation_wrapper.updateGeometry(self.radiation_model)
             logger.debug("Updated all geometry in radiation model")
         else:
+            self._check_context_alive()
             radiation_wrapper.updateGeometryUUIDs(self.radiation_model, uuids)
             logger.debug(f"Updated {len(uuids)} geometry UUIDs in radiation model")
         self._geometry_updated = True
@@ -1256,19 +1334,44 @@ class RadiationModel:
             for lbl in band_label:
                 if not isinstance(lbl, str):
                     raise TypeError(f"Band labels must be strings, got {type(lbl).__name__}")
+            self._check_context_alive()
             radiation_wrapper.runBandMultiple(self.radiation_model, band_label)
             logger.info(f"Completed radiation simulation for bands: {band_label}")
         else:
             # Single band - validate label type
             if not isinstance(band_label, str):
                 raise TypeError(f"Band label must be a string, got {type(band_label).__name__}")
+            self._check_context_alive()
             radiation_wrapper.runBand(self.radiation_model, band_label)
             logger.info(f"Completed radiation simulation for band: {band_label}")
     
     
     @require_plugin('radiation', 'get simulation results')
     def getTotalAbsorbedFlux(self) -> List[float]:
-        """Get total absorbed flux for all primitives."""
+        """Get absorbed radiation flux density for all primitives, summed over all bands.
+
+        Returns one value per primitive, in the Context's primitive order (matching
+        ``context.getAllUUIDs()``).
+
+        Units are **W/m^2** (flux density), not watts. This is the sum of the
+        ``radiation_flux_<band>`` primitive data over every band added to the model.
+        Because it is a density, the value does not change when a primitive's size
+        changes: a 1x1 m and a 2x2 m patch under the same collimated source both
+        report the same number.
+
+        To obtain absorbed power in watts, weight each primitive by its area::
+
+            flux = radiation.getTotalAbsorbedFlux()
+            power = sum(f * context.getPrimitiveArea(u)
+                        for f, u in zip(flux, context.getAllUUIDs()))
+
+        Summing the returned values directly (``sum(flux)``) adds flux densities of
+        differently-sized surfaces and is not physically meaningful.
+
+        Returns:
+            Absorbed flux density per primitive in W/m^2.
+        """
+        self._check_context_alive()
         results = radiation_wrapper.getTotalAbsorbedFlux(self.radiation_model)
         logger.debug(f"Retrieved absorbed flux data for {len(results)} primitives")
         return results
@@ -1293,6 +1396,7 @@ class RadiationModel:
             False
         """
         validate_band_label(label, "label", "doesBandExist")
+        self._check_context_alive()
         return radiation_wrapper.doesBandExist(self.radiation_model, label)
 
     # Advanced source management methods
@@ -1310,6 +1414,7 @@ class RadiationModel:
         """
         if not isinstance(source_id, int) or source_id < 0:
             raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        self._check_context_alive()
         radiation_wrapper.deleteRadiationSource(self.radiation_model, source_id)
         logger.debug(f"Deleted radiation source {source_id}")
 
@@ -1331,6 +1436,7 @@ class RadiationModel:
         """
         if not isinstance(source_id, int) or source_id < 0:
             raise ValueError(f"Source ID must be a non-negative integer, got {source_id}")
+        self._check_context_alive()
         position_list = radiation_wrapper.getSourcePosition(self.radiation_model, source_id)
         from .wrappers.DataTypes import vec3
         return vec3(position_list[0], position_list[1], position_list[2])
@@ -1348,6 +1454,7 @@ class RadiationModel:
             >>> energy = radiation.getSkyEnergy()
             >>> print(f"Sky energy: {energy}")
         """
+        self._check_context_alive()
         return radiation_wrapper.getSkyEnergy(self.radiation_model)
 
     @require_plugin('radiation', 'calculate G-function')
@@ -1391,6 +1498,7 @@ class RadiationModel:
             self.updateGeometry()
 
         context_ptr = self.context.getNativePtr()
+        self._check_context_alive()
         value = radiation_wrapper.calculateGtheta(self.radiation_model, context_ptr, view_direction)
 
         if value is None or math.isnan(value):
@@ -1414,6 +1522,7 @@ class RadiationModel:
             >>> radiation.optionalOutputPrimitiveData("temperature")
         """
         validate_band_label(label, "label", "optionalOutputPrimitiveData")
+        self._check_context_alive()
         radiation_wrapper.optionalOutputPrimitiveData(self.radiation_model, label)
         logger.debug(f"Enabled optional output for primitive data: {label}")
 
@@ -1433,6 +1542,7 @@ class RadiationModel:
         """
         if not isinstance(boundary, str) or not boundary:
             raise ValueError("Boundary specification must be a non-empty string")
+        self._check_context_alive()
         radiation_wrapper.enforcePeriodicBoundary(self.radiation_model, boundary)
         logger.debug(f"Enforced periodic boundary: {boundary}")
 
@@ -1441,24 +1551,28 @@ class RadiationModel:
     @validate_scattering_depth_params
     def setScatteringDepth(self, label: str, depth: int):
         """Set scattering depth for radiation band."""
+        self._check_context_alive()
         radiation_wrapper.setScatteringDepth(self.radiation_model, label, depth)
     
     @require_plugin('radiation', 'configure radiation simulation')
     @validate_min_scatter_energy_params
     def setMinScatterEnergy(self, label: str, energy: float):
         """Set minimum scatter energy for radiation band."""
+        self._check_context_alive()
         radiation_wrapper.setMinScatterEnergy(self.radiation_model, label, energy)
     
     @require_plugin('radiation', 'configure radiation emission')
     def disableEmission(self, label: str):
         """Disable emission for radiation band."""
         validate_band_label(label, "label", "disableEmission")
+        self._check_context_alive()
         radiation_wrapper.disableEmission(self.radiation_model, label)
     
     @require_plugin('radiation', 'configure radiation emission')
     def enableEmission(self, label: str):
         """Enable emission for radiation band."""
         validate_band_label(label, "label", "enableEmission")
+        self._check_context_alive()
         radiation_wrapper.enableEmission(self.radiation_model, label)
     
     #=============================================================================
@@ -1521,6 +1635,7 @@ class RadiationModel:
             camera_properties = CameraProperties()
 
         # Call appropriate wrapper function based on direction type
+        self._check_context_alive()
         try:
             if hasattr(validated_direction, 'radius') and hasattr(validated_direction, 'elevation'):
                 # SphericalCoord case
@@ -1609,6 +1724,7 @@ class RadiationModel:
                 "(use SIFCameraProperties(...) — not the plain CameraProperties)."
             )
 
+        self._check_context_alive()
         try:
             if isinstance(lookat_or_direction, SphericalCoord):
                 # SphericalCoord.to_list() is [radius, elevation, zenith, azimuth];
@@ -1651,6 +1767,7 @@ class RadiationModel:
         from .wrappers import URadiationModelWrapper as radiation_wrapper
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        self._check_context_alive()
         return radiation_wrapper.isSIFCamera(self.radiation_model, camera_label)
 
     @require_plugin('radiation', 'manage camera position')
@@ -1673,6 +1790,7 @@ class RadiationModel:
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
         validate_position_like(position, "position", "setCameraPosition")
+        self._check_context_alive()
         radiation_wrapper.setCameraPosition(self.radiation_model, camera_label, position)
         logger.debug(f"Updated camera '{camera_label}' position")
 
@@ -1693,6 +1811,7 @@ class RadiationModel:
         """
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        self._check_context_alive()
         position_list = radiation_wrapper.getCameraPosition(self.radiation_model, camera_label)
         from .wrappers.DataTypes import vec3
         return vec3(position_list[0], position_list[1], position_list[2])
@@ -1712,6 +1831,7 @@ class RadiationModel:
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
         validate_position_like(lookat, "lookat", "setCameraLookat")
+        self._check_context_alive()
         radiation_wrapper.setCameraLookat(self.radiation_model, camera_label, lookat)
         logger.debug(f"Updated camera '{camera_label}' lookat point")
 
@@ -1732,6 +1852,7 @@ class RadiationModel:
         """
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        self._check_context_alive()
         lookat_list = radiation_wrapper.getCameraLookat(self.radiation_model, camera_label)
         from .wrappers.DataTypes import vec3
         return vec3(lookat_list[0], lookat_list[1], lookat_list[2])
@@ -1753,6 +1874,7 @@ class RadiationModel:
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
         validate_direction_like(direction, "direction", "setCameraOrientation")
+        self._check_context_alive()
         radiation_wrapper.setCameraOrientation(self.radiation_model, camera_label, direction)
         logger.debug(f"Updated camera '{camera_label}' orientation")
 
@@ -1773,6 +1895,7 @@ class RadiationModel:
         """
         if not isinstance(camera_label, str) or not camera_label.strip():
             raise ValueError("Camera label must be a non-empty string")
+        self._check_context_alive()
         orientation_list = radiation_wrapper.getCameraOrientation(self.radiation_model, camera_label)
         from .wrappers.DataTypes import SphericalCoord
         return SphericalCoord(orientation_list[0], orientation_list[1], orientation_list[2])
@@ -1789,6 +1912,7 @@ class RadiationModel:
             >>> cameras = radiation.getAllCameraLabels()
             >>> print(f"Available cameras: {cameras}")
         """
+        self._check_context_alive()
         return radiation_wrapper.getAllCameraLabels(self.radiation_model)
 
     @require_plugin('radiation', 'configure camera spectral response')
@@ -1810,6 +1934,7 @@ class RadiationModel:
         if not isinstance(global_data, str) or not global_data.strip():
             raise ValueError("Global data label must be a non-empty string")
 
+        self._check_context_alive()
         radiation_wrapper.setCameraSpectralResponse(self.radiation_model, camera_label, band_label, global_data)
         logger.debug(f"Set spectral response for camera '{camera_label}', band '{band_label}'")
 
@@ -1832,6 +1957,7 @@ class RadiationModel:
         if not isinstance(camera_library_name, str) or not camera_library_name.strip():
             raise ValueError("Camera library name must be a non-empty string")
 
+        self._check_context_alive()
         radiation_wrapper.setCameraSpectralResponseFromLibrary(self.radiation_model, camera_label, camera_library_name)
         logger.debug(f"Set camera '{camera_label}' response from library: {camera_library_name}")
 
@@ -1857,6 +1983,7 @@ class RadiationModel:
             raise ValueError("Camera label must be a non-empty string")
         validate_band_label(band_label, "band_label", "getCameraPixelData")
 
+        self._check_context_alive()
         return radiation_wrapper.getCameraPixelData(self.radiation_model, camera_label, band_label)
 
     @require_plugin('radiation', 'set camera pixel data')
@@ -1882,6 +2009,7 @@ class RadiationModel:
         if not isinstance(pixel_data, (list, tuple)):
             raise ValueError("Pixel data must be a list or tuple")
 
+        self._check_context_alive()
         radiation_wrapper.setCameraPixelData(self.radiation_model, camera_label, band_label, pixel_data)
         logger.debug(f"Set pixel data for camera '{camera_label}', band '{band_label}': {len(pixel_data)} pixels")
 
@@ -1931,6 +2059,7 @@ class RadiationModel:
         validate_position_like(position, "position", "addRadiationCameraFromLibrary")
         validate_position_like(lookat, "lookat", "addRadiationCameraFromLibrary")
 
+        self._check_context_alive()
         try:
             radiation_wrapper.addRadiationCameraFromLibrary(
                 self.radiation_model, camera_label, library_camera_label,
@@ -1973,6 +2102,7 @@ class RadiationModel:
         if not isinstance(camera_properties, CameraProperties):
             raise ValueError("camera_properties must be a CameraProperties instance")
 
+        self._check_context_alive()
         try:
             radiation_wrapper.updateCameraParameters(self.radiation_model, camera_label, camera_properties)
             logger.debug(f"Updated parameters for camera '{camera_label}'")
@@ -2008,6 +2138,7 @@ class RadiationModel:
             >>> # Enable for multiple cameras
             >>> radiation.enableCameraMetadata(["cam1", "cam2", "cam3"])
         """
+        self._check_context_alive()
         try:
             radiation_wrapper.enableCameraMetadata(self.radiation_model, camera_labels)
             if isinstance(camera_labels, str):
@@ -2055,10 +2186,12 @@ class RadiationModel:
         if not isinstance(flux_to_pixel_conversion, (int, float)) or flux_to_pixel_conversion <= 0:
             raise TypeError("Flux to pixel conversion must be a positive number")
         
+        self._check_context_alive()
+        self._check_camera_has_pixel_data(camera, bands, "write camera image")
         filename = radiation_wrapper.writeCameraImage(
-            self.radiation_model, camera, bands, imagefile_base, 
+            self.radiation_model, camera, bands, imagefile_base,
             image_path, frame, flux_to_pixel_conversion)
-        
+
         logger.info(f"Camera image written to: {filename}")
         return filename
     
@@ -2096,9 +2229,11 @@ class RadiationModel:
         if not isinstance(frame, int):
             raise TypeError("Frame must be an integer")
         
+        self._check_context_alive()
+        self._check_camera_has_pixel_data(camera, bands, "write normalized camera image")
         filename = radiation_wrapper.writeNormCameraImage(
             self.radiation_model, camera, bands, imagefile_base, image_path, frame)
-        
+
         logger.info(f"Normalized camera image written to: {filename}")
         return filename
     
@@ -2131,6 +2266,7 @@ class RadiationModel:
         if not isinstance(frame, int):
             raise TypeError("Frame must be an integer")
         
+        self._check_context_alive()
         radiation_wrapper.writeCameraImageData(
             self.radiation_model, camera, band, imagefile_base, image_path, frame)
 
@@ -2186,6 +2322,7 @@ class RadiationModel:
         if not isinstance(padvalue, (int, float)) or isinstance(padvalue, bool):
             raise TypeError("Pad value must be a numeric type")
 
+        self._check_context_alive()
         radiation_wrapper.writePrimitiveDataLabelMap(
             self.radiation_model, camera, primitive_data_label, imagefile_base,
             image_path, frame, float(padvalue))
@@ -2232,6 +2369,7 @@ class RadiationModel:
         if not isinstance(padvalue, (int, float)) or isinstance(padvalue, bool):
             raise TypeError("Pad value must be a numeric type")
 
+        self._check_context_alive()
         radiation_wrapper.writeObjectDataLabelMap(
             self.radiation_model, camera, object_data_label, imagefile_base,
             image_path, frame, float(padvalue))
@@ -2364,6 +2502,7 @@ class RadiationModel:
                 # Single label
                 if not isinstance(object_class_ids, int):
                     raise TypeError("For single primitive data label, object_class_ids must be an integer")
+                self._check_context_alive()
                 radiation_wrapper.writeImageBoundingBoxes(
                     self.radiation_model, camera_label, primitive_data_labels, 
                     object_class_ids, image_file, classes_txt_file, image_path)
@@ -2380,6 +2519,7 @@ class RadiationModel:
                 if not all(isinstance(cid, int) for cid in object_class_ids):
                     raise TypeError("All object class IDs must be integers")
                 
+                self._check_context_alive()
                 radiation_wrapper.writeImageBoundingBoxesVector(
                     self.radiation_model, camera_label, primitive_data_labels, 
                     object_class_ids, image_file, classes_txt_file, image_path)
@@ -2393,6 +2533,7 @@ class RadiationModel:
                 # Single label
                 if not isinstance(object_class_ids, int):
                     raise TypeError("For single object data label, object_class_ids must be an integer")
+                self._check_context_alive()
                 radiation_wrapper.writeImageBoundingBoxes_ObjectData(
                     self.radiation_model, camera_label, object_data_labels, 
                     object_class_ids, image_file, classes_txt_file, image_path)
@@ -2409,6 +2550,7 @@ class RadiationModel:
                 if not all(isinstance(cid, int) for cid in object_class_ids):
                     raise TypeError("All object class IDs must be integers")
                 
+                self._check_context_alive()
                 radiation_wrapper.writeImageBoundingBoxes_ObjectDataVector(
                     self.radiation_model, camera_label, object_data_labels, 
                     object_class_ids, image_file, classes_txt_file, image_path)
@@ -2463,6 +2605,7 @@ class RadiationModel:
                 # Single label
                 if not isinstance(object_class_ids, int):
                     raise TypeError("For single primitive data label, object_class_ids must be an integer")
+                self._check_context_alive()
                 radiation_wrapper.writeImageSegmentationMasks(
                     self.radiation_model, camera_label, primitive_data_labels, 
                     object_class_ids, json_filename, image_file, append_file)
@@ -2479,6 +2622,7 @@ class RadiationModel:
                 if not all(isinstance(cid, int) for cid in object_class_ids):
                     raise TypeError("All object class IDs must be integers")
                 
+                self._check_context_alive()
                 radiation_wrapper.writeImageSegmentationMasksVector(
                     self.radiation_model, camera_label, primitive_data_labels, 
                     object_class_ids, json_filename, image_file, append_file)
@@ -2492,6 +2636,7 @@ class RadiationModel:
                 # Single label
                 if not isinstance(object_class_ids, int):
                     raise TypeError("For single object data label, object_class_ids must be an integer")
+                self._check_context_alive()
                 radiation_wrapper.writeImageSegmentationMasks_ObjectData(
                     self.radiation_model, camera_label, object_data_labels, 
                     object_class_ids, json_filename, image_file, append_file)
@@ -2508,6 +2653,7 @@ class RadiationModel:
                 if not all(isinstance(cid, int) for cid in object_class_ids):
                     raise TypeError("All object class IDs must be integers")
                 
+                self._check_context_alive()
                 radiation_wrapper.writeImageSegmentationMasks_ObjectDataVector(
                     self.radiation_model, camera_label, object_data_labels, 
                     object_class_ids, json_filename, image_file, append_file)
@@ -2570,6 +2716,7 @@ class RadiationModel:
         
         algorithm_int = algorithm_map[algorithm]
         
+        self._check_context_alive()
         filename = radiation_wrapper.autoCalibrateCameraImage(
             self.radiation_model, camera_label, red_band_label, green_band_label,
             blue_band_label, output_file_path, print_quality_report, 
@@ -2626,6 +2773,7 @@ class RadiationModel:
         else:
             raise TypeError("band must be a string or list of strings")
 
+        self._check_context_alive()
         radiation_wrapper.writeCameraImageDataEXR(
             self.radiation_model, camera, band, imagefile_base, image_path, frame)
 
@@ -2653,6 +2801,7 @@ class RadiationModel:
         if not isinstance(frame, int):
             raise TypeError("Frame must be an integer")
 
+        self._check_context_alive()
         radiation_wrapper.writeDepthImageData(
             self.radiation_model, camera_label, imagefile_base, image_path, frame)
 
@@ -2682,6 +2831,7 @@ class RadiationModel:
         if not isinstance(frame, int):
             raise TypeError("Frame must be an integer")
 
+        self._check_context_alive()
         radiation_wrapper.writeDepthImageDataEXR(
             self.radiation_model, camera_label, imagefile_base, image_path, frame)
 
@@ -2717,6 +2867,7 @@ class RadiationModel:
         if not isinstance(frame, int):
             raise TypeError("Frame must be an integer")
 
+        self._check_context_alive()
         radiation_wrapper.writeNormDepthImage(
             self.radiation_model, camera_label, imagefile_base, float(max_depth), image_path, frame)
 
@@ -2731,6 +2882,7 @@ class RadiationModel:
         Returns:
             Backend name string (e.g., "OptiX 8.1", "Vulkan Compute")
         """
+        self._check_context_alive()
         return radiation_wrapper.getBackendName(self.radiation_model)
 
     @staticmethod

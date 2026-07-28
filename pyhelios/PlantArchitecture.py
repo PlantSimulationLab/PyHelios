@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
 
-from .Context import Context
+from .Context import Context, check_context_alive
 from .plugins.registry import get_plugin_registry, require_plugin
 from .wrappers import UPlantArchitectureWrapper as plantarch_wrapper
 from .wrappers.DataTypes import vec3, vec2, int2, AxisRotation
@@ -235,6 +235,10 @@ class PlantArchitecture:
         if not self._plantarch_ptr:
             raise PlantArchitectureError("Failed to initialize PlantArchitecture")
 
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "PlantArchitecture")
+
     def __enter__(self):
         """Context manager entry"""
         return self
@@ -280,6 +284,7 @@ class PlantArchitecture:
         if not plant_label.strip():
             raise ValueError("Plant label cannot be only whitespace")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.loadPlantModelFromLibrary(self._plantarch_ptr, plant_label.strip())
@@ -338,6 +343,7 @@ class PlantArchitecture:
                 if not isinstance(value, (int, float)):
                     raise ValueError("build_parameters values must be numeric (int or float)")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.buildPlantInstanceFromLibrary(
@@ -431,6 +437,7 @@ class PlantArchitecture:
         spacing_list = [plant_spacing.x, plant_spacing.y]
         count_list = [plant_count.x, plant_count.y]
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.buildPlantCanopyFromLibrary(
@@ -467,6 +474,7 @@ class PlantArchitecture:
         if dt < 0:
             raise ValueError(f"Time step must be non-negative, got {dt}")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.advanceTime(self._plantarch_ptr, dt)
@@ -496,9 +504,12 @@ class PlantArchitecture:
                 msg = message_bytes.decode('utf-8') if isinstance(message_bytes, bytes) else str(message_bytes)
                 callback(progress, msg)
 
+            self._check_context_alive()
             self._progress_callback_ref = plantarch_wrapper.PROGRESS_CALLBACK(_c_callback)
+            self._check_context_alive()
             plantarch_wrapper.setProgressCallback(self._plantarch_ptr, self._progress_callback_ref)
         else:
+            self._check_context_alive()
             plantarch_wrapper.setProgressCallback(self._plantarch_ptr, None)
             self._progress_callback_ref = None
 
@@ -511,6 +522,7 @@ class PlantArchitecture:
         (returning whatever was built so far). Set it before the build call; pass
         None to clear. The flag is caller-owned and must outlive the build.
         """
+        self._check_context_alive()
         plantarch_wrapper.setCancelFlag(self._plantarch_ptr, cancel_flag)
 
     def getCurrentShootParameters(self, shoot_type_label: str, return_typed: bool = False):
@@ -554,6 +566,7 @@ class PlantArchitecture:
         if not shoot_type_label.strip():
             raise ValueError("Shoot type label cannot be only whitespace")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 params = plantarch_wrapper.getCurrentShootParameters(
@@ -604,6 +617,7 @@ class PlantArchitecture:
                 f"Parameters must be a dict or ShootParameters, got {type(parameters).__name__}"
             )
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.defineShootType(
@@ -627,6 +641,7 @@ class PlantArchitecture:
         Returns:
             A flat ``dict`` (default) or ``CarbohydrateParameters`` object.
         """
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 params = plantarch_wrapper.getDefaultCarbohydrateParameters()
@@ -652,6 +667,7 @@ class PlantArchitecture:
             raise ValueError(
                 f"Parameters must be a dict or CarbohydrateParameters, got {type(parameters).__name__}"
             )
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.setPlantCarbohydrateParameters(self._plantarch_ptr, plant_id, parameters)
@@ -673,6 +689,7 @@ class PlantArchitecture:
         Returns:
             A flat ``dict`` (default) or ``NitrogenParameters`` object.
         """
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 params = plantarch_wrapper.getDefaultNitrogenParameters()
@@ -698,6 +715,7 @@ class PlantArchitecture:
             raise ValueError(
                 f"Parameters must be a dict or NitrogenParameters, got {type(parameters).__name__}"
             )
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.setPlantNitrogenParameters(self._plantarch_ptr, plant_id, parameters)
@@ -719,6 +737,7 @@ class PlantArchitecture:
             >>> print(f"Available models: {', '.join(models)}")
             Available models: almond, apple, bean, cowpea, maize, rice, soybean, tomato, wheat, ...
         """
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.getAvailablePlantModels(self._plantarch_ptr)
@@ -746,6 +765,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getAllPlantObjectIDs(self._plantarch_ptr, plant_id)
         except Exception as e:
@@ -774,6 +794,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getAllPlantUUIDs(self._plantarch_ptr, plant_id, include_hidden)
         except Exception as e:
@@ -795,6 +816,7 @@ class PlantArchitecture:
         """
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getAllPlantShootIDs(self._plantarch_ptr, plant_id)
         except Exception as e:
@@ -814,6 +836,7 @@ class PlantArchitecture:
         """
         if plant_id < 0 or shoot_id < 0:
             raise ValueError("Plant ID and shoot ID must be non-negative")
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getPlantShootTopology(self._plantarch_ptr, plant_id, shoot_id)
         except Exception as e:
@@ -824,6 +847,7 @@ class PlantArchitecture:
         """Get the child shoot IDs of a shoot (flattened across parent node indices)."""
         if plant_id < 0 or shoot_id < 0:
             raise ValueError("Plant ID and shoot ID must be non-negative")
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getPlantShootChildIDs(self._plantarch_ptr, plant_id, shoot_id)
         except Exception as e:
@@ -834,6 +858,7 @@ class PlantArchitecture:
         """Get the woody internode polyline vertices of a shoot as a list of (x, y, z) tuples."""
         if plant_id < 0 or shoot_id < 0:
             raise ValueError("Plant ID and shoot ID must be non-negative")
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getPlantShootInternodeVertices(self._plantarch_ptr, plant_id, shoot_id)
         except Exception as e:
@@ -844,6 +869,7 @@ class PlantArchitecture:
         """Get the per-vertex woody internode radii of a shoot."""
         if plant_id < 0 or shoot_id < 0:
             raise ValueError("Plant ID and shoot ID must be non-negative")
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getPlantShootInternodeRadii(self._plantarch_ptr, plant_id, shoot_id)
         except Exception as e:
@@ -871,6 +897,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.getPlantAge(self._plantarch_ptr, plant_id)
@@ -898,6 +925,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.getPlantHeight(self._plantarch_ptr, plant_id)
@@ -925,6 +953,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.sumPlantLeafArea(self._plantarch_ptr, plant_id)
@@ -962,6 +991,7 @@ class PlantArchitecture:
         else:
             labels = list(object_data_labels)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 for label in labels:
@@ -1021,6 +1051,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.setPlantPhenologicalThresholds(
@@ -1079,6 +1110,7 @@ class PlantArchitecture:
             ...     enable_fruit_collision=True
             ... )
         """
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.enableSoftCollisionAvoidance(
@@ -1105,6 +1137,7 @@ class PlantArchitecture:
         Example:
             >>> plantarch.disableCollisionDetection()
         """
+        self._check_context_alive()
         try:
             plantarch_wrapper.disableCollisionDetection(self._plantarch_ptr)
         except Exception as e:
@@ -1158,6 +1191,7 @@ class PlantArchitecture:
         if not (0 <= inertia_weight <= 1):
             raise ValueError(f"inertia_weight must be between 0 and 1, got {inertia_weight}")
 
+        self._check_context_alive()
         try:
             plantarch_wrapper.setSoftCollisionAvoidanceParameters(
                 self._plantarch_ptr,
@@ -1207,6 +1241,7 @@ class PlantArchitecture:
             ...     include_fruit=True
             ... )
         """
+        self._check_context_alive()
         try:
             plantarch_wrapper.setCollisionRelevantOrgans(
                 self._plantarch_ptr,
@@ -1259,6 +1294,7 @@ class PlantArchitecture:
         if avoidance_distance <= 0:
             raise ValueError(f"avoidance_distance must be positive, got {avoidance_distance}")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.enableSolidObstacleAvoidance(
@@ -1301,6 +1337,7 @@ class PlantArchitecture:
         if not target_UUIDs:
             raise ValueError("target_UUIDs list cannot be empty")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.setStaticObstacles(self._plantarch_ptr, target_UUIDs)
@@ -1337,6 +1374,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getPlantCollisionRelevantObjectIDs(self._plantarch_ptr, plant_id)
         except Exception as e:
@@ -1377,6 +1415,7 @@ class PlantArchitecture:
         # Resolve path before changing directory
         absolute_path = _resolve_user_path(filename)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.writePlantMeshVertices(
@@ -1424,6 +1463,7 @@ class PlantArchitecture:
         # Resolve path before changing directory
         absolute_path = _resolve_user_path(filename)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.writePlantStructureXML(
@@ -1479,6 +1519,7 @@ class PlantArchitecture:
         # Resolve path before changing directory
         absolute_path = _resolve_user_path(filename)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.writeQSMCylinderFile(
@@ -1539,6 +1580,7 @@ class PlantArchitecture:
 
         absolute_path = _resolve_user_path(filename)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.writePlantStructureUSD(
@@ -1570,6 +1612,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             plantarch_wrapper.registerGrowthFrame(self._plantarch_ptr, plant_id, min_segment_length)
         except Exception as e:
@@ -1599,6 +1642,7 @@ class PlantArchitecture:
 
         absolute_path = _resolve_user_path(filename)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.writePlantGrowthUSD(
@@ -1620,6 +1664,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             plantarch_wrapper.clearGrowthFrames(self._plantarch_ptr, plant_id)
         except Exception as e:
@@ -1641,6 +1686,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             return plantarch_wrapper.getGrowthFrameCount(self._plantarch_ptr, plant_id)
         except Exception as e:
@@ -1687,6 +1733,7 @@ class PlantArchitecture:
         # Resolve path before changing directory
         absolute_path = _resolve_user_path(filename)
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.readPlantStructureXML(
@@ -1736,6 +1783,7 @@ class PlantArchitecture:
         if current_age < 0:
             raise ValueError(f"Age must be non-negative, got {current_age}")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.addPlantInstance(
@@ -1770,6 +1818,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.deletePlantInstance(self._plantarch_ptr, plant_id)
@@ -1852,6 +1901,7 @@ class PlantArchitecture:
         # Convert rotation to list for C++ interface
         rotation_list = base_rotation.to_list()
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.addBaseStemShoot(
@@ -1946,6 +1996,7 @@ class PlantArchitecture:
         # Convert rotation to list for C++ interface
         rotation_list = base_rotation.to_list()
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.appendShoot(
@@ -2056,6 +2107,7 @@ class PlantArchitecture:
         # Convert rotation to list for C++ interface
         rotation_list = shoot_base_rotation.to_list()
 
+        self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 return plantarch_wrapper.addChildShoot(

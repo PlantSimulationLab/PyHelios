@@ -11,7 +11,7 @@ Provides Python interface to Helios LiDAR plugin for:
 from enum import IntEnum
 from typing import List, Tuple, Optional, Union
 from .wrappers import ULiDARWrapper as lidar_wrapper
-from .Context import Context
+from .Context import Context, check_context_alive
 from .plugins.registry import get_plugin_registry
 from .exceptions import HeliosError
 from .wrappers.DataTypes import vec3, RGBcolor, SphericalCoord
@@ -1421,7 +1421,8 @@ class LiDARCloud:
     def addGrid(self, center: Union[vec3, List[float], Tuple[float, float, float]],
                 size: Union[vec3, List[float], Tuple[float, float, float]],
                 ndiv: Union[List[int], Tuple[int, int, int]],
-                rotation: float = 0.0):
+                rotation: float = 0.0,
+                column_z_offsets: Optional[Union[List[float], Tuple[float, ...]]] = None):
         """
         Add a rectangular grid of voxel cells.
 
@@ -1429,7 +1430,18 @@ class LiDARCloud:
             center: Grid center position (vec3 or 3-element list)
             size: Grid dimensions [x, y, z] (vec3 or 3-element list)
             ndiv: Number of divisions [nx, ny, nz] (3-element list)
-            rotation: Azimuthal rotation angle (radians, default 0.0)
+            rotation: Azimuthal rotation angle (degrees, default 0.0)
+            column_z_offsets: Optional per-(x,y)-column vertical offset for terrain
+                following, row-major as ``[j*ndiv[0] + i]`` with length
+                ``ndiv[0]*ndiv[1]``. Each vertical column of voxels is shifted in z by
+                its column's offset so the grid can track an external terrain surface
+                (e.g. a DEM). ``None`` (the default) builds an axis-regular grid.
+
+        Note:
+            ``rotation`` is in **degrees** here, matching the native ``addGrid()``.
+            :meth:`addGridCell` takes its rotation in **radians** — the two native
+            entry points genuinely differ, and PyHelios passes each through unchanged.
+            :meth:`getCellRotation` reports degrees.
 
         Example:
             >>> lidar.addGrid(
@@ -1437,6 +1449,15 @@ class LiDARCloud:
             ...     size=vec3(10, 10, 1),
             ...     ndiv=[10, 10, 5],
             ...     rotation=0.0
+            ... )
+
+            Terrain-following grid over a 2x2 column layout:
+
+            >>> lidar.addGrid(
+            ...     center=vec3(0, 0, 0.5),
+            ...     size=vec3(10, 10, 1),
+            ...     ndiv=[2, 2, 5],
+            ...     column_z_offsets=[0.0, 0.1, 0.2, 0.3]
             ... )
         """
         # Convert center to list
@@ -1463,7 +1484,27 @@ class LiDARCloud:
         if not isinstance(ndiv, (list, tuple)) or len(ndiv) != 3:
             raise ValueError("Ndiv must be a 3-element list [nx, ny, nz]")
 
-        lidar_wrapper.addLiDARGrid(self._cloud_ptr, center_list, size_list, list(ndiv), rotation)
+        if column_z_offsets is None:
+            lidar_wrapper.addLiDARGrid(self._cloud_ptr, center_list, size_list, list(ndiv), rotation)
+            return
+
+        if not isinstance(column_z_offsets, (list, tuple)):
+            raise ValueError(
+                "column_z_offsets must be a list or tuple of floats, got "
+                f"{type(column_z_offsets).__name__}"
+            )
+
+        expected = ndiv[0] * ndiv[1]
+        if len(column_z_offsets) != expected:
+            raise ValueError(
+                f"column_z_offsets must have length ndiv[0]*ndiv[1] = {expected} "
+                f"(one value per grid column), got {len(column_z_offsets)}"
+            )
+
+        lidar_wrapper.addLiDARGridTerrainFollowing(
+            self._cloud_ptr, center_list, size_list, list(ndiv), rotation,
+            [float(z) for z in column_z_offsets]
+        )
 
     def addGridCell(self, center: Union[vec3, List[float], Tuple[float, float, float]],
                     size: Union[vec3, List[float], Tuple[float, float, float]],
@@ -1475,6 +1516,12 @@ class LiDARCloud:
             center: Cell center position (vec3 or 3-element list)
             size: Cell dimensions [x, y, z] (vec3 or 3-element list)
             rotation: Azimuthal rotation angle (radians, default 0.0)
+
+        Note:
+            ``rotation`` is in **radians** here, whereas :meth:`addGrid` takes
+            **degrees**. This asymmetry is inherited from the native API — the native
+            ``addGridCell()`` stores the angle directly in the cell's radian field while
+            ``addGrid()`` converts from degrees. :meth:`getCellRotation` reports degrees.
         """
         # Convert center to list
         if isinstance(center, (list, tuple)):
@@ -1503,7 +1550,13 @@ class LiDARCloud:
         return lidar_wrapper.getLiDARGridCellCount(self._cloud_ptr)
 
     def getCellCenter(self, index: int) -> vec3:
-        """Get center position of a grid cell"""
+        """Get the true world-space center position of a grid cell.
+
+        For a grid created with a non-zero azimuthal ``rotation``, this is the lattice
+        center rotated about the grid anchor (about +z), so it lies in the same rotated
+        world frame as the hit points, scan origins, and grid bounding box. For an
+        un-rotated grid it is simply the lattice center.
+        """
         if index < 0:
             raise ValueError("Index must be non-negative")
         center_list = lidar_wrapper.getLiDARCellCenter(self._cloud_ptr, index)
@@ -1515,6 +1568,16 @@ class LiDARCloud:
             raise ValueError("Index must be non-negative")
         size_list = lidar_wrapper.getLiDARCellSize(self._cloud_ptr, index)
         return vec3(*size_list)
+
+    def getCellRotation(self, index: int) -> float:
+        """Get the azimuthal rotation of a grid cell about the z-axis, in degrees.
+
+        The units match the ``rotation`` argument of :meth:`addGrid`. Note that
+        :meth:`addGridCell` takes its rotation in radians.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        return lidar_wrapper.getLiDARCellRotation(self._cloud_ptr, index)
 
     def getCellLeafArea(self, index: int) -> float:
         """Get leaf area of a grid cell (m²)"""
@@ -1878,14 +1941,39 @@ class LiDARCloud:
         """
         if not isinstance(context, Context):
             raise TypeError("context must be a Context instance")
+
+        # Retain a reference to the Context. The native side constructs a
+        # CollisionDetection that stores the raw Context* for its lifetime, so a
+        # temporary Context would otherwise be freed while still referenced.
+        # Note the C++ side only builds CollisionDetection once (it no-ops if one
+        # already exists), so the first Context passed here is the one that stays
+        # bound - re-initializing with a different Context has no effect.
+        if getattr(self, '_cd_context', None) is not None and self._cd_context is not context:
+            raise RuntimeError(
+                "LiDARCloud collision detection is already initialized with a different Context.\n"
+                "The native CollisionDetection keeps the Context it was first given; "
+                "passing another one here would silently have no effect.\n"
+                "\n"
+                "Fix: create a new LiDARCloud for a different Context, or reuse the "
+                "Context this cloud was initialized with."
+            )
+        self._cd_context = context
+
         lidar_wrapper.initializeLiDARCollisionDetection(self._cloud_ptr, context.getNativePtr())
+
+    def _check_cd_context_alive(self):
+        """Raise if the Context bound to collision detection has been destroyed."""
+        if getattr(self, '_cd_context', None) is not None:
+            check_context_alive(self._cd_context, "LiDARCloud collision detection")
 
     def enableCDGPUAcceleration(self):
         """Enable GPU acceleration for collision detection ray tracing"""
+        self._check_cd_context_alive()
         lidar_wrapper.enableLiDARCDGPUAcceleration(self._cloud_ptr)
 
     def disableCDGPUAcceleration(self):
         """Disable GPU acceleration (use CPU ray tracing)"""
+        self._check_cd_context_alive()
         lidar_wrapper.disableLiDARCDGPUAcceleration(self._cloud_ptr)
 
     def isGPUAvailable(self) -> bool:

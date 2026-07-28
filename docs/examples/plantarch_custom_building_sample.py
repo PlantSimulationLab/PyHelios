@@ -44,7 +44,7 @@ with Context() as context:
             internode_length_scale_factor_fraction=1.0,
             leaf_scale_factor_fraction=1.0,
             radius_taper=0.9,  # Slight taper
-            shoot_type_label="stem"  # Must match loaded model
+            shoot_type_label="trifoliate"  # Must match a shoot type defined by the loaded model
         )
         print(f"  ✓ Created base shoot ID: {base_shoot_id}")
         print()
@@ -64,7 +64,7 @@ with Context() as context:
                 internode_length_scale_factor_fraction=1.0,
                 leaf_scale_factor_fraction=0.9,
                 radius_taper=0.85,
-                shoot_type_label="stem"
+                shoot_type_label="trifoliate"
             )
             branch_ids.append(branch_id)
             print(f"  ✓ Created branch at node {node_index}, shoot ID: {branch_id}")
@@ -79,13 +79,20 @@ with Context() as context:
         print()
 
         # STEP 6: Advance time to grow the plant
-        print("Step 6: Growing plant for 10 days...")
-        plantarch.advanceTime(10.0)
-
-        # Check geometry after growth
-        plant_uuids_after = plantarch.getAllPlantUUIDs(plant_id)
-        print(f"  ✓ After growth: {len(plant_uuids_after)} primitives")
-        print(f"  ✓ Growth added {len(plant_uuids_after) - len(plant_uuids)} primitives")
+        #
+        # KNOWN LIMITATION: growth of a custom-built plant is currently broken in
+        # the native library. The first advanceTime() call destroys every leaf and
+        # petiole object (POLYMESH/CONE), leaving only the internode TUBE object -
+        # the plant shrinks from 41 objects to 1 instead of growing. Plants created
+        # with buildPlantInstanceFromLibrary() are unaffected and grow correctly.
+        #
+        # Growth is therefore not demonstrated here. Uncomment below to observe the
+        # bug, but do not rely on the resulting geometry.
+        #
+        # plantarch.advanceTime(10.0)
+        # plant_uuids_after = plantarch.getAllPlantUUIDs(plant_id)
+        # print(f"  After growth: {len(plant_uuids_after)} primitives")
+        print("Step 6: Growth skipped - see KNOWN LIMITATION note above.")
         print()
 
         print("=== Custom Plant Building Complete ===")
@@ -93,4 +100,6 @@ with Context() as context:
         print("  • Always load a plant model first to define shoot types")
         print("  • Shoot type labels must match those in the loaded model")
         print("  • Custom building provides full control over plant architecture")
-        print("  • Plants can still grow dynamically using advanceTime()")
+        print("  • advanceTime() on a custom-built plant currently destroys leaf")
+        print("    and petiole geometry - use buildPlantInstanceFromLibrary() if")
+        print("    you need to grow the plant")

@@ -10,9 +10,15 @@ This example demonstrates the four main ways to import external geometry into Py
 It also shows how to retrieve primitive information and work with the data.
 """
 
+from pathlib import Path
+
 import numpy as np
 from pyhelios import Context
 from pyhelios.types import *
+
+# Resolve asset paths relative to this script so the example can be run
+# from any working directory.
+MODELS_DIR = Path(__file__).parent / "models"
 
 def main():
     # Create a PyHelios context
@@ -24,7 +30,7 @@ def main():
     print("\n1. PLY File Loading")
 
     # Simple PLY loading
-    ply_uuids = context.loadPLY("models/suzanne.ply", silent=True)
+    ply_uuids = context.loadPLY(str(MODELS_DIR / "suzanne.ply"), silent=True)
     print(f"   Simple PLY load: {len(ply_uuids)} primitives loaded")
 
     # PLY loading with transformations
@@ -33,7 +39,7 @@ def main():
     rotation = SphericalCoord(1.0, 0.0, np.pi/4)  # 45 degree rotation
 
     transformed_uuids = context.loadPLY(
-        filename="models/suzanne.ply",
+        filename=str(MODELS_DIR / "suzanne.ply"),
         origin=origin,
         height=2.0,
         rotation=rotation,
@@ -47,7 +53,7 @@ def main():
     print("\n2. OBJ File Loading")
 
     # Simple OBJ loading
-    obj_uuids = context.loadOBJ("models/suzanne.obj", silent=True)
+    obj_uuids = context.loadOBJ(str(MODELS_DIR / "suzanne.obj"), silent=True)
     print(f"   Simple OBJ load: {len(obj_uuids)} primitives loaded")
 
     # OBJ loading with full transformations
@@ -57,7 +63,7 @@ def main():
     color = RGBcolor(0.2, 0.8, 0.2)  # Green tint
 
     transformed_obj_uuids = context.loadOBJ(
-        filename="models/suzanne.obj",
+        filename=str(MODELS_DIR / "suzanne.obj"),
         origin=origin,
         scale=scale,
         rotation=rotation,
@@ -70,7 +76,7 @@ def main():
 # ==================== METHOD 3: XML FILE LOADING ====================
     print("\n3. Helios XML File Loading")
 
-    xml_uuids = context.loadXML("models/leaf_cube.xml", quiet=True)
+    xml_uuids = context.loadXML(str(MODELS_DIR / "leaf_cube.xml"), quiet=True)
     print(f"   XML load: {len(xml_uuids)} primitives loaded")
 
     # ==================== METHOD 4: NUMPY ARRAY IMPORT ====================
@@ -133,7 +139,7 @@ def main():
         vertices=quad_vertices,
         faces=quad_faces,
         uv_coords=uv_coords,
-        texture_files="models/Helios_logo.jpeg"  # Note: now uses texture_files parameter
+        texture_files=str(MODELS_DIR / "Helios_logo.jpeg")  # Note: now uses texture_files parameter
     )
     print(f"   Single textured triangles: {len(textured_uuids)} triangles added")
     print(f"   Textured UUIDs: {textured_uuids}")
@@ -172,7 +178,7 @@ def main():
             vertices=multi_vertices,
             faces=multi_faces,
             uv_coords=multi_uv_coords,
-            texture_files=["models/Helios_logo.jpeg", "models/Helios_logo.jpeg"],  # Using same texture twice for demo
+            texture_files=[str(MODELS_DIR / "Helios_logo.jpeg"), str(MODELS_DIR / "Helios_logo.jpeg")],  # Using same texture twice for demo
             material_ids=material_ids
         )
         print(f"   Multi-textured triangles: {len(multi_textured_uuids)} triangles added")

@@ -73,56 +73,71 @@ class TestNativeBuild:
         
         # Import PyHelios and force it to reload/detect the library
         import pyhelios.plugins.loader as loader
-        
-        # Reset the loader to force re-detection
-        if hasattr(loader, '_loader_instance'):
-            loader._loader_instance = None
-        
-        # Clear any cached modules, but preserve modules whose class identities must stay
-        # stable across the reload. pyhelios.exceptions defines the HeliosError hierarchy;
-        # reimporting it creates new class objects, so a later pytest.raises(HeliosError)
-        # would no longer match exceptions raised by wrappers still bound to the old classes.
-        # That breaks exception tests in any process that shares state with this one, e.g.
-        # Windows, where pytest-forked is unavailable and sys.modules mutations leak.
-        _preserved_prefixes = ('pyhelios.validation', 'pyhelios.exceptions')
-        modules_to_clear = [m for m in sys.modules.keys()
-                           if m.startswith('pyhelios') and not m.startswith(_preserved_prefixes)]
-        for mod in modules_to_clear:
-            if mod in sys.modules:
-                del sys.modules[mod]
-        
+
+        # Forcing a fresh import means dropping pyhelios from sys.modules, which
+        # rebinds every class in the package. Test modules already imported at
+        # collection time keep the OLD classes while anything importing after
+        # this gets NEW ones, so isinstance checks compare two distinct classes
+        # of the same name: "Parameter must be a vec3, got vec3", or a stubbed
+        # wrapper patched onto a module the class under test no longer uses.
+        # That poisons every later test in a process that shares state with this
+        # one -- e.g. Windows, where pytest-forked is unavailable and sys.modules
+        # mutations leak. Snapshot everything and restore it, so the reload is
+        # confined to this test rather than the rest of the session.
+        saved_modules = {name: mod for name, mod in sys.modules.items()
+                         if name == 'pyhelios' or name.startswith('pyhelios.')}
+        saved_loader_instance = getattr(loader, '_loader_instance', None)
+
+        for name in saved_modules:
+            del sys.modules[name]
+
         try:
-            # Now import PyHelios fresh
-            import pyhelios
-            from pyhelios.plugins import get_plugin_info
-            
-            # Reset plugin registry to ensure clean state after module reload
+            # Reset the loader to force re-detection
+            if hasattr(loader, '_loader_instance'):
+                loader._loader_instance = None
+
+            try:
+                # Now import PyHelios fresh
+                import pyhelios
+                from pyhelios.plugins import get_plugin_info
+
+                # Reset plugin registry to ensure clean state after module reload
+                from pyhelios.plugins.registry import reset_plugin_registry
+                reset_plugin_registry()
+            except ImportError:
+                # If we can't import reset function, we're in a different state
+                pass
+
+            # Check if we're in native mode or mock mode
+            plugin_info = get_plugin_info()
+            print(f"Plugin info: {plugin_info}")
+
+            # For this test, we need to verify the library actually exists and can be loaded
+            # Even if PyHelios falls back to mock mode due to missing dependencies,
+            # the library file should exist and be valid
+            assert built_library_path.exists()
+
+            # Try to load the library with ctypes directly to verify it's valid
+            import ctypes
+            try:
+                lib = ctypes.CDLL(str(built_library_path))
+                print("✅ Library can be loaded with ctypes")
+            except Exception as e:
+                # This might happen if the library has unresolved dependencies
+                # but the library file itself should still be valid
+                print(f"⚠️  Could not load library with ctypes: {e}")
+                # Still consider the test passed if the file exists and has reasonable size
+                assert built_library_path.stat().st_size > 100000  # At least 100KB
+        finally:
+            # Drop the freshly-imported duplicates and put the originals back, so
+            # the rest of the session keeps the class identities it started with.
+            for name in [n for n in sys.modules
+                         if n == 'pyhelios' or n.startswith('pyhelios.')]:
+                del sys.modules[name]
+            sys.modules.update(saved_modules)
+            loader._loader_instance = saved_loader_instance
             from pyhelios.plugins.registry import reset_plugin_registry
             reset_plugin_registry()
-        except ImportError:
-            # If we can't import reset function, we're in a different state
-            pass
-        
-        # Check if we're in native mode or mock mode
-        plugin_info = get_plugin_info()
-        print(f"Plugin info: {plugin_info}")
-        
-        # For this test, we need to verify the library actually exists and can be loaded
-        # Even if PyHelios falls back to mock mode due to missing dependencies,
-        # the library file should exist and be valid
-        assert built_library_path.exists()
-        
-        # Try to load the library with ctypes directly to verify it's valid
-        import ctypes
-        try:
-            lib = ctypes.CDLL(str(built_library_path))
-            print("✅ Library can be loaded with ctypes")
-        except Exception as e:
-            # This might happen if the library has unresolved dependencies
-            # but the library file itself should still be valid
-            print(f"⚠️  Could not load library with ctypes: {e}")
-            # Still consider the test passed if the file exists and has reasonable size
-            assert built_library_path.stat().st_size > 100000  # At least 100KB
     
     def test_context_creation_with_built_library(self, built_library_path):
         """Test that Context can be created when native library is built."""

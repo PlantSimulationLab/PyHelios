@@ -36,11 +36,11 @@ with Context() as context:
     patch_uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(0.1, 0.1))
 
     # Set required primitive data
-    context.setPrimitiveData(patch_uuid, "radiation_flux_PAR", 500.0)  # W/m²
-    context.setPrimitiveData(patch_uuid, "temperature", 298.15)  # K
-    context.setPrimitiveData(patch_uuid, "air_CO2", 400.0)  # µmol/mol
-    context.setPrimitiveData(patch_uuid, "moisture_conductance", 0.3)  # mol/m²-s
-    context.setPrimitiveData(patch_uuid, "boundarylayer_conductance", 1.0)  # mol/m²-s
+    context.setPrimitiveDataFloat(patch_uuid, "radiation_flux_PAR", 500.0)  # W/m²
+    context.setPrimitiveDataFloat(patch_uuid, "temperature", 298.15)  # K
+    context.setPrimitiveDataFloat(patch_uuid, "air_CO2", 400.0)  # µmol/mol
+    context.setPrimitiveDataFloat(patch_uuid, "moisture_conductance", 0.3)  # mol/m²-s
+    context.setPrimitiveDataFloat(patch_uuid, "boundarylayer_conductance", 1.0)  # mol/m²-s
 
     # Create photosynthesis model
     with PhotosynthesisModel(context) as photo:
@@ -87,15 +87,7 @@ with Context() as context:
 
 ### Optional Output Primitive Data {#PhotoOptionalOutputData}
 
-**Note**: Optional output primitive data functionality is not yet implemented in PyHelios. In native Helios C++, this is done by calling `PhotosynthesisModel::optionalOutputPrimitiveData()`.
-
-```python
-from pyhelios import Context, PhotosynthesisModel
-
-with Context() as context:
-    with PhotosynthesisModel(context) as photo:
-        photo.optionalOutputPrimitiveData("Ci")
-```
+**Note**: Optional output primitive data functionality is not yet implemented in PyHelios. In native Helios C++, this is done by calling `PhotosynthesisModel::optionalOutputPrimitiveData()`, which has no PyHelios equivalent at present.
 
  <table>
  <tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
@@ -365,16 +357,17 @@ The table below gives example model parameters obtained for several different sp
 
 | Species            | \f$V_{cmax25}\f$ | \f$J_{max25}\f$ | \f$TPU_{25}\f$ | \f$R_{d25}\f$ | \f$\alpha\f$ | \f$\theta\f$ | \f$\Delta H_{a,Vcmax}\f$ | \f$T _{opt,Vcmax}\f$ | \f$\Delta H_{d,Vcmax}\f$ | \f$\Delta H_{a,Jmax}\f$ | \f$T _{opt,Jmax}\f$ | \f$\Delta H_{d,Jmax}\f$ | \f$\Delta H_{a,TPU}\f$ | \f$T _{opt,TPU}\f$ | \f$\Delta H_{d,TPU}\f$ |
 | ----------         | ------------ | ----------- | ---------- | --------- | -------- | -------- | -------------------- | ---------------- | -------------------- | ------------------- | --------------- | ------------------- | ------------------ | -------------- | ------------------ |
-| Almond             | 72.6         | 144.2       | 6.4        | 0.2       | 0.094    | 0        | 27.3                 | 315.3            | 478.4                | 64.1                | 314.9           | 508.4               | 37.1               | 311.3          | 477.9              |
+| Almond             | 105.9        | 166.34      | --         | 1.49      | 0.336    | 0        | 65.33                | --               | --                   | 46.36               | --              | --                  | --                 | --             | --                 |
 | California Bay     | 97.5         | 193         | 3.3        | 0.1       | 0.037    | 0        | 49.1                 | 308.6            | 505.8                | 34                  | 308.5           | 456.7               | 0.1                | 309.4          | 477.5              |
 | Elderberry         | 37.7         | 149.7       | 7.3        | 1.3       | 0.202    | 0.472    | 66                   | 319.4            | 496                  | 24.5                | 314.8           | 492.9               | 33.6               | 314.5          | 497.5              |
 | Grape              | 74.5         | 180.2       | 7.7        | 1.3       | 0.304    | 0        | 76.1                 | 318.8            | 499.8                | 23                  | 313.8           | 502.3               | 24                 | 314.6          | 496.4              |
 | Maple              | 96.4         | 168         | 2.7        | 0.1       | 0.077    | 0        | 48.9                 | 307.1            | 505                  | 8.5                 | 304.7           | 476.7               | 32.1               | 308.3          | 471.6              |
 | Olive              | 75.9         | 170.4       | 8.3        | 1.9       | 0.398    | 0        | 55.4                 | 315.2            | 497                  | 32.2                | 312.5           | 493.4               | 37.2               | 311.7          | 498.9              |
-| Pistachio          | 101.8        | 223         | 9.8        | 1.5       | 0.216    | 0.65     | 56.5                 | 316.6            | 483.1                | 27.7                | 314.6           | 458.5               | 39.9               | 315.4          | 494.3              |
+| Pistachio (female) | 138.99       | 221.76      | --         | 2.85      | 0.366    | 0        | 65.33                | --               | --                   | 43.80               | --              | --                  | --                 | --             | --                 |
+| Pistachio (male)   | 154.17       | 243.20      | --         | 2.05      | 0.335    | 0        | 65.33                | --               | --                   | 50.89               | --              | --                  | --                 | --             | --                 |
 | Toyon              | 52.8         | 142.4       | 6.6        | 0.8       | 0.29     | 0.532    | 42.1                 | 315.1            | 483                  | 9                   | 313             | 486.2               | 14                 | 314.8          | 493.8              |
-| Walnut             | 81.6         | 201.9       | 10.2       | 0.9       | 0.362    | 0        | 85.3                 | 316.5            | 500.6                | 41.4                | 308.6           | 308.2               | 21.9               | 310.4          | 434.9              |
-| Redbud             | 68.5         | 132.4       | 6.6        | 0.8       | 0.41     | 0        | 66.6                 | 315.1            | 496                  | 41.2                | 313.1           | 474                 | 34.3               | 312.8          | 463.2              |
+| Walnut             | 121.85       | 197.25      | --         | 1.96      | 0.404    | 0        | 65.33                | --               | --                   | 48.35               | --              | --                  | --                 | --             | --                 |
+| Redbud             | 68.5         | 132.4       | 6.6        | 0.8       | 0.41     | 0.04     | 66.6                 | 315.1            | 496                  | 41.2                | 313.1           | 474                 | 34.3               | 312.8          | 463.2              |
 | Apple              | 101.08       | 167.03      | --         | 3.00      | 0.432    | 0        | 65.33                | --               | --                   | 47.62               | --              | --                  | --                 | --             | --                 |
 | Cherry             | 75.65        | 129.06      | --         | 2.12      | 0.404    | 0        | 65.33                | --               | --                   | 48.49               | --              | --                  | --                 | --             | --                 |
 | Pear               | 107.69       | 176.71      | --         | 1.51      | 0.274    | 0        | 65.33                | --               | --                   | 46.04               | --              | --                  | --                 | --             | --                 |
@@ -508,9 +501,9 @@ It is assumed that the maximum CO<sub>2</sub> assimilation rate \f$A_{max}\f$ de
 
    The "dark" respiration rate \f$R_d\f$ is assumed to increase exponentially with temperature following the Arrhenius equation (and assumed not to vary with ambient CO<sub>2</sub> concentration).  Thus, the dark respiration rate is calculated simply as
 
-   \f$R_d = R\sqrt{T_s}\mathrm{exp}\left(-E_R/(T_s+273)\right)\f$,
+   \f$R_d = R\sqrt{T_s-273}\;\mathrm{exp}\left(-E_R/T_s\right)\f$,
 
-   where \f$R\f$ and \f$E_R\f$ are parameters, and temperature is in Kelvin.
+   where \f$R\f$ and \f$E_R\f$ are parameters, and \f$T_s\f$ is the surface temperature in Kelvin (the \f$-273\f$ inside the square root converts to degrees Celsius).
 
 ### CO2 Response Function {#CO2Response}
 

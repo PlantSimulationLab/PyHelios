@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import ULeafOpticsWrapper as leafoptics_wrapper
-from .Context import Context
+from .Context import Context, check_context_alive
 from .exceptions import HeliosError
 from .assets import get_asset_manager
 
@@ -296,6 +296,10 @@ class LeafOptics:
         except Exception as e:
             raise LeafOpticsError(f"Failed to initialize LeafOptics: {e}")
 
+    def _check_context_alive(self):
+        """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
+        check_context_alive(getattr(self, "context", None), "LeafOptics")
+
     def __enter__(self):
         """Context manager entry."""
         return self
@@ -350,6 +354,7 @@ class LeafOptics:
         if not label:
             raise ValueError("Label cannot be empty")
 
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsRun(
                 self._leafoptics_ptr,
@@ -381,6 +386,7 @@ class LeafOptics:
         if not label:
             raise ValueError("Label cannot be empty")
 
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsRunNoUUIDs(
                 self._leafoptics_ptr,
@@ -420,6 +426,7 @@ class LeafOptics:
         if not isinstance(leafproperties, LeafOpticsProperties):
             raise ValueError("leafproperties must be a LeafOpticsProperties instance")
 
+        self._check_context_alive()
         try:
             return leafoptics_wrapper.leafOpticsGetLeafSpectra(
                 self._leafoptics_ptr,
@@ -449,6 +456,7 @@ class LeafOptics:
         if not isinstance(leafproperties, LeafOpticsProperties):
             raise ValueError("leafproperties must be a LeafOpticsProperties instance")
 
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsSetProperties(
                 self._leafoptics_ptr,
@@ -476,6 +484,7 @@ class LeafOptics:
         if not UUIDs:
             raise ValueError("UUIDs list cannot be empty")
 
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsGetPropertiesFromSpectrum(
                 self._leafoptics_ptr,
@@ -513,6 +522,7 @@ class LeafOptics:
         if not species:
             raise ValueError("Species name cannot be empty")
 
+        self._check_context_alive()
         try:
             properties_list = leafoptics_wrapper.leafOpticsGetPropertiesFromLibrary(
                 self._leafoptics_ptr,
@@ -524,6 +534,7 @@ class LeafOptics:
 
     def disableMessages(self) -> None:
         """Disable command-line output messages from LeafOptics."""
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsDisableMessages(self._leafoptics_ptr)
         except Exception as e:
@@ -531,6 +542,7 @@ class LeafOptics:
 
     def enableMessages(self) -> None:
         """Enable command-line output messages from LeafOptics."""
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsEnableMessages(self._leafoptics_ptr)
         except Exception as e:
@@ -577,6 +589,7 @@ class LeafOptics:
         if label not in valid_labels:
             raise ValueError(f"Invalid label '{label}'. Must be one of: {', '.join(valid_labels)}")
 
+        self._check_context_alive()
         try:
             leafoptics_wrapper.leafOpticsOptionalOutputPrimitiveData(self._leafoptics_ptr, label)
         except Exception as e:

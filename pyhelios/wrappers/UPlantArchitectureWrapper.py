@@ -453,6 +453,11 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.getPlantShootChildIDs.errcheck = _check_error
     helios_lib.getPlantShootInternodeVertices.errcheck = _check_error
     helios_lib.getPlantShootInternodeRadii.errcheck = _check_error
+    # Plant state queries: these return -1.0f as a failure sentinel, which is
+    # indistinguishable from a real measurement without checking the error code.
+    helios_lib.getPlantAge.errcheck = _check_error
+    helios_lib.getPlantHeight.errcheck = _check_error
+    helios_lib.sumPlantLeafArea.errcheck = _check_error
     # Collision detection error checking
     helios_lib.enableSoftCollisionAvoidance.errcheck = _check_error
     helios_lib.disableCollisionDetection.errcheck = _check_error

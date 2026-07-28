@@ -854,10 +854,12 @@ with Context() as context:
         # Load saved plant(s)
         plant_ids = plantarch.readPlantStructureXML("bean_day45.xml")
         print(f"Loaded {len(plant_ids)} plant(s)")
-
-        # Continue growing loaded plant
-        plantarch.advanceTime(10.0)
 ```
+
+**Known limitation**: calling `advanceTime()` on a plant restored from XML currently fails in the
+native library with `ERROR (Tube::setTubeRadii): Number of radii in input vector must match number
+of tube nodes.` Reloaded plants can be queried and rendered, but not grown further. Plants built
+in-process with `buildPlantInstanceFromLibrary()` are unaffected.
 
 **Important Notes:**
 - Plant model must be loaded (`loadPlantModelFromLibrary()`) before calling `readPlantStructureXML()`

@@ -43,8 +43,15 @@ with Context() as context:
     # Create minimal geometry
     uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
 
-    # Set required primitive data
-    context.setPrimitiveData(uuid, "air_temperature", 300.0)  # Kelvin
+    # Optional: air_temperature defaults to 300 K if not set
+    context.setPrimitiveDataFloat(uuid, "air_temperature", 300.0)  # Kelvin
+
+    # REQUIRED: radiation_flux_<band> must exist for every band added below.
+    # Normally these are produced by running RadiationModel; they are set
+    # directly here so this example is self-contained.
+    context.setPrimitiveDataFloat(uuid, "radiation_flux_PAR", 200.0)  # W/m^2
+    context.setPrimitiveDataFloat(uuid, "radiation_flux_NIR", 200.0)  # W/m^2
+    context.setPrimitiveDataFloat(uuid, "radiation_flux_LW", 400.0)   # W/m^2
 
     # Use energy balance plugin
     with EnergyBalanceModel(context) as energybalance:
@@ -58,7 +65,7 @@ with Context() as context:
 
         # Get results
         temperature = context.getPrimitiveData(uuid, "temperature")
-        print(f"Surface temperature: {temperature[0]:.2f} K")
+        print(f"Surface temperature: {temperature:.2f} K")
 ```
 
 ## Dependencies {#EBDepends}
@@ -168,6 +175,7 @@ The \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" class is
  <table>
  <tr><th>Primitive Data <th>Units <th>Data Type <th>Description <th>Available Plug-ins <th>Default Value
  <tr><td>radiation\_flux\_[*] <td>W/m<sup>2</sup> <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Net absorbed radiation flux for band [*] (e.g., radiation_flux_PAR). <td>Can be computed by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in. <td>N/A (must add at least one band)
+ <tr><td>emissivity\_[*] <td>unitless <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Surface emissivity for band [*], used for the emitted thermal radiation term. Thermal emission uses a single emissivity: that of the band for which emission is enabled in the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel". If emission is enabled for more than one band, the first emission-enabled band's emissivity is used and a warning is issued. When no emission information is available (radiation fluxes set manually without running the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel"), the first band that defines an emissivity is used. <td>Can be set by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in. <td>1.0
  <tr><td>wind\_speed <td>m/s <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Air wind speed just outside of primitive boundary-layer. <td>N/A <td>1 m/s
  <tr><td>object\_length <td>m <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Characteristic dimension of object formed by primitive. <td>N/A <td>Square root of primitive surface area
  <tr><td>boundarylayer\_conductance<td>mol air/m<sup>2</sup>-s <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Leaf boundary-layer conductance to heat. <td>\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BoundaryLayerConductanceModel" plug-in <td>Try calculating from model \f$0.135\sqrt{\frac{U}{L}}\f$
@@ -323,7 +331,7 @@ with Context() as context:
 
     # Set the heat capacity of the first patch so that the unsteady energy balance model will be run
     Cp = 10000  # J/m^2-oC
-    context.setPrimitiveData(UUID1, "heat_capacity", Cp)
+    context.setPrimitiveDataFloat(UUID1, "heat_capacity", Cp)
 
     with EnergyBalanceModel(context) as energybalance:
         energybalance.addRadiationBand("PAR")
