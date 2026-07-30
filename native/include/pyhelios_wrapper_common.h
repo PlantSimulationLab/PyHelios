@@ -65,6 +65,43 @@ PYHELIOS_API const char* getLastErrorMessage();
 PYHELIOS_API void clearError();
 
 //=============================================================================
+// GPU Environment Functions (core/global.h; helios-core v1.3.79+)
+//=============================================================================
+
+/**
+ * @brief Check whether a GPU is required by the HELIOS_REQUIRE_GPU environment variable
+ *
+ * Returns 1 when HELIOS_REQUIRE_GPU is set to any value other than "0". This is the
+ * counterpart to the HELIOS_NO_GPU veto: rather than changing what hardware probes
+ * report, it changes what a test does when no GPU is found -- tests that would
+ * normally skip must instead fail, so a runner dedicated to GPU coverage cannot
+ * report success after silently skipping every GPU test.
+ *
+ * The environment is read on every call rather than cached, so a process can observe
+ * a change made with setenv()/os.environ.
+ *
+ * @return 1 if a usable GPU is mandatory for this process, 0 otherwise
+ */
+PYHELIOS_API int gpuRequiredByEnvironment();
+
+/**
+ * @brief Fail if HELIOS_REQUIRE_GPU is set but no usable GPU was found
+ *
+ * Call at the point a test would otherwise skip for lack of a GPU. Does nothing
+ * unless HELIOS_REQUIRE_GPU is set. Setting both HELIOS_REQUIRE_GPU and
+ * HELIOS_NO_GPU is contradictory and is reported as an error rather than letting
+ * one silently win.
+ *
+ * Note that this function does not itself probe for hardware: reaching it is taken
+ * as proof that the caller already determined no GPU was usable. When
+ * HELIOS_REQUIRE_GPU is set it therefore always reports an error.
+ *
+ * @param context_message Description of what was about to be skipped, included in
+ *                        the error message. NULL is treated as an empty description.
+ */
+PYHELIOS_API void requireGPUOrFail(const char* context_message);
+
+//=============================================================================
 // Internal Helper Functions (for use by other wrapper modules)
 //=============================================================================
 

@@ -189,6 +189,26 @@ class TestSolarPositionFunctionality:
             # Test invalid longitude
             with pytest.raises(ValueError, match="Longitude must be between"):
                 SolarPosition(context, utc_offset=-8, latitude=38.5, longitude=200)
+
+    def test_utc_offset_accepts_minus_14(self):
+        """UTC offset range is -14..+12, matching helios::Location::validate().
+
+        Helios counts the offset positive moving West, so real-world UTC+13/UTC+14
+        (Kiribati) map to -13/-14. A symmetric -12..+12 bound wrongly rejects them.
+        """
+        with Context() as context:
+            for utc_offset in (-13.0, -14.0):
+                with SolarPosition(context, utc_offset=utc_offset,
+                                   latitude=38.5, longitude=-121.7) as solar:
+                    assert solar is not None
+
+    def test_utc_offset_rejects_beyond_asymmetric_bounds(self):
+        """+13 is out of range even though -13 is in range."""
+        with Context() as context:
+            with pytest.raises(ValueError, match="UTC offset must be between"):
+                SolarPosition(context, utc_offset=13.0, latitude=38.5, longitude=-121.7)
+            with pytest.raises(ValueError, match="UTC offset must be between"):
+                SolarPosition(context, utc_offset=-15.0, latitude=38.5, longitude=-121.7)
     
     def test_solar_angle_calculations(self):
         """Test solar angle calculation methods"""

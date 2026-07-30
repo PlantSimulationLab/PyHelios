@@ -126,6 +126,26 @@ print(loc.latitude, loc.longitude, loc.utc_offset, loc.altitude)
 
 Once the Context location is set, downstream plugins can read it instead of taking explicit lat/lon arguments.
 
+#### Valid ranges
+
+Every field is validated when a `Location` is constructed and again by `setLocation()`. An out-of-range value raises `ValueError` and leaves the Context's location unchanged.
+
+| Field | Range | Notes |
+|---|---|---|
+| `latitude` | -90 to 90 | |
+| `longitude` | -180 to 180 | Helios counts longitude positive moving West |
+| `utc_offset` | -14 to 12 | Asymmetric — see below |
+| `altitude` | any finite value | No non-arbitrary bound exists for a simulated scene |
+
+The `utc_offset` range is -14 to +12 rather than -12 to +12 because Helios counts the offset positive moving West: the real-world span of UTC-12 through UTC+14 (Kiribati keeps the latter) inverts to +12 through -14. So an offset of `-14` is legal and `+14` is not.
+
+```python
+context.setLocation(0.0, 0.0, -14.0)   # OK: real-world UTC+14
+
+context.setLocation(95.0, 0.0, 0.0)    # ValueError: latitude out of range
+context.setLocation(0.0, 0.0, 14.0)    # ValueError: UTC offset out of range
+```
+
 ## Coordinate System {#Coord}
 
 Helios uses a right-handed Cartesian coordinate system. (x,y,z) coordinates are typically specified using the 'vec3' data structure (see Vector Types).

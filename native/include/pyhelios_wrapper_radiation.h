@@ -595,9 +595,13 @@ PYHELIOS_API void enforcePeriodicBoundary(RadiationModel* radiation_model, const
  * @param image_path Output directory path
  * @param frame Frame number (-1 for all)
  * @param flux_to_pixel_conversion Conversion factor
- * @return Output filename string
+ * @return Output filename string, or an EMPTY STRING if the image could not be written
+ *         (helios-core v1.3.79+). An empty return is a failure, not a success with no
+ *         name: the camera or band may not exist, the camera may not have been rendered
+ *         by runBand() for the requested bands, or image_path may not be writable. No
+ *         error code is set in that case, so callers must test the returned string.
  */
-PYHELIOS_API const char* writeCameraImage(RadiationModel* radiation_model, const char* camera, 
+PYHELIOS_API const char* writeCameraImage(RadiationModel* radiation_model, const char* camera,
                                           const char** bands, size_t band_count,
                                           const char* imagefile_base, const char* image_path, 
                                           int frame, float flux_to_pixel_conversion);
@@ -611,9 +615,11 @@ PYHELIOS_API const char* writeCameraImage(RadiationModel* radiation_model, const
  * @param imagefile_base Base filename for output
  * @param image_path Output directory path
  * @param frame Frame number (-1 for all)
- * @return Output filename string
+ * @return Output filename string, or an EMPTY STRING if the image could not be written
+ *         (helios-core v1.3.79+). See writeCameraImage() above; the same empty-on-failure
+ *         contract applies, and no error code is set.
  */
-PYHELIOS_API const char* writeNormCameraImage(RadiationModel* radiation_model, const char* camera, 
+PYHELIOS_API const char* writeNormCameraImage(RadiationModel* radiation_model, const char* camera,
                                               const char** bands, size_t band_count,
                                               const char* imagefile_base, const char* image_path, int frame);
 
@@ -1052,8 +1058,14 @@ PYHELIOS_API void addRadiationCameraFromLibraryWithBands(RadiationModel* radiati
  * @brief Update camera parameters for an existing camera
  * @param radiation_model Pointer to the RadiationModel
  * @param camera_label Label for the camera to update
- * @param camera_properties Camera properties array (9 floats; v1.3.58+)
+ * @param camera_properties Camera properties array (10 floats): resolution x, resolution y,
+ *        focal_plane_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length,
+ *        sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+)
  * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
+ * @note Changing the resolution discards the camera's existing image data
+ *       (helios-core v1.3.79+), because the per-pixel buffers are sized to the resolution
+ *       the camera was rendered at. The camera must be re-rendered with runBand() before
+ *       its image can be written again. Changing other parameters leaves image data intact.
  */
 PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
                                          const char* camera_label,
@@ -1184,9 +1196,34 @@ PYHELIOS_API const char* getBackendName(RadiationModel* radiation_model);
 
 /**
  * @brief Probe whether any compiled-in GPU backend is available on this system
+ *
+ * Returns 0 when GPU backends have been vetoed by the HELIOS_NO_GPU environment
+ * variable, regardless of the hardware actually present.
+ *
+ * As of helios-core v1.3.79 each backend's probe caches its own result process-wide,
+ * so this is cheap to call repeatedly and never re-enters the GPU driver. A driver
+ * that becomes usable after the first probe is not picked up until the process
+ * restarts.
+ *
  * @return 1 if at least one backend is available, 0 if none
  */
 PYHELIOS_API int probeAnyGPUBackend();
+
+/**
+ * @brief Check whether GPU backends have been vetoed by the HELIOS_NO_GPU environment variable
+ *
+ * Returns 1 when HELIOS_NO_GPU is set to any value other than "0". Every backend's
+ * probe honors this veto, so setting the variable makes a GPU-equipped machine behave
+ * exactly like one with no compatible hardware: probeAnyGPUBackend() returns 0 and
+ * creating a RadiationModel with the automatic backend fails. Explicitly requesting a
+ * backend by name bypasses the veto.
+ *
+ * The environment is read once and the result cached for the lifetime of the process,
+ * so changing HELIOS_NO_GPU after the first call has no effect.
+ *
+ * @return 1 if GPU backend probing is disabled by the environment, 0 otherwise
+ */
+PYHELIOS_API int gpuBackendsDisabledByEnvironment();
 
 #ifdef __cplusplus
 }

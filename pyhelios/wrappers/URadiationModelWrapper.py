@@ -665,6 +665,19 @@ except AttributeError:
     _RADIATION_MODEL_FUNCTIONS_AVAILABLE = False
 
 
+# GPU environment introspection (helios-core v1.3.79+). Probed separately so wheels
+# built against older libraries keep the rest of the RadiationModel API working.
+_GPU_ENV_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.gpuBackendsDisabledByEnvironment.argtypes = []
+    helios_lib.gpuBackendsDisabledByEnvironment.restype = ctypes.c_int
+    helios_lib.gpuBackendsDisabledByEnvironment.errcheck = _check_error
+
+    _GPU_ENV_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _GPU_ENV_FUNCTIONS_AVAILABLE = False
+
+
 # SIF (solar-induced fluorescence) camera bindings (helios-core v1.3.72+).
 # Probe separately so wheels built against older libraries keep the rest of the
 # RadiationModel API working.
@@ -1740,7 +1753,7 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     Args:
         radiation_model: RadiationModel instance
         camera_label: Label for the camera to update
-        camera_properties: CameraProperties instance or list of 9 floats
+        camera_properties: CameraProperties instance or list of 10 floats
 
     Raises:
         RuntimeError: If RadiationModel functions not available or operation fails
@@ -1749,6 +1762,12 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     Note:
         Preserves the camera's position, lookat direction, and spectral band configuration.
         FOV_aspect_ratio is recalculated from resolution.
+
+    Warning:
+        Changing the resolution discards the camera's existing image data
+        (helios-core v1.3.79+), since the per-pixel buffers are sized to the
+        resolution the camera was rendered at. The camera must be re-rendered with
+        runBand() before its image can be written again.
     """
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
@@ -1823,7 +1842,13 @@ def enableCameraMetadata(radiation_model, camera_labels):
 
 def writeCameraImage(radiation_model, camera: str, bands: List[str], imagefile_base: str, 
                      image_path: str = "./", frame: int = -1, flux_to_pixel_conversion: float = 1.0) -> str:
-    """Write camera image to file and return output filename"""
+    """Write camera image to file and return output filename.
+
+    Returns an empty string if the native library could not write the image
+    (helios-core v1.3.79+ signals failure that way instead of raising, and sets no
+    error code). Callers must treat an empty return as a failure -- RadiationModel
+    .writeCameraImage() converts it into a RadiationModelError.
+    """
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
     if radiation_model is None:
@@ -1844,7 +1869,10 @@ def writeCameraImage(radiation_model, camera: str, bands: List[str], imagefile_b
 
 def writeNormCameraImage(radiation_model, camera: str, bands: List[str], imagefile_base: str, 
                          image_path: str = "./", frame: int = -1) -> str:
-    """Write normalized camera image to file and return output filename"""
+    """Write normalized camera image to file and return output filename.
+
+    Returns an empty string on failure; see :func:`writeCameraImage` for the contract.
+    """
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
     if radiation_model is None:
@@ -2375,6 +2403,14 @@ def probeAnyGPUBackend() -> bool:
     Probes backends in priority order (OptiX 8 -> OptiX 6 -> Vulkan) without
     constructing a full backend. Useful for availability checks.
 
+    Returns False when ``HELIOS_NO_GPU`` is set to anything other than ``"0"``,
+    whatever hardware is actually present; see
+    :func:`gpuBackendsDisabledByEnvironment`.
+
+    The probe runs at most once per process and the result is cached (helios-core
+    v1.3.79+), so repeated calls are cheap but a driver that becomes usable later
+    is not picked up until the process restarts.
+
     Returns:
         True if at least one GPU backend is available
     """
@@ -2382,4 +2418,31 @@ def probeAnyGPUBackend() -> bool:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
 
     return helios_lib.probeAnyGPUBackend() != 0
+
+
+def gpuBackendsDisabledByEnvironment() -> bool:
+    """Check whether GPU backends are vetoed by the ``HELIOS_NO_GPU`` environment variable.
+
+    True when ``HELIOS_NO_GPU`` is set to any value other than ``"0"``. The veto makes
+    a GPU-equipped machine behave exactly like one with no compatible hardware:
+    :func:`probeAnyGPUBackend` returns False and creating a RadiationModel with the
+    automatic backend fails. Requesting a backend by name bypasses the veto.
+
+    The environment is read once and cached for the process lifetime, so changing
+    ``HELIOS_NO_GPU`` after the first call has no effect.
+
+    Returns:
+        True if GPU backend probing is disabled by the environment
+
+    Raises:
+        RuntimeError: If the native library predates helios-core v1.3.79
+    """
+    if not _GPU_ENV_FUNCTIONS_AVAILABLE:
+        raise RuntimeError(
+            "gpuBackendsDisabledByEnvironment is not available in the current native "
+            "library. It requires helios-core v1.3.79 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+    return helios_lib.gpuBackendsDisabledByEnvironment() != 0
 

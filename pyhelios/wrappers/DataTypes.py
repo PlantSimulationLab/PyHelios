@@ -802,6 +802,21 @@ class Location:
     Mirrors helios::Location: latitude in degrees (+N / -S), longitude in degrees
     (+W / -E per Helios convention), UTC offset in hours (+moving West), and
     altitude of the local Cartesian origin in meters above sea level (default 0).
+
+    Fields are validated against the same ranges as helios::Location::validate():
+
+    ============  ==================  ================================================
+    Field         Range               Note
+    ============  ==================  ================================================
+    latitude      -90 to 90
+    longitude     -180 to 180         Helios counts longitude positive moving West
+    utc_offset    -14 to 12           Asymmetric; see below
+    altitude      any finite value    No non-arbitrary bound exists for a scene
+    ============  ==================  ================================================
+
+    The UTC offset spans -14 to +12 rather than -12 to +12 because Helios counts the
+    offset positive moving West: the real-world span of UTC-12 through UTC+14
+    (Kiribati keeps the latter) inverts to +12 through -14.
     """
     __slots__ = ("latitude", "longitude", "utc_offset", "altitude")
 
@@ -814,12 +829,39 @@ class Location:
             raise ValueError(f"utc_offset must be a number, got {type(utc_offset).__name__}")
         if not isinstance(altitude, (int, float)):
             raise ValueError(f"altitude must be a number, got {type(altitude).__name__}")
-        # The C++ Helios::Location accepts any latitude; we only enforce sane bounds
-        # at the call site so users can replicate any C++ test inputs.
-        object.__setattr__(self, "latitude", float(latitude))
-        object.__setattr__(self, "longitude", float(longitude))
-        object.__setattr__(self, "utc_offset", float(utc_offset))
-        object.__setattr__(self, "altitude", float(altitude))
+
+        # Mirror helios::Location::validate() (helios-core v1.3.79+), which both native
+        # parameterized constructors call. Checking here rather than only at the ABI
+        # boundary keeps the failure a ValueError raised where the bad value was
+        # written, and makes it identical in mock mode.
+        latitude, longitude = float(latitude), float(longitude)
+        utc_offset, altitude = float(utc_offset), float(altitude)
+
+        if not (-90.0 <= latitude <= 90.0):
+            raise ValueError(
+                f"Latitude of {latitude} degrees is out of range (should be -90 to 90)."
+            )
+        if not (-180.0 <= longitude <= 180.0):
+            raise ValueError(
+                f"Longitude of {longitude} degrees is out of range (should be -180 to "
+                f"180). Note that Helios counts longitude positive in the Western "
+                f"hemisphere."
+            )
+        if not (-14.0 <= utc_offset <= 12.0):
+            raise ValueError(
+                f"UTC offset of {utc_offset} hours is out of range (should be -14 to "
+                f"12). Note that Helios counts the UTC offset positive moving West, so "
+                f"UTC-8 is an offset of +8."
+            )
+        if not math.isfinite(altitude):
+            raise ValueError(
+                f"Altitude of {altitude} meters is not a finite value."
+            )
+
+        object.__setattr__(self, "latitude", latitude)
+        object.__setattr__(self, "longitude", longitude)
+        object.__setattr__(self, "utc_offset", utc_offset)
+        object.__setattr__(self, "altitude", altitude)
 
     def __setattr__(self, name, value):
         # Frozen behavior to match the spirit of an immutable Location.

@@ -771,6 +771,201 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get object IDs for plant {plant_id}: {e}")
 
+    def getPlantLeafObjectIDs(self, plant_id: int) -> List[int]:
+        """
+        Get object IDs for all leaf objects on a specific plant.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of object IDs, one per leaf
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Warning:
+            Do **not** pair this result positionally with :meth:`getPlantLeafBases`.
+            The two are built by independent traversals of the shoot tree, so their
+            index correspondence is not guaranteed by the native API.
+
+        Example:
+            >>> leaf_ids = plantarch.getPlantLeafObjectIDs(plant_id)
+            >>> print(f"Plant has {len(leaf_ids)} leaves")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantLeafObjectIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get leaf object IDs for plant {plant_id}: {e}")
+
+    def getPlantPetioleObjectIDs(self, plant_id: int) -> List[int]:
+        """
+        Get object IDs for all petiole objects on a specific plant.
+
+        Petioles are the stalks attaching leaves to the stem, so this is the
+        structural counterpart to :meth:`getPlantLeafObjectIDs`.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of object IDs, one per petiole
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> petiole_ids = plantarch.getPlantPetioleObjectIDs(plant_id)
+            >>> print(f"Plant has {len(petiole_ids)} petioles")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantPetioleObjectIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get petiole object IDs for plant {plant_id}: {e}")
+
+    def getPlantPeduncleObjectIDs(self, plant_id: int) -> List[int]:
+        """
+        Get object IDs for all peduncle objects on a specific plant.
+
+        Peduncles are the stalks bearing flowers and fruit.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of object IDs, one per peduncle. Empty if the plant has not
+            reached its reproductive stage, which is a normal result rather than
+            an error.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> peduncle_ids = plantarch.getPlantPeduncleObjectIDs(plant_id)
+            >>> print(f"Plant has {len(peduncle_ids)} peduncles")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantPeduncleObjectIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get peduncle object IDs for plant {plant_id}: {e}")
+
+    def getPlantFlowerObjectIDs(self, plant_id: int) -> List[int]:
+        """
+        Get object IDs for all flower (inflorescence) objects on a specific plant.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of object IDs, one per flower. Empty if the plant has not
+            flowered -- or has already flowered and set fruit, since flowers are
+            replaced by fruit as growth proceeds. Both are normal results rather
+            than errors.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> flower_ids = plantarch.getPlantFlowerObjectIDs(plant_id)
+            >>> print(f"Plant has {len(flower_ids)} flowers")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantFlowerObjectIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get flower object IDs for plant {plant_id}: {e}")
+
+    def getPlantFruitObjectIDs(self, plant_id: int) -> List[int]:
+        """
+        Get object IDs for all fruit objects on a specific plant.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of object IDs, one per fruit. Empty if the plant has not
+            fruited, which is a normal result rather than an error -- fruit
+            appear only once a plant reaches the reproductive stage, so a plant
+            built at a young age or from a model with no fruit yields ``[]``.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> fruit_ids = plantarch.getPlantFruitObjectIDs(plant_id)
+            >>> print(f"Plant has {len(fruit_ids)} fruit")
+            >>> # Object IDs are Context object IDs, so the usual queries apply:
+            >>> uuids = context.getObjectPrimitiveUUIDs(fruit_ids[0])
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantFruitObjectIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get fruit object IDs for plant {plant_id}: {e}")
+
+    def getPlantLeafBases(self, plant_id: int) -> List[vec3]:
+        """
+        Get the attachment base position of every leaf on a specific plant.
+
+        The base is where the leaf attaches to its petiole, not the leaf centroid.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of vec3 base positions, one per leaf
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Warning:
+            Do **not** pair this result positionally with
+            :meth:`getPlantLeafObjectIDs`. The two are built by independent
+            traversals of the shoot tree, so their index correspondence is not
+            guaranteed by the native API. (helios-core has an internal
+            ``getPlantLeafObjectIDsAndBases()`` that gathers both in one traversal
+            for exactly this reason, but it is protected and not callable from here.)
+
+        Example:
+            >>> bases = plantarch.getPlantLeafBases(plant_id)
+            >>> print(f"First leaf attaches at {bases[0]}")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            flat = plantarch_wrapper.getPlantLeafBases(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get leaf bases for plant {plant_id}: {e}")
+
+        return [vec3(float(flat[i]), float(flat[i + 1]), float(flat[i + 2]))
+                for i in range(0, len(flat), 3)]
+
     def getAllPlantUUIDs(self, plant_id: int, include_hidden: bool = False) -> List[int]:
         """
         Get all primitive UUIDs for a specific plant.

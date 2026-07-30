@@ -786,6 +786,199 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API unsigned int* getPlantLeafObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> objectIDs = plantarch->getPlantLeafObjectIDs(plantID);
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = objectIDs;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantLeafObjectIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantLeafObjectIDs): Unknown error getting leaf object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getPlantPetioleObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> objectIDs = plantarch->getPlantPetioleObjectIDs(plantID);
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = objectIDs;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantPetioleObjectIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantPetioleObjectIDs): Unknown error getting petiole object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getPlantPeduncleObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> objectIDs = plantarch->getPlantPeduncleObjectIDs(plantID);
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = objectIDs;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantPeduncleObjectIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantPeduncleObjectIDs): Unknown error getting peduncle object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getPlantFlowerObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> objectIDs = plantarch->getPlantFlowerObjectIDs(plantID);
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = objectIDs;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantFlowerObjectIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantFlowerObjectIDs): Unknown error getting flower object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getPlantFruitObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> objectIDs = plantarch->getPlantFruitObjectIDs(plantID);
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = objectIDs;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantFruitObjectIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantFruitObjectIDs): Unknown error getting fruit object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API float* getPlantLeafBases(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<helios::vec3> bases = plantarch->getPlantLeafBases(plantID);
+
+            // Flattened as x,y,z triples; *count is the number of vec3 values, not floats.
+            static thread_local std::vector<float> static_result;
+            static_result.clear();
+            static_result.reserve(bases.size() * 3);
+            for (const helios::vec3& base : bases) {
+                static_result.push_back(base.x);
+                static_result.push_back(base.y);
+                static_result.push_back(base.z);
+            }
+            *count = static_cast<int>(bases.size());
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantLeafBases): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantLeafBases): Unknown error getting leaf bases.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
     PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, bool include_hidden, int* count) {
         try {
             clearError();

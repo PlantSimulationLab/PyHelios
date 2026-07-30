@@ -126,7 +126,12 @@ class HeliosBuilder:
         self.build_dir = self.source_dir / 'build'
         
         self.buildmode = buildmode.title()  # Convert to CMake format (Debug, Release, RelWithDebInfo)
-        
+
+        # Set by clean_build_artifacts(). Directory existence alone cannot tell
+        # setup_build_directory() whether a clean ran, because generating
+        # plugin_config.cmake recreates build_dir in between the two.
+        self._cleaned = False
+
         if self.platform_name not in self.PLATFORM_CONFIG:
             raise HeliosBuildError("Unsupported platform: {}".format(self.platform_name))
         
@@ -501,6 +506,7 @@ class HeliosBuilder:
         that are generated during the build and wheel preparation process.
         """
         print("[CLEAN] Cleaning all build artifacts...")
+        self._cleaned = True
         cleaned_items = []
         
         # Remove the build directory - this contains all intermediate build artifacts
@@ -792,12 +798,21 @@ class HeliosBuilder:
             print(f"Target architecture: {self.config['cmake_args'][1] if len(self.config['cmake_args']) > 1 else 'default'}")
     
     def setup_build_directory(self) -> None:
-        """Set up the build directory."""
-        if self.build_dir.exists():
-            print(f"Build directory exists, skipping cleanup: {self.build_dir}")
+        """Set up the build directory.
+
+        Note that this runs *after* generating plugin_config.cmake, which
+        recreates build_dir. So an existing directory here does not mean a
+        requested clean was skipped -- consult self._cleaned for that, otherwise
+        a fully cleaned tree reports "skipping cleanup" and reads as though
+        --clean had silently done nothing.
+        """
+        if self._cleaned:
+            print(f"Build directory cleaned, rebuilding from scratch: {self.build_dir}")
+        elif self.build_dir.exists():
+            print(f"Reusing existing build directory (pass --clean to wipe it): {self.build_dir}")
         else:
-            self.build_dir.mkdir(parents=True, exist_ok=True)
             print(f"Created build directory: {self.build_dir}")
+        self.build_dir.mkdir(parents=True, exist_ok=True)
     
     def run_cmake_configure(self, additional_args: Optional[List[str]] = None) -> None:
         """Run CMake configuration."""

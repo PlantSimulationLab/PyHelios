@@ -8,7 +8,7 @@ capabilities with graceful plugin handling and informative error messages.
 import logging
 import math
 import tempfile
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 from contextlib import contextmanager
 from pathlib import Path
 import os
@@ -17,6 +17,11 @@ import numpy as np
 
 from .plugins.registry import get_plugin_registry, require_plugin, graceful_plugin_fallback
 from .wrappers import URadiationModelWrapper as radiation_wrapper
+# Bulk primitive-data reads go straight to the Context wrapper: the band results
+# live in Context primitive data, and getAbsorbedFlux has already validated the
+# UUIDs and probed the label, so Context.getPrimitiveDataArray() would only repeat
+# that work.
+from .wrappers import UContextWrapper as context_wrapper
 from .validation.plugins import (
     validate_wavelength_range, validate_flux_value, validate_ray_count,
     validate_direction_vector, validate_band_label, validate_source_id, validate_source_id_list,
@@ -419,11 +424,16 @@ class RadiationModel:
         
         self.context = context
         self.radiation_model = None
-        # Tracks whether scene geometry has been pushed to the radiation model via
-        # updateGeometry(). Some queries (e.g. calculateGtheta) silently return NaN
-        # from the native layer when no geometry is loaded; this flag lets us
-        # auto-update or fail with an actionable message instead.
+        # Tracks whether scene geometry has been pushed to the radiation model, either
+        # by updateGeometry() or by runBand() building it automatically. Some queries
+        # (e.g. calculateGtheta) silently return NaN from the native layer when no
+        # geometry is loaded; this flag lets us auto-update or fail with an actionable
+        # message instead.
         self._geometry_updated = False
+        # Tracks whether the last build was a user-specified subset (updateGeometry(uuids)).
+        # A subset must never be silently replaced by a full-Context build, so the
+        # auto-update paths below refuse to do so.
+        self._geometry_subset = False
 
         # Check plugin availability using registry
         registry = get_plugin_registry()
@@ -482,12 +492,16 @@ class RadiationModel:
         the bands passed to that call and for cameras that already existed when
         it ran. Requesting an image for an unrendered camera/band otherwise
         reaches the native layer as a bare ``invalid map<K, T> key`` from
-        ``std::map::at`` -- see GitHub issue #4 and the upstream fix landing in
-        helios-core v1.3.79. This preflight turns that into a message naming the
-        camera, the band, and the call the user is missing.
+        ``std::map::at`` -- see GitHub issue #4. This preflight turns that into a
+        message naming the camera, the band, and the call the user is missing.
 
-        Kept after the upstream fix lands: it stays correct (merely redundant)
-        against a fixed core, and users on earlier versions still need it.
+        This check is load-bearing rather than merely cosmetic, and must not be
+        removed on the grounds that helios-core v1.3.79 addressed the same case
+        upstream. The upstream change makes the native call return an empty
+        filename instead of throwing, so without this preflight an unrendered
+        camera would look like a successful write that produced no file.
+        :meth:`_check_image_was_written` is the backstop for the failure modes
+        this preflight cannot see, such as an unwritable output directory.
         """
         try:
             known_cameras = radiation_wrapper.getAllCameraLabels(self.radiation_model)
@@ -515,10 +529,36 @@ class RadiationModel:
                     f"exist when it runs."
                 ) from None
 
+    def _check_image_was_written(self, filename: str, camera: str, bands: List[str],
+                                 image_path: str, operation: str):
+        """Raise if the native layer reported a failed write via an empty filename.
+
+        helios-core v1.3.79 changed ``writeCameraImage``/``writeNormCameraImage`` to
+        return an empty string on failure rather than throwing, so no exception and no
+        error code reaches Python. Returning that empty string to the caller -- or
+        logging it as "written to: " -- would present a write that produced no file as
+        a success, which the fail-fast policy forbids.
+
+        :meth:`_check_camera_has_pixel_data` already rejects the unrendered-camera and
+        unrendered-band cases before the native call, so by the time an empty filename
+        gets here the likeliest cause is an output directory that does not exist or
+        cannot be written.
+        """
+        if filename:
+            return
+
+        raise RadiationModelError(
+            f"Cannot {operation}: the native library reported a failed write for camera "
+            f"'{camera}' (bands {list(bands)!r}) by returning an empty filename, so no "
+            f"image file was created. The camera has rendered pixel data, so the most "
+            f"likely cause is that the output directory '{image_path}' does not exist "
+            f"or is not writable. Verify the path exists and is writable."
+        )
+
     def __enter__(self):
         """Context manager entry."""
         return self
-    
+
     def __exit__(self, exc_type, exc_value, traceback):
         """Context manager exit with proper cleanup."""
         if self.radiation_model is not None:
@@ -1287,18 +1327,37 @@ class RadiationModel:
     def updateGeometry(self, uuids: Optional[List[int]] = None):
         """
         Update geometry in radiation model.
-        
+
+        The two call forms differ in more than scope, as of helios-core v1.3.79:
+
+        - ``updateGeometry()`` (no argument) is **optional**. :meth:`runBand` builds
+          the geometry itself before tracing and rebuilds it whenever primitives have
+          been added to or deleted from the Context since the last build. Call it
+          explicitly only to control when the cost of the build is paid.
+        - ``updateGeometry(uuids)`` restricts the model to a subset of Context
+          primitives, and that subset is **never** rebuilt automatically -- doing so
+          would silently discard the subset you asked for. You must call it again
+          yourself after modifying Context geometry.
+
         Args:
             uuids: Optional list of specific UUIDs to update. If None, updates all geometry.
+
+        Note:
+            Passing ``uuids`` latches the model into subset mode natively. Calling
+            ``updateGeometry()`` with no argument afterwards clears that latch and
+            returns the model to tracking the full Context.
         """
         if uuids is None:
             self._check_context_alive()
             radiation_wrapper.updateGeometry(self.radiation_model)
             logger.debug("Updated all geometry in radiation model")
+            # Clears the native subset latch, so stop treating the model as a subset.
+            self._geometry_subset = False
         else:
             self._check_context_alive()
             radiation_wrapper.updateGeometryUUIDs(self.radiation_model, uuids)
             logger.debug(f"Updated {len(uuids)} geometry UUIDs in radiation model")
+            self._geometry_subset = True
         self._geometry_updated = True
     
     @require_plugin('radiation', 'run radiation simulation')
@@ -1328,6 +1387,12 @@ class RadiationModel:
         
         Args:
             band_label: Single band name (str) or list of band names for multi-band simulation
+
+        Note:
+            Geometry and radiative properties are updated automatically as needed
+            (helios-core v1.3.79+), so an explicit :meth:`updateGeometry` call is not
+            required first. A subset build from ``updateGeometry(uuids)`` is preserved:
+            it is never rebuilt automatically, since that would discard the subset.
         """
         if isinstance(band_label, (list, tuple)):
             # Multiple bands - validate each label
@@ -1344,37 +1409,156 @@ class RadiationModel:
             self._check_context_alive()
             radiation_wrapper.runBand(self.radiation_model, band_label)
             logger.info(f"Completed radiation simulation for band: {band_label}")
+        # runBand() builds geometry itself when needed, so geometry is now loaded even
+        # if updateGeometry() was never called. Recording that keeps the auto-update in
+        # calculateGtheta() from doing a redundant rebuild -- which, after a subset
+        # build, would silently widen the model back to the full Context.
+        self._geometry_updated = True
     
     
     @require_plugin('radiation', 'get simulation results')
     def getTotalAbsorbedFlux(self) -> List[float]:
         """Get absorbed radiation flux density for all primitives, summed over all bands.
 
-        Returns one value per primitive, in the Context's primitive order (matching
-        ``context.getAllUUIDs()``).
+        .. warning::
+           **The returned values cannot be matched to UUIDs by position.** They are
+           ordered by the radiation model's internal primitive ordering (grouped by
+           parent object, built during :meth:`updateGeometry`), which is *not* the
+           order of ``context.getAllUUIDs()`` -- that iterates an unordered map and
+           returns a hash order. Pairing the two by index silently attributes flux
+           to the wrong primitive. Use :meth:`getAbsorbedFlux` instead, which is
+           keyed by UUID.
 
-        Units are **W/m^2** (flux density), not watts. This is the sum of the
-        ``radiation_flux_<band>`` primitive data over every band added to the model.
-        Because it is a density, the value does not change when a primitive's size
-        changes: a 1x1 m and a 2x2 m patch under the same collimated source both
-        report the same number.
+        .. warning::
+           This sums the ``radiation_flux_<band>`` primitive data over **every**
+           band registered in the model. For overlapping bands -- e.g. PAR, NIR
+           and SW, where SW already spans the other two -- the sum double-counts
+           and is not a physically meaningful quantity. Use
+           :meth:`getAbsorbedFlux` to get a single band's flux.
 
-        To obtain absorbed power in watts, weight each primitive by its area::
-
-            flux = radiation.getTotalAbsorbedFlux()
-            power = sum(f * context.getPrimitiveArea(u)
-                        for f, u in zip(flux, context.getAllUUIDs()))
+        Units are **W/m^2** (flux density), not watts. Because it is a density, the
+        value does not change when a primitive's size changes: a 1x1 m and a 2x2 m
+        patch under the same collimated source both report the same number.
 
         Summing the returned values directly (``sum(flux)``) adds flux densities of
-        differently-sized surfaces and is not physically meaningful.
+        differently-sized surfaces and is not physically meaningful. To obtain
+        absorbed power in watts, weight each primitive by its area -- via
+        :meth:`getAbsorbedFlux`, so that flux and area refer to the same primitive::
+
+            uuids = context.getAllUUIDs()
+            flux = radiation.getAbsorbedFlux("SW")
+            power = sum(f * context.getPrimitiveArea(u) for f, u in zip(flux, uuids))
 
         Returns:
-            Absorbed flux density per primitive in W/m^2.
+            Absorbed flux density per primitive in W/m^2, summed over all bands.
+
+        See Also:
+            :meth:`getAbsorbedFlux`: band-specific, UUID-aligned absorbed flux.
         """
         self._check_context_alive()
         results = radiation_wrapper.getTotalAbsorbedFlux(self.radiation_model)
         logger.debug(f"Retrieved absorbed flux data for {len(results)} primitives")
         return results
+
+    @require_plugin('radiation', 'get band-specific simulation results')
+    def getAbsorbedFlux(self, band_label: Union[str, List[str]],
+                        uuids: Optional[List[int]] = None
+                        ) -> Union[List[float], Dict[str, List[float]]]:
+        """Get per-band absorbed radiation flux density, aligned to UUIDs.
+
+        ``runBand()`` stores each band's result as ``radiation_flux_<band>``
+        primitive data: the **total** absorbed flux density for that band, i.e.
+        direct plus diffuse plus scattered contributions. This method reads that
+        data back keyed by UUID, so element ``i`` of the result always belongs to
+        ``uuids[i]``.
+
+        Prefer this over :meth:`getTotalAbsorbedFlux`, which sums over every band
+        (double-counting overlapping bands such as PAR/NIR/SW) and whose ordering
+        does not correspond to ``context.getAllUUIDs()``.
+
+        Args:
+            band_label: Band name, or a list of band names to fetch at once.
+            uuids: Primitives to query, defaulting to ``context.getAllUUIDs()``.
+                Results follow this list's order.
+
+        Returns:
+            For a single band, absorbed flux density per primitive in W/m^2.
+            For a list of bands, a dict mapping each band label to that list.
+
+        Raises:
+            RadiationModelError: If a band does not exist, or if ``runBand()`` has
+                not been run for it.
+
+        Example:
+            >>> radiation.runBand(["PAR", "NIR", "SW"])
+            >>> uuids = context.getAllUUIDs()
+            >>> par = radiation.getAbsorbedFlux("PAR")          # W/m^2, PAR only
+            >>> par_watts = [f * context.getPrimitiveArea(u)
+            ...              for f, u in zip(par, uuids)]
+            >>> all_bands = radiation.getAbsorbedFlux(["PAR", "NIR", "SW"])
+            >>> all_bands["SW"][0]                              # doctest: +SKIP
+        """
+        single_band = isinstance(band_label, str)
+        labels = [band_label] if single_band else band_label
+
+        if not single_band:
+            if not isinstance(labels, (list, tuple)):
+                raise TypeError(
+                    f"band_label must be a string or list of strings, "
+                    f"got {type(band_label).__name__}"
+                )
+            if not labels:
+                raise ValueError("band_label list cannot be empty")
+        for label in labels:
+            validate_band_label(label, "band_label", "getAbsorbedFlux")
+
+        self._check_context_alive()
+
+        if uuids is None:
+            uuids = self.context.getAllUUIDs()
+        else:
+            if not isinstance(uuids, (list, tuple)):
+                raise TypeError(
+                    f"uuids must be a list of primitive UUIDs, "
+                    f"got {type(uuids).__name__}"
+                )
+            uuids = list(uuids)
+        if not uuids:
+            raise ValueError(
+                "No primitives to query: the Context contains no geometry."
+            )
+
+        results: Dict[str, List[float]] = {}
+        for label in labels:
+            if not radiation_wrapper.doesBandExist(self.radiation_model, label):
+                raise RadiationModelError(
+                    f"Radiation band '{label}' does not exist. "
+                    f"Add it with radiation.addRadiationBand('{label}') before "
+                    f"querying its absorbed flux."
+                )
+
+            data_label = f"radiation_flux_{label}"
+            # runBand() writes this for every primitive in the Context, so a single
+            # probe distinguishes "band never run" from a per-primitive gap.
+            if not self.context.doesPrimitiveDataExist(uuids[0], data_label):
+                raise RadiationModelError(
+                    f"No absorbed flux results for band '{label}': primitive data "
+                    f"'{data_label}' has not been written. Call "
+                    f"radiation.runBand('{label}') (or include it in a multi-band "
+                    f"runBand([...]) call) before querying its absorbed flux."
+                )
+
+            # One native call for the whole band. Goes straight to the bulk wrapper
+            # rather than Context.getPrimitiveDataArray(), which would re-validate
+            # every UUID and re-check existence that the probe above already
+            # established, then return float32 needing conversion to List[float].
+            results[label] = context_wrapper.getPrimitiveDataFloatArray(
+                self.context.getNativePtr(), uuids, data_label)
+
+        logger.debug(
+            f"Retrieved absorbed flux for bands {labels} over {len(uuids)} primitives"
+        )
+        return results[band_label] if single_band else results
 
     # Band query methods
     @require_plugin('radiation', 'check band existence')
@@ -1466,10 +1650,13 @@ class RadiationModel:
         distribution and viewing direction, important for canopy radiation modeling.
 
         The G-function is computed from the geometry currently loaded in the radiation
-        model. If updateGeometry() has not yet been called, this method calls it
-        automatically (with a warning) so the query operates on the current context
-        geometry. If the result is still undefined (no primitives / zero leaf area),
-        a RuntimeError is raised rather than silently returning NaN.
+        model. If no geometry has been built yet, this method builds it automatically
+        (with a warning) so the query operates on the current context geometry. If the
+        result is still undefined (no primitives / zero leaf area), a RuntimeError is
+        raised rather than silently returning NaN.
+
+        A subset built by ``updateGeometry(uuids)`` is never widened by this method: the
+        G-function is reported over the subset the caller selected.
 
         Args:
             view_direction: View direction as vec3 or list/tuple [x, y, z]
@@ -1490,8 +1677,19 @@ class RadiationModel:
         validate_position_like(view_direction, "view_direction", "calculateGtheta")
 
         if not self._geometry_updated:
+            # Never auto-build over a user-selected subset: updateGeometry() with no
+            # argument clears the native subset latch, which would silently widen the
+            # model to the full Context behind the caller's back.
+            if self._geometry_subset:
+                raise RuntimeError(
+                    "calculateGtheta requires built geometry, but the radiation model "
+                    "holds a user-specified primitive subset from updateGeometry(uuids) "
+                    "and building automatically would discard it. Call "
+                    "updateGeometry(uuids) again for the subset you want, or "
+                    "updateGeometry() to use the full Context."
+                )
             logger.warning(
-                "calculateGtheta called before updateGeometry(); updating radiation "
+                "calculateGtheta called before geometry was built; updating radiation "
                 "model geometry automatically. Call updateGeometry() explicitly after "
                 "building the scene to avoid this."
             )
@@ -2089,6 +2287,15 @@ class RadiationModel:
             FOV_aspect_ratio is automatically recalculated from camera_resolution.
             Camera position and lookat are preserved.
 
+        Warning:
+            **Changing camera_resolution discards the camera's existing image data.**
+            The per-pixel buffers are sized to the resolution the camera was rendered
+            at, so helios-core v1.3.79+ clears them rather than reinterpret them at the
+            new size. The camera must be re-rendered with :meth:`runBand` before its
+            image can be written again; :meth:`writeCameraImage` will otherwise report
+            that the camera has no rendered pixel data. Changing any other parameter
+            leaves existing image data intact.
+
         Example:
             >>> props = CameraProperties(
             ...     camera_resolution=(1920, 1080),
@@ -2096,6 +2303,9 @@ class RadiationModel:
             ...     lens_focal_length=0.085  # 85mm lens
             ... )
             >>> radiation.updateCameraParameters("cam1", props)
+            >>> # Resolution changed, so re-render before writing an image.
+            >>> radiation.runBand(["red", "green", "blue"])
+            >>> radiation.writeCameraImage("cam1", ["red", "green", "blue"], "out")
         """
         validate_band_label(camera_label, "camera_label", "updateCameraParameters")
 
@@ -2165,10 +2375,16 @@ class RadiationModel:
             
         Returns:
             Output filename string
-            
+
         Raises:
             RadiationModelError: If camera image writing fails
             TypeError: If parameters have incorrect types
+
+        Note:
+            helios-core v1.3.79+ reports a failed write by returning an empty
+            filename rather than raising. PyHelios converts that into a
+            RadiationModelError so a write that produced no file can never be
+            mistaken for a success.
         """
         # Validate inputs
         if not isinstance(camera, str) or not camera.strip():
@@ -2185,13 +2401,15 @@ class RadiationModel:
             raise TypeError("Frame must be an integer")
         if not isinstance(flux_to_pixel_conversion, (int, float)) or flux_to_pixel_conversion <= 0:
             raise TypeError("Flux to pixel conversion must be a positive number")
-        
+
         self._check_context_alive()
         self._check_camera_has_pixel_data(camera, bands, "write camera image")
         filename = radiation_wrapper.writeCameraImage(
             self.radiation_model, camera, bands, imagefile_base,
             image_path, frame, flux_to_pixel_conversion)
 
+        self._check_image_was_written(filename, camera, bands, image_path,
+                                      "write camera image")
         logger.info(f"Camera image written to: {filename}")
         return filename
     
@@ -2210,10 +2428,16 @@ class RadiationModel:
             
         Returns:
             Output filename string
-            
+
         Raises:
             RadiationModelError: If normalized camera image writing fails
             TypeError: If parameters have incorrect types
+
+        Note:
+            helios-core v1.3.79+ reports a failed write by returning an empty
+            filename rather than raising. PyHelios converts that into a
+            RadiationModelError so a write that produced no file can never be
+            mistaken for a success.
         """
         # Validate inputs
         if not isinstance(camera, str) or not camera.strip():
@@ -2234,6 +2458,8 @@ class RadiationModel:
         filename = radiation_wrapper.writeNormCameraImage(
             self.radiation_model, camera, bands, imagefile_base, image_path, frame)
 
+        self._check_image_was_written(filename, camera, bands, image_path,
+                                      "write normalized camera image")
         logger.info(f"Normalized camera image written to: {filename}")
         return filename
     
@@ -2894,7 +3120,62 @@ class RadiationModel:
         constructing a full backend. Useful for checking GPU availability before
         creating a RadiationModel.
 
+        This is the PyHelios equivalent of the native
+        ``RadiationModel::isGPUBackendAvailable()``, which as of helios-core v1.3.79
+        is a pure delegate to the same underlying probe.
+
+        Returns False when ``HELIOS_NO_GPU`` is set to anything other than ``"0"``,
+        whatever hardware is actually present -- see
+        :meth:`gpuBackendsDisabledByEnvironment` to distinguish an environment veto
+        from genuinely absent hardware.
+
+        Note:
+            The probe runs at most once per process and the result is cached
+            (helios-core v1.3.79+), so repeated calls are cheap and never re-enter
+            the GPU driver. The flip side is that a driver which becomes usable
+            after the first probe is not picked up until the process restarts, so a
+            test that enables a device and re-probes in the same process still sees
+            the cached answer.
+
         Returns:
             True if at least one GPU backend is available
+
+        Example:
+            >>> if RadiationModel.probeAnyGPUBackend():
+            ...     with RadiationModel(context) as radiation:
+            ...         radiation.addRadiationBand("SW")
         """
         return radiation_wrapper.probeAnyGPUBackend()
+
+    @staticmethod
+    def gpuBackendsDisabledByEnvironment() -> bool:
+        """
+        Check whether GPU backends are vetoed by the ``HELIOS_NO_GPU`` environment variable.
+
+        True when ``HELIOS_NO_GPU`` is set to any value other than ``"0"``. The veto
+        makes a GPU-equipped machine behave exactly like one with no compatible
+        hardware: :meth:`probeAnyGPUBackend` returns False and constructing a
+        RadiationModel with the automatic backend fails. Requesting a backend by name
+        bypasses the veto.
+
+        Use this to tell an intentional veto apart from missing hardware when
+        reporting why the GPU path is unavailable.
+
+        Note:
+            The environment is read once and cached for the process lifetime, so
+            changing ``HELIOS_NO_GPU`` after the first call has no effect.
+
+        Returns:
+            True if GPU backend probing is disabled by the environment
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.79
+
+        Example:
+            >>> if not RadiationModel.probeAnyGPUBackend():
+            ...     if RadiationModel.gpuBackendsDisabledByEnvironment():
+            ...         print("GPU disabled via HELIOS_NO_GPU")
+            ...     else:
+            ...         print("No compatible GPU found")
+        """
+        return radiation_wrapper.gpuBackendsDisabledByEnvironment()

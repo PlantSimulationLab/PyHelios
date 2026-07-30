@@ -36,6 +36,20 @@ PYHELIOS_API unsigned int addChildShoot(PlantArchitecture* plantarch, unsigned i
 PYHELIOS_API int getAvailablePlantModels(PlantArchitecture* plantarch, char*** model_names, int* count);
 PYHELIOS_API unsigned int* getAllPlantObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, bool include_hidden, int* count);
+// Leaf queries. Both return thread-local static storage; do NOT free.
+PYHELIOS_API unsigned int* getPlantLeafObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+// *count is set to the number of BASE POSITIONS; the returned buffer holds 3*count floats (x,y,z each).
+PYHELIOS_API float* getPlantLeafBases(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+
+// Remaining organ queries. All return thread-local static storage; do NOT free.
+// An organ absent at the plant's current growth stage yields *count == 0 and a valid
+// (empty) buffer, which is not an error condition -- callers must not treat an empty
+// result as a failure. Reproductive organs in particular exist only once the plant
+// reaches the corresponding stage.
+PYHELIOS_API unsigned int* getPlantPetioleObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+PYHELIOS_API unsigned int* getPlantPeduncleObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+PYHELIOS_API unsigned int* getPlantFlowerObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+PYHELIOS_API unsigned int* getPlantFruitObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 
 // Shoot topology inspection (read-only). All return thread-local static storage; do NOT free.
 PYHELIOS_API unsigned int* getAllPlantShootIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);

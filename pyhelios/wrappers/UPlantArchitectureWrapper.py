@@ -158,6 +158,23 @@ try:
     ]
     helios_lib.getAllPlantShootIDs.restype = ctypes.POINTER(ctypes.c_uint)
 
+    helios_lib.getPlantLeafObjectIDs.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_int)
+    ]
+    helios_lib.getPlantLeafObjectIDs.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.getPlantLeafBases.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_int)
+    ]
+    helios_lib.getPlantLeafBases.restype = ctypes.POINTER(ctypes.c_float)
+
+    for _organ_fn in ("getPlantPetioleObjectIDs", "getPlantPeduncleObjectIDs",
+                      "getPlantFlowerObjectIDs", "getPlantFruitObjectIDs"):
+        getattr(helios_lib, _organ_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_int)
+        ]
+        getattr(helios_lib, _organ_fn).restype = ctypes.POINTER(ctypes.c_uint)
+
     helios_lib.getPlantShootTopology.argtypes = [
         ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
         ctypes.POINTER(ctypes.c_int),  # out[4]
@@ -447,6 +464,12 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.addChildShoot.errcheck = _check_error
     helios_lib.getAvailablePlantModels.errcheck = _check_error
     helios_lib.getAllPlantObjectIDs.errcheck = _check_error
+    helios_lib.getPlantLeafObjectIDs.errcheck = _check_error
+    helios_lib.getPlantLeafBases.errcheck = _check_error
+    helios_lib.getPlantPetioleObjectIDs.errcheck = _check_error
+    helios_lib.getPlantPeduncleObjectIDs.errcheck = _check_error
+    helios_lib.getPlantFlowerObjectIDs.errcheck = _check_error
+    helios_lib.getPlantFruitObjectIDs.errcheck = _check_error
     helios_lib.getAllPlantUUIDs.errcheck = _check_error
     helios_lib.getAllPlantShootIDs.errcheck = _check_error
     helios_lib.getPlantShootTopology.errcheck = _check_error
@@ -899,6 +922,91 @@ def getAllPlantObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plan
         return [ptr[i] for i in range(count.value)]
     else:
         return []
+
+
+def _getPlantOrganObjectIDs(native_fn_name: str,
+                            plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                            plant_id: int) -> List[int]:
+    """Call one of the organ-level object ID getters and return the result.
+
+    The five organ getters differ only in the native symbol they call, so they
+    share this body -- keeping the availability guard, the plant ID check and the
+    buffer unpacking identical across all of them by construction.
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    count = ctypes.c_int()
+    ptr = getattr(helios_lib, native_fn_name)(plantarch_ptr, plant_id, ctypes.byref(count))
+
+    if ptr and count.value > 0:
+        return [ptr[i] for i in range(count.value)]
+    return []
+
+
+def getPlantLeafObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+    """Get object IDs for all leaf objects on a plant."""
+    return _getPlantOrganObjectIDs("getPlantLeafObjectIDs", plantarch_ptr, plant_id)
+
+
+def getPlantPetioleObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+    """Get object IDs for all petiole objects on a plant."""
+    return _getPlantOrganObjectIDs("getPlantPetioleObjectIDs", plantarch_ptr, plant_id)
+
+
+def getPlantPeduncleObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+    """Get object IDs for all peduncle objects on a plant.
+
+    An empty list means the plant has not produced peduncles, which is a
+    legitimate result rather than a failure.
+    """
+    return _getPlantOrganObjectIDs("getPlantPeduncleObjectIDs", plantarch_ptr, plant_id)
+
+
+def getPlantFlowerObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+    """Get object IDs for all flower (inflorescence) objects on a plant.
+
+    An empty list means the plant has not flowered, which is a legitimate result
+    rather than a failure.
+    """
+    return _getPlantOrganObjectIDs("getPlantFlowerObjectIDs", plantarch_ptr, plant_id)
+
+
+def getPlantFruitObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
+    """Get object IDs for all fruit objects on a plant.
+
+    An empty list means the plant has not fruited, which is a legitimate result
+    rather than a failure.
+    """
+    return _getPlantOrganObjectIDs("getPlantFruitObjectIDs", plantarch_ptr, plant_id)
+
+
+def getPlantLeafBases(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int):
+    """Get attachment base positions of all leaves on a plant.
+
+    Returns a flat list of floats, three per leaf (x, y, z). The caller converts to
+    vec3; the native buffer is a flattened vec3 array and `count` is the number of
+    positions, not the number of floats.
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    count = ctypes.c_int()
+    ptr = helios_lib.getPlantLeafBases(plantarch_ptr, plant_id, ctypes.byref(count))
+
+    if ptr and count.value > 0:
+        return [ptr[i] for i in range(count.value * 3)]
+    return []
 
 
 def getAllPlantShootIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:

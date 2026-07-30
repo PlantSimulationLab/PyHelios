@@ -28,6 +28,66 @@ def is_native_library_available():
         return False
 
 
+def _env_flag_set(name: str) -> bool:
+    """True if `name` is present and not exactly "0".
+
+    Matches helios::gpuRequiredByEnvironment() / gpuBackendsDisabledByEnvironment()
+    exactly: a raw, case-sensitive comparison against "0", so an empty string, "00",
+    and "false" all count as set.
+    """
+    value = os.environ.get(name)
+    return value is not None and value != "0"
+
+
+def gpu_required_by_environment() -> bool:
+    """True if HELIOS_REQUIRE_GPU demands a usable GPU for this process.
+
+    Python-side twin of helios::gpuRequiredByEnvironment(), so GPU gating decisions
+    work in mock mode where no native library is loaded. The native binding is
+    exposed separately as pyhelios.Global.gpuRequiredByEnvironment().
+    """
+    return _env_flag_set("HELIOS_REQUIRE_GPU")
+
+
+def skip_or_fail_without_gpu(context_message: str) -> None:
+    """Skip the calling test for lack of a GPU, or fail it if one was required.
+
+    Call in place of ``pytest.skip()`` at the point a test gives up for want of a
+    usable GPU. Default behavior is unchanged -- the test skips -- so developer
+    machines and non-GPU CI runners behave exactly as before. When
+    HELIOS_REQUIRE_GPU is set the test instead FAILS, so a runner whose entire
+    purpose is exercising GPU code cannot report success after silently skipping
+    every GPU test.
+
+    This reports to pytest directly rather than raising a Helios error, so the
+    outcome cannot be swallowed by a test's own try/except, and it needs no native
+    library. Use pyhelios.Global.requireGPUOrFail() when you specifically want the
+    native library's view.
+
+    Args:
+        context_message: Description of what was about to be skipped
+
+    Raises:
+        Failed: via pytest.fail() when HELIOS_REQUIRE_GPU is set
+        Skipped: via pytest.skip() otherwise
+    """
+    if gpu_required_by_environment():
+        if _env_flag_set("HELIOS_NO_GPU"):
+            # Contradictory: one vetoes the GPU, the other demands it. Report it
+            # rather than letting either silently win.
+            pytest.fail(
+                f"HELIOS_REQUIRE_GPU and HELIOS_NO_GPU are both set, which is "
+                f"contradictory: HELIOS_NO_GPU vetoes the GPU that "
+                f"HELIOS_REQUIRE_GPU demands (while skipping {context_message})."
+            )
+        pytest.fail(
+            f"HELIOS_REQUIRE_GPU is set but no usable GPU was found, so this test "
+            f"would have been skipped ({context_message}). Unset HELIOS_REQUIRE_GPU "
+            f"to allow skipping on machines without a GPU."
+        )
+    pytest.skip(f"no usable GPU in this environment ({context_message})")
+
+
 def get_platform_name():
     """Get current platform name."""
     return platform.system()

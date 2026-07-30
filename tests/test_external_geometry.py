@@ -8,6 +8,7 @@ These tests verify the external geometry import methods including:
 4. NumPy array-based triangle import
 """
 
+import contextlib
 import pytest
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock, patch
@@ -404,43 +405,86 @@ class TestPrimitiveInfo:
             expected_centroid = DataTypes.vec3(1/3, 1/3, 0)
             assert_vec3_equal(info.centroid, expected_centroid)
     
+    @staticmethod
+    def _batched_getters(uuids):
+        """Patch the list-accepting getters that _batchPrimitiveInfo() uses.
+
+        Each primitive is a triangle, given a distinct area/color so that a
+        mis-assembled result (fields paired with the wrong primitive) fails rather
+        than passing on identical values.
+        """
+        n = len(uuids)
+        vertices = np.array([[0, 0, 0, 1, 0, 0, 0, 1, 0]] * n, dtype=np.float32).ravel()
+        offsets = np.arange(n + 1, dtype=np.uint32) * 9
+        return [
+            patch.object(Context, 'getPrimitiveType',
+                         return_value=np.full(n, int(PrimitiveType.Triangle), dtype=np.uint32)),
+            patch.object(Context, 'getPrimitiveArea',
+                         return_value=np.array([0.5 * (i + 1) for i in range(n)], dtype=np.float32)),
+            patch.object(Context, 'getPrimitiveNormal',
+                         return_value=np.array([[0, 0, 1]] * n, dtype=np.float32)),
+            patch.object(Context, 'getPrimitiveVertices', return_value=(vertices, offsets)),
+            patch.object(Context, 'getPrimitiveColor',
+                         return_value=np.array([[1, 0, 0]] * n, dtype=np.float32)),
+            patch.object(Context, 'getPrimitiveTextureFile', return_value=[""] * n),
+            patch.object(Context, 'getPrimitiveTextureUV',
+                         return_value=(np.empty((0,), dtype=np.float32),
+                                       np.zeros((n + 1,), dtype=np.uint32))),
+            patch.object(Context, 'getPrimitiveSolidFraction',
+                         return_value=np.ones(n, dtype=np.float32)),
+        ]
+
+    def _assert_assembled(self, infos, uuids):
+        assert [i.uuid for i in infos] == uuids, "UUID order not preserved"
+        for position, info in enumerate(infos):
+            assert info.primitive_type == PrimitiveType.Triangle
+            # Area is distinct per primitive, so this catches field/primitive mismatch
+            assert info.area == pytest.approx(0.5 * (position + 1))
+            assert len(info.vertices) == 3
+            assert_vec3_equal(info.vertices[0], DataTypes.vec3(0, 0, 0))
+            assert_vec3_equal(info.normal, DataTypes.vec3(0, 0, 1))
+            assert_color_equal(info.color, DataTypes.RGBcolor(1, 0, 0))
+            assert info.texture_file is None
+            assert info.texture_uv is None
+            assert info.solid_fraction == pytest.approx(1.0)
+            # Derived in __post_init__ from the vertices
+            assert_vec3_equal(info.centroid, DataTypes.vec3(1 / 3, 1 / 3, 0))
+
     def test_get_all_primitive_info_mock(self):
-        """Test getting all primitive information."""
-        with patch.object(Context, 'getAllUUIDs', return_value=[1, 2, 3]):
-            with patch.object(Context, 'getPrimitiveInfo') as mock_get_info:
-                mock_info1 = Mock()
-                mock_info2 = Mock()
-                mock_info3 = Mock()
-                mock_get_info.side_effect = [mock_info1, mock_info2, mock_info3]
-                
-                context = Context()
-                all_info = context.getAllPrimitiveInfo()
-                
-                assert len(all_info) == 3
-                assert all_info == [mock_info1, mock_info2, mock_info3]
-                
-                # Verify calls
-                assert mock_get_info.call_count == 3
-                mock_get_info.assert_any_call(1)
-                mock_get_info.assert_any_call(2)
-                mock_get_info.assert_any_call(3)
-    
+        """getAllPrimitiveInfo covers every UUID, in order, via the batched getters.
+
+        It deliberately does NOT call getPrimitiveInfo() per primitive: that would
+        be eight native round-trips each. The assertions are on the assembled
+        result rather than on which internal getter was called.
+        """
+        uuids = [1, 2, 3]
+        patches = [patch.object(Context, 'getAllUUIDs', return_value=uuids)]
+        patches += self._batched_getters(uuids)
+
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            context = Context()
+            all_info = context.getAllPrimitiveInfo()
+
+        assert len(all_info) == 3
+        self._assert_assembled(all_info, uuids)
+
     def test_get_primitives_info_for_object_mock(self):
-        """Test getting primitive information for specific object."""
-        with patch('pyhelios.wrappers.UContextWrapper.getObjectPrimitiveUUIDs', return_value=[10, 20]):
-            with patch.object(Context, 'getPrimitiveInfo') as mock_get_info:
-                mock_info1 = Mock()
-                mock_info2 = Mock()
-                mock_get_info.side_effect = [mock_info1, mock_info2]
-                
-                context = Context()
-                object_info = context.getPrimitivesInfoForObject(42)
-                
-                assert len(object_info) == 2
-                assert object_info == [mock_info1, mock_info2]
-                
-                mock_get_info.assert_any_call(10)
-                mock_get_info.assert_any_call(20)
+        """The object variant is batched the same way, over the object's UUIDs."""
+        uuids = [10, 20]
+        patches = [patch('pyhelios.wrappers.UContextWrapper.getObjectPrimitiveUUIDs',
+                         return_value=uuids)]
+        patches += self._batched_getters(uuids)
+
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            context = Context()
+            object_info = context.getPrimitivesInfoForObject(42)
+
+        assert len(object_info) == 2
+        self._assert_assembled(object_info, uuids)
 
 
 @pytest.mark.unit

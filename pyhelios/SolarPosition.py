@@ -56,7 +56,9 @@ class SolarPosition:
         
         Args:
             context: Active Helios Context instance
-            utc_offset: UTC time offset in hours (-12 to +12). If provided with 
+            utc_offset: UTC time offset in hours (-14 to +12). Helios counts the offset
+                       positive moving West, which inverts the real-world UTC-12..UTC+14
+                       span, so the range is asymmetric. If provided with
                        latitude/longitude, creates plugin with explicit coordinates.
             latitude: Latitude in degrees (-90 to +90). Required if utc_offset provided.
             longitude: Longitude in degrees (-180 to +180). Required if utc_offset provided.
@@ -98,8 +100,11 @@ class SolarPosition:
                 )
             
             # Validate coordinate ranges
-            if utc_offset < -12.0 or utc_offset > 12.0:
-                raise ValueError(f"UTC offset must be between -12 and +12 hours, got: {utc_offset}")
+            # Range matches helios::Location::validate(): asymmetric because Helios
+            # counts the UTC offset positive moving West, inverting real-world
+            # UTC-12..UTC+14 to +12..-14.
+            if utc_offset < -14.0 or utc_offset > 12.0:
+                raise ValueError(f"UTC offset must be between -14 and +12 hours, got: {utc_offset}")
             if latitude < -90.0 or latitude > 90.0:
                 raise ValueError(f"Latitude must be between -90 and +90 degrees, got: {latitude}")
             if longitude < -180.0 or longitude > 180.0:

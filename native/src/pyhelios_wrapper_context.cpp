@@ -3465,6 +3465,65 @@ extern "C" {
         }
     }
 
+    // Bulk counterpart to getPrimitiveDataFloat: reads one float label across many
+    // primitives in a single call. Callers that need a value per primitive would
+    // otherwise pay a ctypes round-trip per UUID, which dominates the cost at
+    // canopy scale (tens of thousands of primitives).
+    //
+    // Values are returned in the order the UUIDs were supplied, so the caller
+    // controls the alignment. The buffer is owned by this function and is valid
+    // until the next call on the same thread.
+    PYHELIOS_API float* getPrimitiveDataFloatArray(helios::Context* context, const unsigned int* uuids,
+                                                   size_t num_uuids, const char* label, size_t* out_count) {
+        clearError();
+        static thread_local std::vector<float> result_buffer;
+
+        if (out_count) *out_count = 0;
+
+        if (!context) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (getPrimitiveDataFloatArray): Context pointer is null.");
+            return nullptr;
+        }
+        if (!uuids || num_uuids == 0) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (getPrimitiveDataFloatArray): UUID array is null or empty.");
+            return nullptr;
+        }
+        if (!label) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (getPrimitiveDataFloatArray): Label is null.");
+            return nullptr;
+        }
+        if (!out_count) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (getPrimitiveDataFloatArray): Output count pointer is null.");
+            return nullptr;
+        }
+
+        size_t index = 0;
+        try {
+            result_buffer.clear();
+            result_buffer.reserve(num_uuids);
+            for (index = 0; index < num_uuids; index++) {
+                float value;
+                context->getPrimitiveData(uuids[index], label, value);
+                result_buffer.push_back(value);
+            }
+            *out_count = result_buffer.size();
+            return result_buffer.data();
+        } catch (const std::exception& e) {
+            // Name the primitive that failed - without it the caller only learns
+            // that one of N reads went wrong, with no way to tell which.
+            setError(PYHELIOS_ERROR_RUNTIME,
+                     std::string("ERROR (getPrimitiveDataFloatArray): reading '") + label + "' for UUID "
+                     + std::to_string(uuids[index]) + " (index " + std::to_string(index) + " of "
+                     + std::to_string(num_uuids) + "): " + e.what());
+            *out_count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getPrimitiveDataFloatArray): Unknown error getting primitive data float array.");
+            *out_count = 0;
+            return nullptr;
+        }
+    }
+
     PYHELIOS_API int getPrimitiveDataInt(helios::Context* context, unsigned int uuid, const char* label) {
         // Clear error state before any operation to prevent contamination from previous calls
         clearError();

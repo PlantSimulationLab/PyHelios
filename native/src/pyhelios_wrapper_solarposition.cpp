@@ -56,8 +56,11 @@ HeliosSolarPosition* createSolarPositionWithCoordinates(void* context_ptr, float
             setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Longitude must be between -180 and +180 degrees");
             return nullptr;
         }
-        if (UTC_hours < -12.0f || UTC_hours > 12.0f) {
-            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UTC offset must be between -12 and +12 hours");
+        // Range matches helios::Location::validate(): asymmetric because Helios counts
+        // the UTC offset positive moving West, inverting real-world UTC-12..UTC+14
+        // (Kiribati keeps the latter) to +12..-14.
+        if (UTC_hours < -14.0f || UTC_hours > 12.0f) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UTC offset must be between -14 and +12 hours");
             return nullptr;
         }
         

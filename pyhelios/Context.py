@@ -8,6 +8,7 @@ import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
 from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location
+from .exceptions import HeliosError
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
 from .validation.geometry import (
@@ -172,24 +173,57 @@ class Context:
         Raises:
             RuntimeError: If UUID is invalid or doesn't exist in context
         """
-        # First check if it's a reasonable UUID value
-        if not isinstance(uuid, int) or uuid < 0:
-            raise RuntimeError(f"Invalid UUID: {uuid}. UUIDs must be non-negative integers.")
+        self._validate_uuids((uuid,))
 
-        # Check if UUID exists in context by getting all valid UUIDs
-        try:
-            valid_uuids = self.getAllUUIDs()
-            if uuid not in valid_uuids:
+    def _validate_uuids(self, uuids):
+        """Validate that every UUID in ``uuids`` exists in this context.
+
+        Use this for any UUID list rather than calling :meth:`_validate_uuid` in a
+        loop. Existence is checked against the context's UUID list, which must be
+        fetched from the native layer and searched; doing that per element makes
+        validating N UUIDs O(N^2) with N native round-trips. At 20,000 primitives
+        that cost ~15 s, swamping the work being validated. Fetching once and
+        testing set membership makes it linear.
+
+        Checks run per element in order -- type first, then existence -- so the
+        error raised for a given list is the same one the per-element loop raised.
+        The context's UUID list is fetched lazily, on the first element that needs
+        it, and reused for the rest of the call.
+
+        Args:
+            uuids: Iterable of UUIDs to validate
+
+        Raises:
+            RuntimeError: If any UUID is invalid or doesn't exist in context
+        """
+        valid_uuids = None
+        valid_set = None
+        looked_up = False
+
+        for uuid in uuids:
+            # First check if it's a reasonable UUID value
+            if not isinstance(uuid, int) or uuid < 0:
+                raise RuntimeError(f"Invalid UUID: {uuid}. UUIDs must be non-negative integers.")
+
+            if not looked_up:
+                looked_up = True
+                # Check existence against all valid UUIDs, fetched once for the
+                # whole list rather than once per element.
+                try:
+                    valid_uuids = self.getAllUUIDs()
+                    valid_set = set(valid_uuids)
+                except RuntimeError:
+                    # Re-raise RuntimeError (validation failed)
+                    raise
+                except Exception:
+                    # If we can't get valid UUIDs due to other issues (e.g., mock mode), skip validation
+                    # The _check_context_available() call will have already caught mock mode
+                    valid_set = None
+
+            if valid_set is not None and uuid not in valid_set:
                 raise RuntimeError(f"UUID {uuid} does not exist in context. Valid UUIDs: {valid_uuids[:10]}{'...' if len(valid_uuids) > 10 else ''}")
-        except RuntimeError:
-            # Re-raise RuntimeError (validation failed)
-            raise
-        except Exception:
-            # If we can't get valid UUIDs due to other issues (e.g., mock mode), skip validation
-            # The _check_context_available() call will have already caught mock mode
-            pass
-        
-    
+
+
     def _validate_file_path(self, filename: str, expected_extensions: List[str] = None) -> str:
         """Validate and normalize file path for security.
         
@@ -685,28 +719,101 @@ class Context:
             solid_fraction=solid_fraction,
         )
 
+    def _batchPrimitiveInfo(self, uuids: List[int]) -> List[PrimitiveInfo]:
+        """Build PrimitiveInfo for many primitives with a fixed number of native calls.
+
+        Field-for-field identical to calling :meth:`getPrimitiveInfo` on each UUID,
+        but each of the eight fields has a list-accepting getter backed by a native
+        ``getBatch*`` call. Doing it per primitive costs eight native round-trips
+        each — 77.5 ms for 5,000 primitives against 4.6 ms batched.
+
+        Args:
+            uuids: Primitives to describe, in the order to return them
+
+        Returns:
+            List of PrimitiveInfo, one per UUID, in the order given
+        """
+        if not uuids:
+            return []
+
+        types = self.getPrimitiveType(uuids)
+        areas = self.getPrimitiveArea(uuids)
+        normals = self.getPrimitiveNormal(uuids)
+        vertex_data, vertex_offsets = self.getPrimitiveVertices(uuids)
+        colors = self.getPrimitiveColor(uuids)
+
+        # Same tolerance as getPrimitiveInfo(): only a getter missing from an older
+        # library build leaves these None, each attempted independently so one
+        # failure cannot suppress the others. A genuine native error propagates.
+        try:
+            texture_files = self.getPrimitiveTextureFile(uuids)
+        except NotImplementedError:
+            texture_files = None
+        try:
+            uv_data, uv_offsets = self.getPrimitiveTextureUV(uuids)
+            # A scene with no textures can come back with a degenerate offset
+            # array; treat that as "no UVs" rather than indexing off the end.
+            if uv_offsets is None or len(uv_offsets) < len(uuids) + 1:
+                uv_data, uv_offsets = None, None
+        except NotImplementedError:
+            uv_data, uv_offsets = None, None
+        try:
+            solid_fractions = self.getPrimitiveSolidFraction(uuids)
+        except NotImplementedError:
+            solid_fractions = None
+
+        infos = []
+        for i, uuid in enumerate(uuids):
+            segment = vertex_data[vertex_offsets[i]:vertex_offsets[i + 1]]
+            vertices = [vec3(float(segment[j]), float(segment[j + 1]), float(segment[j + 2]))
+                        for j in range(0, len(segment), 3)]
+
+            texture_uv = None
+            if uv_data is not None:
+                uv_segment = uv_data[uv_offsets[i]:uv_offsets[i + 1]]
+                if len(uv_segment):
+                    texture_uv = [vec2(float(uv_segment[j]), float(uv_segment[j + 1]))
+                                  for j in range(0, len(uv_segment), 2)]
+
+            texture_file = None
+            if texture_files is not None and texture_files[i]:
+                texture_file = texture_files[i]
+
+            infos.append(PrimitiveInfo(
+                uuid=uuid,
+                primitive_type=PrimitiveType(int(types[i])),
+                area=float(areas[i]),
+                normal=vec3(float(normals[i][0]), float(normals[i][1]), float(normals[i][2])),
+                vertices=vertices,
+                color=RGBcolor(float(colors[i][0]), float(colors[i][1]), float(colors[i][2])),
+                texture_file=texture_file,
+                texture_uv=texture_uv,
+                solid_fraction=(None if solid_fractions is None
+                                else float(solid_fractions[i])),
+            ))
+        return infos
+
     def getAllPrimitiveInfo(self) -> List[PrimitiveInfo]:
         """
         Get physical properties and geometry information for all primitives in the context.
-        
+
         Returns:
             List of PrimitiveInfo objects for all primitives
         """
-        all_uuids = self.getAllUUIDs()
-        return [self.getPrimitiveInfo(uuid) for uuid in all_uuids]
+        return self._batchPrimitiveInfo(self.getAllUUIDs())
 
     def getPrimitivesInfoForObject(self, object_id: int) -> List[PrimitiveInfo]:
         """
         Get physical properties and geometry information for all primitives belonging to a specific object.
-        
+
         Args:
             object_id: ID of the object
-            
+
         Returns:
             List of PrimitiveInfo objects for primitives in the object
         """
         object_uuids = context_wrapper.getObjectPrimitiveUUIDs(self.context, object_id)
-        return [self.getPrimitiveInfo(uuid) for uuid in object_uuids]
+        return self._batchPrimitiveInfo(list(object_uuids))
 
     # Compound geometry methods
     def addTile(self, center: vec3 = vec3(0, 0, 0), size: vec2 = vec2(1, 1), 
@@ -2196,9 +2303,8 @@ class Context:
             if not UUIDs:
                 raise ValueError("UUIDs list cannot be empty. Use UUIDs=None to export all primitives")
 
-            # Validate each UUID exists
-            for uuid in UUIDs:
-                self._validate_uuid(uuid)
+            # Validate the UUIDs exist
+            self._validate_uuids(UUIDs)
 
             # Export specified UUIDs
             context_wrapper.writePLYWithUUIDs(self.context, validated_filename, UUIDs)
@@ -2240,9 +2346,8 @@ class Context:
             if not UUIDs:
                 raise ValueError("UUIDs list cannot be empty. Use UUIDs=None to export all primitives")
 
-            # Validate each UUID exists
-            for uuid in UUIDs:
-                self._validate_uuid(uuid)
+            # Validate the UUIDs exist
+            self._validate_uuids(UUIDs)
 
             context_wrapper.writeOBJWithUUIDs(self.context, validated_filename, UUIDs, write_normals, silent)
         else:
@@ -2252,9 +2357,8 @@ class Context:
             if not primitive_data_fields:
                 raise ValueError("primitive_data_fields list cannot be empty")
 
-            # Validate each UUID exists
-            for uuid in UUIDs:
-                self._validate_uuid(uuid)
+            # Validate the UUIDs exist
+            self._validate_uuids(UUIDs)
 
             # Note: Primitive data field validation is handled by the native library
             # which will raise appropriate errors if fields don't exist for the specified primitives
@@ -2310,9 +2414,8 @@ class Context:
             if not UUIDs:
                 raise ValueError("UUIDs list cannot be empty when provided. Use UUIDs=None to include all primitives")
 
-            # Validate each UUID exists
-            for uuid in UUIDs:
-                self._validate_uuid(uuid)
+            # Validate the UUIDs exist
+            self._validate_uuids(UUIDs)
 
             context_wrapper.writePrimitiveDataWithUUIDs(self.context, validated_filename, column_labels, UUIDs, print_header)
 
@@ -2881,6 +2984,20 @@ class Context:
         """
         return context_wrapper.getPrimitiveDataSizeWrapper(self.context, uuid, label)
     
+    def _check_primitive_data_exists(self, uuids: List[int], label: str):
+        """Raise if any of ``uuids`` lacks primitive data ``label``.
+
+        Costs one native call per primitive, so call it only where the read that
+        follows is itself per-primitive, or to diagnose a failure that has already
+        happened.
+
+        Raises:
+            ValueError: naming the first primitive that lacks the data
+        """
+        for uuid in uuids:
+            if not self.doesPrimitiveDataExist(uuid, label):
+                raise ValueError(f"Primitive data '{label}' does not exist for UUID {uuid}")
+
     def getPrimitiveDataArray(self, uuids: List[int], label: str) -> np.ndarray:
         """
         Get primitive data values for multiple primitives as a NumPy array.
@@ -2913,18 +3030,23 @@ class Context:
             raise ValueError("UUID list cannot be empty")
         
         # First validate that all UUIDs exist
-        for uuid in uuids:
-            self._validate_uuid(uuid)
-        
-        # Then check that all UUIDs have the specified data
-        for uuid in uuids:
-            if not self.doesPrimitiveDataExist(uuid, label):
-                raise ValueError(f"Primitive data '{label}' does not exist for UUID {uuid}")
-        
-        # Get data type from the first UUID to determine array type
+        self._validate_uuids(uuids)
+
+        # The data must exist on the first UUID before its type can be read. The
+        # remaining UUIDs are checked per data type below: probing all of them here
+        # would cost one native call per primitive, which is exactly what the bulk
+        # float reader exists to avoid.
         first_uuid = uuids[0]
+        if not self.doesPrimitiveDataExist(first_uuid, label):
+            raise ValueError(f"Primitive data '{label}' does not exist for UUID {first_uuid}")
+
         data_type = self.getPrimitiveDataType(first_uuid, label)
-        
+
+        # Every path other than float still reads one primitive at a time, so it
+        # keeps the up-front existence check that produces the message below.
+        if data_type != 2:  # not HELIOS_TYPE_FLOAT
+            self._check_primitive_data_exists(uuids, label)
+
         # Map Helios data types to NumPy array creation
         # Based on HeliosDataType enum from Helios core
         if data_type == 0:  # HELIOS_TYPE_INT
@@ -2938,10 +3060,20 @@ class Context:
                 result[i] = self.getPrimitiveData(uuid, label, "uint")
                 
         elif data_type == 2:  # HELIOS_TYPE_FLOAT
-            result = np.empty(len(uuids), dtype=np.float32)
-            for i, uuid in enumerate(uuids):
-                result[i] = self.getPrimitiveData(uuid, label, float)
-                
+            # Single native call for the whole list. Float is the hot type here
+            # (radiation flux, temperature), where a per-UUID round-trip dominates
+            # the cost on canopy-sized scenes.
+            try:
+                values = context_wrapper.getPrimitiveDataFloatArray(self.context, uuids, label)
+            except HeliosError:
+                # A missing label is the likely cause; name the primitive so the
+                # message matches what the other data types report. HeliosError
+                # derives from Exception, not RuntimeError, so it must be named
+                # explicitly here.
+                self._check_primitive_data_exists(uuids, label)
+                raise
+            result = np.asarray(values, dtype=np.float32)
+
         elif data_type == 3:  # HELIOS_TYPE_DOUBLE
             result = np.empty(len(uuids), dtype=np.float64)
             for i, uuid in enumerate(uuids):

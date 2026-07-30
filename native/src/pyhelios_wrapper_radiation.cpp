@@ -3077,6 +3077,19 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
         }
     }
 
+    PYHELIOS_API int gpuBackendsDisabledByEnvironment() {
+        try {
+            clearError();
+            return helios::gpuBackendsDisabledByEnvironment() ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (gpuBackendsDisabledByEnvironment): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (gpuBackendsDisabledByEnvironment): Unknown error.");
+            return 0;
+        }
+    }
+
 } //extern "C"
 
 #endif //RADIATION_PLUGIN_AVAILABLE

@@ -83,30 +83,44 @@ with RadiationModel(context) as radiation:
     radiation.setDirectRayCount("PAR", 100)
     radiation.setDiffuseRayCount("PAR", 300)
     
-    # Push Context geometry into the radiation model. This is REQUIRED before
-    # runBand() - without it the ray trace sees no geometry and every result is 0.
-    radiation.updateGeometry()
-    
-    # Run simulation
+    # Run simulation. runBand() pushes Context geometry into the radiation model
+    # itself, and rebuilds it if primitives were added or deleted since the last
+    # build, so an explicit updateGeometry() call is not needed here.
     radiation.runBand("PAR")
     
-    # Get results. Values are flux DENSITY in W/m^2, one per primitive.
-    results = radiation.getTotalAbsorbedFlux()
+    # Get results. Values are flux DENSITY in W/m^2, one per primitive, and
+    # element i belongs to uuids[i].
+    uuids = context.getAllUUIDs()
+    results = radiation.getAbsorbedFlux("PAR")
     print(f"Absorbed flux density: {results[0]:.2f} W/m^2")
     
     # To get absorbed POWER in W, weight each primitive by its area.
     # Do NOT use sum(results) - summing W/m^2 across primitives is not meaningful.
     power = sum(flux * context.getPrimitiveArea(uuid)
-                for flux, uuid in zip(results, context.getAllUUIDs()))
+                for flux, uuid in zip(results, uuids))
     print(f"Total absorbed power: {power:.2f} W")
 ```
 
-> **Units:** `getTotalAbsorbedFlux()` returns absorbed flux **density** in W/m² for
-> each primitive (the `radiation_flux_<band>` primitive data), summed over all bands
-> — not power in watts. Because it is a density, it does **not** change when you
-> change a primitive's size: a 1×1 m and a 2×2 m patch under the same collimated
-> source both report 1000 W/m². Multiply by `context.getPrimitiveArea(uuid)` to
-> convert to watts before summing across primitives.
+> **Units:** `getAbsorbedFlux()` returns absorbed flux **density** in W/m² for each
+> primitive (the `radiation_flux_<band>` primitive data) — not power in watts.
+> Because it is a density, it does **not** change when you change a primitive's
+> size: a 1×1 m and a 2×2 m patch under the same collimated source both report
+> 1000 W/m². Multiply by `context.getPrimitiveArea(uuid)` to convert to watts
+> before summing across primitives.
+
+> ⚠️ **Use `getAbsorbedFlux(band)`, not `getTotalAbsorbedFlux()`, for per-primitive
+> results.** `getTotalAbsorbedFlux()` has two traps:
+>
+> 1. **Its ordering is not `context.getAllUUIDs()`.** The values are ordered by the
+>    radiation model's internal primitive ordering, built during `updateGeometry()`.
+>    `getAllUUIDs()` iterates an unordered map and returns a hash order — with two
+>    patches it returns `[1, 0]`. Pairing the two by index silently assigns each
+>    primitive's flux to a different primitive.
+> 2. **It sums over every band.** With PAR, NIR and SW registered, the result is
+>    PAR + NIR + SW per primitive, which double-counts because SW already spans the
+>    other two.
+>
+> `getAbsorbedFlux(band)` is keyed by UUID and returns one band, so neither applies.
 
 ## Radiation Bands
 
@@ -288,13 +302,34 @@ The value exists only for bands that have actually been run, since `runBand()` i
 
 ### Geometry Updates
 
+As of helios-core v1.3.79 the no-argument form is **optional**: `runBand()` builds the
+geometry itself before tracing, and rebuilds it whenever primitives have been added to
+or deleted from the Context since the last build.
+
 ```python
-# Update all geometry before simulation
+# Optional - runBand() would do this itself. Call it explicitly only to control
+# when the cost of the build is paid.
 radiation.updateGeometry()
 
-# Update specific geometry UUIDs
+# Restrict the model to a subset of Context primitives.
 radiation.updateGeometry([patch_uuid, triangle_uuid])
 ```
+
+The two forms are **not** interchangeable. A subset passed to `updateGeometry(uuids)` is
+never rebuilt automatically, because an automatic rebuild would discard the subset you
+asked for. After modifying Context geometry you must call `updateGeometry(uuids)` again
+yourself:
+
+```python
+radiation.updateGeometry([patch_uuid])   # model now holds this one primitive
+context.addPatch(center=vec3(1, 0, 0))   # new geometry the model will NOT pick up
+radiation.runBand("PAR")                 # still traces only patch_uuid
+
+radiation.updateGeometry([patch_uuid, new_uuid])  # required to widen the subset
+```
+
+Calling `updateGeometry()` with no argument clears the subset and returns the model to
+tracking the full Context.
 
 ### Running Simulations
 
@@ -345,30 +380,40 @@ print(f"Speedup: {sequential_time/multiband_time:.1f}x faster")
 
 ### Flux Results
 
-```python
-# Get absorbed flux density (W/m^2) for all primitives
-results = radiation.getTotalAbsorbedFlux()
-all_uuids = context.getAllUUIDs()
+`getAbsorbedFlux(band)` returns one band's absorbed flux density in W/m², with
+element `i` belonging to `uuids[i]`.
 
-# Convert to absorbed power (W) by weighting each primitive by its area
-total_power = sum(flux * context.getPrimitiveArea(uuid)
-                  for flux, uuid in zip(results, all_uuids))
-print(f"Total absorbed power: {total_power:.2f} W")
+```python
+# Get absorbed flux density (W/m^2) for all primitives, for one band
+all_uuids = context.getAllUUIDs()
+results = radiation.getAbsorbedFlux("PAR")
+
+# Convert to absorbed power (W) by weighting each primitive by its area.
+# Pass the whole UUID list to getPrimitiveArea(): one native call, rather than
+# one per primitive. Accumulate in float64 - areas are float32, and a plain
+# sum() over them drifts on canopy-sized scenes.
+import numpy as np
+areas = context.getPrimitiveArea(all_uuids)                 # ndarray, shape (N,)
+power = np.asarray(results, dtype=np.float64) * areas       # W, per primitive
+print(f"Total absorbed power: {power.sum(dtype=np.float64):.2f} W")
 
 # Analyze results per primitive
-for i, uuid in enumerate(all_uuids):
-    if i < len(results):
-        flux_density = results[i]                      # W/m^2
-        area = context.getPrimitiveArea(uuid)
-        power = flux_density * area                    # W
-        print(f"Primitive {uuid}: {flux_density:.2f} W/m² ({power:.2f} W)")
+for uuid, flux_density, p in zip(all_uuids, results, power):
+    print(f"Primitive {uuid}: {flux_density:.2f} W/m² ({p:.2f} W)")
+
+# Several bands at once -> dict of band label to per-primitive list
+bands = radiation.getAbsorbedFlux(["PAR", "NIR", "SW"])
+print(f"PAR on first primitive: {bands['PAR'][0]:.2f} W/m²")
+
+# Restrict to a subset of primitives; results follow the order you pass
+leaf_flux = radiation.getAbsorbedFlux("PAR", uuids=leaf_uuids)
 ```
 
 ### Radiation Analysis
 
 ```python
 # Calculate radiation statistics over the per-primitive flux densities (W/m^2)
-radiation_data = radiation.getTotalAbsorbedFlux()
+radiation_data = radiation.getAbsorbedFlux("PAR")
 
 import statistics
 mean_flux = statistics.mean(radiation_data)
@@ -462,7 +507,7 @@ for time_step in range(24):  # 24 hour simulation
 
     # Run simulation for this time step
     radiation.runBand("PAR")
-    results = radiation.getTotalAbsorbedFlux()
+    results = radiation.getAbsorbedFlux("PAR")
     save_results(time_step, results)
 
 # Delete sources when no longer needed
@@ -592,6 +637,14 @@ radiation.setDiffuseRadiationExtinctionCoeff(
 diffuse_flux = radiation.getDiffuseFlux("SW")
 print(f"Diffuse flux: {diffuse_flux} W/m²")
 ```
+
+> **`getDiffuseFlux()` is an input, not a result.** It returns the band's
+> *configured* diffuse source flux — a single scalar, the value you set with
+> `setDiffuseRadiationFlux()` (or derived from the diffuse spectrum) — not
+> per-primitive absorbed diffuse radiation. There is no separate accessor for the
+> absorbed diffuse component: `getAbsorbedFlux(band)` already reports each
+> primitive's total absorbed flux for that band, direct plus diffuse plus
+> scattered.
 
 ### Diffuse Spectrum Configuration
 
@@ -790,6 +843,8 @@ print(f"G-function (horizontal): {g_horizontal}")
 
 \note `calculateGtheta()` calls `updateGeometry()` automatically (emitting a warning) if the scene geometry has not yet been pushed to the radiation model, so an explicit prior `updateGeometry()` is no longer required. If the G-function is undefined — no geometry, or zero total leaf area in the scene — it raises an explicit `RuntimeError` rather than returning NaN.
 
+\note The one case it will *not* auto-build is a model holding a primitive subset from `updateGeometry(uuids)` that has not been traced yet: building the full Context there would silently discard the subset, so it raises instead and tells you to call `updateGeometry(uuids)` again (or `updateGeometry()` if you want the whole Context). After a `runBand()` the geometry is already built, so the G-function is simply reported over the subset you selected.
+
 ### Sky Energy and Optional Outputs
 
 ```python
@@ -902,15 +957,18 @@ produced. Three ordering rules follow from this:
 ```python
 # Correct order
 radiation.addRadiationCamera("cam", ["red", "green", "blue"], ...)  # 1. add camera
-radiation.updateGeometry()                                          # 2. push geometry
-radiation.runBand(["red", "green", "blue"])                         # 3. render
-radiation.writeCameraImage("cam", ["red", "green", "blue"], "out")  # 4. write
+radiation.runBand(["red", "green", "blue"])                         # 2. render
+radiation.writeCameraImage("cam", ["red", "green", "blue"], "out")  # 3. write
 ```
 
+(`runBand()` pushes the geometry itself, so no `updateGeometry()` step is needed.)
+
 Getting this wrong raises a `RadiationModelError` naming the camera and band that
-were never rendered. On helios-core versions before v1.3.79 the underlying
-library reported this as a bare `invalid map<K, T> key`; PyHelios now checks the
-precondition itself and reports which `runBand()` call is missing.
+were never rendered. PyHelios checks the precondition itself before calling into
+the native library and reports which `runBand()` call is missing. This check is
+load-bearing: helios-core v1.3.79 signals the same failure by returning an empty
+filename rather than raising, so without the PyHelios check a missed `runBand()`
+would look like a successful write that produced no file.
 
 ### Time-Series Camera Capture
 
@@ -981,9 +1039,9 @@ dslr_img = radiation.writeCameraImage("dslr_cam", ["red", "green", "blue"], "dsl
 # Simulate plant growth over 100 days
 for day in range(100):
     # Update leaf age data
-    leaf_patches = context.getAllUUIDs("patch")
+    leaf_patches = context.getAllUUIDs()
     for patch_id in leaf_patches:
-        current_age = context.getPrimitiveData(patch_id, "age")[0]
+        current_age = context.getPrimitiveDataFloat(patch_id, "age")
         context.setPrimitiveDataFloat(patch_id, "age", current_age + 1.0)
 
     # Interpolate spectra based on updated ages
@@ -999,7 +1057,7 @@ for day in range(100):
     radiation.runBand("PAR")
 
     # Analyze results - convert flux density (W/m^2) to absorbed power (W)
-    flux = radiation.getTotalAbsorbedFlux()
+    flux = radiation.getAbsorbedFlux("PAR")
     daily_radiation[day] = sum(f * context.getPrimitiveArea(u)
                                for f, u in zip(flux, context.getAllUUIDs()))
 ```
@@ -1109,32 +1167,44 @@ try:
         radiation.updateGeometry()
         radiation.runBand(["PAR", "NIR", "SW"])  # Single call for all bands!
         
-        # Analyze results
-        results = radiation.getTotalAbsorbedFlux()
+        # Analyze results, one band at a time. Do NOT use getTotalAbsorbedFlux()
+        # here: it would return PAR + NIR + SW added together, and its ordering
+        # does not line up with all_uuids.
+        all_uuids = context.getAllUUIDs()
+        results = radiation.getAbsorbedFlux("PAR")   # W/m^2, PAR only
         
         # Get leaf-specific results. results[] is flux density (W/m^2), so each
         # primitive must be area-weighted before the values can be summed.
-        leaf_uuids = wpt.getLeafUUIDs(tree_id)
-        leaf_absorption = 0
+        # getPrimitiveArea() accepts the whole list, which costs one native call
+        # instead of one per primitive - do NOT call it per UUID in a loop.
+        import numpy as np
+        areas = context.getPrimitiveArea(all_uuids)          # ndarray, shape (N,)
+        power = np.asarray(results, dtype=np.float64) * areas  # W, per primitive
         
-        all_uuids = context.getAllUUIDs()
-        for i, uuid in enumerate(all_uuids):
-            if uuid in leaf_uuids and i < len(results):
-                leaf_absorption += results[i] * context.getPrimitiveArea(uuid)
+        # Accumulate in float64: areas come back as float32, and a plain sum() over
+        # them drifts on canopy-sized scenes.
+        leaf_uuids = set(wpt.getLeafUUIDs(tree_id))
+        is_leaf = np.array([u in leaf_uuids for u in all_uuids])
+        leaf_absorption = float(power[is_leaf].sum(dtype=np.float64))
         
-        total_absorption = sum(f * context.getPrimitiveArea(u)
-                               for f, u in zip(results, all_uuids))
-        ground_index = all_uuids.index(ground_uuid)
-        ground_absorption = (results[ground_index]
-                             * context.getPrimitiveArea(ground_uuid))
+        total_absorption = float(power.sum(dtype=np.float64))
+        ground_absorption = float(power[all_uuids.index(ground_uuid)])
         
-        print(f"Total scene absorption: {total_absorption:.2f} W")
-        print(f"Leaf absorption: {leaf_absorption:.2f} W")
-        print(f"Ground absorption: {ground_absorption:.2f} W")
+        print(f"Total scene PAR absorption: {total_absorption:.2f} W")
+        print(f"Leaf PAR absorption: {leaf_absorption:.2f} W")
+        print(f"Ground PAR absorption: {ground_absorption:.2f} W")
         
-        # Access band-specific data stored by radiation model
-        for band in ["PAR", "NIR", "SW"]:
-            print(f"Band {band} results available in primitive data: radiation_flux_{band}")
+        # Access band-specific data stored by the radiation model. runBand() writes
+        # each band's absorbed flux density to primitive data "radiation_flux_<band>";
+        # getAbsorbedFlux() reads exactly that, keyed by UUID.
+        per_band = radiation.getAbsorbedFlux(["PAR", "NIR", "SW"])
+        for band, flux in per_band.items():
+            mean_flux = sum(flux) / len(flux)
+            print(f"Band {band}: mean absorbed flux density {mean_flux:.2f} W/m²")
+        
+        # Equivalent, reading the primitive data directly:
+        #   context.getPrimitiveDataArray(all_uuids, "radiation_flux_PAR")
+        #   [context.getPrimitiveDataFloat(u, "radiation_flux_PAR") for u in all_uuids]
 
 except RadiationModelError as e:
     print(f"Radiation modeling failed: {e}")
@@ -1147,25 +1217,37 @@ except Exception as e:
 
 ### Data Storage
 
+`runBand()` already stores each band's absorbed flux density as primitive data
+under `radiation_flux_<band>`, so there is nothing to store for that quantity —
+just read it back with `getAbsorbedFlux(band)`. You only need to write primitive
+data for quantities you derive yourself:
+
 ```python
-# Store radiation results as primitive data
-results = radiation.getTotalAbsorbedFlux()
+# Read back what runBand() stored (W/m^2, PAR only, aligned to all_uuids)
+import numpy as np
 all_uuids = context.getAllUUIDs()
+results = radiation.getAbsorbedFlux("PAR")
 
-for i, uuid in enumerate(all_uuids):
-    if i < len(results):
-        # results[i] is already a flux density in W/m^2
-        context.setPrimitiveDataFloat(uuid, "flux_density_PAR", results[i])
-        
-        # Absorbed power in W requires multiplying by area
-        area = context.getPrimitiveArea(uuid)
-        context.setPrimitiveDataFloat(uuid, "absorbed_power_PAR", results[i] * area)
+# Absorbed power in W is derived, so it does need storing. Both getPrimitiveArea()
+# and setPrimitiveDataFloat() accept the whole UUID list - one native call each,
+# rather than two per primitive.
+areas = context.getPrimitiveArea(all_uuids)
+power = np.asarray(results, dtype=np.float64) * areas
+context.setPrimitiveDataFloat(all_uuids, "absorbed_power_PAR", power.tolist())
 
-# Use for visualization
+# Use for visualization - "radiation_flux_PAR" is already there from runBand()
 context.colorPrimitiveByDataPseudocolor(
-    all_uuids, "flux_density_PAR", "hot", 256
+    all_uuids, "radiation_flux_PAR", "hot", 256
 )
 ```
+
+> **Reading primitive data in bulk:** either `context.getPrimitiveDataArray(uuids,
+> label)` (returns a NumPy array) or a list comprehension over
+> `context.getPrimitiveDataFloat()` works, and both are linear in the primitive
+> count. Note that on PyHelios ≤ 0.1.26 `getPrimitiveDataArray()` was O(N²) —
+> roughly 15 s on a 20,000-primitive scene — because it validated each UUID by
+> rescanning the whole UUID list; if you are pinned to an older release, prefer
+> the loop.
 
 ## Camera and Image Functions
 
@@ -1336,6 +1418,25 @@ radiation.writeObjectDataLabelMap(
 # Or get the map directly as a 2D (height, width) NumPy array (no file left on disk)
 temp = radiation.getPrimitiveDataLabelMap("overhead_camera", "temperature")  # shape (H, W)
 plant_id = radiation.getObjectDataLabelMap("overhead_camera", "plant_id")
+```
+
+### Updating Camera Parameters
+
+`updateCameraParameters()` changes an existing camera's intrinsics in place, preserving its position, lookat direction, and spectral band configuration.
+
+> **Changing `camera_resolution` discards the camera's rendered image data.** The per-pixel buffers are sized to the resolution the camera was rendered at, so helios-core v1.3.79+ clears them rather than reinterpreting them at the new size. Re-render with `runBand()` before writing an image, or `writeCameraImage()` will report the camera as unrendered. Changing any other parameter leaves image data intact.
+
+```python
+radiation.runBand(["red", "green", "blue"])
+radiation.writeCameraImage("cam", ["red", "green", "blue"], "before")
+
+# Changing HFOV only - image data survives.
+radiation.updateCameraParameters("cam", CameraProperties(camera_resolution=(512, 512), HFOV=45))
+
+# Changing resolution - image data is discarded.
+radiation.updateCameraParameters("cam", CameraProperties(camera_resolution=(1024, 1024), HFOV=45))
+radiation.runBand(["red", "green", "blue"])          # required before writing again
+radiation.writeCameraImage("cam", ["red", "green", "blue"], "after")
 ```
 
 ### Camera Exposure

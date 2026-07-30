@@ -1210,6 +1210,23 @@ PYHELIOS_API void setPrimitiveDataFloat(helios::Context* context, unsigned int u
 PYHELIOS_API float getPrimitiveDataFloat(helios::Context* context, unsigned int uuid, const char* label);
 
 /**
+ * @brief Get one float primitive data label across many primitives in a single call
+ *
+ * Bulk counterpart to getPrimitiveDataFloat(). Values are returned in the order the
+ * UUIDs were supplied, so the caller controls the alignment. The returned buffer is
+ * owned by the library and remains valid until the next call on the same thread.
+ *
+ * @param context Pointer to the Context
+ * @param uuids Array of primitive UUIDs to read
+ * @param num_uuids Number of entries in uuids
+ * @param label Name/label of the data
+ * @param out_count Set to the number of values returned (0 on failure)
+ * @return Pointer to num_uuids float values, or nullptr on failure
+ */
+PYHELIOS_API float* getPrimitiveDataFloatArray(helios::Context* context, const unsigned int* uuids,
+                                               size_t num_uuids, const char* label, size_t* out_count);
+
+/**
  * @brief Set primitive data as vec3
  * @param context Pointer to the Context
  * @param uuid UUID of the primitive

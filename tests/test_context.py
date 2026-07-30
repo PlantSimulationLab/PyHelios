@@ -15,7 +15,9 @@ import platform
 import numpy as np
 import pyhelios
 from pyhelios import Context, DataTypes
-from pyhelios.exceptions import HeliosRuntimeError
+from pyhelios.exceptions import HeliosError, HeliosRuntimeError
+
+REPO_ROOT_CTX = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 from pyhelios.types import *  # Import all vector types for convenience
 from tests.conftest import assert_vec3_equal, assert_vec2_equal, assert_color_equal
 from tests.test_utils import GeometryValidator, PlatformHelper, generate_patch_test_cases
@@ -4685,6 +4687,175 @@ class TestGeographicLocation:
 
 
 # =============================================================================
+# Location range validation (helios-core v1.3.79+)
+#
+# helios::Location gained a public validate() that both parameterized constructors
+# call, and Context::setLocation() re-validates on the way in. PyHelios mirrors the
+# same bounds in Location.__init__ so the error arrives as a ValueError at the point
+# of construction, in mock mode as well as native.
+# =============================================================================
+
+@pytest.mark.cross_platform
+class TestLocationRangeValidation:
+    """Bounds are those of helios::Location::validate()."""
+
+    @pytest.mark.parametrize("latitude", [90.1, -90.1, 91.0, -91.0, 180.0, 1e6])
+    def test_latitude_out_of_range_raises(self, latitude):
+        with pytest.raises(ValueError, match="[Ll]atitude"):
+            Location(latitude, 0.0, 0.0)
+
+    @pytest.mark.parametrize("latitude", [90.0, -90.0, 0.0, 38.55])
+    def test_latitude_at_and_within_bounds_accepted(self, latitude):
+        assert Location(latitude, 0.0, 0.0).latitude == pytest.approx(latitude)
+
+    @pytest.mark.parametrize("longitude", [180.1, -180.1, 181.0, -181.0, 1e6])
+    def test_longitude_out_of_range_raises(self, longitude):
+        with pytest.raises(ValueError, match="[Ll]ongitude"):
+            Location(0.0, longitude, 0.0)
+
+    @pytest.mark.parametrize("longitude", [180.0, -180.0, 0.0, 121.76])
+    def test_longitude_at_and_within_bounds_accepted(self, longitude):
+        assert Location(0.0, longitude, 0.0).longitude == pytest.approx(longitude)
+
+    @pytest.mark.parametrize("utc_offset", [12.1, -14.1, 13.0, -15.0, 24.0])
+    def test_utc_offset_out_of_range_raises(self, utc_offset):
+        with pytest.raises(ValueError, match="UTC"):
+            Location(0.0, 0.0, utc_offset)
+
+    @pytest.mark.parametrize("utc_offset", [12.0, -14.0, 0.0, 8.0])
+    def test_utc_offset_at_and_within_bounds_accepted(self, utc_offset):
+        """The range is -14..+12, not -12..+12.
+
+        Helios counts the UTC offset positive moving West, so the real-world span
+        of UTC-12 through UTC+14 (Kiribati keeps the latter) inverts to +12
+        through -14. An offset of -14 is therefore legal and +14 is not.
+        """
+        assert Location(0.0, 0.0, utc_offset).utc_offset == pytest.approx(utc_offset)
+
+    def test_utc_offset_asymmetric_bounds(self):
+        """Guards against "fixing" the range to a symmetric -12..+12."""
+        Location(0.0, 0.0, -14.0)  # legal: real-world UTC+14
+        with pytest.raises(ValueError, match="UTC"):
+            Location(0.0, 0.0, 14.0)  # illegal: would be real-world UTC-14
+
+    @pytest.mark.parametrize("altitude", [float("inf"), float("-inf"), float("nan")])
+    def test_non_finite_altitude_raises(self, altitude):
+        with pytest.raises(ValueError, match="[Aa]ltitude"):
+            Location(0.0, 0.0, 0.0, altitude)
+
+    @pytest.mark.parametrize("altitude", [0.0, -430.0, 8848.0, 1e9])
+    def test_altitude_unbounded_but_finite(self, altitude):
+        """No non-arbitrary bound exists for a simulated scene's altitude."""
+        assert Location(0.0, 0.0, 0.0, altitude).altitude == pytest.approx(altitude)
+
+    def test_make_location_validates_too(self):
+        from pyhelios.wrappers.DataTypes import make_Location
+        with pytest.raises(ValueError, match="[Ll]atitude"):
+            make_Location(95.0, 0.0, 0.0)
+
+    def test_error_message_names_the_offending_value(self):
+        with pytest.raises(ValueError, match="95"):
+            Location(95.0, 0.0, 0.0)
+
+    def test_type_error_still_precedes_range_error(self):
+        """A non-numeric value must report the type problem, not a range problem."""
+        with pytest.raises(ValueError, match="must be a number"):
+            Location("95", 0.0, 0.0)
+
+
+@pytest.mark.native_only
+class TestSetLocationRangeValidationNative:
+    """setLocation() rejects out-of-range values end to end, on a native library.
+
+    Note that these exercise the *Python* guard: Context.setLocation() constructs a
+    Location first, which validates and raises before the native call is reached. That
+    is the correct behavior for the public API, but it means these tests do not prove
+    the native re-validation is present -- see
+    TestSetLocationNativeRevalidation for that.
+    """
+
+    def test_set_location_rejects_out_of_range_latitude(self, basic_context):
+        with pytest.raises((ValueError, RuntimeError), match="[Ll]atitude"):
+            basic_context.setLocation(95.0, 0.0, 0.0)
+
+    def test_set_location_rejects_out_of_range_longitude(self, basic_context):
+        with pytest.raises((ValueError, RuntimeError), match="[Ll]ongitude"):
+            basic_context.setLocation(0.0, 200.0, 0.0)
+
+    def test_set_location_rejects_out_of_range_utc_offset(self, basic_context):
+        with pytest.raises((ValueError, RuntimeError), match="UTC"):
+            basic_context.setLocation(0.0, 0.0, 15.0)
+
+    def test_set_location_accepts_utc_offset_minus_14(self, basic_context):
+        """-14 is in range; asserts PyHelios does not impose a stricter -12 bound."""
+        basic_context.setLocation(0.0, 0.0, -14.0)
+        assert basic_context.getLocation().utc_offset == pytest.approx(-14.0, abs=1e-4)
+
+    def test_rejected_set_location_leaves_location_unchanged(self, basic_context):
+        """Native contract: an out-of-range field leaves the Context's location alone."""
+        basic_context.setLocation(38.5, 121.7, 8.0, 16.0)
+        before = basic_context.getLocation()
+
+        with pytest.raises((ValueError, RuntimeError)):
+            basic_context.setLocation(95.0, 0.0, 0.0)
+
+        after = basic_context.getLocation()
+        assert after.latitude == pytest.approx(before.latitude, abs=1e-4)
+        assert after.longitude == pytest.approx(before.longitude, abs=1e-4)
+        assert after.utc_offset == pytest.approx(before.utc_offset, abs=1e-4)
+        assert after.altitude == pytest.approx(before.altitude, abs=1e-3)
+
+
+@pytest.mark.native_only
+class TestSetLocationNativeRevalidation:
+    """The native Context::setLocation() re-validation must be load-bearing.
+
+    Context.setLocation() builds a Location first, so its Python-side bounds check
+    normally fires before anything reaches C++. These tests call the ctypes wrapper
+    directly to bypass that guard, which is the only way to reach
+    helios::Location::validate() from Python and prove it is actually there. Without
+    them, deleting the native re-validation entirely would break no PyHelios test.
+    """
+
+    def _set_raw(self, context, latitude, longitude, utc_offset, altitude=0.0):
+        """Call the native setLocation with no Python-side Location construction."""
+        from pyhelios.wrappers import UContextWrapper as context_wrapper
+        context_wrapper.setLocationWrapper(
+            context.getNativePtr(), latitude, longitude, utc_offset, altitude)
+
+    def test_native_rejects_out_of_range_latitude(self, basic_context):
+        with pytest.raises(Exception, match="[Ll]atitude"):
+            self._set_raw(basic_context, 95.0, 0.0, 0.0)
+
+    def test_native_rejects_out_of_range_longitude(self, basic_context):
+        with pytest.raises(Exception, match="[Ll]ongitude"):
+            self._set_raw(basic_context, 0.0, 200.0, 0.0)
+
+    def test_native_rejects_out_of_range_utc_offset(self, basic_context):
+        with pytest.raises(Exception, match="UTC"):
+            self._set_raw(basic_context, 0.0, 0.0, 15.0)
+
+    def test_native_accepts_utc_offset_minus_14(self, basic_context):
+        """-14 must reach the native layer and be accepted there, not just in Python."""
+        self._set_raw(basic_context, 0.0, 0.0, -14.0)
+        assert basic_context.getLocation().utc_offset == pytest.approx(-14.0, abs=1e-4)
+
+    def test_native_rejection_leaves_location_unchanged(self, basic_context):
+        """The native contract: an out-of-range field must not mutate the Context."""
+        self._set_raw(basic_context, 38.5, 121.7, 8.0, 16.0)
+        before = basic_context.getLocation()
+
+        with pytest.raises(Exception):
+            self._set_raw(basic_context, 95.0, 0.0, 0.0)
+
+        after = basic_context.getLocation()
+        assert after.latitude == pytest.approx(before.latitude, abs=1e-4)
+        assert after.longitude == pytest.approx(before.longitude, abs=1e-4)
+        assert after.utc_offset == pytest.approx(before.utc_offset, abs=1e-4)
+        assert after.altitude == pytest.approx(before.altitude, abs=1e-3)
+
+
+# =============================================================================
 # Colormap helpers + texture transparency
 # =============================================================================
 
@@ -5108,3 +5279,354 @@ class TestObjectBoundingBox:
         assert abs((mx.x - mn.x) - 1.0) < 1e-4, f"x extent={mx.x - mn.x}"
         assert abs((mx.y - mn.y) - 1.0) < 1e-4, f"y extent={mx.y - mn.y}"
         assert abs(mn.x - tmn.x) < 1e-4 and abs(mx.x - tmx.x) < 1e-4
+
+
+@pytest.mark.native_only
+class TestUUIDValidationComplexity:
+    """Bulk UUID validation must be linear in the number of UUIDs.
+
+    ``_validate_uuid()`` calls ``getAllUUIDs()`` and scans the returned list
+    linearly. Applying it one element at a time — as every UUID-list entry point
+    did — re-fetches and rescans the whole list per element, so validating N UUIDs
+    costs O(N^2) plus N native round-trips. Measured at 20,000 primitives:
+    ``getPrimitiveDataArray()`` took ~15 s, against ~40 ms once the lookup is
+    hoisted.
+
+    These count ``getAllUUIDs()`` calls rather than timing anything, so they pin
+    the complexity without being flaky on a loaded machine.
+    """
+
+    @staticmethod
+    def _count_get_all_uuids(context, operation):
+        """Run operation(), returning how many times it called getAllUUIDs()."""
+        calls = []
+        real_get_all = context.getAllUUIDs
+
+        def counting_get_all():
+            calls.append(1)
+            return real_get_all()
+
+        context.getAllUUIDs = counting_get_all
+        try:
+            operation()
+        finally:
+            del context.getAllUUIDs
+        return len(calls)
+
+    def test_getPrimitiveDataArray_validates_in_linear_time(self, basic_context):
+        uuids = [basic_context.addPatch(center=DataTypes.vec3(i, 0, 0),
+                                        size=DataTypes.vec2(0.5, 0.5))
+                 for i in range(12)]
+        for uuid in uuids:
+            basic_context.setPrimitiveDataFloat(uuid, "value", float(uuid))
+
+        count = self._count_get_all_uuids(
+            basic_context,
+            lambda: basic_context.getPrimitiveDataArray(uuids, "value"))
+
+        assert count <= 1, (
+            f"getAllUUIDs() called {count} times to validate {len(uuids)} UUIDs - "
+            f"validation is rescanning the UUID list per element")
+
+    def test_writePLY_validates_in_linear_time(self, basic_context, tmp_path):
+        uuids = [basic_context.addPatch(center=DataTypes.vec3(i, 0, 0),
+                                        size=DataTypes.vec2(0.5, 0.5))
+                 for i in range(12)]
+        target = str(tmp_path / "scene.ply")
+
+        count = self._count_get_all_uuids(
+            basic_context, lambda: basic_context.writePLY(target, UUIDs=uuids))
+
+        assert count <= 1, (
+            f"getAllUUIDs() called {count} times to validate {len(uuids)} UUIDs")
+
+    def test_writeOBJ_validates_in_linear_time(self, basic_context, tmp_path):
+        uuids = [basic_context.addPatch(center=DataTypes.vec3(i, 0, 0),
+                                        size=DataTypes.vec2(0.5, 0.5))
+                 for i in range(12)]
+        target = str(tmp_path / "scene.obj")
+
+        count = self._count_get_all_uuids(
+            basic_context, lambda: basic_context.writeOBJ(target, UUIDs=uuids))
+
+        assert count <= 1, (
+            f"getAllUUIDs() called {count} times to validate {len(uuids)} UUIDs")
+
+    def test_writePrimitiveData_validates_in_linear_time(self, basic_context, tmp_path):
+        uuids = [basic_context.addPatch(center=DataTypes.vec3(i, 0, 0),
+                                        size=DataTypes.vec2(0.5, 0.5))
+                 for i in range(12)]
+        target = str(tmp_path / "data.txt")
+
+        count = self._count_get_all_uuids(
+            basic_context,
+            lambda: basic_context.writePrimitiveData(target, ["UUID"], UUIDs=uuids))
+
+        assert count <= 1, (
+            f"getAllUUIDs() called {count} times to validate {len(uuids)} UUIDs")
+
+    def test_bulk_validation_preserves_error_messages(self, basic_context):
+        """Hoisting the lookup must not change what callers see on bad input."""
+        good = basic_context.addPatch()
+        basic_context.setPrimitiveDataFloat(good, "value", 1.0)
+
+        with pytest.raises(RuntimeError, match="UUID 999999 does not exist in context"):
+            basic_context.getPrimitiveDataArray([good, 999999], "value")
+
+        with pytest.raises(RuntimeError, match="Invalid UUID"):
+            basic_context.getPrimitiveDataArray([good, -1], "value")
+
+        with pytest.raises(RuntimeError, match="Invalid UUID"):
+            basic_context.getPrimitiveDataArray([good, "not_an_int"], "value")
+
+    def test_single_uuid_validation_still_works(self, basic_context):
+        """_validate_uuid() remains a supported single-UUID entry point."""
+        good = basic_context.addPatch()
+        basic_context._validate_uuid(good)
+
+        with pytest.raises(RuntimeError, match="does not exist in context"):
+            basic_context._validate_uuid(999999)
+
+        with pytest.raises(RuntimeError, match="Invalid UUID"):
+            basic_context._validate_uuid(-1)
+
+
+@pytest.mark.native_only
+class TestBulkFloatPrimitiveData:
+    """The native bulk float getter must be correct, ordered, and actually used.
+
+    Reading one float label across N primitives used to cost N ctypes round-trips.
+    ``getPrimitiveDataFloatArray`` collapses them into a single native call, and
+    ``Context.getPrimitiveDataArray()`` routes its float path through it.
+    """
+
+    @staticmethod
+    def _scene(context, count, label="value"):
+        uuids = []
+        for i in range(count):
+            uuid = context.addPatch(center=DataTypes.vec3(i * 0.3, 0, 0),
+                                    size=DataTypes.vec2(0.2, 0.2))
+            context.setPrimitiveDataFloat(uuid, label, float(i) * 1.5)
+            uuids.append(uuid)
+        return uuids
+
+    def test_bulk_getter_returns_values_in_requested_order(self, basic_context):
+        from pyhelios.wrappers import UContextWrapper as cw
+        uuids = self._scene(basic_context, 10)
+
+        forward = cw.getPrimitiveDataFloatArray(
+            basic_context.getNativePtr(), uuids, "value")
+        assert forward == pytest.approx([float(i) * 1.5 for i in range(10)])
+
+        # Order must follow the request, not any internal ordering
+        reverse = cw.getPrimitiveDataFloatArray(
+            basic_context.getNativePtr(), list(reversed(uuids)), "value")
+        assert reverse == pytest.approx(list(reversed(forward)))
+
+        subset = cw.getPrimitiveDataFloatArray(
+            basic_context.getNativePtr(), [uuids[7], uuids[2]], "value")
+        assert subset == pytest.approx([7 * 1.5, 2 * 1.5])
+
+    def test_bulk_getter_matches_scalar_getter(self, basic_context):
+        from pyhelios.wrappers import UContextWrapper as cw
+        uuids = self._scene(basic_context, 25)
+
+        bulk = cw.getPrimitiveDataFloatArray(
+            basic_context.getNativePtr(), uuids, "value")
+        one_by_one = [basic_context.getPrimitiveDataFloat(u, "value") for u in uuids]
+        assert bulk == pytest.approx(one_by_one)
+
+    def test_bulk_getter_names_the_offending_primitive(self, basic_context):
+        from pyhelios.wrappers import UContextWrapper as cw
+        uuids = self._scene(basic_context, 5)
+        bare = basic_context.addPatch(center=DataTypes.vec3(9, 9, 9),
+                                      size=DataTypes.vec2(0.2, 0.2))
+
+        # Native failures surface as HeliosError, which derives from Exception
+        # rather than RuntimeError.
+        with pytest.raises(HeliosError) as excinfo:
+            cw.getPrimitiveDataFloatArray(
+                basic_context.getNativePtr(), uuids + [bare], "value")
+
+        message = str(excinfo.value)
+        assert str(bare) in message, f"error does not name the primitive: {message}"
+        assert "value" in message, f"error does not name the label: {message}"
+
+    def test_bulk_getter_rejects_empty_uuid_list(self, basic_context):
+        from pyhelios.wrappers import UContextWrapper as cw
+        self._scene(basic_context, 3)
+        with pytest.raises(ValueError, match="UUID list cannot be empty"):
+            cw.getPrimitiveDataFloatArray(basic_context.getNativePtr(), [], "value")
+
+    def test_getPrimitiveDataArray_float_path_uses_one_native_call(self, basic_context):
+        """The float path must not fall back to a per-primitive read."""
+        uuids = self._scene(basic_context, 15)
+
+        calls = []
+        real_scalar = basic_context.getPrimitiveDataFloat
+
+        def counting_scalar(uuid, label):
+            calls.append(uuid)
+            return real_scalar(uuid, label)
+
+        basic_context.getPrimitiveDataFloat = counting_scalar
+        try:
+            result = basic_context.getPrimitiveDataArray(uuids, "value")
+        finally:
+            del basic_context.getPrimitiveDataFloat
+
+        assert result == pytest.approx([float(i) * 1.5 for i in range(15)])
+        assert not calls, (
+            f"float path made {len(calls)} per-primitive scalar reads - "
+            f"it is not using the bulk getter")
+
+    def test_getPrimitiveDataArray_float_path_reports_missing_label(self, basic_context):
+        """The optimistic bulk read must still name the primitive that lacks data."""
+        uuids = self._scene(basic_context, 4)
+        bare = basic_context.addPatch(center=DataTypes.vec3(9, 9, 9),
+                                      size=DataTypes.vec2(0.2, 0.2))
+
+        with pytest.raises(ValueError, match="Primitive data .* does not exist"):
+            basic_context.getPrimitiveDataArray(uuids + [bare], "value")
+
+    def test_getPrimitiveDataArray_non_float_types_still_work(self, basic_context):
+        """Int and string paths keep their per-primitive reads and messages."""
+        uuids = []
+        for i in range(6):
+            uuid = basic_context.addPatch(center=DataTypes.vec3(i, 0, 0),
+                                          size=DataTypes.vec2(0.2, 0.2))
+            basic_context.setPrimitiveDataInt(uuid, "count", i * 3)
+            uuids.append(uuid)
+
+        assert list(basic_context.getPrimitiveDataArray(uuids, "count")) == [i * 3 for i in range(6)]
+
+        bare = basic_context.addPatch(center=DataTypes.vec3(9, 9, 9),
+                                      size=DataTypes.vec2(0.2, 0.2))
+        with pytest.raises(ValueError, match="Primitive data .* does not exist"):
+            basic_context.getPrimitiveDataArray(uuids + [bare], "count")
+
+
+@pytest.mark.native_only
+class TestPrimitiveInfoBatching:
+    """getAllPrimitiveInfo() must not make native calls per primitive.
+
+    It used to be N x getPrimitiveInfo(), and each of those makes 8 native calls
+    (type, area, normal, vertices, color, texture file, texture UV, solid
+    fraction) -- 77.5 ms for 5,000 primitives against 4.6 ms for the equivalent
+    batch getters. Every one of those eight fields has a list-accepting form that
+    goes through a native getBatch* call, so the whole thing collapses to a fixed
+    number of native calls regardless of scene size.
+    """
+
+    SCALAR_GETTERS = ("getPrimitiveType", "getPrimitiveArea", "getPrimitiveNormal",
+                      "getPrimitiveVertices", "getPrimitiveColor",
+                      "getPrimitiveTextureFile", "getPrimitiveTextureUV",
+                      "getPrimitiveSolidFraction")
+
+    @classmethod
+    def _count_scalar_calls(cls, context, operation):
+        """Run operation(), counting getter calls made with a single UUID.
+
+        A list argument is one native round-trip; an int argument is one per
+        primitive. Only the latter scales with the scene.
+        """
+        scalar_calls = []
+        originals = {}
+
+        def make_counter(name, real):
+            def counter(uuid, *a, **kw):
+                if not isinstance(uuid, (list, tuple)):
+                    scalar_calls.append(name)
+                return real(uuid, *a, **kw)
+            return counter
+
+        for name in cls.SCALAR_GETTERS:
+            real = getattr(context, name)
+            originals[name] = real
+            setattr(context, name, make_counter(name, real))
+        try:
+            result = operation()
+        finally:
+            for name in originals:
+                delattr(context, name)
+        return result, scalar_calls
+
+    @staticmethod
+    def _scene(context, count):
+        return [context.addPatch(center=DataTypes.vec3(i * 0.3, 0, 0),
+                                 size=DataTypes.vec2(0.2, 0.2))
+                for i in range(count)]
+
+    def test_getAllPrimitiveInfo_makes_no_per_primitive_calls(self, basic_context):
+        self._scene(basic_context, 12)
+
+        info, scalar_calls = self._count_scalar_calls(
+            basic_context, basic_context.getAllPrimitiveInfo)
+
+        assert len(info) == 12
+        assert not scalar_calls, (
+            f"{len(scalar_calls)} per-primitive getter calls for 12 primitives "
+            f"({sorted(set(scalar_calls))}) - not using the batch getters")
+
+    def test_getAllPrimitiveInfo_matches_per_primitive_reference(self, basic_context):
+        """Batched output must be field-for-field identical to the scalar path."""
+        uuids = self._scene(basic_context, 8)
+        # A triangle and a textured patch, so the vertex counts differ per
+        # primitive and the optional fields are actually populated.
+        basic_context.addTriangle(DataTypes.vec3(0, 0, 0), DataTypes.vec3(1, 0, 0),
+                                  DataTypes.vec3(0, 1, 0))
+        texture = 'helios-core/core/lib/images/disk_texture.png'
+        if os.path.exists(os.path.join(REPO_ROOT_CTX, texture)):
+            basic_context.addPatchTextured(
+                center=DataTypes.vec3(5, 5, 0), size=DataTypes.vec2(1, 1),
+                texture_file=os.path.join(REPO_ROOT_CTX, texture))
+
+        batched = basic_context.getAllPrimitiveInfo()
+        reference = [basic_context.getPrimitiveInfo(u)
+                     for u in basic_context.getAllUUIDs()]
+
+        assert len(batched) == len(reference)
+        for got, want in zip(batched, reference):
+            assert got.uuid == want.uuid
+            assert got.primitive_type == want.primitive_type
+            assert got.area == pytest.approx(want.area, rel=1e-6)
+            assert (got.normal.x, got.normal.y, got.normal.z) == pytest.approx(
+                (want.normal.x, want.normal.y, want.normal.z), rel=1e-6)
+            assert (got.color.r, got.color.g, got.color.b) == pytest.approx(
+                (want.color.r, want.color.g, want.color.b), rel=1e-6)
+            assert len(got.vertices) == len(want.vertices), f"UUID {got.uuid}"
+            for a, b in zip(got.vertices, want.vertices):
+                assert (a.x, a.y, a.z) == pytest.approx((b.x, b.y, b.z), rel=1e-6)
+            assert got.texture_file == want.texture_file, f"UUID {got.uuid}"
+            assert (got.texture_uv is None) == (want.texture_uv is None)
+            if got.texture_uv is not None:
+                assert len(got.texture_uv) == len(want.texture_uv)
+                for a, b in zip(got.texture_uv, want.texture_uv):
+                    assert (a.x, a.y) == pytest.approx((b.x, b.y), rel=1e-6)
+            if want.solid_fraction is None:
+                assert got.solid_fraction is None
+            else:
+                assert got.solid_fraction == pytest.approx(want.solid_fraction, rel=1e-6)
+            # centroid is derived in __post_init__; it must survive batching
+            assert (got.centroid is None) == (want.centroid is None)
+            if want.centroid is not None:
+                assert (got.centroid.x, got.centroid.y, got.centroid.z) == pytest.approx(
+                    (want.centroid.x, want.centroid.y, want.centroid.z), rel=1e-6)
+
+    def test_getPrimitivesInfoForObject_is_batched_too(self, basic_context):
+        tile_uuids = basic_context.addTile(center=DataTypes.vec3(0, 0, 0),
+                                           size=DataTypes.vec2(2, 2),
+                                           subdiv=DataTypes.int2(4, 4))
+        object_id = basic_context.getPrimitiveParentObjectID(tile_uuids[0])
+
+        info, scalar_calls = self._count_scalar_calls(
+            basic_context,
+            lambda: basic_context.getPrimitivesInfoForObject(object_id))
+
+        assert len(info) == len(tile_uuids)
+        assert not scalar_calls, (
+            f"{len(scalar_calls)} per-primitive getter calls for "
+            f"{len(tile_uuids)} primitives")
+
+    def test_getAllPrimitiveInfo_empty_context(self, basic_context):
+        assert basic_context.getAllPrimitiveInfo() == []

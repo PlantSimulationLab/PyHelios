@@ -8,6 +8,8 @@ functionality, procedural plant generation, and time-based growth simulation.
 import pytest
 from unittest.mock import patch, MagicMock
 import ctypes
+import itertools
+import math
 from typing import List
 
 import pyhelios
@@ -16,6 +18,17 @@ from pyhelios.types import vec3, vec2, int2
 from pyhelios.wrappers.DataTypes import AxisRotation  # Import directly from DataTypes to avoid Windows import issues
 from pyhelios.wrappers import UPlantArchitectureWrapper as plantarch_wrapper
 from pyhelios.plugins.registry import get_plugin_registry
+
+# The organ-level object ID getters, which share a signature and differ only in
+# the native symbol they call. Kept in one place so a new organ getter is picked
+# up by the subset, disjointness, and validation tests automatically.
+ORGAN_GETTERS = [
+    "getPlantLeafObjectIDs",
+    "getPlantPetioleObjectIDs",
+    "getPlantPeduncleObjectIDs",
+    "getPlantFlowerObjectIDs",
+    "getPlantFruitObjectIDs",
+]
 
 
 @pytest.mark.cross_platform
@@ -235,6 +248,149 @@ class TestPlantArchitectureNative:
         assert isinstance(object_ids, list)
         for obj_id in object_ids:
             assert isinstance(obj_id, int)
+
+    def test_get_plant_leaf_object_ids(self, plantarch):
+        """Leaf object IDs are a subset of the plant's object IDs."""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+
+        leaf_ids = plantarch.getPlantLeafObjectIDs(plant_id)
+
+        assert isinstance(leaf_ids, list)
+        for leaf_id in leaf_ids:
+            assert isinstance(leaf_id, int)
+            assert leaf_id >= 0
+
+        # Every leaf object must be one of the plant's objects.
+        all_ids = set(plantarch.getAllPlantObjectIDs(plant_id))
+        assert set(leaf_ids).issubset(all_ids), (
+            "leaf object IDs must be a subset of the plant's object IDs"
+        )
+
+    def test_get_plant_leaf_bases(self, plantarch):
+        """Leaf bases come back as vec3, one per leaf."""
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+
+        bases = plantarch.getPlantLeafBases(plant_id)
+
+        assert isinstance(bases, list)
+        for base in bases:
+            assert isinstance(base, vec3)
+            # A built plant's leaves must sit at finite coordinates.
+            for component in (base.x, base.y, base.z):
+                assert math.isfinite(component)
+
+    def test_leaf_bases_count_matches_leaf_count(self, plantarch):
+        """getPlantLeafBases returns one position per leaf.
+
+        Guards the flat-array unpacking in the wrapper: the native buffer holds
+        3*count floats while `count` is the number of positions, so an off-by-three
+        here would surface as a wrong length rather than a crash.
+        """
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+
+        bases = plantarch.getPlantLeafBases(plant_id)
+        leaf_ids = plantarch.getPlantLeafObjectIDs(plant_id)
+
+        assert len(bases) == len(leaf_ids), (
+            f"expected one base per leaf, got {len(bases)} bases for "
+            f"{len(leaf_ids)} leaves"
+        )
+
+    def test_leaf_getters_reject_negative_plant_id(self, plantarch):
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.getPlantLeafObjectIDs(-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.getPlantLeafBases(-1)
+
+    @pytest.mark.parametrize("getter_name", ORGAN_GETTERS)
+    def test_organ_object_ids_are_subset_of_plant(self, plantarch, getter_name):
+        """Every organ getter returns a subset of the plant's object IDs.
+
+        An organ absent at this growth stage legitimately returns an empty list,
+        so this asserts the subset relation and element types rather than a
+        non-zero count -- the latter would depend on which model the library
+        happens to list first and on the age built here.
+        """
+        models = plantarch.getAvailablePlantModels()
+        if not models:
+            pytest.skip("No plant models available")
+
+        plantarch.loadPlantModelFromLibrary(models[0])
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+
+        organ_ids = getattr(plantarch, getter_name)(plant_id)
+
+        assert isinstance(organ_ids, list)
+        for organ_id in organ_ids:
+            assert isinstance(organ_id, int)
+            assert organ_id >= 0
+
+        all_ids = set(plantarch.getAllPlantObjectIDs(plant_id))
+        assert set(organ_ids).issubset(all_ids), (
+            f"{getter_name} must return a subset of the plant's object IDs"
+        )
+
+    def test_organ_object_ids_are_mutually_disjoint(self, plantarch):
+        """No object belongs to two organ types at once.
+
+        This is the guard against a getter being mis-wired to a sibling: every
+        one of these wrappers has the same signature and differs only in the
+        native symbol it calls, so a copy-paste that left the wrong name in
+        place would still satisfy the per-getter subset check above. Comparing
+        all five against each other is what makes that detectable.
+
+        Uses maize at age 40, the cheapest model/age combination in the library
+        that bears fruit -- the age of 15 used elsewhere in this file produces
+        none, which would leave the fruit set empty and its comparisons vacuous.
+        """
+        models = plantarch.getAvailablePlantModels()
+        if "maize" not in models:
+            pytest.skip("maize model not available")
+
+        plantarch.loadPlantModelFromLibrary("maize")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 40.0)
+
+        organs = {
+            name: set(getattr(plantarch, name)(plant_id))
+            for name in ORGAN_GETTERS
+        }
+
+        # Pin the preconditions that make the comparisons below meaningful. Two
+        # empty sets are trivially disjoint, so an organ that silently stopped
+        # being produced would turn this test green against any implementation.
+        for name in ("getPlantLeafObjectIDs", "getPlantPetioleObjectIDs",
+                     "getPlantFruitObjectIDs"):
+            assert organs[name], (
+                f"expected maize at age 40 to have {name} results; an empty set "
+                f"makes the disjointness assertions vacuous"
+            )
+
+        for a, b in itertools.combinations(sorted(organs), 2):
+            overlap = organs[a] & organs[b]
+            assert not overlap, (
+                f"{a} and {b} returned overlapping object IDs {sorted(overlap)[:5]} "
+                f"-- one of them may be wired to the other's native symbol"
+            )
+
+    @pytest.mark.parametrize("getter_name", ORGAN_GETTERS)
+    def test_organ_getters_reject_negative_plant_id(self, plantarch, getter_name):
+        with pytest.raises(ValueError, match="non-negative"):
+            getattr(plantarch, getter_name)(-1)
 
     def test_get_plant_uuids(self, plantarch):
         """Test getting UUIDs for a plant"""

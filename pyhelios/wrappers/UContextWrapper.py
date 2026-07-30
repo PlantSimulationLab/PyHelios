@@ -263,6 +263,19 @@ except AttributeError:
     # Primitive data functions not available in current native library
     _PRIMITIVE_DATA_FUNCTIONS_AVAILABLE = False
 
+# Bulk float getter. Declared in its own block so that a library predating it does
+# not disable every scalar primitive-data prototype above.
+try:
+    helios_lib.getPrimitiveDataFloatArray.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,
+        ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)
+    ]
+    helios_lib.getPrimitiveDataFloatArray.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getPrimitiveDataFloatArray.errcheck = _check_error
+    _PRIMITIVE_DATA_FLOAT_ARRAY_AVAILABLE = True
+except AttributeError:
+    _PRIMITIVE_DATA_FLOAT_ARRAY_AVAILABLE = False
+
 # Try to set up broadcast primitive data function prototypes
 _BROADCAST_PRIMITIVE_DATA_AVAILABLE = False
 try:
@@ -3119,6 +3132,37 @@ def getPrimitiveDataFloat(context, uuid:int, label:str) -> float:
         raise NotImplementedError("Primitive data functions not available in current Helios library. These require updated C++ wrapper implementation.")
     label_encoded = label.encode('utf-8')
     return helios_lib.getPrimitiveDataFloat(context, uuid, label_encoded)
+
+def getPrimitiveDataFloatArray(context, uuids, label:str) -> List[float]:
+    """Read one float primitive-data label across many primitives in a single call.
+
+    Returns values in the order the UUIDs were given, so callers control the
+    alignment. Reading N primitives one at a time costs N ctypes round-trips,
+    which dominates at canopy scale; this collapses them into one.
+    """
+    if not _PRIMITIVE_DATA_FLOAT_ARRAY_AVAILABLE:
+        raise NotImplementedError(
+            "getPrimitiveDataFloatArray is not available in the current Helios library. "
+            "Rebuild the native library to enable it: build_scripts/build_helios --clean"
+        )
+    uuid_list = list(uuids)
+    if not uuid_list:
+        raise ValueError("UUID list cannot be empty")
+
+    uuid_array = (ctypes.c_uint * len(uuid_list))(*uuid_list)
+    count = ctypes.c_size_t()
+    label_encoded = label.encode('utf-8')
+    ptr = helios_lib.getPrimitiveDataFloatArray(
+        context, uuid_array, ctypes.c_size_t(len(uuid_list)), label_encoded, ctypes.byref(count)
+    )
+    if not ptr or count.value == 0:
+        # _check_error raises on a native failure, so reaching here with no data
+        # means the library returned an empty result for a non-empty request.
+        raise RuntimeError(
+            f"getPrimitiveDataFloatArray returned no data for label '{label}' "
+            f"over {len(uuid_list)} primitives"
+        )
+    return [float(ptr[i]) for i in range(count.value)]
 
 def getPrimitiveDataString(context, uuid:int, label:str) -> str:
     if not _PRIMITIVE_DATA_FUNCTIONS_AVAILABLE:

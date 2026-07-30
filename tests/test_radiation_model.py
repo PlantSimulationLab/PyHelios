@@ -13,6 +13,7 @@ import os
 import textwrap
 import numpy as np
 from typing import List
+from unittest.mock import MagicMock
 
 # Add pyhelios to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from pyhelios import Context, RadiationModel, RadiationModelError, DataTypes
 from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.validation.exceptions import ValidationError
+from tests.conftest import skip_or_fail_without_gpu
 
 # RadiationSourceType may not be available if RadiationModel is None
 try:
@@ -66,9 +68,14 @@ def radiation_backend_constructible() -> bool:
 
 
 def skip_without_radiation_backend() -> None:
-    """Skip the calling test unless a RadiationModel can actually be built."""
+    """Skip the calling test unless a RadiationModel can actually be built.
+
+    Honors HELIOS_REQUIRE_GPU: on a runner dedicated to GPU coverage this fails
+    instead of skipping, so an environment that cannot build a backend at all
+    cannot pass by skipping everything.
+    """
     if not radiation_backend_constructible():
-        pytest.skip("no constructible ray-tracing backend in this environment")
+        skip_or_fail_without_gpu("no constructible ray-tracing backend")
 
 
 @pytest.mark.native_only
@@ -558,19 +565,32 @@ class TestRadiationModelCameraFunctions:
         """Test normalized camera image writing"""
         with Context() as context:
             with RadiationModel(context) as radiation_model:
+                # Add some geometry for the camera to render
+                from pyhelios.wrappers.DataTypes import vec3, vec2, RGBcolor
+                context.addPatch(
+                    center=vec3(0, 0, 0),
+                    size=vec2(1.0, 1.0),
+                    color=RGBcolor(0.5, 0.5, 0.5),
+                )
+
                 # Add radiation bands first
                 radiation_model.addRadiationBand("R")
                 radiation_model.addRadiationBand("G")
                 radiation_model.addRadiationBand("B")
 
                 # Add camera before writing image
-                from pyhelios.wrappers.DataTypes import vec3
                 radiation_model.addRadiationCamera(
                     camera_label="test_camera",
                     band_labels=["R", "G", "B"],
                     position=vec3(0, 0, 5),
                     lookat_or_direction=vec3(0, 0, 0)
                 )
+
+                # Render the camera. Writing an unrendered camera is refused by the
+                # pixel-data preflight in writeNormCameraImage(), so this is required
+                # rather than incidental.
+                radiation_model.updateGeometry()
+                radiation_model.runBand(["R", "G", "B"])
 
                 filename = radiation_model.writeNormCameraImage(
                     camera="test_camera",
@@ -2237,6 +2257,425 @@ class TestCameraExposureSparseSubject:
             f"exposure update had no effect: auto={auto_max:.4g} manual={manual_max:.4g}"
         )
 
+    def test_repeated_run_band_is_idempotent(self):
+        """Re-running runBand() on an unchanged scene must reproduce the same image.
+
+        Regression test for camera radiance doubling on the OptiX 8 backend. runBand()
+        seeds a host accumulator with each primitive's emitted flux, uploads it to the
+        device camera-scatter buffer, then adds that same buffer back into the host
+        accumulator after each scattering launch -- counting the emitted base twice.
+        On the first runBand() of an emission-only scene the upload is silently dropped
+        (the device buffer has not been allocated yet), which hid the defect; every
+        later call doubles. Reported as exactly 2x on the GPU CI runner, where
+        test_update_camera_parameters_honors_exposure got 541.7 against an expected
+        270.9 because it is the only test here that renders the same camera twice.
+
+        This asserts the property directly rather than through the exposure mode, so
+        it does not depend on updateCameraParameters() being involved -- it is not.
+        Manual exposure is used throughout so the comparison is against raw radiance
+        with no auto-exposure gain in between.
+
+        The Vulkan compute backend is unaffected, so this passes on any machine
+        without a CUDA GPU; the red state lives on the GPU runner.
+        """
+        from pyhelios.RadiationModel import CameraProperties
+        from pyhelios.wrappers.DataTypes import vec3, vec2
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(2.0, 2.0))
+            context.setPrimitiveDataFloat(uuid, "temperature", 350.0)
+            context.setPrimitiveDataFloat(uuid, "emissivity_TH", 1.0)
+            with self._radiation_model(context) as radiation:
+                radiation.addRadiationBand("TH")
+                radiation.enableEmission("TH")
+                radiation.setScatteringDepth("TH", 1)
+                radiation.setDiffuseRayCount("TH", 100)
+                radiation.addRadiationCamera(
+                    "cam", ["TH"], vec3(0, 0, 10), vec3(0, 0, 0),
+                    CameraProperties(camera_resolution=(64, 64), HFOV=30,
+                                     lens_diameter=0.0, exposure="manual"),
+                    antialiasing_samples=1,
+                )
+                radiation.updateGeometry()
+
+                maxima = []
+                for _ in range(3):
+                    radiation.runBand(["TH"])
+                    maxima.append(
+                        float(np.array(radiation.getCameraPixelData("cam", "TH")).max())
+                    )
+
+        # Anchored to the physical value, not just to run 1, so that a backend which
+        # doubled on every run (including the first) could not satisfy this by being
+        # consistently wrong.
+        expected = 5.670374419e-8 * 350.0 ** 4 / np.pi  # ~270.9 W/m^2/sr
+        for run_index, value in enumerate(maxima):
+            assert np.isclose(value, expected, rtol=0.05), (
+                f"runBand() call {run_index + 1} of {len(maxima)} gave {value:.4g}, "
+                f"expected ~{expected:.1f} (ratio {value / expected:.3f}); "
+                f"all runs: {['%.4g' % m for m in maxima]}"
+            )
+
+    def test_resolution_change_discards_image_data(self):
+        """Changing the resolution invalidates rendered pixel data (helios-core v1.3.79+).
+
+        The per-pixel buffers are sized to the resolution the camera was rendered at,
+        so a resolution change clears them rather than reinterpreting them at the new
+        size. Writing an image must then report the camera as unrendered until a fresh
+        runBand(), and a same-resolution update must NOT disturb the data.
+        """
+        from pyhelios.RadiationModel import CameraProperties
+        from pyhelios.wrappers.DataTypes import vec3, vec2
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(2.0, 2.0))
+            context.setPrimitiveDataFloat(uuid, "temperature", 350.0)
+            context.setPrimitiveDataFloat(uuid, "emissivity_TH", 1.0)
+            with self._radiation_model(context) as radiation:
+                radiation.addRadiationBand("TH")
+                radiation.enableEmission("TH")
+                radiation.setDiffuseRayCount("TH", 100)
+                radiation.addRadiationCamera(
+                    "cam", ["TH"], vec3(0, 0, 10), vec3(0, 0, 0),
+                    CameraProperties(camera_resolution=(32, 32), HFOV=30, lens_diameter=0.0),
+                    antialiasing_samples=1,
+                )
+                radiation.runBand(["TH"])
+
+                # Baseline: the camera has data at its original resolution.
+                assert len(radiation.getCameraPixelData("cam", "TH")) == 32 * 32
+
+                # Same resolution -> data survives.
+                radiation.updateCameraParameters(
+                    "cam",
+                    CameraProperties(camera_resolution=(32, 32), HFOV=45,
+                                     lens_diameter=0.0),
+                )
+                assert len(radiation.getCameraPixelData("cam", "TH")) == 32 * 32, (
+                    "a non-resolution parameter change must preserve image data"
+                )
+
+                # Different resolution -> data discarded, so writing must fail loudly
+                # rather than emit an image built from stale buffers.
+                radiation.updateCameraParameters(
+                    "cam",
+                    CameraProperties(camera_resolution=(64, 64), HFOV=45,
+                                     lens_diameter=0.0),
+                )
+                with pytest.raises(RadiationModelError) as excinfo:
+                    radiation.writeCameraImage("cam", ["TH"], "discarded",
+                                               image_path=str(tmp_path_for_images()))
+                assert "runBand()" in str(excinfo.value)
+
+                # A fresh render restores it, now at the new resolution.
+                radiation.runBand(["TH"])
+                assert len(radiation.getCameraPixelData("cam", "TH")) == 64 * 64
+
+
+def tmp_path_for_images():
+    """Directory for test image output, created on demand."""
+    path = os.path.join(REPO_ROOT, "tests", "_image_output")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+@pytest.mark.cross_platform
+class TestGeometrySubsetTracking:
+    """The _geometry_subset state machine that guards calculateGtheta().
+
+    helios-core v1.3.79 makes runBand() build geometry automatically, but a subset
+    from updateGeometry(uuids) is deliberately never rebuilt -- so PyHelios must not
+    auto-build over one. updateGeometry() with no argument clears the native subset
+    latch, which would silently widen the model back to the full Context.
+
+    Driven against stub wrappers so the state transitions are pinned without a GPU;
+    the flag logic is pure Python.
+    """
+
+    def _model(self, monkeypatch):
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        # calculateGtheta() passes the Context pointer through to the native call,
+        # which is stubbed below, so any non-None sentinel suffices.
+        model.context = MagicMock()
+        model._geometry_updated = False
+        model._geometry_subset = False
+
+        calls = []
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'updateGeometry',
+                            lambda *a: calls.append('full'))
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'updateGeometryUUIDs',
+                            lambda *a: calls.append('subset'))
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'runBand',
+                            lambda *a: None)
+        monkeypatch.setattr(RadiationModel, '_check_context_alive', lambda self: None)
+        return model, calls
+
+    def test_full_update_clears_subset_flag(self, monkeypatch):
+        model, calls = self._model(monkeypatch)
+
+        model.updateGeometry([1, 2])
+        assert model._geometry_subset is True
+
+        model.updateGeometry()
+        assert model._geometry_subset is False, (
+            "updateGeometry() clears the native subset latch, so the flag must follow"
+        )
+        assert calls == ['subset', 'full']
+
+    def test_runband_marks_geometry_built(self, monkeypatch):
+        """runBand() builds geometry itself, so the flag must record it."""
+        model, _ = self._model(monkeypatch)
+
+        assert model._geometry_updated is False
+        model.runBand("SW")
+        assert model._geometry_updated is True
+
+    def test_runband_preserves_subset_flag(self, monkeypatch):
+        """runBand() never rebuilds a subset, so it must not clear the flag."""
+        model, calls = self._model(monkeypatch)
+
+        model.updateGeometry([1, 2])
+        model.runBand("SW")
+
+        assert model._geometry_subset is True
+        assert 'full' not in calls, "runBand() must not trigger a full-Context build"
+
+    def test_calculate_gtheta_refuses_to_autobuild_over_subset(self, monkeypatch):
+        """The core hazard: auto-building would discard the caller's subset."""
+        model, calls = self._model(monkeypatch)
+        model._geometry_subset = True
+        model._geometry_updated = False
+
+        with pytest.raises(RuntimeError) as excinfo:
+            model.calculateGtheta(DataTypes.vec3(0, 0, 1))
+
+        message = str(excinfo.value)
+        assert "updateGeometry(uuids)" in message, (
+            f"error must tell the user how to rebuild the subset: {message}")
+        assert 'full' not in calls, (
+            "must NOT have silently widened the model to the full Context")
+
+    def test_calculate_gtheta_autobuilds_when_not_subset(self, monkeypatch):
+        """The pre-existing non-subset auto-build behavior must be preserved."""
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        model, calls = self._model(monkeypatch)
+        model._geometry_subset = False
+        model._geometry_updated = False
+
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'calculateGtheta',
+                            lambda *a: 0.5)
+
+        assert model.calculateGtheta(DataTypes.vec3(0, 0, 1)) == 0.5
+        assert calls == ['full'], "should have auto-built the full Context geometry"
+
+    def test_calculate_gtheta_after_runband_does_not_rebuild(self, monkeypatch):
+        """runBand() already built it, so no redundant rebuild and no warning."""
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        model, calls = self._model(monkeypatch)
+
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'calculateGtheta',
+                            lambda *a: 0.5)
+
+        model.runBand("SW")
+        assert model.calculateGtheta(DataTypes.vec3(0, 0, 1)) == 0.5
+        assert calls == [], "runBand() already built geometry; must not rebuild"
+
+    def test_calculate_gtheta_works_after_subset_then_runband(self, monkeypatch):
+        """updateGeometry(uuids) -> runBand() -> calculateGtheta() must not raise.
+
+        runBand() marks geometry as built, so the subset guard is not reached and the
+        G-function is reported over the subset the caller selected.
+        """
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        model, calls = self._model(monkeypatch)
+
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'calculateGtheta',
+                            lambda *a: 0.25)
+
+        model.updateGeometry([1, 2])
+        model.runBand("SW")
+
+        assert model.calculateGtheta(DataTypes.vec3(0, 0, 1)) == 0.25
+        assert calls == ['subset'], (
+            "the subset must survive: no full build may have happened")
+
+    def test_calculate_gtheta_works_after_subset_then_full_update(self, monkeypatch):
+        """updateGeometry(uuids) -> updateGeometry() -> calculateGtheta() succeeds."""
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        model, calls = self._model(monkeypatch)
+
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'calculateGtheta',
+                            lambda *a: 0.75)
+
+        model.updateGeometry([1, 2])
+        model.updateGeometry()
+
+        assert model.calculateGtheta(DataTypes.vec3(0, 0, 1)) == 0.75
+        assert calls == ['subset', 'full']
+
+
+@pytest.mark.native_only
+class TestGPUEnvironmentBindings:
+    """The helios-core v1.3.79 GPU environment functions, through their real bindings.
+
+    conftest's skip_or_fail_without_gpu() deliberately reimplements the same
+    environment logic in pure Python so test gating works in mock mode. That means
+    nothing else in the suite exercises these ctypes bindings, so a wrong argtypes,
+    restype, or string encoding would go unnoticed. These tests call them directly.
+
+    The variable is set in a CHILD PROCESS environment rather than through
+    monkeypatch, because an os.environ change is invisible to the native library on
+    Windows. libhelios.dll links the MSVC C runtime statically (MSVC_RUNTIME_LIBRARY
+    "MultiThreaded" in pyhelios_build/CMakeLists.txt), so it holds a private copy of
+    the environment snapshotted at DLL load, while os.environ writes go through
+    Python's own CRT. Setting the variable before the interpreter starts is the only
+    way the DLL can see it -- which is also the rule users must follow -- and it
+    exercises the bindings identically on every platform.
+    """
+
+    @staticmethod
+    def _in_child(body: str, **env: "str | None") -> subprocess.CompletedProcess:
+        """Run `body` in a fresh interpreter with `env` applied to its environment.
+
+        A value of None removes the variable rather than setting it empty: the two
+        are different to the functions under test, and Windows cannot hold an empty
+        variable at all.
+        """
+        child_env = dict(os.environ, PYTHONPATH=REPO_ROOT)
+        for name, value in env.items():
+            if value is None:
+                child_env.pop(name, None)
+            else:
+                child_env[name] = value
+        return subprocess.run(
+            [sys.executable, '-c', textwrap.dedent(body)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=REPO_ROOT,
+            env=child_env,
+        )
+
+    @pytest.mark.parametrize("value,expected", [
+        (None, False),
+        ("1", True),
+        ("0", False),  # exactly "0" is the only value that counts as unset
+        ("false", True),  # any other value counts as set, including "false"
+    ])
+    def test_gpu_required_by_environment_reports_the_variable(self, value, expected):
+        """The raw, case-sensitive comparison against "0", through the real binding."""
+        result = self._in_child("""
+            from pyhelios import Global
+            print("RESULT:", Global.gpuRequiredByEnvironment())
+        """, HELIOS_REQUIRE_GPU=value)
+
+        assert result.returncode == 0, result.stderr
+        assert f"RESULT: {expected}" in result.stdout, result.stdout
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="static-CRT DLL cannot observe an os.environ change (see class docstring)",
+    )
+    def test_gpu_required_by_environment_is_not_cached(self, monkeypatch):
+        """Re-reads the environment on every call rather than latching the first answer.
+
+        gpuBackendsDisabledByEnvironment() deliberately caches process-wide and this
+        one deliberately does not, and only an in-process flip distinguishes them --
+        every other test here starts a fresh process and so would pass either way.
+        """
+        from pyhelios import Global
+
+        monkeypatch.delenv("HELIOS_REQUIRE_GPU", raising=False)
+        assert Global.gpuRequiredByEnvironment() is False
+
+        monkeypatch.setenv("HELIOS_REQUIRE_GPU", "1")
+        assert Global.gpuRequiredByEnvironment() is True, (
+            "the native function must re-read the environment, not cache it"
+        )
+
+    def test_require_gpu_or_fail_is_noop_when_unset(self):
+        result = self._in_child("""
+            from pyhelios import Global
+            Global.requireGPUOrFail("should do nothing")
+            print("RETURNED")
+        """, HELIOS_REQUIRE_GPU=None)
+
+        assert result.returncode == 0, result.stderr
+        assert "RETURNED" in result.stdout, result.stdout
+
+    def test_require_gpu_or_fail_raises_when_set(self):
+        """Always raises when HELIOS_REQUIRE_GPU is set; it never probes hardware."""
+        result = self._in_child("""
+            from pyhelios import Global
+            try:
+                Global.requireGPUOrFail("radiation ray tracing")
+            except Exception as e:
+                print("RAISED:", repr(str(e)))
+            else:
+                print("DID NOT RAISE")
+        """, HELIOS_REQUIRE_GPU="1", HELIOS_NO_GPU=None)
+
+        assert result.returncode == 0, result.stderr
+        assert "RAISED:" in result.stdout, result.stdout
+        # Naming the variable also proves this is the native message rather than the
+        # "not available in the current native library" RuntimeError from the wrapper.
+        assert "HELIOS_REQUIRE_GPU" in result.stdout, result.stdout
+
+    def test_require_gpu_or_fail_reports_contradictory_env(self):
+        """Setting both REQUIRE and NO_GPU must be reported, not silently resolved."""
+        result = self._in_child("""
+            from pyhelios import Global
+            try:
+                Global.requireGPUOrFail("contradiction check")
+            except Exception as e:
+                print("RAISED:", repr(str(e)))
+            else:
+                print("DID NOT RAISE")
+        """, HELIOS_REQUIRE_GPU="1", HELIOS_NO_GPU="1")
+
+        assert result.returncode == 0, result.stderr
+        assert "RAISED:" in result.stdout, result.stdout
+        assert "HELIOS_NO_GPU" in result.stdout and "HELIOS_REQUIRE_GPU" in result.stdout, result.stdout
+
+    def test_require_gpu_or_fail_accepts_empty_message(self):
+        """The const char* argument must tolerate an empty string (NULL-equivalent)."""
+        result = self._in_child("""
+            from pyhelios import Global
+            try:
+                Global.requireGPUOrFail("")
+            except Exception as e:
+                print("RAISED:", repr(str(e)))
+            else:
+                print("DID NOT RAISE")
+        """, HELIOS_REQUIRE_GPU="1", HELIOS_NO_GPU=None)
+
+        assert result.returncode == 0, result.stderr
+        assert "RAISED:" in result.stdout, result.stdout
+        assert "HELIOS_REQUIRE_GPU" in result.stdout, result.stdout
+
+    def test_gpu_backends_disabled_by_environment_returns_bool(self):
+        """Exercises the binding; the value depends on how the process was started.
+
+        This one caches process-wide on first call, so it cannot be toggled with
+        monkeypatch the way gpuRequiredByEnvironment() can. Assert the binding
+        round-trips a real bool rather than trying to flip it.
+        """
+        assert isinstance(RadiationModel.gpuBackendsDisabledByEnvironment(), bool)
+
+    def test_no_gpu_veto_agrees_with_probe(self):
+        """If the environment vetoes GPU backends, probing must report none."""
+        if RadiationModel.gpuBackendsDisabledByEnvironment():
+            assert RadiationModel.probeAnyGPUBackend() is False, (
+                "HELIOS_NO_GPU is set, so probeAnyGPUBackend() must return False"
+            )
+
 
 if __name__ == "__main__":
     # Run tests with pytest
@@ -2389,6 +2828,76 @@ class TestWriteCameraImagePixelDataPreflight:
 
         assert "runBand()" in str(excinfo.value)
 
+    def test_empty_native_filename_raises_instead_of_reporting_success(self, monkeypatch):
+        """An empty native return means the write failed and must not look like success.
+
+        helios-core v1.3.79 signals a failed camera-image write by returning an
+        empty filename rather than throwing. The preflight above catches the
+        common causes, but not all of them -- an unwritable image_path fails this
+        way too. Reporting "written to: " for a file that was never created
+        violates the fail-fast policy, so an empty return must raise.
+        """
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+
+        model = self._model_with_stub(
+            monkeypatch,
+            cameras=["cam"],
+            rendered={"cam": {"Red"}},
+        )
+
+        monkeypatch.setattr(
+            radiation_module.radiation_wrapper, 'writeCameraImage',
+            lambda *args, **kwargs: "")
+
+        with pytest.raises(RadiationModelError) as excinfo:
+            model.writeCameraImage(camera="cam", bands=["Red"],
+                                   imagefile_base="out",
+                                   image_path="/nonexistent/dir")
+
+        message = str(excinfo.value)
+        assert "cam" in message, f"error must name the camera: {message}"
+        assert "/nonexistent/dir" in message, (
+            f"error should name the output path, the likeliest cause: {message}")
+
+    def test_empty_native_filename_raises_for_writenorm(self, monkeypatch):
+        """Same empty-return contract applies to writeNormCameraImage."""
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+
+        model = self._model_with_stub(
+            monkeypatch,
+            cameras=["cam"],
+            rendered={"cam": {"Red"}},
+        )
+
+        monkeypatch.setattr(
+            radiation_module.radiation_wrapper, 'writeNormCameraImage',
+            lambda *args, **kwargs: "")
+
+        with pytest.raises(RadiationModelError) as excinfo:
+            model.writeNormCameraImage(camera="cam", bands=["Red"],
+                                       imagefile_base="out",
+                                       image_path="/nonexistent/dir")
+
+        assert "cam" in str(excinfo.value)
+
+    def test_successful_write_still_logs_and_returns_filename(self, monkeypatch):
+        """The empty-return guard must not disturb the success path."""
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+
+        model = self._model_with_stub(
+            monkeypatch,
+            cameras=["cam"],
+            rendered={"cam": {"Red"}},
+        )
+
+        monkeypatch.setattr(
+            radiation_module.radiation_wrapper, 'writeCameraImage',
+            lambda *args, **kwargs: "cam_Red_00001.jpeg")
+
+        assert model.writeCameraImage(
+            camera="cam", bands=["Red"],
+            imagefile_base="out") == "cam_Red_00001.jpeg"
+
 
 @pytest.mark.native_only
 class TestWriteCameraImagePixelDataPreflightNative:
@@ -2490,3 +2999,224 @@ class TestWriteCameraImagePixelDataPreflightNative:
                 imagefile_base="issue4_ok", image_path=str(tmp_path) + os.sep)
 
             assert filename, "valid camera image write returned no filename"
+
+
+@pytest.mark.native_only
+class TestBandSpecificAbsorbedFlux:
+    """Per-band absorbed flux must be retrievable and UUID-aligned (GitHub issue #10).
+
+    ``getTotalAbsorbedFlux()`` sums ``radiation_flux_<band>`` over every band
+    registered in the model (RadiationModel.cpp), which double-counts overlapping
+    bands such as PAR + NIR + SW, and it is indexed by the radiation model's
+    internal primitive ordering rather than by ``context.getAllUUIDs()``.
+    ``Context::getAllUUIDs`` iterates an ``unordered_map``, so its order is a hash
+    order that does not match; two patches come back as ``[1, 0]``. Pairing the
+    two by position therefore attributes flux to the wrong primitive.
+
+    ``getAbsorbedFlux()`` reads the per-band primitive data keyed by UUID, so it
+    is correct for a single band and correct by construction on ordering.
+
+    Not marked ``requires_gpu``: these run on the Vulkan software-BVH backend,
+    which needs no GPU. Environments with no constructible backend skip.
+    """
+
+    @staticmethod
+    def _radiation_or_skip(context):
+        skip_without_radiation_backend()
+        try:
+            return RadiationModel(context)
+        except RadiationModelError as e:
+            msg = str(e)
+            if ("No compatible GPU backend found" in msg
+                    or "Failed to initialize RadiationModel" in msg):
+                pytest.skip(f"No ray-tracing backend available: {e}")
+            raise
+
+    @staticmethod
+    def _shaded_scene(context):
+        """Small patch fully shaded by a large one, so per-primitive flux differs.
+
+        Returns (shaded_uuid, lit_uuid). Distinct flux values are what make an
+        index-alignment error detectable at all.
+        """
+        shaded = context.addPatch(center=DataTypes.vec3(0, 0, 0),
+                                  size=DataTypes.vec2(1, 1))
+        lit = context.addPatch(center=DataTypes.vec3(0, 0, 2),
+                               size=DataTypes.vec2(6, 6))
+        return shaded, lit
+
+    def _run(self, context, radiation, bands):
+        for band in bands:
+            radiation.addRadiationBand(band)
+        source = radiation.addCollimatedRadiationSource(
+            direction=DataTypes.vec3(0, 0, -1))
+        for i, band in enumerate(bands):
+            radiation.setSourceFlux(source, band, 200.0 * (i + 1))
+            radiation.setDiffuseRadiationFlux(band, 0.0)
+            radiation.setDirectRayCount(band, 300)
+            radiation.setScatteringDepth(band, 0)
+        radiation.updateGeometry()
+        radiation.runBand(list(bands))
+
+    def test_absorbed_flux_is_uuid_aligned(self):
+        """getAbsorbedFlux(band)[i] must belong to getAllUUIDs()[i]."""
+        with Context() as context:
+            self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, ["SW"])
+
+                uuids = context.getAllUUIDs()
+                flux = radiation.getAbsorbedFlux("SW")
+
+                assert len(flux) == len(uuids)
+                truth = [context.getPrimitiveDataFloat(u, "radiation_flux_SW")
+                         for u in uuids]
+                # Guard the guard: if every primitive absorbed the same amount,
+                # a misalignment would pass unnoticed.
+                assert max(truth) - min(truth) > 1.0, (
+                    f"scene does not discriminate primitives: {truth}")
+                for i, uuid in enumerate(uuids):
+                    assert abs(flux[i] - truth[i]) < 1e-3, (
+                        f"index {i} (UUID {uuid}): getAbsorbedFlux gave {flux[i]}, "
+                        f"primitive data says {truth[i]}")
+
+    def test_absorbed_flux_is_per_band_not_summed(self):
+        """Each band must report its own flux, not the all-band sum."""
+        bands = ["PAR", "NIR", "SW"]
+        with Context() as context:
+            self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, bands)
+
+                uuids = context.getAllUUIDs()
+                per_band = {b: radiation.getAbsorbedFlux(b) for b in bands}
+
+                for band in bands:
+                    expected = [context.getPrimitiveDataFloat(
+                        u, f"radiation_flux_{band}") for u in uuids]
+                    assert per_band[band] == pytest.approx(expected, abs=1e-3)
+
+                # The sum over bands is what getTotalAbsorbedFlux() reports, so
+                # any single band must be strictly smaller than that sum.
+                summed = [sum(per_band[b][i] for b in bands)
+                          for i in range(len(uuids))]
+                lit_index = max(range(len(uuids)), key=lambda i: summed[i])
+                for band in bands:
+                    assert per_band[band][lit_index] < summed[lit_index] - 1.0, (
+                        f"band {band} looks like the all-band sum")
+
+    def test_absorbed_flux_accepts_band_list(self):
+        """A list of bands returns a dict keyed by band label."""
+        bands = ["PAR", "NIR"]
+        with Context() as context:
+            self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, bands)
+
+                result = radiation.getAbsorbedFlux(bands)
+
+                assert isinstance(result, dict)
+                assert set(result) == set(bands)
+                for band in bands:
+                    assert result[band] == pytest.approx(
+                        radiation.getAbsorbedFlux(band), abs=1e-3)
+
+    def test_absorbed_flux_honors_explicit_uuids(self):
+        """An explicit UUID list controls both selection and order."""
+        with Context() as context:
+            shaded, lit = self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, ["SW"])
+
+                pair = radiation.getAbsorbedFlux("SW", uuids=[lit, shaded])
+
+                assert len(pair) == 2
+                assert pair[0] == pytest.approx(
+                    context.getPrimitiveDataFloat(lit, "radiation_flux_SW"),
+                    abs=1e-3)
+                assert pair[1] == pytest.approx(
+                    context.getPrimitiveDataFloat(shaded, "radiation_flux_SW"),
+                    abs=1e-3)
+
+    def test_absorbed_flux_unknown_band_raises(self):
+        """An unregistered band must name the problem, not fail obscurely."""
+        with Context() as context:
+            self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, ["SW"])
+
+                with pytest.raises(RadiationModelError) as excinfo:
+                    radiation.getAbsorbedFlux("NIR")
+
+                assert "NIR" in str(excinfo.value)
+
+    def test_absorbed_flux_before_runband_raises(self):
+        """Querying a band that was added but never run must say so."""
+        with Context() as context:
+            self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                radiation.addRadiationBand("SW")
+                radiation.addRadiationBand("NIR")
+                source = radiation.addCollimatedRadiationSource(
+                    direction=DataTypes.vec3(0, 0, -1))
+                radiation.setSourceFlux(source, "SW", 500.0)
+                radiation.setDirectRayCount("SW", 200)
+                radiation.updateGeometry()
+                radiation.runBand("SW")
+
+                with pytest.raises(RadiationModelError) as excinfo:
+                    radiation.getAbsorbedFlux("NIR")
+
+                message = str(excinfo.value)
+                assert "runBand" in message
+                assert "NIR" in message
+
+    def test_absorbed_flux_rejects_non_string_band(self):
+        """Type errors must be reported as such."""
+        with Context() as context:
+            self._shaded_scene(context)
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, ["SW"])
+
+                with pytest.raises((TypeError, ValueError)):
+                    radiation.getAbsorbedFlux(42)
+
+    def test_absorbed_flux_does_not_rescan_uuids_per_primitive(self):
+        """Retrieval must stay linear in the primitive count.
+
+        Any UUID-existence check that re-fetches and rescans the context's UUID
+        list per element turns retrieval into O(N^2) with N native round-trips --
+        ~15 s for a 20k-primitive canopy against ~40 ms when the lookup is hoisted.
+        ``Context._validate_uuids()`` hoists it; reintroducing a per-element check
+        here would not.
+
+        Counting ``getAllUUIDs()`` calls detects that without timing anything: the
+        quadratic form calls it once per primitive.
+        """
+        with Context() as context:
+            for i in range(6):
+                context.addPatch(center=DataTypes.vec3(i * 0.5, 0, 0),
+                                 size=DataTypes.vec2(0.4, 0.4))
+            with self._radiation_or_skip(context) as radiation:
+                self._run(context, radiation, ["SW"])
+
+                primitive_count = context.getPrimitiveCount()
+                calls = []
+                real_get_all = context.getAllUUIDs
+
+                def counting_get_all():
+                    calls.append(1)
+                    return real_get_all()
+
+                context.getAllUUIDs = counting_get_all
+                try:
+                    flux = radiation.getAbsorbedFlux("SW")
+                finally:
+                    del context.getAllUUIDs
+
+                assert len(flux) == primitive_count
+                assert len(calls) <= 1, (
+                    f"getAllUUIDs() called {len(calls)} times for "
+                    f"{primitive_count} primitives - retrieval is rescanning "
+                    f"the UUID list per primitive"
+                )

@@ -266,6 +266,63 @@ with Context() as context:
             print(f"  Plant now has {len(object_ids)} objects, {len(uuids)} primitives")
 ```
 
+### Querying Organs
+
+`getPlantLeafObjectIDs()` returns the object ID of every leaf on a plant, and `getPlantLeafBases()` returns each leaf's attachment base position (where it joins its petiole, not the leaf centroid).
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.types import vec3
+
+with Context() as context:
+    with PlantArchitecture(context) as plantarch:
+        plantarch.loadPlantModelFromLibrary("soybean")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 20.0)
+
+        leaf_ids = plantarch.getPlantLeafObjectIDs(plant_id)   # list of object IDs
+        bases = plantarch.getPlantLeafBases(plant_id)          # list of vec3
+
+        print(f"{len(leaf_ids)} leaves; first attaches at {bases[0]}")
+
+        # Leaf object IDs are a subset of the plant's object IDs, so they can be
+        # used with any Context object query.
+        for leaf_id in leaf_ids[:5]:
+            print(context.getObjectPrimitiveUUIDs(leaf_id))
+```
+
+> **Do not pair the two results positionally.** `getPlantLeafObjectIDs()` and `getPlantLeafBases()` are built by independent traversals of the shoot tree, so element *i* of one is not guaranteed to describe the same leaf as element *i* of the other. helios-core keeps an internal `getPlantLeafObjectIDsAndBases()` that gathers both in a single traversal for exactly this reason, but it is protected and not reachable from PyHelios. If you need the correspondence, derive the position from the object ID instead — e.g. via `context.getObjectPrimitiveUUIDs(leaf_id)` and the primitive vertices.
+
+Four further getters cover the remaining organ types, all with the same signature and return type:
+
+| Method | Organ |
+|---|---|
+| `getPlantLeafObjectIDs(plant_id)` | Leaves |
+| `getPlantPetioleObjectIDs(plant_id)` | Petioles (stalks attaching leaves to the stem) |
+| `getPlantPeduncleObjectIDs(plant_id)` | Peduncles (stalks bearing flowers and fruit) |
+| `getPlantFlowerObjectIDs(plant_id)` | Flowers / inflorescences |
+| `getPlantFruitObjectIDs(plant_id)` | Fruit |
+
+Each returns object IDs that are a subset of `getAllPlantObjectIDs()`, and the five sets are mutually disjoint — no object is both a leaf and a fruit — so they can be used to partition a plant by organ type.
+
+```python
+import numpy as np
+
+fruit_ids = plantarch.getPlantFruitObjectIDs(plant_id)
+
+for fruit_id in fruit_ids:
+    uuids = context.getObjectPrimitiveUUIDs(fruit_id)
+    # Areas come back as float32; accumulate in float64 to avoid drift.
+    area = context.getPrimitiveArea(uuids).sum(dtype=np.float64)
+    print(f"fruit {fruit_id}: {area:.4f} m²")
+
+# Partition a plant by organ type
+for name in ("Leaf", "Petiole", "Peduncle", "Flower", "Fruit"):
+    ids = getattr(plantarch, f"getPlant{name}ObjectIDs")(plant_id)
+    print(f"{name}: {len(ids)}")
+```
+
+> **An empty list is a normal result, not a failure.** The reproductive organs — peduncles, flowers and fruit — exist only once a plant reaches the corresponding growth stage, so a plant built at a young age returns `[]` for them. Flowers additionally disappear as they set fruit, so a mature plant can legitimately report many fruit and no flowers. If you expect an organ and get none, advance the plant further with `advanceTime()` rather than treating the empty list as an error.
+
 ### Multi-Species Simulation
 
 ```python
