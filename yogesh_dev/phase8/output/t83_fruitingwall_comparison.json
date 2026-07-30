@@ -1,0 +1,288 @@
+{
+  "spacing_m": 1.5,
+  "seeds": [
+    1000,
+    1001,
+    1002
+  ],
+  "results": {
+    "apple": [
+      {
+        "tree_type": "apple",
+        "seed": 1000,
+        "spacing_m": 1.5,
+        "per_tree_x_extent": [
+          [
+            -2.3130555152893066,
+            -0.3961487412452698
+          ],
+          [
+            -1.4185023307800293,
+            0.8409024477005005
+          ],
+          [
+            0.42112770676612854,
+            2.5079004764556885
+          ]
+        ],
+        "mean_tree_width_m": 2.0876947740713754,
+        "adjacent_overlaps": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "overlap_m": 1.0223535895347595,
+            "tree_i_width_m": 1.9169067740440369,
+            "tree_i1_width_m": 2.25940477848053,
+            "interpenetration_frac": 0.4895964185989669
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "overlap_m": 0.41977474093437195,
+            "tree_i_width_m": 2.25940477848053,
+            "tree_i1_width_m": 2.08677276968956,
+            "interpenetration_frac": 0.19316962378175898
+          }
+        ],
+        "mean_interpenetration_frac": 0.34138302119036296
+      },
+      {
+        "tree_type": "apple",
+        "seed": 1001,
+        "spacing_m": 1.5,
+        "per_tree_x_extent": [
+          [
+            -2.8938965797424316,
+            -0.5712300539016724
+          ],
+          [
+            -1.4096933603286743,
+            0.7645248770713806
+          ],
+          [
+            0.6270859241485596,
+            2.453827142715454
+          ]
+        ],
+        "mean_tree_width_m": 2.107875327269236,
+        "adjacent_overlaps": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "overlap_m": 0.838463306427002,
+            "tree_i_width_m": 2.3226665258407593,
+            "tree_i1_width_m": 2.174218237400055,
+            "interpenetration_frac": 0.37290851359185745
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "overlap_m": 0.13743895292282104,
+            "tree_i_width_m": 2.174218237400055,
+            "tree_i1_width_m": 1.8267412185668945,
+            "interpenetration_frac": 0.06870299708628509
+          }
+        ],
+        "mean_interpenetration_frac": 0.22080575533907126
+      },
+      {
+        "tree_type": "apple",
+        "seed": 1002,
+        "spacing_m": 1.5,
+        "per_tree_x_extent": [
+          [
+            -2.8574166297912598,
+            -0.4846666753292084
+          ],
+          [
+            -1.1638822555541992,
+            0.9846113920211792
+          ],
+          [
+            0.3344876170158386,
+            2.413304090499878
+          ]
+        ],
+        "mean_tree_width_m": 2.200020025173823,
+        "adjacent_overlaps": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "overlap_m": 0.6792155802249908,
+            "tree_i_width_m": 2.3727499544620514,
+            "tree_i1_width_m": 2.1484936475753784,
+            "interpenetration_frac": 0.30045520215673077
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "overlap_m": 0.6501237750053406,
+            "tree_i_width_m": 2.1484936475753784,
+            "tree_i1_width_m": 2.0788164734840393,
+            "interpenetration_frac": 0.3075827211098538
+          }
+        ],
+        "mean_interpenetration_frac": 0.3040189616332923
+      }
+    ],
+    "apple_fruitingwall": [
+      {
+        "tree_type": "apple_fruitingwall",
+        "seed": 1000,
+        "spacing_m": 1.5,
+        "per_tree_x_extent": [
+          [
+            -2.1887266635894775,
+            -0.8359336256980896
+          ],
+          [
+            -0.6678650379180908,
+            0.7334088087081909
+          ],
+          [
+            0.8729941844940186,
+            2.1347811222076416
+          ]
+        ],
+        "mean_tree_width_m": 1.3386179407437642,
+        "adjacent_overlaps": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "overlap_m": 0.0,
+            "tree_i_width_m": 1.352793037891388,
+            "tree_i1_width_m": 1.4012738466262817,
+            "interpenetration_frac": 0.0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "overlap_m": 0.0,
+            "tree_i_width_m": 1.4012738466262817,
+            "tree_i1_width_m": 1.261786937713623,
+            "interpenetration_frac": 0.0
+          }
+        ],
+        "mean_interpenetration_frac": 0.0
+      },
+      {
+        "tree_type": "apple_fruitingwall",
+        "seed": 1001,
+        "spacing_m": 1.5,
+        "per_tree_x_extent": [
+          [
+            -2.276599407196045,
+            -0.8141555190086365
+          ],
+          [
+            -0.7884179353713989,
+            0.7424919605255127
+          ],
+          [
+            0.42945119738578796,
+            2.206984758377075
+          ]
+        ],
+        "mean_tree_width_m": 1.590295781691869,
+        "adjacent_overlaps": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "overlap_m": 0.0,
+            "tree_i_width_m": 1.4624438881874084,
+            "tree_i1_width_m": 1.5309098958969116,
+            "interpenetration_frac": 0.0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "overlap_m": 0.31304076313972473,
+            "tree_i_width_m": 1.5309098958969116,
+            "tree_i1_width_m": 1.7775335609912872,
+            "interpenetration_frac": 0.1892374871862912
+          }
+        ],
+        "mean_interpenetration_frac": 0.0946187435931456
+      },
+      {
+        "tree_type": "apple_fruitingwall",
+        "seed": 1002,
+        "spacing_m": 1.5,
+        "per_tree_x_extent": [
+          [
+            -2.2610995769500732,
+            -0.6753118634223938
+          ],
+          [
+            -0.7158370614051819,
+            0.6593880653381348
+          ],
+          [
+            0.7333505749702454,
+            2.2939462661743164
+          ]
+        ],
+        "mean_tree_width_m": 1.5072028438250225,
+        "adjacent_overlaps": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "overlap_m": 0.040525197982788086,
+            "tree_i_width_m": 1.5857877135276794,
+            "tree_i1_width_m": 1.3752251267433167,
+            "interpenetration_frac": 0.02737252431440261
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "overlap_m": 0.0,
+            "tree_i_width_m": 1.3752251267433167,
+            "tree_i1_width_m": 1.560595691204071,
+            "interpenetration_frac": 0.0
+          }
+        ],
+        "mean_interpenetration_frac": 0.013686262157201305
+      }
+    ]
+  },
+  "summary": {
+    "apple": {
+      "mean_tree_width_m": 2.1318633755048118,
+      "mean_interpenetration_frac": 0.2887359127209088,
+      "n_seeds_with_any_overlap": 3,
+      "n_seeds": 3
+    },
+    "apple_fruitingwall": {
+      "mean_tree_width_m": 1.4787055220868852,
+      "mean_interpenetration_frac": 0.036101668583448966,
+      "n_seeds_with_any_overlap": 2,
+      "n_seeds": 3
+    }
+  },
+  "task_doc_claim": "current 1.5m spacing already interpenetrates canopies under the plain apple type",
+  "task_doc_claim_supported": true
+}

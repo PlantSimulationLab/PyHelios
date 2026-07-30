@@ -1,0 +1,111 @@
+{
+  "status": "DONE",
+  "test_seed": 2000,
+  "scan_report": {
+    "n_stations": 4,
+    "standoff_m": 3.518545389175415,
+    "scan_s": 0.4617888927459717,
+    "n_points_total": 60783,
+    "n_real_surface_hits": 7767,
+    "n_recorded_misses": 53016,
+    "canopy_height_m": 2.7175594394793734,
+    "canopy_width_m": 2.3456969261169434
+  },
+  "reconstruction_report": {
+    "triangulation_s": 0.008153915405273438,
+    "n_triangles": 5712,
+    "triangulation_stats": {
+      "candidates": 15412,
+      "dropped_lmax": 9693,
+      "dropped_aspect": 7,
+      "dropped_degenerate": 0
+    },
+    "n_grid_cells": 96,
+    "lidar_inverted_leaf_area_m2": 4.442435272037983,
+    "ground_truth_leaf_area_m2": 4.447876538572018,
+    "calculateSyntheticLeafArea_api_result_m2": 4.442435272037983,
+    "calculateSyntheticLeafArea_api_unreliable_here": true,
+    "leaf_area_ratio_lidar_over_ground_truth": 0.9987766597191158
+  },
+  "n_reconstructed_leaf_triangles_added_to_twin": 5712,
+  "original_metric_vector": {
+    "single_fixed": 0.1450792833535854,
+    "fixed_rig": 0.2631516329334976,
+    "reachable_union": 0.45139201601968815,
+    "look_away": 0.0
+  },
+  "twin_metric_vector": {
+    "single_fixed": 0.12539879694467304,
+    "fixed_rig": 0.22827977200660007,
+    "reachable_union": 0.39556899094818004,
+    "look_away": 0.0
+  },
+  "original_ranks": {
+    "reachable_union": 1,
+    "fixed_rig": 2,
+    "single_fixed": 3,
+    "look_away": 4
+  },
+  "twin_ranks": {
+    "reachable_union": 1,
+    "fixed_rig": 2,
+    "single_fixed": 3,
+    "look_away": 4
+  },
+  "rank_preserved_exactly": true,
+  "spearman_rho_original_vs_twin_ranks": 1.0,
+  "original_score_s": 1.7226388454437256,
+  "twin_score_s": 1.4506700038909912,
+  "original_full_policies": {
+    "single_fixed": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.1450792833535854,
+      "n_fruit_observed_at_all": 21,
+      "fraction_fruit_observed": 1.0
+    },
+    "fixed_rig": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.2631516329334976,
+      "n_fruit_observed_at_all": 21,
+      "fraction_fruit_observed": 1.0
+    },
+    "reachable_union": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.45139201601968815,
+      "n_fruit_observed_at_all": 21,
+      "fraction_fruit_observed": 1.0
+    },
+    "look_away": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.0,
+      "n_fruit_observed_at_all": 0,
+      "fraction_fruit_observed": 0.0
+    }
+  },
+  "twin_full_policies": {
+    "single_fixed": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.12539879694467304,
+      "n_fruit_observed_at_all": 21,
+      "fraction_fruit_observed": 1.0
+    },
+    "fixed_rig": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.22827977200660007,
+      "n_fruit_observed_at_all": 21,
+      "fraction_fruit_observed": 1.0
+    },
+    "reachable_union": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.39556899094818004,
+      "n_fruit_observed_at_all": 21,
+      "fraction_fruit_observed": 1.0
+    },
+    "look_away": {
+      "n_fruit": 21,
+      "mean_coverage_frac": 0.0,
+      "n_fruit_observed_at_all": 0,
+      "fraction_fruit_observed": 0.0
+    }
+  }
+}

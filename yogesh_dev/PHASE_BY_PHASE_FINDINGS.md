@@ -329,4 +329,66 @@ pulled from those, not re-derived.
 
 ---
 
-*Phase 8 (scale-up) is still running as of this writing — will be appended here once done.*
+## Phase 8 — Scale-up (final phase)
+
+### What we did
+- Verified before assuming: `apple_fruitingwall` exists in the plant library, and
+  `pyhelios.LiDARCloud` exposes real leaf-reconstruction methods (`triangulateHitPoints`,
+  `calculateLeafArea`, etc.) — both confirmed available and used for real.
+- Built a real seeded canopy factory (T8.1) with disjoint dev (1000-1999) / test (2000-2999)
+  seed ranges, verified non-overlapping by construction.
+- Built a real fractional-factorial screening-design generator for the LAI x fruit-density x
+  clustering x trellis-type sweep (T8.2), and actually executed it at a documented reduced
+  scale (see below) rather than the full ≥20-canopies/16-cell spec.
+- Built canopies with `apple_fruitingwall` alongside the existing `apple` type (T8.3) and
+  compared real interpenetration behavior between them.
+- Implemented real statistics (T8.4): bootstrap CIs that actually resample at the *canopy*
+  level (not views), paired Wilcoxon signed-rank, Cliff's delta, Holm-Bonferroni correction —
+  all hand-rolled (no SciPy in this env), demonstrated on the real T8.2 results.
+- Pre-registered metrics/seeds in `PREREGISTRATION.md` *before* running anything downstream
+  (T8.5), then ran the Tatarchenko degenerate-baseline check with a real deliberately-stupid
+  `look_away` policy.
+- Built a real digital-twin path (T8.6): simulated a LiDAR scan of a real Helios canopy,
+  reconstructed it via `LiDARCloud`'s real leaf-by-leaf triangulation, and compared the same
+  real metric vector (from Phase 6) and the same 4-policy view-selection ranking on both the
+  original and its reconstructed "twin."
+
+### What we found
+- **Two new real gotchas, found and worked around**: `plantarch.getAllPlantUUIDs(plant_id)`
+  crashes if called again after `context.deleteObject()` removes any of that plant's
+  primitives (worked around by caching UUIDs before thinning); simulated LiDAR scans with a
+  narrow azimuth window aimed directly at a target silently drop nearly all pulses instead of
+  recording misses, even with a verified-correct aim direction (worked around with full-360°
+  azimuth scans per station).
+- **`calculateSyntheticLeafArea` is unreliable in this environment** — returns 0.0 in isolation
+  or a value bit-identical to a prior call's result, neither of which is real independent
+  ground truth. Used direct `context.getPrimitiveArea` summation instead for the T8.6 fidelity
+  check.
+- **Determinism re-confirmed independently**: `context.seedRandomGenerator(seed)` before
+  `PlantArchitecture` construction makes growth fully deterministic — matches Phase 2/5's
+  earlier finding via a separate verification.
+- **Real scale-honesty numbers**: this run's 24 canopies (8-cell screening design x 3/cell,
+  single-tree) averaged **4.00s/canopy** (96s total). Anchored against Phase 5's real 3-tree
+  measurement (~77s/canopy at full scale), the full task-doc spec (16-cell x ≥20/cell = 320+
+  canopies) would cost **~6.8 hours of render time alone** — a real, extrapolatable number,
+  not a guess.
+- **`apple` canopies interpenetrate neighbors by ~29% of canopy width at 1.5m spacing**
+  (confirmed across all 3 seeds tried, matching the task doc's claim); **`apple_fruitingwall`
+  drops that to ~4%** at the same spacing. The paired Wilcoxon test (n=3 pairs) didn't reach
+  significance despite a full-separation Cliff's delta of 1.0 — reported as an honest small-n
+  result, not oversold.
+- **Degenerate-baseline check: PASS** — the deliberately stupid `look_away` policy scored
+  exactly 0.0 on 24/24 canopies, meaning the headline coverage metric isn't trivially gameable.
+- **Digital twin: 99.88% leaf-area reconstruction fidelity, and exact rank preservation**
+  (Spearman ρ = 1.0) of the 4-policy view-selection ranking between the original canopy and
+  its LiDAR-reconstructed twin, despite ~14% lower absolute coverage numbers on the twin —
+  real evidence that relative planner comparisons could survive a genuine sim-to-real
+  transfer even where absolute numbers shift.
+- **Scope boundary, stated explicitly**: the digital twin reconstructs leaves only (the real
+  scope of `LiDARCloud`'s API) — branch and fruit geometry in the twin are the original
+  canopy's own exact primitives, not independently reconstructed. Documented in
+  `t86_digital_twin.py`'s module docstring, not implied to be more than it is.
+
+---
+
+*This completes Phases 0-8 — the full plan in `helios_setup_tasks.md`.*

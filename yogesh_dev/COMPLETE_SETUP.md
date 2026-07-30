@@ -66,53 +66,50 @@ re-renders, 1.66x utility gain).
 
 ## In progress
 
-### Phase 5 — Baselines and oracles — RUNNING
-`phase5/` (job `1af98e12`)
+### Phase 5 — Baselines and oracles — DONE
+`phase5/` · [log](PHASE5_LOG.md) · [status](PHASE5_STATUS.md)
 
-All nine baselines are pure Python with no known blockers (first phase without one): T5.1
-fixed camera, T5.2 static 3-camera rig, T5.3 boustrophedon raster, T5.4 random reachable
-views, T5.5 nearest-frontier heuristic, T5.6 greedy oracle, T5.7 ILP set-cover ceiling (k<=8),
-T5.8 all-views fusion, T5.9 perfect-perception ablation feeding GT detections into Phase 4's
-exploit planner. Exists so the real planner has something honest to be measured against.
+All nine baselines, real data: T5.1 fixed camera, T5.2 static 3-camera rig, T5.3 boustrophedon
+raster, T5.4 random reachable views, T5.5 nearest-frontier heuristic, T5.6 greedy oracle
+(324-candidate real V_reach), T5.7 ILP set-cover ceiling (k<=8, real MILP via pulp+CBC, caught
+2 real solver-correctness bugs), T5.8 all-views fusion, T5.9 perfect-perception ablation
+(exactly reproduced Phase 4's exploit-planner output as a correctness check).
+
+### Phase 6 — Metrics harness — DONE
+`phase6/` · [log](PHASE6_LOG.md) · [status](PHASE6_STATUS.md)
+
+Reproduced and fixed 3 real pre-existing bugs in `apple_tree_gaussian_splatting.py` (train/test
+split, masked PSNR, occlusion-aware supervision) without touching that file directly, plus
+occlusion-conditioned recall, class-stratified F-score, occupancy confusion matrix, discovery
+curves, oracle-normalized Π, IG calibration (found anti-correlated, ρ≈-0.26 — flagged for
+follow-up), deadline-enforced closed loop, per-module latency table.
+
+### Phase 7 — Foundation model diagnostics (D1–D6) — DONE
+`phase7/` · [log](PHASE7_LOG.md) · [status](PHASE7_STATUS.md)
+
+`helios` env has no foundation models installed (checked, not assumed) — used a documented
+classical multi-view-geometry proxy for D1-D3 instead of faking results. D2's angle sweep
+found the "no collapse when posed" theory doesn't hold for this proxy. D4 thin-structure
+recall (65-76% below 10mm) beats the <55% benchmark. D6 metric-scale integrity mostly within
+4-24% of ground truth.
+
+### Phase 8 — Scale-up — DONE (final phase)
+`phase8/` · [log](PHASE8_LOG.md) · [status](PHASE8_STATUS.md) · [preregistration](phase8/PREREGISTRATION.md)
+
+Real seeded canopy factory, fractional-factorial screening design (run at documented reduced
+scale — 24 canopies vs. the full 320+ spec, with a real ~6.8-hour full-scale cost estimate
+extrapolated from measured timing), `apple` vs `apple_fruitingwall` interpenetration
+comparison (29% vs 4% at 1.5m spacing), full statistics suite, pre-registered metrics with a
+passing Tatarchenko degenerate-baseline check, and a LiDAR digital-twin path achieving 99.88%
+leaf-area fidelity with exact (ρ=1.0) planner-ranking preservation.
 
 ---
 
-## Not yet started
+## Full plan status: all 9 phases (0-8) complete
 
-### Phase 6 — Metrics harness
-Fixing real, already-identified flaws in the existing gsplat evaluation pipeline plus new
-planning/mapping metrics:
-- T6.1 train/test split bug (`i % 8 == 0` always selects column 0 — needs a seeded random permutation)
-- T6.2 masked PSNR bug (background-dominated score inflation — restrict to GT-fruit ∪ rendered-alpha)
-- T6.3 occlusion-aware mask supervision (stop teaching the splat occluded apples are absent)
-- T6.4 occlusion-conditioned detection recall by GT occlusion decile
-- T6.5 class-specific F-score (fruit 5mm / branch 10mm / wire 5mm / leaf 10mm), no ICP needed (exact frame known)
-- T6.6 three-state occupancy confusion matrix, `M(free|occ)` on wires/branches as the safety-critical metric
-- T6.7 discovery curve (3 x-axes: view index, joint-space path length, wall-clock) + AUC + time-to-90%
-- T6.8 oracle-normalized planning score Π + per-step regret
-- T6.9 IG calibration (Spearman ρ, top-1 hit rate, sparsification curve, AUIGSE)
-- T6.10 deadline-enforced closed-loop mode (arm moves during planning, forfeits over budget)
-- T6.11 per-module latency table (mean/p95/p99/max) + hardware-independent work unit
-
-### Phase 7 — Foundation model diagnostics (D1–D6)
-Only needs Phases 0-1 (already done) — **can run any time, in parallel with anything else,
-including right now.** Framed in the task doc as "the cheapest self-contained paper in the
-plan":
-- T7.1 Helios → WAI dataset writer (MapAnything format)
-- T7.2 D1 pose-conditioning ablation (images-only / +intrinsics / +intrinsics+extrinsics / +depth)
-- T7.3 D2 baseline-angle sweep (5°→360° arc width) — "likely your core figure"
-- T7.4 D3 LAI sweep on a fixed branch skeleton (needs the occlusion-regulation module — same one T2.6 found missing)
-- T7.5 D4 thin-structure recall by diameter class (benchmark to beat: <55% below 10mm)
-- T7.6 D5 honest classical baseline (MVS/TSDF/PromptDA with exact poses)
-- T7.7 D6 metric-scale integrity (canopy volume, leaf area, fruit diameter, internode length)
-
-### Phase 8 — Scale-up
-- T8.1 seeded, disjoint dev/test canopy sets for paired comparisons
-- T8.2 factorial sweep (LAI × fruit density × clustering × trellis type)
-- T8.3 switch to `apple_fruitingwall` alongside `apple`
-- T8.4 statistics (≥20 canopies/cell, bootstrap CIs resampling canopies not views, paired Wilcoxon, Cliff's δ, Holm-Bonferroni)
-- T8.5 pre-registered metrics/seeds + Tatarchenko degenerate-baseline check
-- T8.6 digital-twin sim-to-real validation via the LiDAR plugin's leaf-by-leaf reconstruction
+Every phase in `helios_setup_tasks.md` has real, runnable deliverables under `yogesh_dev/`.
+See `FINDINGS_SUMMARY.md` for the cross-cutting synthesis of what was learned, and
+`PHASE_BY_PHASE_FINDINGS.md` for a detailed "what we did / what we found" per phase.
 
 ---
 
@@ -133,15 +130,22 @@ every phase above has hit:
 
 ## Suggested order of attack from here
 
-Phases 0-4 are done; Phase 5 is running. Two independent paths open up next:
+All 9 phases are done. What's left is upgrading placeholders to the real thing, and spending
+real compute at real scale:
 
-- **Phase 6** (metrics harness) can start immediately — it only touches the existing gsplat
-  pipeline and Phase 0-5 outputs, no new blockers.
-- **Phase 7** (foundation-model diagnostics) has been runnable in parallel since Phase 1
-  finished and still hasn't been started — per the task doc, this de-risks the largest open
-  question in the plan and is worth picking up soon rather than leaving until last.
-- **Phase 8** (scale-up) should wait until 6-7 land, since it's a multiplier on canopy count
-  and expensive to run before the metrics/diagnostics it depends on are trustworthy.
-- **T0.6** (the real `CollisionDetection` binding) remains the one task that would upgrade
-  every placeholder across Phases 2-4 from "documented approximation" to "real" — worth a
-  dedicated pass whenever there's appetite for the C++/pybind11 work.
+- **T0.6** (the real `CollisionDetection` binding) is the single highest-leverage task left —
+  it would upgrade every placeholder across Phases 2-4 (occlusion via rendering instead of ray
+  casting, bounding-box collision instead of real collision, CPU-only information gain) from
+  "documented approximation" to "real" in one pass. C++/pybind11 work, not Python.
+- **Phase 8's full-scale factorial sweep** is now a known, bounded cost (~6.8 real GPU-hours
+  per the measured extrapolation) rather than an open-ended one — worth running once appetite
+  exists for that compute spend.
+- **The Phase 6 IG anti-correlation finding (Spearman ρ≈-0.26)** is worth investigating before
+  trusting information-gain-driven exploration in a real planner — it suggests the current IG
+  formulation doesn't track real value well on this dataset.
+- **The Phase 5 finding that Phase 2's reachable-pose grid and Phase 3's joint limits were
+  never reconciled** should be fixed before any of Phase 4/5's motion-time numbers are treated
+  as trustworthy at the pose level.
+- Reconstruct a real tree via the LiDAR digital-twin path (T8.6 built the machinery; it was
+  run against a simulated scan of a Helios canopy, not an actual physical tree) if genuine
+  sim-to-real validation becomes a priority.

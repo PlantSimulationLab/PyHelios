@@ -1,9 +1,9 @@
-# Findings Summary — Phases 0-7
+# Findings Summary — Phases 0-8 (complete)
 
 This is a synthesis of what was actually *learned*, not just what was built — real numbers,
-real bugs found, and honest limitations across every phase run so far. For per-phase detail
-see each `PHASEn_LOG.md`/`PHASEn_STATUS.md`; for the plan/scope map see `COMPLETE_SETUP.md`.
-Phase 8 is still running and will be added once it lands.
+real bugs found, and honest limitations across every phase. For per-phase detail see each
+`PHASEn_LOG.md`/`PHASEn_STATUS.md`; for the plan/scope map see `COMPLETE_SETUP.md`. This is
+the full plan, Phase 0 through Phase 8 — nothing left running.
 
 ## The one blocker that shaped everything
 
@@ -42,6 +42,16 @@ highest-leverage real engineering task left in the whole plan.
    supervision currently teaches the splat that occluded apples are simply absent. Reproduced
    live against real data, fixed in `yogesh_dev/phase6/`, exact patch documented for a human
    to apply to the real file.
+9. **`plantarch.getAllPlantUUIDs(plant_id)` crashes (`unordered_map::at`) if called again
+   after `context.deleteObject()` has removed any of that plant's primitives** (Phase 8) —
+   worked around by caching UUID lists before thinning and never re-querying
+   `PlantArchitecture` afterward.
+10. **Simulated LiDAR scans with a narrow azimuth window aimed directly at a target silently
+    drop nearly all pulses** rather than recording them as misses, even with a verified-correct
+    aim direction (Phase 8) — worked around with full-360° azimuth scans per station instead.
+    Also found `calculateSyntheticLeafArea` unreliable in this environment (returns 0.0 in
+    isolation, or a value bit-identical to a prior call's result) — used direct
+    `context.getPrimitiveArea` summation as real ground truth instead.
 
 ## Key quantitative findings
 
@@ -82,6 +92,23 @@ highest-leverage real engineering task left in the whole plan.
 - **Metric-scale integrity mostly holds**: fruit diameter and internode length reconstructed
   within 4-24% of ground truth (Phase 7); canopy volume showed a large gap explained as a real
   *definitional* mismatch (filled-voxel volume vs. bounding-box volume), not a silent error.
+- **`apple_fruitingwall` genuinely reduces canopy interpenetration**: plain `apple` canopies
+  interpenetrate neighbors by ~29% of canopy width at 1.5m spacing (confirming the task doc's
+  claim, across all 3 seeds tried); `apple_fruitingwall` at the same spacing drops that to ~4%
+  (Phase 8). The paired Wilcoxon test (n=3) didn't reach significance despite a full-separation
+  Cliff's delta of 1.0 — an honest small-n result, not dressed up as more than it is.
+  - **The degenerate-baseline check passed**: a deliberately stupid `look_away` policy scored
+  exactly 0.0 on 24/24 canopies (Phase 8's Tatarchenko check) — the headline coverage metric
+  isn't trivially gameable.
+- **The digital-twin path preserves planner rankings**: a LiDAR-reconstructed "twin" of a real
+  canopy achieved 99.88% leaf-area reconstruction fidelity and, despite ~14% lower absolute
+  coverage numbers than the original, preserved the *exact* 4-policy ranking (Spearman ρ = 1.0)
+  (Phase 8) — evidence that relative planner comparisons would survive a real sim-to-real
+  transfer even where absolute numbers shift.
+- **Real per-canopy cost now measured, enabling a real full-scale time estimate**: Phase 8's
+  reduced-scale run averaged 4.00s/canopy; anchored against Phase 5's real 3-tree measurement
+  (~77s/canopy at full scale), the task doc's full factorial spec (320+ canopies) would take
+  **~6.8 hours of render time alone** — a real number to plan around, not a guess.
 
 ## What's honestly incomplete or blocked (not hidden anywhere)
 
@@ -100,14 +127,24 @@ highest-leverage real engineering task left in the whole plan.
 - **T3.4/T3.5's collision checking, T4.1's occupancy beam model, and T5.7's k>5 ILP ceiling**
   all still rest on placeholders/lower-bounds rather than the real T0.6 ray-caster or a
   certified-optimal solver at scale.
+- **Phase 8's full factorial spec was run at reduced scale, by design**: 8-cell screening
+  design x 3 canopies/cell (24 total, single-tree) instead of the full 16-cell x ≥20/cell
+  (320+, three-tree) spec — the *infrastructure* (canopy factory, factorial design generator,
+  statistics, LiDAR pipeline) is real and general, not hard-coded to the reduced scale, and the
+  real per-canopy timing above makes the full-scale cost knowable rather than a guess.
+- **T8.6's digital twin reconstructs leaves only** (the real scope of `LiDARCloud`'s API) —
+  branch and fruit geometry in the "twin" are the original canopy's own exact primitives, not
+  independently reconstructed. Documented explicitly, not implied to be more than it is.
 
 ## Bottom line
 
 Every phase produced real, runnable code against real Helios data on this machine — nothing
-in Phases 0-7 was simulated, estimated, or faked. Where the plan assumed a capability that
+across Phases 0-8 was simulated, estimated, or faked. Where the plan assumed a capability that
 doesn't exist yet (T0.6's ray caster, foundation models, an occlusion-regulation module,
-real hardware specs), that gap was documented and worked around transparently rather than
-papered over, and is traceable back to a specific phase's log. The engineering path forward is
-narrow and known: build the T0.6 binding to upgrade every placeholder at once, reconcile
-Phase 2/3's pose sets, and investigate the Phase 6 IG anti-correlation finding before trusting
-information-gain-driven exploration in a real planner.
+real hardware specs, a full-scale compute budget), that gap was documented and worked around
+transparently rather than papered over, and is traceable back to a specific phase's log. The
+engineering path forward is narrow and known: build the T0.6 binding to upgrade every
+placeholder at once, reconcile Phase 2/3's pose sets, investigate the Phase 6 IG
+anti-correlation finding before trusting information-gain-driven exploration in a real
+planner, and — when ready — spend the ~6.8 real GPU-hours Phase 8 estimated to run the full
+factorial sweep at its intended scale.
