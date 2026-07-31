@@ -212,4 +212,59 @@ because Helios cameras have no collision.
 
 ## 4. W3 — dataset generation
 
-*(continued in FINDINGS.md and WORLD_MODEL_STATUS.md)*
+`generate.py` builds one orchard per seed at 540 d and then walks the growth schedule with
+`advanceTime`, rendering all three view families at every stage plus a fixed 16-pose "growth
+probe" rig. The probe renders are stage-major; transposing them pose-major turns them into
+growth episodes at **zero extra render cost**, which is why the growth channel exists at all
+despite being 24× smaller than the view channel.
+
+Measured cost, full config (8 stages × 3 families × 128 steps + 16 growth probes = 3,200 frames
+per orchard): **254–323 s per orchard**, ~81 MB compressed. Breakdown per stage: ~32 s, of
+which 3 × (4.5 s solve + 1.2 s readback + ~2.5 s npz compression) for the view families, ~4.9 s
+for the probe solve, and ~2.5 s for `advanceTime` + `updateGeometry`.
+
+Two ordering decisions made after seeing real timings:
+
+- **Val and test orchards are generated first.** At ~5 min each, a run that has to be cut short
+  would otherwise leave a dataset with no validation or test split at all, which is worthless. A
+  smaller *train* split is merely smaller. This cost one restart of the generator.
+- **On `--resume`, the stored calibration is reused rather than recomputed.** `calibrate_once`
+  is deterministic, but recomputing it would make the dataset's single global exposure an
+  implicit function of when the run was restarted — and one fixed exposure across the whole
+  dataset is the entire point.
+
+## 5. W4 — does the model actually work?
+
+Ran `train.py --overfit-one` on a single real recorded trajectory
+(`train/view_s10000_g0_row_traversal.npz`, 32 frames, 64×64, 12,000 steps, ~18 it/s).
+
+**First attempt diverged.** Reconstruction reached rgb MSE 7.7e-4 and depth 2.3e-4 by step
+11,500 — then at step 12,000 jumped to 1.35e-2 and 3.77e-2, a 17× regression in the final 500
+steps, and the saved last-step checkpoint scored only 20.05 dB. The cause is Adam `eps=1e-8`:
+once gradients are that small, eps stops regularising the denominator and the effective step
+size explodes. Fixed by defaulting to `eps=1e-5` (the DreamerV2/V3 value) and by checkpointing
+on best loss instead of trusting the last step.
+
+**Second attempt passed** (`run_w4.py`):
+
+| | value |
+|---|---|
+| teacher-forced reconstruction PSNR | **30.67 dB** |
+| SSIM | 0.956 |
+| depth MAE | 0.047 m |
+| semantic mIoU | 1.000 |
+| open-loop imagination, ctx=5, t+1 | 31.00 dB |
+| … t+5 / t+10 / t+25 | 30.89 / 31.07 / **30.14 dB** |
+
+Holding ~30 dB out to a 25-step *open-loop* rollout means the RSSM's dynamics are doing the
+work, not just the encoder/decoder — an autoencoder with a broken transition model would
+collapse within a few imagined steps. Acceptance criterion (recon PSNR > 25 dB and mIoU > 0.7)
+passed.
+
+A note on reading the loss: with KL free bits at 1.0 nat and weights 0.5/0.1, `loss` cannot go
+below 0.6 however good the reconstruction is. "Near zero" has to be read on the reconstruction
+terms.
+
+## 6. W5/W6 — training and evaluation
+
+*(see WORLD_MODEL_STATUS.md and FINDINGS.md for the outcome)*
