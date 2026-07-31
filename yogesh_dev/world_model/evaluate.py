@@ -133,11 +133,24 @@ def copy_last_baseline(data, context, n_future):
 
 
 def score_predictions(pred, data, context, horizons, is_baseline=False):
-    """Per-horizon metrics. `pred` covers steps context..T-1."""
+    """Per-horizon metrics.
+
+    Indexing: the last OBSERVED frame is t = context-1, and `pred[:, j]`
+    corresponds to absolute time t = context + j. So "horizon h" (h steps past the
+    last observation) is absolute t = context - 1 + h and prediction index h - 1.
+
+    Depth MAE is computed in METRES over non-sky ground-truth pixels only. Sky is
+    excluded because its stored depth is a -1 sentinel that preprocessing maps to
+    0 -- averaging that in would silently reward a model that predicts 0
+    everywhere on the ~18% of pixels that are sky.
+
+    Fruit-visibility MAE is reported back in FRACTION-OF-PIXELS units (the model
+    predicts symlog(fraction*100); this inverts that) so the number is readable.
+    """
     T = data["obs"].shape[1]
     out = {}
     for hzn in horizons:
-        idx = context - 1 + hzn - (context - 1) - 1  # index within pred
+        idx = hzn - 1
         t_abs = context + hzn - 1
         if t_abs >= T or idx < 0 or idx >= pred["rgb"].shape[1]:
             continue
@@ -145,17 +158,20 @@ def score_predictions(pred, data, context, horizons, is_baseline=False):
         gt_depth_sl = data["depth_symlog"][:, t_abs]
         gt_sem = data["semantic"][:, t_abs]
         gt_fruit = data["fruit_vis"][:, t_abs]
+        not_sky = ~data["sky"][:, t_abs]
 
         p_rgb = pred["rgb"][:, idx]
         p_depth_sl = pred["depth_symlog"][:, idx]
         p_fruit = pred["fruit_vis"][:, idx]
 
-        depth_mae = (symexp(p_depth_sl) - symexp(gt_depth_sl)).abs().flatten(1).mean(1)
+        derr = (symexp(p_depth_sl) - symexp(gt_depth_sl)).abs()
+        n_valid = not_sky.flatten(1).sum(1).clamp_min(1)
+        depth_mae = (derr * not_sky).flatten(1).sum(1) / n_valid
         rec = {
             "psnr_db": float(psnr(p_rgb, gt_rgb).mean()),
             "ssim": float(ssim(p_rgb + 0.5, gt_rgb + 0.5).mean()),
             "depth_mae_m": float(depth_mae.mean()),
-            "fruit_vis_mae": float((p_fruit - gt_fruit).abs().mean()),
+            "fruit_vis_mae": float(((symexp(p_fruit) - symexp(gt_fruit)) / 100.0).abs().mean()),
         }
         if is_baseline:
             # baseline "semantic" is a copied class map, not logits
@@ -296,7 +312,13 @@ def main():
                 f"mIoU={r['miou']['mean']:.4f}  fruitMAE={r['fruit_vis_mae']['mean']:.4f}")
 
     # -- R3: growth episodes -----------------------------------------------
-    growth_sampler = SequenceSampler(args.data, args.split, args.seq_len, img,
+    # Growth episodes are only n_stages long. Using the view seq_len would pad
+    # them by repeating the last frame, which makes long horizons trivially easy
+    # (the model would be scored on predicting a frame it just saw). Sample them
+    # at exactly their own length instead.
+    n_stages_cfg = len(json.load(open(os.path.join(args.data, "manifest.json")))
+                       ["config"]["stages"])
+    growth_sampler = SequenceSampler(args.data, args.split, n_stages_cfg, img,
                                      growth_fraction=1.0, seed=4321)
     if growth_sampler.growth_records:
         n_stages = growth_sampler.growth_records[0]["n_steps"]

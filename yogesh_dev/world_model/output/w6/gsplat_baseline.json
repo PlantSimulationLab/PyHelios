@@ -1,0 +1,122 @@
+{
+  "config": {
+    "context": 5,
+    "horizons": [
+      1,
+      5,
+      10,
+      25
+    ],
+    "iters": 400,
+    "n_episodes": 1,
+    "split": "train",
+    "resolution": [
+      128,
+      128
+    ],
+    "hfov_deg": 59.99999999999999
+  },
+  "summary": {
+    "matched": {
+      "t+1": {
+        "psnr_db": {
+          "mean": 16.687061309814453,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.5302578210830688,
+          "std": 0.0,
+          "n": 1
+        }
+      },
+      "t+5": {
+        "psnr_db": {
+          "mean": 16.5787296295166,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.5020585060119629,
+          "std": 0.0,
+          "n": 1
+        }
+      },
+      "t+10": {
+        "psnr_db": {
+          "mean": 16.001998901367188,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.5108493566513062,
+          "std": 0.0,
+          "n": 1
+        }
+      },
+      "t+25": {
+        "psnr_db": {
+          "mean": 7.084051132202148,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.21114163100719452,
+          "std": 0.0,
+          "n": 1
+        }
+      }
+    },
+    "generous": {
+      "t+1": {
+        "psnr_db": {
+          "mean": 16.854623794555664,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.5508819818496704,
+          "std": 0.0,
+          "n": 1
+        }
+      },
+      "t+5": {
+        "psnr_db": {
+          "mean": 17.024986267089844,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.5271393656730652,
+          "std": 0.0,
+          "n": 1
+        }
+      },
+      "t+10": {
+        "psnr_db": {
+          "mean": 17.494348526000977,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.5433283448219299,
+          "std": 0.0,
+          "n": 1
+        }
+      },
+      "t+25": {
+        "psnr_db": {
+          "mean": 16.16934585571289,
+          "std": 0.0,
+          "n": 1
+        },
+        "ssim": {
+          "mean": 0.4500257968902588,
+          "std": 0.0,
+          "n": 1
+        }
+      }
+    }
+  },
+  "caveat": "3DGS is given the TRUE camera pose of every target frame; the world model is not. The 'generous' setting additionally gives it ~27 posed views of the exact scene. It is an upper reference, not a peer."
+}

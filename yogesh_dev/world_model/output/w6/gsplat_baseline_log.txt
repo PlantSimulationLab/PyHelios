@@ -1,0 +1,28 @@
+gsplat baseline: 128x128, HFOV=60.00 deg, context=5, horizons=[1, 5, 10, 25], iters=400
+  [1] train/view_s10000_g0_row_traversal.npz (row_traversal) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 133/400 train L1=0.07177
+      gsplat iter 266/400 train L1=0.05723
+      gsplat iter 399/400 train L1=0.05584
+      t+1   PSNR= 16.69dB  SSIM=0.5303
+      t+5   PSNR= 16.58dB  SSIM=0.5021
+      t+10  PSNR= 16.00dB  SSIM=0.5108
+      t+25  PSNR=  7.08dB  SSIM=0.2111
+    setting 'generous': 28 training views
+      gsplat iter 133/400 train L1=0.06757
+      gsplat iter 266/400 train L1=0.06284
+      gsplat iter 399/400 train L1=0.06052
+      t+1   PSNR= 16.85dB  SSIM=0.5509
+      t+5   PSNR= 17.02dB  SSIM=0.5271
+      t+10  PSNR= 17.49dB  SSIM=0.5433
+      t+25  PSNR= 16.17dB  SSIM=0.4500
+
+=== gsplat view-synthesis reference ===
+  matched   t+1   PSNR= 16.69dB  SSIM=0.5303  (n=1)
+  matched   t+5   PSNR= 16.58dB  SSIM=0.5021  (n=1)
+  matched   t+10  PSNR= 16.00dB  SSIM=0.5108  (n=1)
+  matched   t+25  PSNR=  7.08dB  SSIM=0.2111  (n=1)
+  generous  t+1   PSNR= 16.85dB  SSIM=0.5509  (n=1)
+  generous  t+5   PSNR= 17.02dB  SSIM=0.5271  (n=1)
+  generous  t+10  PSNR= 17.49dB  SSIM=0.5433  (n=1)
+  generous  t+25  PSNR= 16.17dB  SSIM=0.4500  (n=1)

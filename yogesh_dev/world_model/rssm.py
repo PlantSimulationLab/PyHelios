@@ -15,7 +15,7 @@ pyhelios** -- the two-env split means data on disk is the only interface.
                          rgb        (3,H,W)   MSE on [-0.5, 0.5]
                          depth      (1,H,W)   MSE on symlog metres
                          semantic   (7,H,W)   cross-entropy over 7 classes
-                         fruit_vis  ()        MSE on symlog(fruit pixel fraction * 1e3)
+                         fruit_vis  ()        MSE on symlog(fruit pixel fraction * 100)
 
 ## DreamerV3 details that are actually implemented (not just named)
 
@@ -149,17 +149,18 @@ class RSSM(nn.Module):
         d = self._dist(logits)
         return d.rsample().flatten(-2)
 
-    def kl_terms(self, post_logits, prior_logits, free_bits=1.0):
+    def kl_terms(self, post_logits, prior_logits, free_bits=1.0, mask=None):
         """Returns (dyn_loss, rep_loss) with DreamerV3's stop-gradient split."""
         post = self._dist(post_logits)
         prior = self._dist(prior_logits)
         post_sg = self._dist(post_logits.detach())
         prior_sg = self._dist(prior_logits.detach())
-        dyn = torch.distributions.kl_divergence(post_sg, prior)
-        rep = torch.distributions.kl_divergence(post, prior_sg)
-        dyn = torch.clamp(dyn, min=free_bits)
-        rep = torch.clamp(rep, min=free_bits)
-        return dyn.mean(), rep.mean()
+        dyn = torch.clamp(torch.distributions.kl_divergence(post_sg, prior), min=free_bits)
+        rep = torch.clamp(torch.distributions.kl_divergence(post, prior_sg), min=free_bits)
+        if mask is None:
+            return dyn.mean(), rep.mean()
+        d = mask.sum().clamp_min(1.0)
+        return (dyn * mask).sum() / d, (rep * mask).sum() / d
 
 
 class WorldModel(nn.Module):
@@ -205,6 +206,8 @@ class WorldModel(nn.Module):
             out["semantic"] = sem
         if "action" in batch:
             out["action"] = t(batch["action"])
+        if "pad_mask" in batch:
+            out["pad_mask"] = t(batch["pad_mask"], torch.float32)
         if "fruit_vis" in batch:
             # x100 puts a realistic fruit pixel fraction (~0.04) at symlog(4)=1.6
             # instead of symlog(40)=3.7, so this head starts on the same loss
@@ -260,19 +263,41 @@ class WorldModel(nn.Module):
 
     # -- loss ----------------------------------------------------------------
     def loss(self, data):
-        """`data` is the output of `preprocess` (with semantic, action, fruit_vis)."""
+        """`data` is the output of `preprocess` (with semantic, action, fruit_vis).
+
+        If `pad_mask` is present, every per-step loss is masked by it. Growth
+        episodes are only `n_stages` frames long, so a fixed-length window over
+        them is padded by repeating the last frame with a zero action. That
+        padding is semantically *valid* (zero action -> no change) rather than
+        corrupt, but it is trivial to predict, so including it would silently
+        inflate the growth channel's apparent accuracy and dilute its gradient.
+        Masking keeps the reported losses honest.
+        """
         state = self.observe(data["obs"], data["action"])
         pred = self.decode(state["h"], state["z"])
 
-        l_rgb = F.mse_loss(pred["rgb"], data["rgb"])
-        l_depth = F.mse_loss(pred["depth_symlog"], data["depth_symlog"])
         B, T = data["semantic"].shape[:2]
-        l_sem = F.cross_entropy(
-            pred["semantic_logits"].reshape(B * T, N_SEMANTIC_CLASSES, self.image_size, self.image_size),
-            data["semantic"].reshape(B * T, self.image_size, self.image_size))
-        l_fruit = F.mse_loss(pred["fruit_vis"], data["fruit_vis"])
+        m = data.get("pad_mask")
+        if m is None:
+            m = torch.ones(B, T, device=data["obs"].device)
+        denom = m.sum().clamp_min(1.0)
 
-        dyn, rep = self.rssm.kl_terms(state["post_logits"], state["prior_logits"], self.free_bits)
+        def _masked_mean(err, extra_dims):
+            # err: (B,T,...) -> mean over masked steps and all trailing dims
+            per_step = err.flatten(2).mean(2) if extra_dims else err
+            return (per_step * m).sum() / denom
+
+        l_rgb = _masked_mean((pred["rgb"] - data["rgb"]) ** 2, True)
+        l_depth = _masked_mean((pred["depth_symlog"] - data["depth_symlog"]) ** 2, True)
+        ce = F.cross_entropy(
+            pred["semantic_logits"].reshape(B * T, N_SEMANTIC_CLASSES, self.image_size, self.image_size),
+            data["semantic"].reshape(B * T, self.image_size, self.image_size),
+            reduction="none").view(B, T, -1).mean(2)
+        l_sem = (ce * m).sum() / denom
+        l_fruit = _masked_mean((pred["fruit_vis"] - data["fruit_vis"]) ** 2, False)
+
+        dyn, rep = self.rssm.kl_terms(state["post_logits"], state["prior_logits"], self.free_bits,
+                                       mask=m)
 
         total = (self.w["rgb"] * l_rgb + self.w["depth"] * l_depth
                  + self.w["semantic"] * l_sem + self.w["fruit"] * l_fruit
