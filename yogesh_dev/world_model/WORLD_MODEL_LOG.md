@@ -441,3 +441,69 @@ identical for every model — are.
   verified by running one checkpoint twice and getting identical output.
 - **`generate_log.txt` is opened in append mode**, so a naive "count the completed-orchard lines"
   progress check counts Round 1's 20 lines too. Cost one confused progress reading, nothing more.
+
+## 13. How the runs actually went
+
+Timeline, all on 2026-07-31: dataset extension 00:12 → 03:02 (32 orchards, 9,857 s). Phase A
+(`r2_main`, `r2_noaction`, `r2_growth`, 40k steps, three concurrent) 03:04 → 04:32 at **7.6 it/s
+each** — noticeably faster than Round 1's 11.4 it/s solo would predict for three concurrent jobs,
+because `--cache-size 1200` holds all 1,056 train view episodes at 64×64 in RAM (~4.4 GB per
+process, 48 GB used of 62 total) and there is no disk I/O in the steady state. Phases B/C/D
+(`r2_big`, `r2_sem`, `r2_best`, 30k, three concurrent) 04:32 → 05:59 at ~5.5 it/s. Phase E
+(`r2_kl`, alone) 05:56 → 06:25 at ~17 it/s. Phase F (`r2_final`, alone) 06:26 → 06:54.
+
+Nothing failed. No run crashed, no OOM, and the two evaluation steps that finished in 12 and 3
+seconds were checked rather than assumed — they were genuinely that fast because the episode
+caches were already warm.
+
+## 14. The moment the round turned
+
+`r2_big` finished and its validation log read `kl_dyn=1.373`. Round 1's model, with a 160-bit
+latent, ran at 1.371. `r2_big` has a 268-bit latent and four times the parameters, and it was
+transmitting the *same 2.0 bits per frame*, with held-out depth MAE 1.033 m against `r2_main`'s
+1.038 m and mIoU identical to three decimals. Capacity was not the constraint; the KL penalty was.
+`r2_kl` — free-bits 1 → 6, weights 0.5/0.1 → 0.2/0.04, nothing else changed — ran at 6.2–6.3 nats
+and took reconstruction depth from 1.022 m to 0.887 m and RGB sharpness from 0.108 to 0.127, the
+only intervention in the whole round that moved sharpness.
+
+That is also why `r2_final` exists. It was not in the original plan: phases B–E were designed as
+single-factor runs, and once three of them had each moved the needle through independent
+mechanisms — information through the bottleneck, sharpness in the depth head, class balance in the
+semantic head — the obvious question was whether they compose. They do, almost additively.
+
+## 15. Round 2's own mistakes
+
+- **The blurred-ground-truth bound was indexed by the wrong quantity.** It blurs every modality by
+  one σ and was reported against RGB sharpness, which gave "~90% of the depth deficit is blur".
+  `r2_best` broke the assumption by producing a sharp depth map (0.281) behind a blurred RGB
+  decode (0.105). Both scripts now report depth sharpness separately, the bound is read off the
+  depth column, and the corrected blur share is ~35% for Round 1 and ~28% for `r2_best`. The
+  original claim is retracted in `FINDINGS.md` §14 rather than edited away.
+- **The growth-signal SNR was first computed against a noise floor measured somewhere else.**
+  Comparing the 20.60 dB stage step against §9's 20.82 dB view-episode floor gave "the growth
+  signal is at the noise floor". Measuring both at the same poses on the same orchard gives a
+  floor of 22.75 dB and an SNR of 0.85 — a real signal, smaller than its noise. Corrected.
+- **"Every run's best checkpoint is at step 26,000" looked like a bug and is not.** All runs share
+  `--seed 0`, so the validation sampler draws the same windows at the same steps in every run, and
+  the val curve oscillates ~7% step to step with only 8 val batches. Fixed-step cross-run
+  comparison is therefore fair; "best step" is partly a draw of the validation dice. Recorded, and
+  it is why every headline number in this round comes from the held-out test evaluation instead.
+- **Class weights alone made held-out depth slightly worse** (1.063 m vs `r2_main`'s 1.038 m).
+  Reported as-is; they only pay off in combination.
+
+## 16. What Round 2 concludes
+
+The dataset extension was carried out exactly as briefed and produced a clean negative: 3.7× the
+orchards moved held-out depth MAE by 2% and mIoU by 1%, while three changes that cost no compute
+at all moved depth MAE by 22% and mIoU by 11%. Round 1's diagnosis — and the brief that was built
+on it — pointed at the wrong constraint. The constraint was an information bottleneck the model
+was choosing not to use, a loss shape that mispriced the far field, and a cross-entropy that
+dropped five of seven classes; plus, for the growth channel, an action variable that was a
+constant in every episode of the dataset.
+
+What is still unsolved is honest and specific: at t+1 copy-last-frame still wins on depth
+(0.657 m vs 0.810 m) and on mIoU (0.333 vs 0.294), and the measured reason is output sharpness —
+0.293 against the ~0.31 a uniformly blurred perfect predictor needs. Petiole and peduncle are
+0.22% and 0.03% of pixels and cannot be segmented at 64×64 at all, capping mIoU at 0.714. And the
+growth channel's RGB signal genuinely sits below the render noise (SNR 0.85), so any further work
+there should be scored on depth and semantics, which are bit-exact, and not on RGB.
