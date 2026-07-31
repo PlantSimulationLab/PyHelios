@@ -35,8 +35,16 @@ def load(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tags", default="main,noaction")
+    ap.add_argument("--out", default=OUT_DIR,
+                    help="output directory (Round 2 uses output/r2 so Round 1's "
+                         "curves.png / curve_summary.json are not overwritten)")
+    ap.add_argument("--title", default="World model training / validation curves "
+                                       "(val reconstruction bottoms out ~15k steps, "
+                                       "then overfits 12 orchards)")
+    ap.add_argument("--name", default="curves")
     args = ap.parse_args()
-    os.makedirs(OUT_DIR, exist_ok=True)
+    out_dir = args.out
+    os.makedirs(out_dir, exist_ok=True)
 
     import matplotlib
     matplotlib.use("Agg")
@@ -69,12 +77,11 @@ def main():
             ax.set_xlabel("step")
             ax.grid(alpha=0.3)
     axes.ravel()[0].legend(fontsize=7)
-    fig.suptitle("World model training / validation curves "
-                 "(val reconstruction bottoms out ~15k steps, then overfits 12 orchards)")
+    fig.suptitle(args.title)
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "curves.png")
+    path = os.path.join(out_dir, f"{args.name}.png")
     fig.savefig(path, dpi=110)
-    with open(os.path.join(OUT_DIR, "curve_summary.json"), "w") as f:
+    with open(os.path.join(out_dir, f"{args.name}_summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
     print(f"wrote {path}")

@@ -1,0 +1,68 @@
+{
+ "data": "/home/yogesh/PyHelios/yogesh_dev/world_model/output/dataset",
+ "declared_ranges": {
+  "n_train": 999,
+  "n_val": 499,
+  "n_test": 499,
+  "train_val_overlap": 0,
+  "train_test_overlap": 0,
+  "val_test_overlap": 0,
+  "disjoint": true
+ },
+ "present_split_overlaps": {
+  "train_val": [],
+  "train_test": [],
+  "val_test": []
+ },
+ "counts": {
+  "train": {
+   "n_seeds": 14,
+   "n_episodes": 560,
+   "n_frames": 44800,
+   "seeds": [
+    10000,
+    10001,
+    10002,
+    10003,
+    10004,
+    10005,
+    10006,
+    10007,
+    10008,
+    10009,
+    10010,
+    10011,
+    10012,
+    10013
+   ]
+  },
+  "val": {
+   "n_seeds": 4,
+   "n_episodes": 160,
+   "n_frames": 12800,
+   "seeds": [
+    11000,
+    11001,
+    11002,
+    11003
+   ]
+  },
+  "test": {
+   "n_seeds": 4,
+   "n_episodes": 160,
+   "n_frames": 12800,
+   "seeds": [
+    12000,
+    12001,
+    12002,
+    12003
+   ]
+  }
+ },
+ "episodes_in_wrong_directory": [],
+ "missing_files": [],
+ "duplicate_paths": [],
+ "total_episodes": 880,
+ "total_frames": 70400,
+ "disjoint_and_consistent": true
+}

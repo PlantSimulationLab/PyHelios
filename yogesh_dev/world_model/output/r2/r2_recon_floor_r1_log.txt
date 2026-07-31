@@ -1,0 +1,7 @@
+
+=== r1_main  (step 14000, 64x64, split=test) ===
+  variant             PSNR dB    SSIM  depth MAE m    mIoU  fruitMAE
+  posterior_recon       18.10  0.5170        1.012  0.2656    0.0056
+  openloop_t1           18.03  0.5148        1.040  0.2639    0.0056
+  copy_last_t1          16.57  0.5534        0.650  0.3284    0.0017
+  attribution: of the depth error at t+1, 1.012 m is already present in the teacher-forced reconstruction (97% of it); one step of dynamics adds +0.028 m.

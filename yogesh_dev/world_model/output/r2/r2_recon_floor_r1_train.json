@@ -1,0 +1,31 @@
+{
+  "split": "train",
+  "context": 5,
+  "models": {
+    "r1_main_TRAIN": {
+      "posterior_recon": {
+        "psnr_db": 18.272414445877075,
+        "ssim": 0.5221540741622448,
+        "depth_mae_m": 0.9970637746155262,
+        "miou": 0.29369518905878067,
+        "fruit_vis_mae": 0.0027669351402437314
+      },
+      "openloop_t1": {
+        "psnr_db": 18.214983463287354,
+        "ssim": 0.5203570984303951,
+        "depth_mae_m": 1.020773034542799,
+        "miou": 0.2901155613362789,
+        "fruit_vis_mae": 0.003439349457039498
+      },
+      "copy_last_t1": {
+        "psnr_db": 16.75568062067032,
+        "ssim": 0.553328225389123,
+        "depth_mae_m": 0.6923671625554562,
+        "miou": 0.3460720628499985,
+        "fruit_vis_mae": 0.001575470074385521
+      },
+      "ckpt": "yogesh_dev/world_model/output/train/main2/ckpt_best.pt",
+      "step": 14000
+    }
+  }
+}
