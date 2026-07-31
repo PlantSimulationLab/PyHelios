@@ -4,47 +4,47 @@
   "models": {
     "r1_main": {
       "posterior_recon": {
-        "psnr_db": 18.096848607063293,
-        "ssim": 0.5160072967410088,
-        "depth_mae_m": 1.027405809611082,
-        "miou": 0.2643530163913965,
-        "fruit_vis_mae": 0.00521882098109927,
-        "sharpness_ratio": 0.11303026415407658,
+        "psnr_db": 18.248457034428913,
+        "ssim": 0.5230929677685102,
+        "depth_mae_m": 1.035134380062421,
+        "miou": 0.268114165092508,
+        "fruit_vis_mae": 0.004890910015092231,
+        "sharpness_ratio": 0.11527514364570379,
         "per_class": {
           "ground": {
-            "iou": 0.8541368184181387,
-            "gt_pixel_fraction": 0.4237194061279297,
-            "pred_pixel_fraction": 0.4673652648925781
+            "iou": 0.8580762761629683,
+            "gt_pixel_fraction": 0.4223365783691406,
+            "pred_pixel_fraction": 0.46683629353841144
           },
           "fruit": {
-            "iou": 0.0,
-            "gt_pixel_fraction": 0.020429611206054688,
-            "pred_pixel_fraction": 7.62939453125e-06
+            "iou": 0.0006929570366637269,
+            "gt_pixel_fraction": 0.020112355550130207,
+            "pred_pixel_fraction": 8.646647135416667e-05
           },
           "leaf": {
-            "iou": 0.3721446827871375,
-            "gt_pixel_fraction": 0.19616127014160156,
-            "pred_pixel_fraction": 0.1949939727783203
+            "iou": 0.37931455607170156,
+            "gt_pixel_fraction": 0.1963653564453125,
+            "pred_pixel_fraction": 0.19138971964518228
           },
           "shoot": {
-            "iou": 0.012523685457129322,
-            "gt_pixel_fraction": 0.06332015991210938,
-            "pred_pixel_fraction": 0.0019092559814453125
+            "iou": 0.015809409888357256,
+            "gt_pixel_fraction": 0.0622406005859375,
+            "pred_pixel_fraction": 0.0025494893391927085
           },
           "petiole": {
             "iou": 0.0,
-            "gt_pixel_fraction": 0.002170562744140625,
+            "gt_pixel_fraction": 0.0021832784016927085,
             "pred_pixel_fraction": 0.0
           },
           "peduncle": {
             "iou": 0.0,
-            "gt_pixel_fraction": 0.0002918243408203125,
+            "gt_pixel_fraction": 0.0002848307291666667,
             "pred_pixel_fraction": 0.0
           },
           "sky": {
-            "iou": 0.6176531122283967,
-            "gt_pixel_fraction": 0.29390716552734375,
-            "pred_pixel_fraction": 0.335723876953125
+            "iou": 0.6252751504589363,
+            "gt_pixel_fraction": 0.2964769999186198,
+            "pred_pixel_fraction": 0.3391380310058594
           }
         },
         "n_classes_ever_predicted": 5,
@@ -52,71 +52,71 @@
           {
             "lo": 0.0,
             "hi": 2.0,
-            "mae_m": 0.8099288015470097,
-            "pixel_fraction": 0.3520405406865552
+            "mae_m": 0.8125553651892723,
+            "pixel_fraction": 0.3501743262367764
           },
           {
             "lo": 2.0,
             "hi": 4.0,
-            "mae_m": 0.6338428895815109,
-            "pixel_fraction": 0.40144950242574207
+            "mae_m": 0.6101908963128654,
+            "pixel_fraction": 0.3982337833221574
           },
           {
             "lo": 4.0,
             "hi": 8.0,
-            "mae_m": 1.1445732483924214,
-            "pixel_fraction": 0.18323536721088288
+            "mae_m": 1.1521269050701979,
+            "pixel_fraction": 0.1865896221214482
           },
           {
             "lo": 8.0,
             "hi": 1000000000.0,
-            "mae_m": 4.396135549076268,
-            "pixel_fraction": 0.06327458967681984
+            "mae_m": 4.476015104731467,
+            "pixel_fraction": 0.06500226831961799
           }
         ]
       },
       "openloop_t1": {
-        "psnr_db": 18.03776264190674,
-        "ssim": 0.5157600250095129,
-        "depth_mae_m": 1.0453925132751465,
-        "miou": 0.2640157015994191,
-        "fruit_vis_mae": 0.00561709982866887,
-        "sharpness_ratio": 0.11246107565239072,
+        "psnr_db": 18.140164534250896,
+        "ssim": 0.5213969610631466,
+        "depth_mae_m": 1.0671014587084453,
+        "miou": 0.2627324654410283,
+        "fruit_vis_mae": 0.0053855643976324545,
+        "sharpness_ratio": 0.11472712829709053,
         "per_class": {
           "ground": {
-            "iou": 0.8548344614009322,
-            "gt_pixel_fraction": 0.4237194061279297,
-            "pred_pixel_fraction": 0.4627723693847656
+            "iou": 0.8537992929450985,
+            "gt_pixel_fraction": 0.4223365783691406,
+            "pred_pixel_fraction": 0.4664726257324219
           },
           "fruit": {
-            "iou": 9.324878776575905e-05,
-            "gt_pixel_fraction": 0.020429611206054688,
-            "pred_pixel_fraction": 2.6702880859375e-05
+            "iou": 0.000441445418427193,
+            "gt_pixel_fraction": 0.020112355550130207,
+            "pred_pixel_fraction": 5.9763590494791664e-05
           },
           "leaf": {
-            "iou": 0.37101744437566975,
-            "gt_pixel_fraction": 0.19616127014160156,
-            "pred_pixel_fraction": 0.19674110412597656
+            "iou": 0.3671254145109108,
+            "gt_pixel_fraction": 0.1963653564453125,
+            "pred_pixel_fraction": 0.1910400390625
           },
           "shoot": {
-            "iou": 0.012265939796160228,
-            "gt_pixel_fraction": 0.06332015991210938,
-            "pred_pixel_fraction": 0.0018463134765625
+            "iou": 0.014248549129477686,
+            "gt_pixel_fraction": 0.0622406005859375,
+            "pred_pixel_fraction": 0.00220489501953125
           },
           "petiole": {
             "iou": 0.0,
-            "gt_pixel_fraction": 0.002170562744140625,
+            "gt_pixel_fraction": 0.0021832784016927085,
             "pred_pixel_fraction": 0.0
           },
           "peduncle": {
             "iou": 0.0,
-            "gt_pixel_fraction": 0.0002918243408203125,
+            "gt_pixel_fraction": 0.0002848307291666667,
             "pred_pixel_fraction": 0.0
           },
           "sky": {
-            "iou": 0.6140671086061384,
-            "gt_pixel_fraction": 0.29390716552734375,
-            "pred_pixel_fraction": 0.33861351013183594
+            "iou": 0.6157398145220102,
+            "gt_pixel_fraction": 0.2964769999186198,
+            "pred_pixel_fraction": 0.34022267659505206
           }
         },
         "n_classes_ever_predicted": 5,
@@ -124,71 +124,71 @@
           {
             "lo": 0.0,
             "hi": 2.0,
-            "mae_m": 0.8195157440242684,
-            "pixel_fraction": 0.3520405406865552
+            "mae_m": 0.8281026024018089,
+            "pixel_fraction": 0.3501743262367764
           },
           {
             "lo": 2.0,
             "hi": 4.0,
-            "mae_m": 0.655927564840885,
-            "pixel_fraction": 0.40144950242574207
+            "mae_m": 0.6417808706541435,
+            "pixel_fraction": 0.3982337833221574
           },
           {
             "lo": 4.0,
             "hi": 8.0,
-            "mae_m": 1.1663632985546766,
-            "pixel_fraction": 0.18323536721088288
+            "mae_m": 1.201261814575816,
+            "pixel_fraction": 0.1865896221214482
           },
           {
             "lo": 8.0,
             "hi": 1000000000.0,
-            "mae_m": 4.4390977953301105,
-            "pixel_fraction": 0.06327458967681984
+            "mae_m": 4.546205480111188,
+            "pixel_fraction": 0.06500226831961799
           }
         ]
       },
       "copy_last_t1": {
-        "psnr_db": 16.565830945968628,
-        "ssim": 0.553376067429781,
-        "depth_mae_m": 0.6499861590564251,
-        "miou": 0.32844939827919006,
-        "fruit_vis_mae": 0.0017180440117954277,
-        "sharpness_ratio": 0.9952175617218018,
+        "psnr_db": 16.706517299016316,
+        "ssim": 0.5591107631723086,
+        "depth_mae_m": 0.6572395662466685,
+        "miou": 0.3329302134613196,
+        "fruit_vis_mae": 0.0016291933352476917,
+        "sharpness_ratio": 0.991505521039168,
         "per_class": {
           "ground": {
-            "iou": 0.8666108053711057,
-            "gt_pixel_fraction": 0.4237194061279297,
-            "pred_pixel_fraction": 0.42182159423828125
+            "iou": 0.8697715225529442,
+            "gt_pixel_fraction": 0.4223365783691406,
+            "pred_pixel_fraction": 0.4204457600911458
           },
           "fruit": {
-            "iou": 0.1789937527889335,
-            "gt_pixel_fraction": 0.020429611206054688,
-            "pred_pixel_fraction": 0.019886016845703125
+            "iou": 0.19174785100286532,
+            "gt_pixel_fraction": 0.020112355550130207,
+            "pred_pixel_fraction": 0.019552866617838543
           },
           "leaf": {
-            "iou": 0.42783946534860245,
-            "gt_pixel_fraction": 0.19616127014160156,
-            "pred_pixel_fraction": 0.1950397491455078
+            "iou": 0.4333888793475587,
+            "gt_pixel_fraction": 0.1963653564453125,
+            "pred_pixel_fraction": 0.19630050659179688
           },
           "shoot": {
-            "iou": 0.13326663331665833,
-            "gt_pixel_fraction": 0.06332015991210938,
-            "pred_pixel_fraction": 0.06630706787109375
+            "iou": 0.136924624034374,
+            "gt_pixel_fraction": 0.0622406005859375,
+            "pred_pixel_fraction": 0.06426747639973958
           },
           "petiole": {
-            "iou": 0.006962576153176675,
-            "gt_pixel_fraction": 0.002170562744140625,
-            "pred_pixel_fraction": 0.0022430419921875
+            "iou": 0.0066397228637413395,
+            "gt_pixel_fraction": 0.0021832784016927085,
+            "pred_pixel_fraction": 0.00225067138671875
           },
           "peduncle": {
-            "iou": 0.014035087719298246,
-            "gt_pixel_fraction": 0.0002918243408203125,
-            "pred_pixel_fraction": 0.0002593994140625
+            "iou": 0.014388489208633094,
+            "gt_pixel_fraction": 0.0002848307291666667,
+            "pred_pixel_fraction": 0.0002530415852864583
           },
           "sky": {
-            "iou": 0.6440418705296708,
-            "gt_pixel_fraction": 0.29390716552734375,
-            "pred_pixel_fraction": 0.29444313049316406
+            "iou": 0.6530375859418447,
+            "gt_pixel_fraction": 0.2964769999186198,
+            "pred_pixel_fraction": 0.29692967732747394
           }
         },
         "n_classes_ever_predicted": 7,
@@ -196,26 +196,26 @@
           {
             "lo": 0.0,
             "hi": 2.0,
-            "mae_m": 0.6837517977280422,
-            "pixel_fraction": 0.3520405406865552
+            "mae_m": 0.6805819257920166,
+            "pixel_fraction": 0.3501743262367764
           },
           {
             "lo": 2.0,
             "hi": 4.0,
-            "mae_m": 0.45702160199750613,
-            "pixel_fraction": 0.40144950242574207
+            "mae_m": 0.4494456137853898,
+            "pixel_fraction": 0.3982337833221574
           },
           {
             "lo": 4.0,
             "hi": 8.0,
-            "mae_m": 0.6432150166384033,
-            "pixel_fraction": 0.18323536721088288
+            "mae_m": 0.6683655296566239,
+            "pixel_fraction": 0.1865896221214482
           },
           {
             "lo": 8.0,
             "hi": 1000000000.0,
-            "mae_m": 1.8048470085435877,
-            "pixel_fraction": 0.06327458967681984
+            "mae_m": 1.840558708529493,
+            "pixel_fraction": 0.06500226831961799
           }
         ]
       },

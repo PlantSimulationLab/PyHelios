@@ -368,3 +368,257 @@ so total loss went *up* while every reconstruction term went *down*. The rule th
 on validation reconstruction only, which is what the model is actually evaluated on. Reported
 because it is exactly the kind of silent mis-selection that would make a model look worse than
 it is for reasons unrelated to the model.
+
+---
+---
+
+# ROUND 2 — 2026-07-31
+
+Round 1 ended with a largely negative result and a diagnosis: *the model is limited by orchard
+diversity*. Round 2 took that diagnosis seriously enough to test it rather than act on it. The
+dataset was extended from 12 to 44 train orchards as planned, but before retraining, four
+model-free or model-only diagnostics were run to find out **which** constraint is actually
+binding. They changed the picture substantially, and they are reported first because everything
+after depends on them.
+
+Everything below is produced by a script in this directory and written to `output/r2/`. Splits,
+seeds and the exposure calibration are unchanged from Round 1, so every Round 2 number is
+directly comparable with the Round 1 tables above.
+
+---
+
+## 12. Round 1's diagnosis is half right: the loss overfits 12 orchards, but the *ceiling* is the representation
+
+Round 1 §11 showed validation reconstruction bottoming at step 14,000 and rising afterwards while
+training loss kept falling, and concluded the model had run out of orchards. That overfitting is
+real. But it says nothing about *how good the model could be if it stopped overfitting*, and the
+measurement that answers that was never made.
+
+`run_r2_recon_floor.py` makes it. Give the model the real frame at time *t*, encode it, decode it
+straight back — teacher-forced **posterior reconstruction**, no dynamics involved at all. That is
+an upper bound on every rollout number the architecture can produce. On the 4 held-out test
+orchards, Round 1's `main2` checkpoint (step 14,000, 64×64, seeded, 24 batches of 8):
+
+| | RGB PSNR | SSIM | depth MAE | mIoU | fruit MAE |
+|---|---|---|---|---|---|
+| posterior reconstruction | 18.25 dB | 0.523 | **1.035 m** | 0.268 | 0.0049 |
+| open-loop t+1 | 18.14 dB | 0.521 | 1.067 m | 0.263 | 0.0054 |
+| copy-last-frame t+1 | 16.71 dB | 0.559 | **0.657 m** | 0.333 | 0.0016 |
+
+**97% of the depth error at t+1 is already present in the reconstruction.** One step of dynamics
+adds 0.032 m to a 1.035 m error. The RSSM's transition model is not what loses to copy-last-frame
+— the encoder/decoder is. Round 1's headline negative ("copy-last beats the model on depth at
+every horizon") is, at t+1, almost entirely a statement about the autoencoder.
+
+The same measurement on **training** orchards settles whether that ceiling is itself a
+data-diversity effect:
+
+| split | posterior recon PSNR | depth MAE | mIoU | sharpness |
+|---|---|---|---|---|
+| train (12 orchards it was fit on) | 18.49 dB | 1.020 m | 0.290 | 0.122 |
+| test (never seen) | 18.25 dB | 1.035 m | 0.268 | 0.115 |
+
+The generalisation gap is **1.5% on depth** and 0.022 mIoU. The model reconstructs frames it was
+trained on barely better than frames it has never seen: it cannot render a sharp orchard *at
+all*. More orchards can close a 1.5% gap; they cannot move a 1.035 m ceiling.
+
+Two more things this run measures, both of which Round 1 asserted qualitatively:
+
+**The blur, as a number.** Mean absolute spatial gradient of the prediction divided by the same
+for the ground-truth frame: **0.115**. Round 1 called the outputs "low-frequency smears" from
+looking at the rollout strips; measured, they carry 11.5% of the real frame's gradient energy
+(copy-last-frame, being a real frame, scores 0.992). This is the architecture working as
+specified rather than a bug: the decoder is trained on MSE, whose optimum *is* the conditional
+mean, and with a 32×32 categorical latent — **160 bits per frame** — the conditional entropy of
+an orchard frame given the latent is enormous. The mean of that distribution is a blur.
+
+**Where the depth error lives.**
+
+| ground-truth distance | share of pixels | model | copy-last |
+|---|---|---|---|
+| 0–2 m | 35.0% | 0.813 m | 0.681 m |
+| 2–4 m | 39.8% | 0.610 m | 0.449 m |
+| 4–8 m | 18.7% | 1.152 m | 0.668 m |
+| 8 m+ | 6.5% | **4.476 m** | 1.841 m |
+
+Roughly half the total error comes from the 25% of pixels beyond 4 m. There is a loss/metric
+mismatch behind that: the model trains on MSE in **symlog** depth but is scored on MAE in
+**metres**, and symlog charges about a fifth as much for a metre of error at 16 m as at 1 m. So
+the far field is systematically under-penalised in training and fully priced in the metric. That
+is part of the copy-last gap — but not all of it, because the model is worse than copy-last even
+in the nearest band.
+
+## 13. mIoU 0.266 is not a plateau, it is class collapse — and the arithmetic is exact
+
+Round 1 reported mIoU "flat at ~0.26" across every horizon and left it as an opaque number. The
+per-class breakdown (pooled over the whole test split, so a frame with three fruit pixels cannot
+dominate) says exactly what it is:
+
+| class | IoU | share of GT pixels | share of **predicted** pixels |
+|---|---|---|---|
+| ground | 0.858 | 42.23% | 46.68% |
+| fruit | **0.001** | 2.01% | **0.01%** |
+| leaf | 0.379 | 19.64% | 19.14% |
+| shoot | **0.016** | 6.22% | **0.25%** |
+| petiole | **0.000** | 0.22% | **0.00%** |
+| peduncle | **0.000** | 0.03% | **0.00%** |
+| sky | 0.625 | 29.65% | 33.91% |
+
+(0.858 + 0.001 + 0.379 + 0.016 + 0.000 + 0.000 + 0.625) / 7 = **0.268**. That is the number.
+
+The model emits ground, leaf and sky and essentially nothing else. Four of the seven classes are
+never predicted, score IoU 0, and are averaged in. Copy-last-frame reaches 0.333 for the trivial
+reason that copying a real label map reproduces every class for free. So "the model's mIoU is
+flat at 0.26" means "the model has dropped every thin and every rare class", which is the
+expected behaviour of an unweighted cross-entropy on a distribution whose rarest class is 0.03%
+of pixels — not evidence about dynamics, actions, or orchard diversity.
+
+## 14. What sharpness allows: a blurred-ground-truth control
+
+If the model's outputs carry 11.5% of the ground truth's gradient energy, how well could
+*anything* score at that sharpness? `run_r2_blur_baseline.py` answers it with no model at all:
+take the **correct** frame — the perfect prediction — blur it, and score it with exactly
+`evaluate.py`'s metrics.
+
+| Gaussian σ (px, at 64×64) | sharpness | depth MAE | RGB PSNR | mIoU |
+|---|---|---|---|---|
+| 0 (perfect) | 1.000 | 0.000 m | ∞ | 1.000 |
+| 0.5 | 0.651 | 0.283 m | 28.03 dB | 1.000 |
+| 1.0 | 0.271 | 0.622 m | 21.27 dB | 0.476 |
+| 1.5 | 0.181 | 0.752 m | 20.29 dB | 0.392 |
+| 2.0 | 0.139 | 0.841 m | 19.84 dB | 0.357 |
+| 3.0 | 0.100 | 0.972 m | 19.35 dB | 0.324 |
+| 4.0 | 0.080 | 1.071 m | 19.04 dB | 0.307 |
+| 6.0 | 0.060 | 1.225 m | 18.62 dB | 0.288 |
+| **copy-last-frame** | 0.992 | **0.657 m** | 16.71 dB | 0.333 |
+
+The Round 1 model's sharpness of 0.115 sits between σ = 2 and σ = 3, around σ ≈ 2.6. Read the
+table there:
+
+1. **A perfectly correct depth map, blurred to the model's sharpness, still scores ~0.94 m —
+   worse than copy-last-frame's 0.657 m.** The depth criterion is therefore *unreachable at this
+   output sharpness no matter how accurate the prediction is*. Beating copy-last on depth
+   requires sharpness above about 0.26 (σ ≈ 1), more than twice what the model produces.
+2. The model's actual 1.035 m is only ~0.09 m worse than that bound, so roughly **90% of its
+   depth deficit is blur, not prediction error**.
+3. mIoU behaves differently. The blurred oracle keeps ~0.33 at the model's sharpness while the
+   model scores 0.268 — so unlike depth, mIoU has real headroom that is not explained by blur.
+   That is consistent with §13: the mIoU gap is class collapse, and class collapse is fixable
+   without touching sharpness.
+
+This is the single most useful frame for reading every number in Round 2. **Depth is a sharpness
+problem; mIoU is a class-balance problem.** They need different fixes, and neither of them is
+"more orchards".
+
+## 15. The growth channel: the action is a constant, and the RGB signal is at the noise floor
+
+Round 1 reported that the growth channel does not work and attributed it to channel imbalance
+(growth frames are 4% of the dataset, ~6% of the loss). `run_r2_growth_signal.py` measures the
+channel itself, from the stored dataset only — no model, no rendering — and finds two problems
+that sit upstream of any training decision.
+
+### 15.1 The growth action is a constant
+
+Collect the `a_grow` sequence of every growth episode in the dataset:
+
+```
+distinct a_grow sequences over 320 growth episodes: 1
+  [5,5,5,5,5,5,10,0] x320
+```
+
+**One.** Every growth episode in train, val and test carries the identical action sequence. A
+constant action carries no information beyond the frame index, so:
+
+- nothing in the data can teach the model to respond to a *different* number of days;
+- W6's "counterfactual growth" ablation — roll out with the growth action zeroed — was querying a
+  value that appears nowhere in training. It is an out-of-distribution probe, not a
+  counterfactual, and its result ("the model is *worse* with the true action than with it
+  zeroed") is not evidence about action usage.
+
+For contrast, the view action is not degenerate at all: per-dimension standard deviation
+(0.0892, 0.0338, 0.0202, 0.0546) over 3,072 steps.
+
+This is a **dataset design bug in Round 1's generator**, and it is the real reason the growth
+channel had nothing to learn. It is also fixable without re-rendering anything — see §17.
+
+### 15.2 In RGB, the growth signal is at the simulator's noise floor
+
+Per-step ground-truth change between consecutive growth stages, on the held-out test orchards:
+
+| stage step | age | a_grow | RGB PSNR | depth MAE | semantic mIoU | Δ fruit_vis |
+|---|---|---|---|---|---|---|
+| 0→1 | 540→545 | 5 d | 17.97 dB | 0.199 m | 0.484 | +0.0033 |
+| 1→2 | 545→550 | 5 d | 21.04 dB | 0.123 m | 0.745 | +0.0024 |
+| 2→3 | 550→555 | 5 d | 20.95 dB | 0.110 m | 0.777 | +0.0029 |
+| 3→4 | 555→560 | 5 d | 20.91 dB | 0.092 m | 0.799 | +0.0032 |
+| 4→5 | 560→565 | 5 d | 21.16 dB | 0.068 m | 0.836 | +0.0033 |
+| 5→6 | 565→570 | 5 d | 21.14 dB | 0.061 m | 0.840 | +0.0038 |
+| 6→7 | 570→580 | 10 d | 21.05 dB | 0.055 m | 0.868 | +0.0010 |
+| **mean** | | | **20.60 dB** | 0.101 m | 0.764 | |
+
+Compare that 20.60 dB with §9's measured **20.82 dB** simulator re-render reproducibility. In RMS
+terms the growth step is **23.8 levels** and the Monte-Carlo render noise is **23.2 levels** — a
+ratio of **1.03**. Both quantities contain the same noise, so the growth-induced RGB change is
+*at or below* the noise in which it is embedded. There is essentially no RGB growth signal to
+learn between consecutive stages. (Only the 540→545 step, at 17.97 dB, rises clearly above it —
+that is the step where the canopy leafs out.)
+
+Depth and semantics are a different story: they are bit-exact (§9), so their per-step changes —
+0.199 m falling to 0.055 m, self-mIoU 0.484 rising to 0.868 — are **entirely real signal**. If
+the growth channel is learnable at all, it is learnable there and not in RGB.
+
+For scale, one *view* step (a camera move) changes the image by 17.77 dB / 0.467 m / 0.339 mIoU.
+A growth step is about 4.6× smaller in depth and 4.4× smaller in RGB RMS than a camera step.
+
+### 15.3 95% of the growth change is scene-specific
+
+Split each episode's stage-to-stage RGB delta into the part explained by the **mean** delta over
+all episodes at that transition (a scene-independent "everything gets denser and greener" effect,
+learnable from the action alone) and the residual:
+
+| transition | delta RMS | mean-delta RMS | explained by the action alone |
+|---|---|---|---|
+| 540→545 | 32.46 | 6.36 | 3.8% |
+| 545→550 | 22.79 | 5.26 | 5.3% |
+| 550→555 | 23.12 | 5.29 | 5.2% |
+| 555→560 | 23.35 | 4.90 | 4.4% |
+| 560→565 | 22.74 | 4.64 | 4.2% |
+| 565→570 | 22.80 | 4.41 | 3.7% |
+| 570→580 | 23.08 | 4.90 | 4.5% |
+| **mean** | | | **4.5%** |
+
+So the growth channel asks the model to do the hardest available thing — predict where new leaves
+and fruit appear on *this particular* canopy — with the least informative conditioning signal
+available (a constant), in the modality where the signal is buried in render noise. Round 1's
+negative result on growth was over-determined.
+
+### 15.4 A growth evaluation that is actually a counterfactual
+
+The stored growth episodes render the *same camera pose* at 8 known ages, so from the 545 d frame
+a one-step prediction with `a_grow = d` has a real stored target for d ∈ {5, 10, 15, 20, 25, 35}
+days. `run_r2_growth_eval.py` uses that to ask a question the data can answer. On the Round 1
+model:
+
+- **dt response**: predictions for d = 5 and d = 35 differ by RMS 0.053 against 0.144 for the
+  corresponding ground-truth frames — 36.6% of real growth change. The action *does* move the
+  prediction.
+- **dt identification**: 16.7% over 6 candidates against a chance level of 16.7%; 25.0%
+  restricted to the four in-distribution values against a chance level of 25.0%. **Exactly
+  chance.** The confusion matrix shows why — whatever dt is asked for, the prediction lands
+  nearest the 550 d frame:
+
+```
+        550    555    560    565    570    580
+ 5d      63      1      0      0      0      0
+10d      63      1      0      0      0      0
+15d      62      2      0      0      0      0
+20d      64      0      0      0      0      0
+25d      63      1      0      0      0      0
+35d      64      0      0      0      0      0
+```
+
+The model always predicts "one stage on", regardless of how many days it was told to advance.
+That combination — the prediction moves, but never toward the requested target — is what a model
+conditioned on a constant looks like when you feed it a value it has never seen. It is a much
+sharper result than Round 1's PSNR-based growth table, and it is a *negative* result stated
+precisely.
