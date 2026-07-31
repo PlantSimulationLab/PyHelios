@@ -392,7 +392,8 @@ sharpness however accurate the prediction is. That reframed the whole round: **d
 sharpness problem, mIoU is a class-balance problem, and neither is a data problem.**
 
 **The KL logs.** Round 1's own training log, re-read with the above in hand: `kl_dyn=1.371` at
-step 17,500 and 17,500 → 18,000 unchanged, validation 1.58 → 1.64. The latent is 32 categorical
+step 17,500 and 1.372 at step 18,000 — flat — with validation rising only 1.58 → 1.64 over the
+same window. The latent is 32 categorical
 variables × 32 classes = 160 bits per frame, and the posterior diverges from the prior by 1.37
 nats = 2.0 bits. The encoder is very nearly bypassed. That is the mechanism behind the blur, and
 it is a hyperparameter, not a capacity limit.
