@@ -638,3 +638,154 @@ That combination — the prediction moves, but never toward the requested target
 conditioned on a constant looks like when you feed it a value it has never seen. It is a much
 sharper result than Round 1's PSNR-based growth table, and it is a *negative* result stated
 precisely.
+
+## 16. Scaling the dataset from 12 to 44 train orchards: the Round 1 diagnosis was wrong
+
+The dataset was extended exactly as the Round 2 brief specified. Final dataset: **44 train + 4 val
++ 4 test orchards**, 2,080 episodes, **166,400 frames**, 4.14 GB, generated at 241–330 s per
+orchard (9,857 s total for the 32 new ones). Val and test are the *same four seeds each* as Round
+1, and `run_r2_check_split.py` verifies against the manifest as written — not against the declared
+ranges — that the three seed sets are pairwise disjoint, that every episode's `split` field matches
+the directory it lives in, that every referenced file exists and that no two episodes share a path.
+All pass. `r2_main` is trained with **identical hyperparameters to Round 1's `main2`**, so the only
+difference is 3.7× the orchards.
+
+### It does help the training objective, and it does delay overfitting
+
+| | best validation reconstruction | at step | final (40k) |
+|---|---|---|---|
+| Round 1, 12 orchards (`main2`) | 0.7398 | 14,000 | 0.8341 (at 42k) |
+| **Round 2, 44 orchards (`r2_main`)** | **0.6959** | **26,000** | 0.7167 |
+| Round 2, no-action ablation | 0.7133 | 26,000 | 0.7344 |
+| Round 2, growth-subsampled | 0.6841 | 32,000 | 0.7441 |
+
+So the Round 1 story about the *loss* is confirmed and sharpened: more orchards give a **5.9%
+better** validation optimum and push the overfitting onset from step 14k to 26k. The model really
+was running out of orchards in the sense Round 1 meant.
+
+### It does almost nothing for the metrics that matter
+
+Held-out test orchards, 4 seeds, 96 view episodes, open-loop rollout from a 5-frame context —
+the same protocol and the same test seeds as Round 1's table in §10:
+
+| horizon | metric | Round 1 (12) | **Round 2 (44)** | change | copy-last |
+|---|---|---|---|---|---|
+| t+1 | RGB PSNR | 18.13 dB | **18.23 dB** | +0.10 | 16.71 dB |
+| | depth MAE | 1.061 m | **1.038 m** | −2.2% | **0.657 m** |
+| | mIoU | 0.265 | **0.268** | +1.1% | **0.333** |
+| t+5 | RGB PSNR | 17.96 | **18.11** | +0.15 | 15.63 |
+| | depth MAE | 1.117 | **1.077** | −3.6% | **0.968** |
+| | mIoU | 0.266 | **0.271** | +1.9% | 0.264 |
+| t+10 | RGB PSNR | 17.78 | **17.86** | +0.08 | 15.38 |
+| | depth MAE | 1.171 | **1.120** | −4.4% | **1.096** |
+| | mIoU | 0.263 | **0.268** | +1.9% | 0.250 |
+| t+25 | RGB PSNR | 17.45 | **17.57** | +0.12 | 15.14 |
+| | depth MAE | 1.256 | **1.197** | −4.7% | 1.205 |
+| | mIoU | 0.253 | **0.256** | +1.2% | 0.237 |
+
+**3.7× the orchards buys 2–5% on depth MAE and 1–2% on mIoU.** Neither success criterion moves:
+depth still loses to copy-last-frame at every horizon except t+25 (where it wins by 0.7%), and
+mIoU is still 0.27. Read against the **20.8 dB simulator noise floor** (§9), RGB PSNR went from
+87.2% to 87.6% of the ceiling — the RGB channel was never the problem and is not where the gain
+went either.
+
+And the representation ceiling — the thing §12 identified as binding — barely moved:
+
+| | posterior recon PSNR | depth MAE | mIoU | sharpness |
+|---|---|---|---|---|
+| Round 1, 12 orchards | 18.25 dB | 1.035 m | 0.268 | 0.115 |
+| Round 2, 44 orchards | 18.30 dB | **1.022 m** | 0.270 | **0.108** |
+
+**1.3% better depth, and sharpness got slightly *worse*.** The attribution is even more extreme
+than in Round 1: 99% of `r2_main`'s t+1 depth error is already in the teacher-forced
+reconstruction, and one step of dynamics adds 0.007 m to a 1.022 m error. Four of seven semantic
+classes are still never predicted.
+
+### Stated plainly
+
+**Round 1's diagnosis — "the model is limited by orchard diversity, not compute" — is wrong as an
+explanation of the held-out result, and the Round 2 brief built on it was aimed at the wrong
+target.** It is right that the model overfits 12 orchards, and 44 orchards demonstrably overfit
+later and reach a better validation optimum. But the held-out failure modes Round 1 actually
+reported — losing to copy-last on depth, mIoU pinned at 0.26, no canopy structure — are not
+diversity effects. They are, in order of size: an output-sharpness limit (§12, §14), a
+class-collapse artefact of the unweighted cross-entropy (§13), and for the growth channel a
+dataset design bug (§15). Tripling the orchards moved none of them by more than a few percent,
+which is exactly what §12's train-vs-test measurement predicted before any of this was retrained.
+
+### One thing that did get cleanly better: the action ablations
+
+Round 1 had to report that at t+1 the *shuffled*-action rollout scored 0.01 dB **higher** than the
+true-action one, which on its own reads as "the model ignores actions". With 44 orchards the
+ordering is correct at every horizon:
+
+| horizon | true actions | zeroed | shuffled | trained no-action model |
+|---|---|---|---|---|
+| t+1 | **18.23** | 18.22 | 18.20 | 18.15 |
+| t+5 | **18.11** | 18.00 | 17.91 | 17.95 |
+| t+10 | **17.86** | 17.74 | 17.65 | 17.65 |
+| t+25 | **17.57** | 17.31 | 17.22 | 17.40 |
+
+and the direct action-displacement probe agrees, growing from 23.2% of real inter-frame motion at
+t+1 to 37.5% at t+25 (Round 1: 20.3% → 35.3%). The margin over the *trained* no-action model is
++0.08 to +0.21 dB, and best validation reconstruction differs by 2.5% (0.6959 vs 0.7133) in the
+action-conditioned model's favour. Action conditioning is real and is now visible in PSNR as well
+as in the probe — but it is worth remembering this is the one place where more data was the fix,
+and it is the smallest of the three problems.
+
+## 17. The growth channel: fixing the constant action works, and it is not enough
+
+§15 found the growth action is a single constant across all 832 growth episodes. The fix costs no
+rendering at all: build growth windows from a random increasing **subsequence** of the stored
+stages, so `a_grow` takes 5/10/15/20-day values instead of one fixed sequence, and recompute it
+from the stored ages. The frames are the same real renders; only the step between them changes.
+Realised distribution over a training run: dt = 5 d ×427, 10 d ×456, 15 d ×383, 20 d ×74, mean
+window length 3.79 stages (`--growth-fraction` is raised 0.25 → 0.40 to compensate for the shorter
+windows).
+
+Evaluated with the counterfactual of §15.4 — from the 545 d frame, predict with `a_grow = d` and
+score against the stored frame at 545 + d:
+
+| model | dt response | dt identification, all 6 (chance 16.7%) | dt identification, in-distribution 4 (chance 25.0%) |
+|---|---|---|---|
+| Round 1, 12 orchards | 38.4% | 16.7% — **exactly chance** | 25.0% — **exactly chance** |
+| Round 2, 44 orchards, unchanged sampler | 41.1% | 16.1% — **chance** | 24.2% — **chance** |
+| **Round 2 + stage subsampling** | **55.3%** | **25.0% — 1.50× chance** | **34.0% — 1.36× chance** |
+
+The confusion matrix goes from degenerate to structured. Round 1 put every prediction, for every
+requested dt, nearest the 550 d frame. With subsampling the mass spreads along the diagonal:
+
+```
+        550    555    560    565    570    580
+ 5d      55      7      2      0      0      0
+10d      45     10      6      3      0      0
+15d      33     18      7      6      0      0
+20d      31     12      5     12      3      1
+25d      24     11      8     11      7      3
+35d      17      9     10     15      8      5
+```
+
+Two conclusions, and they point in opposite directions:
+
+1. **The growth channel was not intrinsically unlearnable — it was a dataset bug.** Scaling the
+   data from 12 to 44 orchards left dt identification at chance (16.1% vs 16.7%). Making the
+   action non-constant, at zero rendering cost, lifted it to 1.5× chance. Round 1's "the growth
+   channel does not work at this training scale" attributed to compute what was actually a
+   degenerate action variable.
+2. **It is still a long way from useful, and §15.2 says why.** Against copy-last-frame the
+   subsampled model still loses at every dt on depth (1.36–1.41 m vs 0.26–0.88 m) and on mIoU
+   (0.29–0.30 vs 0.44–0.73). It wins on RGB PSNR only from dt ≥ 15 d (18.91 vs 18.48 at 15 d,
+   17.84 vs 16.11 at 35 d), i.e. only once the canopy has changed enough that copying fails. And
+   dt identification at 34% against 25% chance is a real effect but a weak one.
+
+The ceiling is measured, not guessed. At the growth probe poses the RGB growth signal has an
+**SNR of 0.85** against the Monte-Carlo render noise (§15.2), and only **4.5%** of the stage-to-
+stage change is explained by the action alone — the other 95% requires knowing where new leaves
+and fruit will appear on *this* canopy, which is the same canopy-structure problem the view
+channel fails at. Depth and semantics do carry unbounded-SNR growth signal, so that is where any
+further work on this channel should be scored; RGB should not be.
+
+**Recommendation, stated as a finding rather than a to-do:** the growth channel's action
+degeneracy is fixed and should stay fixed (`--growth-subsample` costs nothing). Its remaining
+failure is the same representation failure as the view channel, and it will not move until §12's
+sharpness ceiling does.

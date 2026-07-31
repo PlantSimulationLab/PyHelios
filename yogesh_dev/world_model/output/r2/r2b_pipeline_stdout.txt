@@ -1,1 +1,3 @@
 [00:29:39] waiting for run_r2.sh (pid 307193)
+[04:32:43] run_r2.sh exited
+[04:32:43] === R2-E: capacity run (base 64, deter 1024, stoch 48x48) ===

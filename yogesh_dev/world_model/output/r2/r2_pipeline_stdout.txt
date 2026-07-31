@@ -13,3 +13,13 @@
 [03:04:31] === R2-A: growth signal analysis on the extended dataset ===
 [03:04:32] growth signal exit=0
 [03:04:32] === training: r2_main + r2_noaction + r2_growth, concurrently ===
+[04:31:55] r2_main exit=0
+[04:31:55] r2_noaction exit=0
+[04:31:55] r2_growth exit=0
+[04:31:55] === W6 evaluation on the held-out test orchards ===
+[04:32:07] evaluation exit=0
+[04:32:07] === R2-D: growth counterfactual, Round 1 vs Round 2 models ===
+[04:32:10] growth counterfactual exit=0
+[04:32:10] === curves ===
+[04:32:10] curves exit=0
+[04:32:10] ROUND 2 PIPELINE DONE
