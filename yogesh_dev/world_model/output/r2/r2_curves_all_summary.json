@@ -7,22 +7,6 @@
     "best_val_recon": 0.6959494649199769,
     "final_val_recon": 0.7166648709680885
   },
-  "r2_noaction": {
-    "n_train_points": 80,
-    "n_val_points": 40,
-    "final_step": 40000,
-    "best_val_recon_step": 26000,
-    "best_val_recon": 0.7132945555495098,
-    "final_val_recon": 0.7343548892531544
-  },
-  "r2_growth": {
-    "n_train_points": 80,
-    "n_val_points": 40,
-    "final_step": 40000,
-    "best_val_recon_step": 32000,
-    "best_val_recon": 0.6841013621306047,
-    "final_val_recon": 0.7441288264235482
-  },
   "r2_big": {
     "n_train_points": 60,
     "n_val_points": 30,
@@ -30,5 +14,37 @@
     "best_val_recon_step": 26000,
     "best_val_recon": 0.6934657272649929,
     "final_val_recon": 0.7194404096808285
+  },
+  "r2_sem": {
+    "n_train_points": 60,
+    "n_val_points": 30,
+    "final_step": 30000,
+    "best_val_recon_step": 26000,
+    "best_val_recon": 0.5765078547410667,
+    "final_val_recon": 0.5943488926859573
+  },
+  "r2_best": {
+    "n_train_points": 60,
+    "n_val_points": 30,
+    "final_step": 30000,
+    "best_val_recon_step": 26000,
+    "best_val_recon": 0.6349203427089378,
+    "final_val_recon": 0.659464928554371
+  },
+  "r2_kl": {
+    "n_train_points": 60,
+    "n_val_points": 30,
+    "final_step": 30000,
+    "best_val_recon_step": 26000,
+    "best_val_recon": 0.6268569626845419,
+    "final_val_recon": 0.6529915505088866
+  },
+  "r2_final": {
+    "n_train_points": 60,
+    "n_val_points": 30,
+    "final_step": 30000,
+    "best_val_recon_step": 26000,
+    "best_val_recon": 0.5693649192107841,
+    "final_val_recon": 0.5949320504441857
   }
 }

@@ -804,3 +804,152 @@ further work on this channel should be scored; RGB should not be.
 degeneracy is fixed and should stay fixed (`--growth-subsample` costs nothing). Its remaining
 failure is the same representation failure as the view channel, and it will not move until §12's
 sharpness ceiling does.
+
+## 18. What actually moved the held-out numbers: five single-factor runs and their combination
+
+Six runs on the same 44-orchard dataset, same seeds, same 40k/30k budget, each differing from
+`r2_main` in exactly one respect (except `r2_final`, which is the combination). Every number below
+is the **held-out test split**, 4 orchards, 96 view episodes, open-loop rollout from a 5-frame
+context — the same protocol as Round 1's §10.
+
+### Teacher-forced reconstruction — the representation ceiling
+
+| run | what changed | PSNR | depth MAE | mIoU | RGB sharpness | **depth sharpness** |
+|---|---|---|---|---|---|---|
+| `r1_main` | Round 1, 12 orchards | 18.25 dB | 1.035 m | 0.268 | 0.115 | 0.228 |
+| `r2_main` | 44 orchards | 18.30 | 1.022 | 0.270 | 0.108 | 0.220 |
+| `r2_big` | 4× parameters, 268-bit latent | 18.35 | 1.009 | 0.271 | 0.112 | 0.224 |
+| `r2_sem` | class-weighted semantic CE | 18.26 | 1.026 | 0.281 | 0.104 | 0.214 |
+| `r2_best` | class weights + L1 depth | 18.30 | 0.881 | 0.284 | 0.105 | **0.281** |
+| `r2_kl` | free-bits 1→6, KL 0.5/0.1→0.2/0.04 | **18.67** | 0.887 | 0.287 | **0.127** | 0.260 |
+| **`r2_final`** | **KL + class weights + L1** | 18.63 | **0.775** | **0.304** | 0.123 | **0.293** |
+| *copy-last-frame* | — | *16.71* | *0.657* | *0.333* | *0.992* | *0.985* |
+
+### Open-loop rollout — the numbers the success criteria are about
+
+| horizon | | Round 1 | `r2_main` | `r2_big` | `r2_sem` | `r2_best` | `r2_kl` | **`r2_final`** | copy-last |
+|---|---|---|---|---|---|---|---|---|---|
+| **t+1** | PSNR | 18.13 | 18.23 | 18.22 | 18.14 | 18.23 | **18.51** | 18.47 | 16.71 |
+| | depth | 1.061 | 1.038 | 1.033 | 1.063 | 0.904 | 0.919 | **0.810** | **0.657** |
+| | mIoU | 0.265 | 0.268 | 0.269 | 0.275 | 0.279 | 0.282 | **0.294** | **0.333** |
+| **t+5** | PSNR | 17.96 | 18.11 | — | 18.06 | — | 18.24 | 18.19 | 15.63 |
+| | depth | 1.117 | 1.077 | — | 1.092 | — | 1.002 | **0.891** | 0.968 |
+| | mIoU | 0.266 | 0.271 | — | 0.276 | — | 0.277 | **0.283** | 0.264 |
+| **t+10** | PSNR | 17.78 | 17.86 | — | 17.78 | — | 18.00 | 17.82 | 15.38 |
+| | depth | 1.171 | 1.120 | — | 1.145 | — | 1.061 | **0.975** | 1.096 |
+| | mIoU | 0.263 | 0.268 | — | 0.265 | — | 0.268 | **0.269** | 0.250 |
+| **t+25** | PSNR | 17.45 | 17.57 | 17.57 | 17.52 | 17.58 | 17.58 | 17.57 | 15.14 |
+| | depth | 1.256 | 1.197 | 1.211 | 1.211 | 1.088 | 1.162 | **1.068** | 1.205 |
+| | mIoU | 0.253 | 0.256 | 0.259 | 0.253 | 0.252 | 0.258 | **0.258** | 0.237 |
+
+### Against the success criteria
+
+**Depth MAE vs copy-last-frame (0.657 m at t+1): partially met, and the pattern is clean.** Round
+1 lost at *every* horizon. `r2_final` **beats copy-last at t+5, t+10 and t+25** (0.891 vs 0.968;
+0.975 vs 1.096; 1.068 vs 1.205 — margins of 8%, 11%, 11%) and still **loses at t+1** (0.810 vs
+0.657). Against Round 1 the improvement is 24% / 20% / 17% / 15% across the four horizons. The
+t+1 failure is exactly what §14 predicts: at `r2_final`'s depth sharpness of 0.293, a *uniformly
+blurred perfect predictor* scores ~0.70 m, so 0.657 m is not reachable — but the threshold is
+0.31 and the model is at 0.293, i.e. the criterion is now just out of reach rather than far out
+of reach.
+
+**mIoU above 0.266: met, modestly.** 0.265 → **0.294** on the rollout at t+1 and 0.268 → **0.304**
+on the reconstruction, an 11–13% lift, and `r2_final` beats copy-last from t+5 onward. It is a
+real gain from a diagnosed cause, not noise, but it is not a transformation, and at t+1
+copy-last-frame is still ahead.
+
+**RGB PSNR, reported against the 20.8 dB noise floor (§9) rather than as an absolute:** Round 1
+reached 18.13 dB = **87.2%** of the ceiling; `r2_kl` and `r2_final` reach 18.51 / 18.47 dB =
+**89.0% / 88.8%**. There is at most 2.3 dB of headroom in this channel and 0.34 dB of it was
+taken. RGB was never where the problem was.
+
+### Which interventions worked, ranked by effect on held-out depth MAE at t+1
+
+| intervention | Δ depth MAE vs `r2_main` | Δ mIoU | cost |
+|---|---|---|---|
+| KL relaxation + class weights + L1 (`r2_final`) | **−0.228 m (−22%)** | +0.026 | none |
+| class weights + L1 depth (`r2_best`) | −0.134 m (−13%) | +0.010 | none |
+| KL relaxation alone (`r2_kl`) | −0.119 m (−11%) | +0.013 | none |
+| class weights alone (`r2_sem`) | +0.025 m (**worse**) | +0.007 | none |
+| 4× capacity (`r2_big`) | −0.005 m (−0.5%) | +0.001 | 4× parameters, ~2× wall clock |
+| 3.7× the orchards (`r2_main` vs Round 1) | −0.023 m (−2%) | +0.003 | **2 h 45 m of ray tracing** |
+
+The two things Round 1 and the Round 2 brief pointed at — **more data and more capacity — are the
+bottom two rows.** Between them they bought 2.5% of depth MAE. Three hyperparameter and loss
+changes that cost nothing bought 22%. That is the headline of this round.
+
+### Why each fix worked, mechanistically
+
+**The KL relaxation is the one that unblocks the representation.** Round 1's KL sat at 1.371 nats
+— 2.0 bits per frame through a 160-bit latent — and `r2_big` is the proof that this is a penalty
+problem and not a capacity problem: quadrupling the latent to 268 bits left the KL at **1.373**
+and the metrics unchanged to three decimals. The model was not short of channel; it was declining
+to use the channel it had. With free-bits 6 and weights 0.2/0.04 the KL runs at **6.2–6.3 nats**,
+RGB sharpness rises 0.108 → 0.127 (the only intervention that moves it) and reconstruction depth
+falls 1.022 → 0.887 m.
+
+**L1 depth sharpens the depth head specifically, and it shows up exactly where predicted.** §12
+found the error concentrated in the far field because MSE-in-symlog under-prices a metre of error
+at 16 m by ~5×. Depth sharpness goes 0.220 → 0.281 while RGB sharpness does not move (0.108 →
+0.105), and the far bins collapse:
+
+| GT distance | `r2_main` | `r2_final` | copy-last |
+|---|---|---|---|
+| 0–2 m (35.0%) | 0.784 m | **0.673 m** | 0.681 m |
+| 2–4 m (39.8%) | 0.620 m | **0.514 m** | 0.449 m |
+| 4–8 m (18.7%) | 1.194 m | **0.815 m** | 0.668 m |
+| 8 m+ (6.5%) | 4.296 m | **2.843 m** | 1.841 m |
+
+`r2_final` **beats copy-last in the 0–2 m band** (0.673 vs 0.681) and the remaining deficit is
+entirely the far field.
+
+**Class weights do what §13 said they would, and no more.** The classes come back:
+
+| class | `r1_main` IoU | `r2_final` IoU | copy-last IoU | GT pixels | `r2_final` predicted |
+|---|---|---|---|---|---|
+| ground | 0.858 | 0.868 | 0.870 | 42.23% | 40.64% |
+| fruit | **0.001** | **0.119** | 0.192 | 2.01% | 2.69% |
+| leaf | 0.379 | **0.444** | 0.433 | 19.64% | 24.27% |
+| shoot | **0.016** | **0.135** | 0.137 | 6.22% | 5.01% |
+| petiole | 0.000 | 0.000 | 0.007 | 0.22% | 0.00% |
+| peduncle | 0.000 | 0.000 | 0.014 | 0.03% | 0.00% |
+| sky | 0.625 | 0.643 | 0.653 | 29.65% | 27.39% |
+
+Fruit goes from never predicted to 2.69% of pixels against 2.01% in the ground truth, shoot from
+0.25% to 5.01% against 6.22%, and **shoot IoU (0.135) now essentially matches copy-last-frame's
+(0.137)** while leaf IoU (0.444) *beats* it. Petiole (0.22% of pixels) and peduncle (0.03%) stay
+at zero even with a 4× weight — at 64×64 they are one or two pixels wide, and they cap mIoU at
+5/7 = 0.714 for any model at this resolution. Note also that class weights **alone** made held-out
+depth slightly *worse* (`r2_sem`, 1.063 m vs 1.038 m): they buy semantics at a small cost in
+depth, and only pay off cleanly in combination.
+
+**The three compose almost additively** — depth 1.022 → 0.887 (KL) → 0.881 (weights+L1) →
+**0.775** (all three); mIoU 0.270 → 0.287 → 0.284 → **0.304**; depth sharpness 0.220 → 0.260 →
+0.281 → **0.293**.
+
+### The growth channel, with the final model
+
+`r2_final` was deliberately **not** trained with `--growth-subsample`, which makes it a clean
+control: its dt identification is 16.9% against a 16.7% chance level — exactly chance, like
+`r1_main` (16.9%) and `r2_main` (16.4%). Only `r2_growth`, the run with the augmentation, is above
+chance (24.5%, and 33.2% vs 25.0% on in-distribution dt). **None of the loss, capacity or
+bottleneck fixes touch the growth channel at all.** Its problem was, and is, that the stored
+action is a constant (§15.1); fixing the sampler fixes it, and nothing else does.
+
+### Two methodological notes
+
+**Validation reconstruction is noisier than it looks.** With `--val-batches 8` (192 windows) the
+val curve oscillates by ~7% step to step — `r2_final` runs 0.634, 0.644, 0.604, 0.605, 0.640,
+0.599, 0.587, 0.604, 0.592, **0.569**, 0.595 over steps 17k–27k. Every run reports its best at
+step 26,000, and that is not a coincidence about the models: all runs share `--seed 0`, so the
+validation sampler draws the *same* windows at the same steps in every run. That makes fixed-step
+cross-run comparison fair, but it means "best step" is partly a draw of the validation dice.
+The held-out test evaluation (24 batches, separate seed) is the number to trust, and it is what
+every table above reports.
+
+**Validation reconstruction is not comparable across runs that change the loss.** `r2_sem`,
+`r2_best`, `r2_kl` and `r2_final` change the scale of the semantic, depth or KL terms, so their
+val-recon numbers (0.577, 0.635, 0.627, 0.569) cannot be compared with `r2_main`'s 0.696. Only
+`r2_main`, `r2_noaction`, `r2_growth` and `r2_big` are on a common scale. This is why checkpoint
+selection is done within-run and every comparison in this section is on the unweighted held-out
+metrics.

@@ -1,3 +1,9 @@
 [00:58:26] waiting for phase C (pid 308302)
 [05:56:31] phase C exited
 [05:56:31] === R2-I: relaxed information bottleneck (free-bits 6, kl 0.2/0.04) ===
+[06:25:49] r2_kl exit=0
+[06:25:49] === W6 evaluation of the relaxed-bottleneck model ===
+[06:26:00] evaluation exit=0
+[06:26:00] === R2-C: reconstruction floor / sharpness for the relaxed-bottleneck model ===
+[06:26:06] recon floor exit=0
+[06:26:06] ROUND 2 PHASE E DONE
