@@ -86,8 +86,47 @@ def score_frame(p_rgb, p_dsl, p_sem_logits, p_fruit, data, t_abs, is_copy=False)
         "depth_mae_m": float(((derr * not_sky).flatten(1).sum(1) / n_valid).mean()),
         "miou": float(np.nanmean(m.cpu().numpy())),
         "fruit_vis_mae": float(((symexp(p_fruit) - symexp(gt_fruit)) / 100.0).abs().mean()),
+        "sharpness_ratio": sharpness_ratio(p_rgb, gt_rgb),
         "_cls": class_stats(pred_cls, gt_sem),
+        "_depth_bins": depth_error_by_range(symexp(p_dsl), symexp(gt_dsl), not_sky),
     }
+
+
+DEPTH_BIN_EDGES = (0.0, 2.0, 4.0, 8.0, 1e9)
+
+
+@torch.no_grad()
+def depth_error_by_range(p_m, gt_m, not_sky):
+    """Absolute depth error split by GROUND-TRUTH distance.
+
+    The model is trained on MSE in symlog depth but scored on MAE in metres. The
+    two disagree: symlog compresses distance, so a metre of error at 16 m costs
+    the loss about a fifth of what it costs at 1 m, while the metric charges full
+    price. If the error is concentrated in the far bins, that mismatch -- not the
+    dynamics and not the data -- is part of why the model loses to copy-last.
+    """
+    out = []
+    for lo, hi in zip(DEPTH_BIN_EDGES[:-1], DEPTH_BIN_EDGES[1:]):
+        m = not_sky & (gt_m >= lo) & (gt_m < hi)
+        n = float(m.sum())
+        err = float(((p_m - gt_m).abs() * m).sum())
+        out.append({"lo": lo, "hi": hi, "abs_err_sum": err, "n": n})
+    return out
+
+
+@torch.no_grad()
+def sharpness_ratio(p_rgb, gt_rgb):
+    """Mean |spatial gradient| of the prediction / the same for ground truth.
+
+    Round 1 described the model's output as "low-frequency smears" from looking at
+    the rollout strips. This is that claim as a number: 1.0 means the prediction
+    carries as much high-frequency detail as the real frame, and values well below
+    1.0 mean it is blurred.
+    """
+    def g(x):
+        return (x[..., 1:, :] - x[..., :-1, :]).abs().mean() + \
+               (x[..., :, 1:] - x[..., :, :-1]).abs().mean()
+    return float(g(p_rgb) / g(gt_rgb).clamp_min(1e-9))
 
 
 @torch.no_grad()
@@ -142,6 +181,15 @@ def run(model, sampler, device, context, n_batches, batch_size, log):
         rec["per_class"] = per_cls
         rec["n_classes_ever_predicted"] = sum(
             1 for c in per_cls.values() if c["pred_pixel_fraction"] > 1e-6)
+        bins = []
+        for i in range(len(DEPTH_BIN_EDGES) - 1):
+            s = sum(r["_depth_bins"][i]["abs_err_sum"] for r in v)
+            n = sum(r["_depth_bins"][i]["n"] for r in v)
+            tot_n = sum(sum(b["n"] for b in r["_depth_bins"]) for r in v)
+            bins.append({"lo": DEPTH_BIN_EDGES[i], "hi": DEPTH_BIN_EDGES[i + 1],
+                         "mae_m": (s / n) if n else None,
+                         "pixel_fraction": n / max(1.0, tot_n)})
+        rec["depth_mae_by_range"] = bins
         out[k] = rec
     return out
 
@@ -204,6 +252,18 @@ def main():
             log(f"    {name:10s}{cells}")
         log(f"  classes the model ever predicts: "
             f"{r['posterior_recon']['n_classes_ever_predicted']} of {N_SEMANTIC_CLASSES}")
+        log(f"  depth MAE by ground-truth distance (posterior recon / copy-last):")
+        for i, b in enumerate(r["posterior_recon"]["depth_mae_by_range"]):
+            c = r["copy_last_t1"]["depth_mae_by_range"][i]
+            hi = "inf" if b["hi"] > 1e8 else f"{b['hi']:.0f}"
+            mm = "  --  " if b["mae_m"] is None else f"{b['mae_m']:.3f}"
+            cm = "  --  " if c["mae_m"] is None else f"{c['mae_m']:.3f}"
+            log(f"    {b['lo']:>4.0f}-{hi:>4s} m  ({b['pixel_fraction']*100:5.1f}% of pixels)  "
+                f"{mm} m   vs copy-last {cm} m")
+        log(f"  RGB sharpness (mean |gradient| relative to ground truth): "
+            f"posterior recon {r['posterior_recon']['sharpness_ratio']:.3f}, "
+            f"open-loop t+1 {r['openloop_t1']['sharpness_ratio']:.3f}, "
+            f"copy-last {r['copy_last_t1']['sharpness_ratio']:.3f}")
         if "posterior_recon" in r and "openloop_t1" in r:
             a, b = r["posterior_recon"], r["openloop_t1"]
             log(f"  attribution: of the depth error at t+1, "
