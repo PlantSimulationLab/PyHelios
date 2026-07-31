@@ -1,0 +1,14 @@
+==============================================================================
+train.py 2026-07-30 20:58:20 device=cuda
+args: {'data': 'yogesh_dev/world_model/output/dataset', 'out': '/home/yogesh/PyHelios/yogesh_dev/world_model/output/train', 'steps': 30000, 'batch_size': 24, 'seq_len': 32, 'image_size': 64, 'base_channels': 32, 'deter': 512, 'stoch': 32, 'classes': 32, 'lr': 0.0003, 'adam_eps': 1e-05, 'grad_clip': 100.0, 'growth_fraction': 0.25, 'free_bits': 1.0, 'seed': 0, 'log_every': 200, 'val_every': 1000, 'val_batches': 8, 'ckpt_every': 1000, 'resume': False, 'overfit_one': False, 'amp': False, 'cache_size': 512, 'prefetch': True, 'zero_actions': True, 'tag': 'noaction'}
+train data: {'split': 'train', 'n_view_episodes': 288, 'n_growth_episodes': 192, 'n_frames': 38400, 'growth_fraction_requested': 0.25, 'growth_fraction_realised': None}
+val data: {'split': 'val', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 0.25, 'growth_fraction_realised': None}
+model parameters: 14,245,452
+  step    200  loss=2.2753  rgb=0.03443  depth=0.31940  sem=1.0404  fruit=0.1931  kl_dyn=1.146  kl_rep=1.146  |g|=1.4  4.81 it/s
+  step    400  loss=1.9428  rgb=0.02118  depth=0.26338  sem=0.7669  fruit=0.0884  kl_dyn=1.338  kl_rep=1.338  |g|=1.6  5.64 it/s
+  step    600  loss=1.8484  rgb=0.01982  depth=0.23294  sem=0.6954  fruit=0.0826  kl_dyn=1.363  kl_rep=1.363  |g|=1.4  6.78 it/s
+  step    800  loss=1.7518  rgb=0.01848  depth=0.22001  sem=0.6633  fruit=0.0604  kl_dyn=1.316  kl_rep=1.316  |g|=1.3  7.55 it/s
+  step   1000  loss=1.7375  rgb=0.01827  depth=0.22117  sem=0.6589  fruit=0.0585  kl_dyn=1.301  kl_rep=1.301  |g|=1.4  8.12 it/s
+  VAL step 1000: loss=1.84327  rgb=0.01790  depth=0.21767  semantic=0.64459  fruit=0.08201  kl_dyn=1.46850  kl_rep=1.46850
+  step   1200  loss=1.7290  rgb=0.01813  depth=0.21927  sem=0.6548  fruit=0.0542  kl_dyn=1.304  kl_rep=1.304  |g|=1.3  8.37 it/s
+  step   1400  loss=1.7074  rgb=0.01791  depth=0.21742  sem=0.6511  fruit=0.0484  kl_dyn=1.288  kl_rep=1.288  |g|=1.2  8.70 it/s

@@ -159,3 +159,43 @@ spacing, leaving a free lane of about 0.82 m. Camera trajectories are constraine
 - **`base` cannot generate this dataset**: `OpenEXR` is not installed there and depth readback
   needs it. Generation runs in the `helios` env (PyHelios + OpenEXR + imageio), training in
   `gsplat`.
+
+---
+
+## 9. The dataset is reproducible in everything except radiance — and that sets a hard ceiling on RGB prediction
+
+W3's acceptance criterion is *"regenerating one shard with the same seed is byte-identical"*.
+**It is not.** `run_w3_verify.py` regenerated a whole orchard (40 episodes, 3,200 frames) from
+the same seed and found **0/40 byte-identical**. But the per-array breakdown makes the failure
+precise rather than mysterious, and `run_w3_determinism_probe.py` quantifies it on one episode:
+
+| array | reproducible? | detail |
+|---|---|---|
+| `depth` | **yes**, bit-exact | |
+| `semantic` | **yes**, bit-exact | |
+| `pose`, `state`, `a_view`, `fruit_vis` | **yes**, bit-exact | |
+| `instance` | effectively yes | fruit mask IoU **1.0**, identical set of 796 fruit IDs, only **0.0042%** of pixels differ (ties on object boundaries) |
+| `rgb` | **no** | 41.1% of pixels differ; mean |Δ| 6.2 levels, p99 134, max 255; **run-to-run PSNR 20.82 dB** |
+
+So the *geometry* pipeline is fully deterministic — seeded plant growth, ray-hit topology,
+depth, labels and poses all reproduce bit-for-bit. What does not reproduce is the Monte-Carlo
+radiative solve: OptiX samples direct and diffuse rays with an RNG PyHelios does not expose, so
+two renders of the identical scene from the identical pose give different radiance.
+
+**The consequence is the important part.** Re-rendering the same frame twice agrees only to
+**20.8 dB PSNR**. That is a *noise floor on the simulator itself*, and therefore an approximate
+ceiling on what any model can score when predicting a held-out Helios RGB frame: the stored
+target contains a specific noise realisation that is not a function of the scene or the camera
+pose, so it is not predictable in principle. Every RGB PSNR in the W6 tables has to be read
+against that 20.8 dB reference, not against ∞. (Depth and semantic have no such ceiling — they
+are bit-exact — which is one reason the multi-modal decoder heads earn their keep.)
+
+Two things follow for anyone continuing this work:
+
+1. **Raising `setDirectRayCount` / `setDiffuseRayCount` would raise the ceiling.** The dataset
+   here uses the plugin defaults with `antialiasing_samples=2`. Nothing was tuned, because the
+   ceiling only became visible after the dataset was generated. Measuring PSNR-between-repeats
+   as a function of ray count is a cheap, high-value follow-up.
+2. **"Byte-identical regeneration" is the wrong acceptance criterion for a ray-traced dataset**
+   unless the sampler is seeded. The right one is what this section reports: bit-exact geometry
+   and labels, plus a stated and measured radiance reproducibility.

@@ -1,6 +1,9 @@
 gsplat baseline: 64x64 (stride 2 from stored), HFOV=60.00 deg, context=5, horizons=[1, 5, 10, 25], iters=3000
   [1] test/view_s12000_g0_row_traversal.npz (row_traversal) targets=[5, 9, 14, 29]
     setting 'matched': 5 training views
+/home/yogesh/anaconda3/envs/gsplat/lib/python3.13/site-packages/torch/utils/cpp_extension.py:2356: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
       gsplat iter 1000/3000 train L1=0.05258
       gsplat iter 2000/3000 train L1=0.04165
       gsplat iter 3000/3000 train L1=0.03951
@@ -111,3 +114,5 @@ gsplat baseline: 64x64 (stride 2 from stored), HFOV=60.00 deg, context=5, horizo
   generous  t+5   PSNR= 21.15dB  SSIM=0.7046  (n=6)
   generous  t+10  PSNR= 20.50dB  SSIM=0.7146  (n=6)
   generous  t+25  PSNR= 20.36dB  SSIM=0.6838  (n=6)
+
+Wrote /home/yogesh/PyHelios/yogesh_dev/world_model/output/w6/gsplat_baseline.json
