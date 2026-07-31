@@ -265,6 +265,47 @@ A note on reading the loss: with KL free bits at 1.0 nat and weights 0.5/0.1, `l
 below 0.6 however good the reconstruction is. "Near zero" has to be read on the reconstruction
 terms.
 
-## 6. W5/W6 — training and evaluation
+## 6. W5 — training
 
-*(see WORLD_MODEL_STATUS.md and FINDINGS.md for the outcome)*
+Two models, identical except for `--zero-actions` (the no-action ablation), trained concurrently
+at 64×64, batch 24, sequence 32 on one RTX 5090.
+
+**First attempt ran at 2.75 it/s** — 40 k steps would have taken 4 hours. The bottleneck was
+`np.savez_compressed` decompression: with the default 64-episode LRU cache and 288 train view
+episodes, ~78% of every batch's 24 elements needed a fresh episode decompressed from disk.
+Raising `--cache-size` to 512 (≈1.2 GB of RAM at 64×64) took it to **11.3 it/s**, a 4× speedup,
+after which the cache is warm and there is no disk I/O in the steady state.
+
+**Second bug: checkpoint selection was picking the wrong model.** `ckpt_best` was selected on
+total validation loss, but the KL term rises monotonically (val kl_dyn 1.35 → 2.05) as the model
+uses more latent capacity, while every reconstruction term falls. Total loss therefore went *up*
+while the model got *better*, and "best" froze at step 5,000 when validation reconstruction
+actually kept improving to step 14,000. Fixed to select on validation reconstruction, and both
+models retrained under the corrected rule.
+
+**Third finding, from continuing the run to 42 k steps:** validation reconstruction bottoms out
+at step 14,000 and then *rises* while training loss keeps falling. The model is limited by the
+number of distinct orchards (12), not by step count. `output/w5/curves.png` shows the divergence
+clearly on the depth and semantic heads. This is why the reduced dataset scale matters and is
+reported as the binding constraint.
+
+Resumability was exercised for real: one run was resumed from step 30,000 and continued to
+42,000 with optimiser state and step count intact.
+
+## 7. W6 — evaluation
+
+The headline numbers, the ablations, the 3DGS reference and the honest negative results are in
+`FINDINGS.md` §10–§11 and summarised in `WORLD_MODEL_STATUS.md`. Two things belong in the log
+rather than the findings:
+
+- **The plan's no-action ablation nearly failed to detect action usage.** At t+1 the full model
+  and the eval-time zero-action rollout scored 18.13 vs 18.11 dB, and the *shuffled*-action
+  rollout scored 18.14 — i.e. marginally better than the truth. On that evidence alone one would
+  write "the model ignores actions". Adding a direct probe (roll out from the same context with
+  true / zeroed / negated actions and compare the predictions *to each other*) shows the action
+  displaces the prediction by 20–38% of the magnitude of real inter-frame motion. Both are
+  reported; the disagreement between them is itself the finding.
+- **The gsplat baseline needed `ninja` on `PATH`.** `gsplat` 1.5.3 JIT-compiles its CUDA
+  extension on first use and fails with "Ninja is required to load C++ extensions" unless the
+  `gsplat` env's own `bin` is on `PATH`. Invoking the interpreter by absolute path is not
+  enough. One line in `run_remaining.sh`.

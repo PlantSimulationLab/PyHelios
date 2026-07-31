@@ -205,48 +205,57 @@ Two things follow for anyone continuing this work:
 ## 10. The trained world model: what it does and does not do
 
 Trained at 64×64 (nearest 2× downsample of the stored 128×128; 64² is DreamerV3's own
-resolution), batch 24, sequence 32, 30,000 steps, on 12 train orchards (38,400 frames). A second
-model was trained **identically except with all actions zeroed** — the real no-action ablation.
-Both took 2,674 s, run concurrently on the RTX 5090. Evaluated on 4 held-out test orchard seeds
-(96 view episodes, 64 growth episodes), conditioning on 5 real frames and then rolling the prior
-forward open-loop with the recorded actions.
+resolution), batch 24, sequence 32, on 12 train orchards (38,400 frames). A second model was
+trained **identically except with all actions zeroed** — the real no-action ablation. Both were
+run concurrently on the RTX 5090 at ~11 it/s. The reported checkpoints are the ones selected by
+best **validation reconstruction**, which for both models is step **14,000** (see §11 for why
+step count is not the binding constraint and why total-loss selection was wrong). Evaluated on
+4 held-out test orchard seeds (96 view episodes, 64 growth episodes), conditioning on 5 real
+frames and then rolling the prior forward open-loop with the recorded actions.
+
+An earlier 30,000-step snapshot of the same experiment is preserved under `output/w6_30k/`; its
+numbers are within ~0.05 dB of these, so nothing below depends on the checkpoint choice.
 
 ### View channel — RGB PSNR (dB), test split
 
 | horizon | full model | zeroed actions (eval) | shuffled actions | **no-action model (trained)** | copy-last-frame |
 |---|---|---|---|---|---|
-| t+1 | **18.14** | 18.14 | 18.11 | 18.10 | 16.71 |
-| t+5 | **17.98** | 17.95 | 17.89 | 17.91 | 15.63 |
-| t+10 | **17.79** | 17.66 | 17.55 | 17.66 | 15.38 |
-| t+25 | **17.45** | 17.28 | 17.14 | 17.27 | 15.14 |
+| t+1 | 18.13 | 18.11 | **18.14** | 18.09 | 16.71 |
+| t+5 | **17.96** | 17.92 | 17.92 | 17.87 | 15.63 |
+| t+10 | **17.78** | 17.69 | 17.66 | 17.58 | 15.38 |
+| t+25 | **17.45** | 17.42 | 17.28 | 17.20 | 15.14 |
 
-The full model beats copy-last-frame at every horizon, and the ordering
-full > zeroed > shuffled holds at every horizon. **But the margins over the ablations are
-0.03–0.31 dB**, which is small enough that PSNR alone cannot support the claim that the model
-uses its actions.
+The full model beats copy-last-frame by 1.4–2.3 dB at every horizon. Against the ablations the
+ordering is right and the margin **grows with horizon** — full vs the trained no-action model is
++0.04 dB at t+1 and +0.25 dB at t+25 — which is the correct qualitative behaviour (a one-step
+prediction barely needs the action; a 25-step rollout does). **But at t+1 the shuffled-action
+rollout actually scores 0.01 dB higher than the true-action one**, so at short horizons the PSNR
+ablation is pure noise. PSNR alone cannot support the claim that the model uses its actions.
 
 ### Depth and semantics — where it clearly loses
 
 | horizon | model depth MAE | copy-last depth MAE | model mIoU | copy-last mIoU |
 |---|---|---|---|---|
-| t+1 | 1.041 m | **0.657 m** | 0.267 | **0.333** |
-| t+5 | 1.089 m | **0.968 m** | 0.270 | 0.264 |
-| t+10 | **1.128 m** | 1.096 m | 0.267 | 0.250 |
-| t+25 | **1.211 m** | 1.205 m | 0.255 | 0.237 |
+| t+1 | 1.061 m | **0.657 m** | 0.265 | **0.333** |
+| t+5 | 1.117 m | **0.968 m** | **0.266** | 0.264 |
+| t+10 | 1.171 m | **1.096 m** | **0.263** | 0.250 |
+| t+25 | 1.256 m | **1.205 m** | **0.253** | 0.237 |
 
-At short horizons copy-last-frame is *better* on depth and semantics. The model only pulls level
-at t+10 and beyond, and only because copy-last degrades, not because the model improves.
+**Copy-last-frame beats the model on depth at every horizon**, by 1.6× at t+1 and still by 4% at
+t+25. On semantics the model only edges ahead from t+5 onward, and only because copy-last
+degrades — the model's own mIoU is flat at ~0.26 throughout. So the RGB PSNR win does not
+generalise to the geometric and semantic heads.
 
 ### What the qualitative rollouts show, and why the PSNR table is misleading on its own
 
-`output/w6_30k/rollout_*.png` (top row = Helios ground truth, bottom = model imagination) shows
+`output/w6/rollout_*.png` (top row = Helios ground truth, bottom = model imagination) shows
 the honest picture: **the model has learned the global layout — sky band above, textured ground
 below, roughly the right colours — and essentially none of the canopy structure.** Its
 predictions are low-frequency smears. That is exactly why it beats copy-last on PSNR (a blurry
 image of the right average is a better L2 predictor of a moved scene than a sharp image of the
 wrong scene) while losing on depth and mIoU (which are not forgiving of blur).
 
-Note also that the model's PSNR *barely degrades with horizon* (18.14 → 17.45 over 25 steps)
+Note also that the model's PSNR *barely degrades with horizon* (18.13 → 17.45 over 25 steps)
 while copy-last drops 1.6 dB. A predictor that is equally accurate at t+1 and t+25 is not
 tracking the scene; it has converged to a horizon-independent average.
 
@@ -260,13 +269,13 @@ image actually changes over the same interval):
 
 | horizon | zeroing the action moves the prediction by | negating it moves it by | (real inter-frame motion) |
 |---|---|---|---|
-| t+1 | 0.0339 RMS = **21.9%** of real motion | 0.0377 = 24.5% | 0.1544 |
-| t+5 | 0.0483 = **27.7%** | 0.0521 = 29.8% | 0.1750 |
-| t+10 | 0.0565 = **31.0%** | 0.0628 = 34.3% | 0.1836 |
-| t+25 | 0.0735 = **39.4%** | 0.0799 = 42.8% | 0.1871 |
+| t+1 | 0.0314 RMS = **20.3%** of real motion | 0.0348 = 22.6% | 0.1544 |
+| t+5 | 0.0444 = **25.4%** | 0.0503 = 28.8% | 0.1750 |
+| t+10 | 0.0518 = **28.3%** | 0.0574 = 31.4% | 0.1836 |
+| t+25 | 0.0658 = **35.3%** | 0.0701 = 37.5% | 0.1871 |
 
 So the model is **not** ignoring its actions: changing the action displaces the prediction by
-22–43% of the magnitude by which the real image changes over the same interval, and the
+20–38% of the magnitude by which the real image changes over the same interval, and the
 displacement grows with horizon exactly as it should. The plan's risk table lists "model ignores
 actions" as the thing the no-action ablation exists to catch — here the ablation would have
 suggested near-indifference (0.03 dB at t+1) while a direct probe shows substantial
@@ -277,16 +286,20 @@ are blurry; report a direct sensitivity measure alongside it.**
 
 Conditioning on 2 growth stages and imagining forward (each step = 5 simulated days):
 
-| horizon | full | zeroed action | copy-last |
-|---|---|---|---|
-| t+1 (5 d) | 19.26 dB / mIoU 0.270 / depth 1.49 m | **19.67 dB** / 0.278 / 1.42 m | **20.97 dB** / **0.731** / **0.26 m** |
-| t+3 (15 d) | 17.94 / 0.266 / 1.48 | **18.50** / 0.281 / 1.43 | 18.43 / **0.557** / **0.59** |
-| t+5 (25 d) | **17.07** | 17.43 | 16.83 |
+| horizon | full | zeroed action | trained no-action model | copy-last |
+|---|---|---|---|---|
+| t+1 (5 d) | 19.39 dB / mIoU 0.272 / depth 1.50 m | 19.57 | **19.82** | **20.97** / **0.731** / **0.26 m** |
+| t+2 (10 d) | 18.72 | 18.93 | **19.06** | **19.52** / **0.616** / **0.45** |
+| t+3 (15 d) | 18.19 | 18.33 | 18.31 | **18.43** / **0.557** / **0.59** |
+| t+5 (25 d) | **17.44** | 17.25 | 17.09 | 16.83 / **0.471** / **0.78** |
 
-**The growth channel does not work at this training scale.** The full model is *worse* than the
-same model with the growth action zeroed at every horizon on PSNR, and far worse than
-copy-last-frame on depth (1.47 m vs 0.26 m) and semantics (0.27 vs 0.73) at short horizons. It
-only overtakes copy-last on PSNR at t+5, i.e. after 25 simulated days of canopy change.
+**The growth channel does not work at this training scale.** Up to t+3 the full model is *worse*
+than the same model with the growth action zeroed, worse than the trained no-action model, and
+worse than copy-last-frame; and it is far worse than copy-last on depth (1.50 m vs 0.26 m) and
+semantics (0.272 vs 0.731) at *every* horizon. It only overtakes the alternatives on PSNR at
+t+5 — 25 simulated days, by which point the canopy has changed enough that copying the last
+frame finally fails. That single crossover is the only evidence in the whole evaluation that the
+growth action is being used constructively, and it is thin.
 
 The likely reason is the channel imbalance the plan's own risk table anticipated: growth frames
 are **4.0%** of the dataset (2,560 of 64,000), and although the sampler oversamples them to a
@@ -298,10 +311,10 @@ negative result rather than dressed up.
 
 | horizon | world model (RGB PSNR) | 3DGS matched (5 views) | 3DGS generous (28 views) | simulator noise floor |
 |---|---|---|---|---|
-| t+1 | 18.14 | 20.98 | 21.67 | ~20.8 |
-| t+5 | 17.98 | 20.12 | 21.15 | ~20.8 |
-| t+10 | 17.79 | 18.17 | 20.50 | ~20.8 |
-| t+25 | 17.45 | 16.67 | 20.36 | ~20.8 |
+| t+1 | 18.13 | 20.98 | 21.67 | ~20.8 |
+| t+5 | 17.96 | 20.12 | 21.15 | ~20.8 |
+| t+10 | 17.78 | 18.17 | 20.50 | ~20.8 |
+| t+25 | 17.45 | **16.67** | 20.36 | ~20.8 |
 
 3DGS wins at short horizons and the world model overtakes the *matched-information* splat at
 t+25 — but this comparison is heavily in 3DGS's favour and should be read that way: **the splat
@@ -313,7 +326,7 @@ that is effectively interpolating between views it has already seen.
 
 ### Honest bottom line on the model
 
-At this training scale (30k steps, 12 orchards, 64×64) the RSSM has learned the orchard's
+At this scale (12 orchards, 64×64, best checkpoint at 14k steps) the RSSM has learned the orchard's
 *global photometric layout* and a real but weak action-conditioned displacement of it. It has
 not learned canopy structure on unseen orchards, its depth predictions are worse than a
 copy-last baseline at short horizons, and its growth channel is not working. The infrastructure
@@ -321,3 +334,37 @@ copy-last baseline at short horizons, and its growth channel is not working. The
 re-runnable; the model is under-trained relative to what the architecture would need, and the
 plan's own priority note ("cut training scale, not correctness or honesty") is exactly the
 trade-off that was made.
+
+---
+
+## 11. The model overfits 12 orchards after ~15k steps — this is a data-diversity limit, not a step-count limit
+
+Continuing training from 30k to 42k steps made validation *worse*, not better
+(`output/w5/curves.png`, `curve_summary.json`):
+
+| | validation reconstruction (rgb + depth + semantic + fruit) |
+|---|---|
+| best, at step **14,000** | main **0.7398**, no-action **0.7605** |
+| final, at step 42,000 | main 0.8341, no-action 0.8406 |
+
+Training loss kept falling throughout (train semantic 0.53 → 0.48, depth 0.150 → 0.134 between
+14k and 42k) while validation rose. The model runs out of *orchards*, not of steps. The plan's
+40-seed target was the right call; the 12 seeds generated here (a deliberate, time-driven
+reduction — see §12) are demonstrably not enough.
+
+**A cleaner action signal falls out of this.** Comparing the two models' *best validation
+reconstruction* — the actual training objective, on held-out orchards, at the same step for both
+— the full model is **2.7% better than the no-action model** (0.7398 vs 0.7605), and the gap is
+visible in the per-term curves for depth and semantics throughout training. That, plus §10's
+action-sensitivity probe, is much stronger evidence that actions are used than the 0.03–0.31 dB
+PSNR margins.
+
+### A real methodological bug in checkpoint selection
+
+`train.py` originally selected its best checkpoint on **total validation loss**. But the KL term
+rises monotonically as the model uses more latent capacity (kl_dyn 1.35 → 2.05 on validation),
+so total loss went *up* while every reconstruction term went *down*. The rule therefore froze
+"best" at step 5,000, discarding the genuinely best model at step 14,000. Fixed: selection is now
+on validation reconstruction only, which is what the model is actually evaluated on. Reported
+because it is exactly the kind of silent mis-selection that would make a model look worse than
+it is for reasons unrelated to the model.

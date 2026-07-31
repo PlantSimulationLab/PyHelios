@@ -197,8 +197,16 @@ def main():
             row = {"step": step + 1, "split": "val", **vm, "elapsed_s": time.time() - t0}
             hist.write(json.dumps(row) + "\n"); hist.flush()
             log(f"  VAL step {step+1}: " + "  ".join(f"{k}={v:.5f}" for k, v in vm.items()))
-            if vm["loss"] < best_val:
-                best_val = vm["loss"]
+            # Select on validation RECONSTRUCTION, not on total loss. The KL term
+            # rises steadily as the model uses more latent capacity, so total loss
+            # can go UP while every reconstruction term goes DOWN -- a first run
+            # selected step 5000 as "best" when validation reconstruction actually
+            # kept improving to step 14000. Checkpoint selection must track what
+            # the model is being evaluated on.
+            recon = float(vm["rgb"] + vm["depth"] + vm["semantic"] + vm["fruit"])
+            row["val_recon"] = recon
+            if recon < best_val:
+                best_val = recon
                 torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
                             "step": step + 1, "best_val": best_val, "args": vars(args)},
                            os.path.join(out, "ckpt_best.pt"))

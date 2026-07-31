@@ -59,7 +59,32 @@ average (max 76.6%). Helios cameras have no collision, so this is geometrically 
 but physically unrealisable; it is measured rather than prevented, and the lane families are
 bounds-checked against the lane while orbits are checked against the orchard's outer bounds.
 
-## W3 — dataset generation — see below
+## W3 — dataset generation — **PARTIAL** (scale reduced; one acceptance criterion fails, with a measured explanation)
+
+Deliverable: `generate.py`, `run_w3_verify.py`, `run_w3_determinism_probe.py`.
+Output: `output/dataset/` (800 episodes, **64,000 frames**, 1.61 GB), `output/w3/`.
+
+**Scale reduced, deliberately and reported.** The plan targets ~40 orchard seeds × 8 growth
+stages × 128 views ≈ 40 k frames. What was generated: **12 train + 4 val + 4 test = 20 orchard
+seeds** × 8 growth stages × (3 families × 128 views + 16 growth probes) = **64,000 frames** —
+more frames than the plan's target, but from half as many orchards. Generation ran at 254–323 s
+per orchard and was stopped after 20 to leave time for training and evaluation. §11 of
+`FINDINGS.md` shows this reduction is the binding constraint on the model: it overfits 12 train
+orchards after ~15 k steps.
+
+Acceptance, part 1 (*"train/val/test seed sets are provably disjoint"*): **passed**, checked both
+as declared ranges and as seeds actually present in the manifest — zero overlap in all three
+pairs. Split is by orchard seed, never by frame.
+
+Acceptance, part 2 (*"regenerating one shard with the same seed is byte-identical"*): **fails**,
+0/40 episodes. The per-array diagnostic makes it precise rather than mysterious: `depth`,
+`semantic`, `pose`, `state`, `a_view` and `fruit_vis` are **bit-exact**; `instance` differs on
+0.0042% of pixels with an identical 796-ID set and a fruit-mask IoU of 1.0; only `rgb` genuinely
+differs, because the OptiX Monte-Carlo radiative solve samples with an RNG PyHelios does not
+expose. See FINDINGS §9 — including the consequence that re-rendering the same frame twice
+agrees only to **20.8 dB PSNR**, which is a ceiling on any model's held-out RGB score.
+
+## W5 — training — **DONE**
 
 ## W4 — world model implementation — **DONE**
 
@@ -75,9 +100,56 @@ the part that shows the *dynamics* work rather than just the autoencoder.
 The first attempt at this run diverged in its last 500 steps (Adam eps=1e-8); see
 `WORLD_MODEL_LOG.md` §5.
 
-## W5 — training — see below
+Deliverable: `train.py`, `plot_curves.py`. Output: `output/train/{main2,noaction2}/`,
+`output/w5/curves.png`, `curve_summary.json`.
 
-## W6 — evaluation — see below
+Acceptance (*"validation loss curve saved; checkpoints resumable"*): **passed.**
+`output/w5/curves.png` plots train and validation for all four reconstruction heads plus KL and
+total loss, for the main model and the no-action ablation. Resumability was not just implemented
+but exercised: a run was resumed from step 30,000 and continued to 42,000 with optimiser state
+and step count intact.
+
+Two models were trained identically except for `--zero-actions`: 64×64, batch 24, sequence 32,
+~11 it/s, concurrently on one RTX 5090. Best validation reconstruction for both is at step
+**14,000** — main **0.7407**, no-action **0.7605**, a 2.7% gap in the action-conditioned model's
+favour.
+
+A real bug was found and fixed here: selecting the best checkpoint on *total* validation loss
+picks the wrong model, because the KL term rises monotonically as the model uses more latent
+capacity while every reconstruction term falls. The original rule froze "best" at step 5,000 and
+discarded the genuinely best model at 14,000. Selection is now on validation reconstruction.
+
+## W6 — evaluation — **DONE**, and the result is largely negative
+
+Deliverable: `evaluate.py`, `gsplat_baseline.py`. Output: `output/w6/w6_results.json`,
+`rollout_*.png`, `gsplat_baseline.json`; a 30 k-step snapshot in `output/w6_30k/`.
+
+All four required elements were produced against real held-out data (4 test orchard seeds, 96
+view + 64 growth episodes): horizon-resolved open-loop rollout quality, action fidelity,
+counterfactual growth, and all three required baselines (copy-last-frame, a **separately trained
+no-action model**, and a 3DGS view-synthesis reference in two information settings).
+
+Acceptance (*"every number is produced by a re-runnable script; the no-action ablation is
+strictly worse than the full model, or the model is ignoring actions and this must be reported
+as a negative result"*): **passed, with the negative result reported.**
+
+- The full model beats copy-last-frame on RGB PSNR at every horizon (18.13→17.45 dB vs
+  16.71→15.14 dB) and beats the trained no-action model at every horizon, with the margin
+  growing from +0.04 dB at t+1 to +0.25 dB at t+25.
+- **But** it *loses* to copy-last-frame on depth MAE at every horizon (1.06 m vs 0.66 m at t+1),
+  its mIoU is flat at ~0.26, and at t+1 the shuffled-action rollout scores 0.01 dB *higher* than
+  the true-action one. The qualitative rollouts show the model has learned the orchard's global
+  layout and essentially no canopy structure.
+- **The growth channel does not work**: up to t+3 the full model is worse than itself with the
+  growth action zeroed, worse than the trained no-action model, and worse than copy-last-frame.
+- A methodological finding: the plan's PSNR-based no-action ablation is a weak instrument when
+  predictions are blurry. A direct probe added here (`action_sensitivity`) shows zeroing the
+  action displaces the prediction by 20.3% (t+1) to 35.3% (t+25) of the magnitude of real
+  inter-frame motion — substantial action-conditioning that the PSNR ablation understated by an
+  order of magnitude.
+
+LPIPS is **not reported**: `lpips` is not installed in the `gsplat` env and there is no network
+access. SSIM is reported instead and the substitution is stated rather than made silently.
 
 ## W7 — reporting — **DONE**
 
