@@ -64,7 +64,13 @@ def main():
         subprocess.run(cmd, check=True, cwd="/home/yogesh/PyHelios")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, ck = load_model(os.path.join(train_out, "ckpt.pt"), device)
+    # Prefer the best checkpoint: the first W4 run diverged in its final 500 steps
+    # (see train.py --adam-eps), so "last" is not automatically "best".
+    ckpt = os.path.join(train_out, "ckpt_best.pt")
+    if not os.path.isfile(ckpt):
+        ckpt = os.path.join(train_out, "ckpt.pt")
+    model, ck = load_model(ckpt, device)
+    log(f"using checkpoint {ckpt}")
     sampler = SequenceSampler(args.data, "train", args.seq_len, args.image_size,
                               growth_fraction=0.0, seed=0)
     rec, ep = next(sampler.iter_episodes("view", limit=1, seq_len=args.seq_len))

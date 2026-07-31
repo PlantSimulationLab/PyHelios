@@ -66,6 +66,12 @@ def main():
     ap.add_argument("--stoch", type=int, default=32)
     ap.add_argument("--classes", type=int, default=32)
     ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--adam-eps", type=float, default=1e-5,
+                    help="Adam epsilon. 1e-8 is NOT safe here: the W4 overfit run reached a "
+                         "reconstruction loss of ~8e-4 and then diverged in its last 500 steps "
+                         "(rgb 0.00077 -> 0.01345, depth 0.00023 -> 0.03768). Once gradients "
+                         "are that small, eps dominates the Adam denominator and the effective "
+                         "step size explodes. 1e-5 is the DreamerV2/V3 value.")
     ap.add_argument("--grad-clip", type=float, default=100.0)
     ap.add_argument("--growth-fraction", type=float, default=0.25)
     ap.add_argument("--free-bits", type=float, default=1.0)
@@ -129,7 +135,7 @@ def main():
                        deter=args.deter, stoch=args.stoch, classes=args.classes,
                        free_bits=args.free_bits).to(device)
     log(f"model parameters: {count_parameters(model):,}")
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-8)
+    opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=args.adam_eps)
 
     start_step, best_val = 0, float("inf")
     ckpt_path = os.path.join(out, "ckpt.pt")
@@ -193,6 +199,16 @@ def main():
             log(f"  VAL step {step+1}: " + "  ".join(f"{k}={v:.5f}" for k, v in vm.items()))
             if vm["loss"] < best_val:
                 best_val = vm["loss"]
+                torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
+                            "step": step + 1, "best_val": best_val, "args": vars(args)},
+                           os.path.join(out, "ckpt_best.pt"))
+
+        if val_sampler is None and (step + 1) % args.log_every == 0:
+            # No validation split (overfit mode): track the best TRAIN loss instead, so a
+            # late divergence cannot destroy the run's result. See --adam-eps.
+            cur = row["loss"]
+            if cur < best_val:
+                best_val = cur
                 torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
                             "step": step + 1, "best_val": best_val, "args": vars(args)},
                            os.path.join(out, "ckpt_best.pt"))

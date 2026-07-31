@@ -331,14 +331,32 @@ def main():
         f"n_steps={args.n_steps} probes={args.n_growth_probes} res={res}")
     log(f"  seed split check: {verify_seed_split()}")
 
-    orient, expo = calibrate_once(list(TRAIN_SEEDS)[0], stages, res,
-                                  args.sun_zenith, args.sun_azimuth, log=log)
-
-    plan = ([(s, "train") for s in list(TRAIN_SEEDS)[:args.n_train]]
-            + [(s, "val") for s in list(VAL_SEEDS)[:args.n_val]]
-            + [(s, "test") for s in list(TEST_SEEDS)[:args.n_test]])
-
     manifest_path = os.path.join(args.out, "manifest.json")
+
+    # On resume, REUSE the stored calibration rather than recomputing it. Even
+    # though calibrate_once is deterministic, recomputing it makes the dataset's
+    # global exposure an implicit function of when the run was restarted, and a
+    # single fixed exposure across the whole dataset is the point (otherwise the
+    # world model learns the exposure controller).
+    prior_cal = None
+    if args.resume and os.path.isfile(manifest_path):
+        with open(manifest_path) as f:
+            prior_cal = json.load(f).get("calibration")
+    if prior_cal:
+        orient, expo = prior_cal["orientation"], prior_cal["exposure"]
+        log(f"  reusing stored calibration: orientation={orient['applied']} "
+            f"exposure={expo['exposure_scale']:.5f}")
+    else:
+        orient, expo = calibrate_once(list(TRAIN_SEEDS)[0], stages, res,
+                                      args.sun_zenith, args.sun_azimuth, log=log)
+
+    # VAL and TEST seeds are generated FIRST. If the run has to be cut short --
+    # and at ~5 min per orchard it might be -- a partial dataset with no
+    # validation or test split is worthless, whereas a partial TRAIN split is
+    # merely smaller. Ordering is the cheapest possible insurance.
+    plan = ([(s, "val") for s in list(VAL_SEEDS)[:args.n_val]]
+            + [(s, "test") for s in list(TEST_SEEDS)[:args.n_test]]
+            + [(s, "train") for s in list(TRAIN_SEEDS)[:args.n_train]])
     manifest = {"created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "config": {"stages": stages, "families": list(families),
                            "n_steps": args.n_steps, "n_growth_probes": args.n_growth_probes,
