@@ -1,0 +1,65 @@
+==============================================================================
+W1 -- batched observation rig
+==============================================================================
+
+[build] 2x10 orchard seed=10000 age=720.0d
+  830392 primitives in 35.7s (total incl. ground truth 39.9s)
+
+[rig] registering 256 cameras at (128, 128)
+  updateGeometry: 0.60s  HFOV=60.00 deg
+
+[V1] pixel-array orientation vs label map
+  method: median(green/red) on leaf pixels / same on fruit pixels; higher is better, ~1.0 means the labels are scrambled
+  as_is    leaf/fruit green-red score = 2.179504284286465
+  flipud   leaf/fruit green-red score = 1.0000027841458046
+  fliplr   leaf/fruit green-red score = 6.225636653224952
+  rot180   leaf/fruit green-red score = 1.0000016416429538
+  per-camera votes: {'as_is': 0, 'flipud': 0, 'fliplr': 8, 'rot180': 0} (n usable views 8)
+  example diagnostics: {'as_is': {'leaf_green_over_red': 2.391031265258789, 'fruit_green_over_red': 0.9651507139205933}, 'flipud': {'leaf_green_over_red': 0.9651524424552917, 'fruit_green_over_red': 0.9651482701301575}, 'fliplr': {'leaf_green_over_red': 2.413541316986084, 'fruit_green_over_red': 0.3869043290615082}, 'rot180': {'leaf_green_over_red': 0.9651507139205933, 'fruit_green_over_red': 0.9651461243629456}}
+  -> applying 'fliplr' (score 6.225636653224952)
+
+[V2] fixed global exposure calibration
+  {
+  "percentile": 99.0,
+  "exposure_scale": 0.04799290746450424,
+  "n_samples": 635397,
+  "raw_min": 0.0,
+  "raw_max": 0.08798470348119736,
+  "raw_mean": 0.017740994691848755,
+  "raw_median": 0.016584482043981552,
+  "frac_above_scale": 0.009998473395373287
+}
+
+[V3] camera-batching throughput (solve only, 3 bands)
+  N=   1  solve=  4.975s  per-image=4.9755s
+  N=   4  solve=  5.009s  per-image=1.2524s
+  N=  16  solve=  4.899s  per-image=0.3062s
+  N=  32  solve=  4.835s  per-image=0.1511s
+  N=  64  solve=  4.883s  per-image=0.0763s
+  N= 128  solve=  4.853s  per-image=0.0379s
+  N= 256  solve=  4.855s  per-image=0.0190s
+
+[V3b] readback cost per image (128 cameras)
+  solve=4.86s  read=1.16s  (0.0091s/image, all 4 modalities)
+
+[V4] contact sheets
+  wrote 4 contact sheets to /home/yogesh/PyHelios/yogesh_dev/world_model/output/w1
+
+[V5] depth sanity vs orchard bounding box
+  over 16 frames: depth min=0.780m max=18.048m; orchard bbox diagonal=17.07m
+  mean sky fraction = 0.151
+  sane (0 < depth < 1.5x bbox diagonal): True
+  depth-sky vs semantic-sky pixel agreement: 1.000000
+
+[V6] semantic class histogram over 128 views
+  class_0      957477   45.66%
+  fruit         83469    3.98%
+  leaf         511442   24.39%
+  shoot        152306    7.26%
+  petiole        5679    0.27%
+  peduncle        230    0.01%
+  sky          386549   18.43%
+  W0 organ primitive counts: {'fruit': 106914, 'leaf': 216678, 'shoot': 381346, 'petiole': 118188, 'peduncle': 7266}
+
+[extra] full-resolution qualitative frame (512x512)
+  wrote 4 512x512 frames

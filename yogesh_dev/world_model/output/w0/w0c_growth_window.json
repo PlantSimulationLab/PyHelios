@@ -1,0 +1,456 @@
+{
+  "seed": 10000,
+  "start_age": 540.0,
+  "dt": 5.0,
+  "n_steps": 10,
+  "steps": [
+    {
+      "age": 540.0,
+      "dt": 0.0,
+      "seconds": 6.675643682479858,
+      "path": "build",
+      "n_primitives": 752201,
+      "n_leaf_prims": 67265,
+      "area_leaf_m2": 13.09531525966555,
+      "n_shoot_prims": 191184,
+      "area_shoot_m2": 12.146616604245997,
+      "n_fruit_prims": 0,
+      "area_fruit_m2": 0.0,
+      "n_petiole_prims": 29352,
+      "area_petiole_m2": 0.33388539146733365,
+      "n_peduncle_prims": 24080,
+      "area_peduncle_m2": 0.4179171557789232,
+      "bounds_min": [
+        -7.372328758239746,
+        -2.7083892822265625,
+        -0.002962514292448759
+      ],
+      "bounds_max": [
+        7.427478790283203,
+        2.816728115081787,
+        2.1031196117401123
+      ]
+    },
+    {
+      "age": 545.0,
+      "dt": 5.0,
+      "seconds": 1.9221665859222412,
+      "path": "advanceTime",
+      "n_primitives": 485145,
+      "n_leaf_prims": 94171,
+      "area_leaf_m2": 27.55493275505455,
+      "n_shoot_prims": 225428,
+      "area_shoot_m2": 15.987576262585662,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 1.6322281806837964,
+      "n_petiole_prims": 51366,
+      "area_petiole_m2": 0.7038462293579073,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.469482898712158,
+        -2.753403425216675,
+        -0.003395646344870329
+      ],
+      "bounds_max": [
+        7.457639217376709,
+        2.8352081775665283,
+        2.2071640491485596
+      ]
+    },
+    {
+      "age": 550.0,
+      "dt": 5.0,
+      "seconds": 1.673799753189087,
+      "path": "advanceTime",
+      "n_primitives": 561096,
+      "n_leaf_prims": 122980,
+      "area_leaf_m2": 40.76058519639558,
+      "n_shoot_prims": 262094,
+      "area_shoot_m2": 18.765474533743777,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 3.129241499128966,
+      "n_petiole_prims": 61842,
+      "area_petiole_m2": 1.0452907883980629,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.530958652496338,
+        -2.7836387157440186,
+        -0.0036459271796047688
+      ],
+      "bounds_max": [
+        7.528842926025391,
+        2.875133514404297,
+        2.2901761531829834
+      ]
+    },
+    {
+      "age": 555.0,
+      "dt": 5.0,
+      "seconds": 3.3668811321258545,
+      "path": "advanceTime",
+      "n_primitives": 619871,
+      "n_leaf_prims": 141977,
+      "area_leaf_m2": 55.42563197951495,
+      "n_shoot_prims": 286272,
+      "area_shoot_m2": 22.005435174594822,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 5.109163454666032,
+      "n_petiole_prims": 77442,
+      "area_petiole_m2": 1.4188517107057805,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.581711292266846,
+        -2.8339529037475586,
+        -0.003926035948097706
+      ],
+      "bounds_max": [
+        7.541610240936279,
+        2.887579917907715,
+        2.397836923599243
+      ]
+    },
+    {
+      "age": 560.0,
+      "dt": 5.0,
+      "seconds": 4.34759259223938,
+      "path": "advanceTime",
+      "n_primitives": 689544,
+      "n_leaf_prims": 168388,
+      "area_leaf_m2": 68.67262732235676,
+      "n_shoot_prims": 319886,
+      "area_shoot_m2": 24.41160689029287,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 7.571992462088019,
+      "n_petiole_prims": 87090,
+      "area_petiole_m2": 1.7518385637808365,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.654050350189209,
+        -2.860137939453125,
+        -0.004101765342056751
+      ],
+      "bounds_max": [
+        7.595794200897217,
+        2.918689727783203,
+        2.5151243209838867
+      ]
+    },
+    {
+      "age": 565.0,
+      "dt": 5.0,
+      "seconds": 2.0383377075195312,
+      "path": "advanceTime",
+      "n_primitives": 743468,
+      "n_leaf_prims": 185834,
+      "area_leaf_m2": 81.82347514382718,
+      "n_shoot_prims": 342090,
+      "area_shoot_m2": 27.40210801305193,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 10.51773017913365,
+      "n_petiole_prims": 101364,
+      "area_petiole_m2": 2.082292298933453,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.677363395690918,
+        -2.948577880859375,
+        -0.004325457848608494
+      ],
+      "bounds_max": [
+        7.646800518035889,
+        2.979527473449707,
+        2.571775436401367
+      ]
+    },
+    {
+      "age": 570.0,
+      "dt": 5.0,
+      "seconds": 5.071491479873657,
+      "path": "advanceTime",
+      "n_primitives": 807859,
+      "n_leaf_prims": 209979,
+      "area_leaf_m2": 93.76144346314246,
+      "n_shoot_prims": 372820,
+      "area_shoot_m2": 29.767250665543326,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 13.946375879988409,
+      "n_petiole_prims": 110880,
+      "area_petiole_m2": 2.3788946274897285,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.737693786621094,
+        -3.018728017807007,
+        -0.004474507179111242
+      ],
+      "bounds_max": [
+        7.737346172332764,
+        3.0523276329040527,
+        2.646206855773926
+      ]
+    },
+    {
+      "age": 575.0,
+      "dt": 5.0,
+      "seconds": 2.364471197128296,
+      "path": "advanceTime",
+      "n_primitives": 830392,
+      "n_leaf_prims": 216678,
+      "area_leaf_m2": 105.12496516859392,
+      "n_shoot_prims": 381346,
+      "area_shoot_m2": 32.17878580479555,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 15.453049370301414,
+      "n_petiole_prims": 118188,
+      "area_petiole_m2": 2.65708635018882,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.753707408905029,
+        -3.077112913131714,
+        -0.0046098907478153706
+      ],
+      "bounds_max": [
+        7.773581504821777,
+        3.0777549743652344,
+        2.755352258682251
+      ]
+    },
+    {
+      "age": 580.0,
+      "dt": 5.0,
+      "seconds": 1.253629207611084,
+      "path": "advanceTime",
+      "n_primitives": 830392,
+      "n_leaf_prims": 216678,
+      "area_leaf_m2": 110.41026513594989,
+      "n_shoot_prims": 381346,
+      "area_shoot_m2": 32.72364445030871,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 15.453049370301414,
+      "n_petiole_prims": 118188,
+      "area_petiole_m2": 2.7864718771170374,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.783535957336426,
+        -3.0928268432617188,
+        -0.004618413280695677
+      ],
+      "bounds_max": [
+        7.8636393547058105,
+        3.116137981414795,
+        2.79404616355896
+      ]
+    },
+    {
+      "age": 585.0,
+      "dt": 5.0,
+      "seconds": 1.2999045848846436,
+      "path": "advanceTime",
+      "n_primitives": 830392,
+      "n_leaf_prims": 216678,
+      "area_leaf_m2": 110.41026513594989,
+      "n_shoot_prims": 381346,
+      "area_shoot_m2": 32.73247304488359,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 15.453049370301414,
+      "n_petiole_prims": 118188,
+      "area_petiole_m2": 2.7864718771170374,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.783535957336426,
+        -3.0928268432617188,
+        -0.004618413280695677
+      ],
+      "bounds_max": [
+        7.8636393547058105,
+        3.116137981414795,
+        2.79404616355896
+      ]
+    },
+    {
+      "age": 590.0,
+      "dt": 5.0,
+      "seconds": 1.2783021926879883,
+      "path": "advanceTime",
+      "n_primitives": 830392,
+      "n_leaf_prims": 216678,
+      "area_leaf_m2": 110.41026513594989,
+      "n_shoot_prims": 381346,
+      "area_shoot_m2": 32.73357669915458,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 15.453049370301414,
+      "n_petiole_prims": 118188,
+      "area_petiole_m2": 2.7864718771170374,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.783535957336426,
+        -3.0928268432617188,
+        -0.004618413280695677
+      ],
+      "bounds_max": [
+        7.8636393547058105,
+        3.116137981414795,
+        2.79404616355896
+      ]
+    }
+  ],
+  "stage_deltas": [
+    {
+      "from_age": 540.0,
+      "to_age": 545.0,
+      "d_prims": -267056,
+      "d_leaf_area": 14.459617495389,
+      "d_fruit_area": 1.6322281806837964,
+      "identical": false
+    },
+    {
+      "from_age": 545.0,
+      "to_age": 550.0,
+      "d_prims": 75951,
+      "d_leaf_area": 13.20565244134103,
+      "d_fruit_area": 1.4970133184451697,
+      "identical": false
+    },
+    {
+      "from_age": 550.0,
+      "to_age": 555.0,
+      "d_prims": 58775,
+      "d_leaf_area": 14.665046783119365,
+      "d_fruit_area": 1.9799219555370655,
+      "identical": false
+    },
+    {
+      "from_age": 555.0,
+      "to_age": 560.0,
+      "d_prims": 69673,
+      "d_leaf_area": 13.246995342841814,
+      "d_fruit_area": 2.4628290074219876,
+      "identical": false
+    },
+    {
+      "from_age": 560.0,
+      "to_age": 565.0,
+      "d_prims": 53924,
+      "d_leaf_area": 13.150847821470421,
+      "d_fruit_area": 2.945737717045631,
+      "identical": false
+    },
+    {
+      "from_age": 565.0,
+      "to_age": 570.0,
+      "d_prims": 64391,
+      "d_leaf_area": 11.937968319315274,
+      "d_fruit_area": 3.4286457008547586,
+      "identical": false
+    },
+    {
+      "from_age": 570.0,
+      "to_age": 575.0,
+      "d_prims": 22533,
+      "d_leaf_area": 11.363521705451461,
+      "d_fruit_area": 1.5066734903130055,
+      "identical": false
+    },
+    {
+      "from_age": 575.0,
+      "to_age": 580.0,
+      "d_prims": 0,
+      "d_leaf_area": 5.285299967355968,
+      "d_fruit_area": 0.0,
+      "identical": false
+    },
+    {
+      "from_age": 580.0,
+      "to_age": 585.0,
+      "d_prims": 0,
+      "d_leaf_area": 0.0,
+      "d_fruit_area": 0.0,
+      "identical": true
+    },
+    {
+      "from_age": 585.0,
+      "to_age": 590.0,
+      "d_prims": 0,
+      "d_leaf_area": 0.0,
+      "d_fruit_area": 0.0,
+      "identical": true
+    }
+  ],
+  "n_identical_consecutive_stages": 2,
+  "advance_time_cost_s": {
+    "mean": 2.4616576433181763,
+    "min": 1.253629207611084,
+    "max": 5.071491479873657
+  },
+  "build_cost_s": 6.675643682479858,
+  "q2_advance_vs_build": {
+    "count_equality": {
+      "n_primitives": true,
+      "n_leaf_prims": true,
+      "n_fruit_prims": true,
+      "n_shoot_prims": true
+    },
+    "area_abs_diff": {
+      "area_leaf_m2": 1.3762146409135312e-05,
+      "area_shoot_m2": 0.01715154901103233,
+      "area_fruit_m2": 4.179926690994762e-06,
+      "area_petiole_m2": 7.867777640058193e-06,
+      "area_peduncle_m2": 0.0
+    },
+    "equivalent": false,
+    "advance_path": {
+      "n_primitives": 830392,
+      "n_leaf_prims": 216678,
+      "area_leaf_m2": 110.41026513594989,
+      "n_shoot_prims": 381346,
+      "area_shoot_m2": 32.73357669915458,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 15.453049370301414,
+      "n_petiole_prims": 118188,
+      "area_petiole_m2": 2.7864718771170374,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.783535957336426,
+        -3.0928268432617188,
+        -0.004618413280695677
+      ],
+      "bounds_max": [
+        7.8636393547058105,
+        3.116137981414795,
+        2.79404616355896
+      ]
+    },
+    "direct_build": {
+      "n_primitives": 830392,
+      "n_leaf_prims": 216678,
+      "area_leaf_m2": 110.41025137380348,
+      "n_shoot_prims": 381346,
+      "area_shoot_m2": 32.71642515014355,
+      "n_fruit_prims": 106914,
+      "area_fruit_m2": 15.453053550228105,
+      "n_petiole_prims": 118188,
+      "area_petiole_m2": 2.7864640093393973,
+      "n_peduncle_prims": 7266,
+      "area_peduncle_m2": 0.12610424578633683,
+      "bounds_min": [
+        -7.7834906578063965,
+        -3.0928282737731934,
+        -0.004614708479493856
+      ],
+      "bounds_max": [
+        7.863638401031494,
+        3.1165101528167725,
+        2.793290853500366
+      ]
+    }
+  }
+}
