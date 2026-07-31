@@ -309,3 +309,134 @@ rather than the findings:
   extension on first use and fails with "Ninja is required to load C++ extensions" unless the
   `gsplat` env's own `bin` is on `PATH`. Invoking the interpreter by absolute path is not
   enough. One line in `run_remaining.sh`.
+
+---
+---
+
+# ROUND 2 — chronological log
+
+Run date: **2026-07-31**. Same machine, same branch, same checkout (no worktree). Data generation
+in `helios`, training and evaluation in `gsplat`.
+
+Round 1's parting diagnosis was "the model is limited by orchard diversity, not compute", and the
+Round 2 brief is to extend the dataset to 40+ train orchards, then revisit regularisation and the
+growth channel. That is what was done — but the diagnostics run *while the data was generating*
+changed what the retraining was for, so this log is ordered by what was learned rather than by
+the task list.
+
+## 8. Housekeeping
+
+The leftover `tail -f` process from Round 1 (pid ~275343) was already gone; nothing to kill.
+
+Round 1's status file flagged the missing Slack notification as an unexplained anomaly —
+`notify_slack.py` present at the start of the session and absent at the end, with none of its
+commits touching it. **That entry is retracted.** The file and
+`~/.config/claude-notify/slack_webhook_url` were deleted deliberately by the user on 2026-07-30,
+mid-run. Nothing malfunctioned. The guarded call sites raise `ImportError` inside a bare
+`except Exception: pass` and no-op; they are left alone rather than stripped across eight files
+for no behavioural change, and Round 2 adds none.
+
+## 9. Dataset extension — the easy part, started first
+
+`generate.py --resume --n-train 44` extends the existing manifest rather than regenerating it:
+the plan's ordering (val and test seeds first) means the 20 Round 1 orchards are all already on
+disk, and `--resume` skips them by `(seed, split)` and **reuses the stored calibration** so the
+single global exposure scale and the pixel orientation are byte-identical to Round 1's. Train
+seeds 10012–10043 are new; `TRAIN_SEEDS = range(10000, 10999)` so they stay inside the declared
+range and disjoint from val (11000+) and test (12000+).
+
+Measured cost on the new orchards: **241–323 s each**, ~80 MB compressed, matching Round 1's
+254–323 s. 32 new orchards ≈ 2 h 15 m.
+
+`run_r2_check_split.py` re-verifies disjointness **against the manifest as written** rather than
+against the declared ranges, plus three checks Round 1 did not make: that every episode's `split`
+field matches the directory its file is in, that every referenced file exists, and that no two
+episodes share a path. Extending a dataset with `--resume` is exactly the operation that can put
+a test orchard into training silently, and the failure would be invisible in the loss curves.
+
+## 10. The diagnostics that changed the plan
+
+The GPU was busy ray-tracing for two hours, which is enough time to ask whether retraining on
+more orchards would help. Four measurements, in the order they were made:
+
+**R2-A, the growth channel (`run_r2_growth_signal.py`).** Reads only the stored dataset. The first
+thing it printed ended the growth line of investigation as originally framed:
+
+```
+distinct a_grow sequences over 320 growth episodes: 1
+  [5,5,5,5,5,5,10,0] x320
+```
+
+Every growth episode in the entire dataset carries the same action. Round 1's growth channel had
+no counterfactual variation in it at all, and W6's "zero the growth action" ablation was an
+out-of-distribution query rather than a counterfactual. The second thing it printed closed the
+RGB half of it: consecutive growth stages differ by 20.60 dB while §9's measured simulator
+re-render floor is 20.82 dB — the RGB growth signal sits *at* the render noise. Details in
+FINDINGS §15.
+
+**R2-C, error attribution (`run_r2_recon_floor.py`).** The measurement Round 1 never made:
+teacher-forced posterior reconstruction on held-out orchards — encode a real frame, decode it
+straight back. 1.035 m depth MAE, against 1.067 m for the open-loop t+1 rollout and 0.657 m for
+copy-last-frame. **97% of the t+1 depth error is the autoencoder; 3% is the dynamics.** On the
+train split the same model reconstructs at 1.020 m — a 1.5% generalisation gap. Round 1's
+"data-limited" story is right about the loss curve and wrong about the ceiling.
+
+Adding a per-class IoU breakdown to the same script made the mIoU result exact rather than
+opaque: the model never predicts fruit, petiole or peduncle at all, and the seven per-class IoUs
+average to 0.268 — the reported number, to three decimals. See FINDINGS §13.
+
+**R2-H, the blurred-ground-truth control (`run_r2_blur_baseline.py`).** No model at all: take the
+correct frame, blur it, score it. At the model's measured sharpness a *perfect* depth map still
+scores ~0.94 m, worse than copy-last's 0.657 m. So the depth criterion is unreachable at that
+sharpness however accurate the prediction is. That reframed the whole round: **depth is a
+sharpness problem, mIoU is a class-balance problem, and neither is a data problem.**
+
+**The KL logs.** Round 1's own training log, re-read with the above in hand: `kl_dyn=1.371` at
+step 17,500 and 17,500 → 18,000 unchanged, validation 1.58 → 1.64. The latent is 32 categorical
+variables × 32 classes = 160 bits per frame, and the posterior diverges from the prior by 1.37
+nats = 2.0 bits. The encoder is very nearly bypassed. That is the mechanism behind the blur, and
+it is a hyperparameter, not a capacity limit.
+
+## 11. What was actually run, and why each run exists
+
+Seven training runs in five chained phases, all on the 44-orchard dataset, all seeded, all
+otherwise identical to Round 1's `main2` except where stated:
+
+| phase | tag | change from `r2_main` | what it tests |
+|---|---|---|---|
+| A | `r2_main` | none (40k steps) | data scaling 12 → 44 orchards, vs Round 1 |
+| A | `r2_noaction` | `--zero-actions` | the trained no-action ablation |
+| A | `r2_growth` | `--growth-subsample`, growth fraction 0.40 | can the growth action be made real? |
+| B | `r2_big` | base 32→64, deter 512→1024, latent 32×32→48×48 | capacity |
+| C | `r2_sem` | class-weighted semantic CE | the mIoU class-collapse fix |
+| D | `r2_best` | class weights **+** L1 depth | both metric-directed fixes together |
+| E | `r2_kl` | free-bits 1→6, KL weights 0.5/0.1 → 0.2/0.04 | the information bottleneck |
+
+`r2_sem` vs `r2_main` isolates the class weights and `r2_best` vs `r2_sem` isolates the depth
+loss. `r2_kl` moves two knobs in the same direction on one hypothesis and is labelled as one
+intervention, not a controlled pair. Three jobs share the GPU at any time.
+
+**A comparability caveat, stated rather than buried:** `r2_sem`, `r2_best` and `r2_kl` change the
+*scale* of terms in the training objective (class weights, L1 instead of MSE, KL weights), so
+their "best validation reconstruction" numbers are not comparable with `r2_main`'s and are not
+used for cross-run comparison. Only the held-out evaluation metrics — which are unweighted and
+identical for every model — are.
+
+## 12. Dead ends and fixes inside Round 2 itself
+
+- **The growth stage-subsampling augmentation started too diffuse.** Choosing the start stage
+  uniformly over all 8 made most subsampled windows 2–3 frames long, which would have shrunk the
+  growth channel's already-small share of the loss. Restricting the start to the first three
+  stages brings the mean window length to 3.79 (max 7) while leaving every stage reachable, and
+  `--growth-fraction` is raised 0.25 → 0.40 in `r2_growth` to compensate for the rest.
+- **The counterfactual growth evaluation initially scored out-of-distribution actions.**
+  Subsampling with stride ≤ 3 produces `a_grow` ∈ {5, 10, 15, 20} d, but the evaluation's
+  candidate set runs to 25 d and 35 d. Scoring those together would blame a model for failing on
+  an action it was never shown, so the script now keeps the full per-episode error matrix and
+  reports identification accuracy twice, each against its own chance level.
+- **Evaluation was not reproducible.** The RSSM samples its categorical latent, so two runs of
+  `run_r2_recon_floor.py` on the *same* checkpoint differed by ~0.015 m of depth MAE — of the
+  same order as some of the differences being compared. Seeding torch per checkpoint fixed it;
+  verified by running one checkpoint twice and getting identical output.
+- **`generate_log.txt` is opened in append mode**, so a naive "count the completed-orchard lines"
+  progress check counts Round 1's 20 lines too. Cost one confused progress reading, nothing more.
