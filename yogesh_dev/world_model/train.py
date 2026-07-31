@@ -85,6 +85,10 @@ def main():
                          "list of 7 floats. R2-C measured that the unweighted model never "
                          "predicts fruit, petiole or peduncle at all, which is exactly why mIoU "
                          "sits at 0.266.")
+    ap.add_argument("--depth-loss", default="mse", choices=("mse", "l1"),
+                    help="'mse' (Round 1) optimises the conditional MEAN of the depth map, "
+                         "which is a blur; 'l1' optimises the conditional MEDIAN and is the "
+                         "loss that matches the reported metric (depth MAE in metres).")
     ap.add_argument("--class-weight-batches", type=int, default=20,
                     help="batches sampled to measure the class histogram for --sem-class-weights auto")
     ap.add_argument("--growth-fraction", type=float, default=0.25)
@@ -182,7 +186,8 @@ def main():
 
     model = WorldModel(action_dim=5, image_size=args.image_size, base=args.base_channels,
                        deter=args.deter, stoch=args.stoch, classes=args.classes,
-                       free_bits=args.free_bits, sem_class_weights=sem_w).to(device)
+                       free_bits=args.free_bits, sem_class_weights=sem_w,
+                       depth_loss=args.depth_loss).to(device)
     log(f"model parameters: {count_parameters(model):,}")
     if args.weight_decay > 0:
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=args.adam_eps,

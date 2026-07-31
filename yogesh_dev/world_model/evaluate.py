@@ -294,7 +294,8 @@ def load_model(ckpt_path, device):
     m = WorldModel(action_dim=5, image_size=a["image_size"], base=a["base_channels"],
                    deter=a["deter"], stoch=a["stoch"], classes=a["classes"],
                    free_bits=a["free_bits"],
-                   sem_class_weights=a.get("sem_class_weights_resolved")).to(device)
+                   sem_class_weights=a.get("sem_class_weights_resolved"),
+                   depth_loss=a.get("depth_loss", "mse")).to(device)
     m.load_state_dict(ck["model"])
     m.eval()
     return m, ck

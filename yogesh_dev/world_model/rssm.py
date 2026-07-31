@@ -167,12 +167,22 @@ class WorldModel(nn.Module):
     def __init__(self, action_dim=5, image_size=64, base=32, deter=512, stoch=32,
                  classes=32, hidden=512, free_bits=1.0, kl_dyn=0.5, kl_rep=0.1,
                  w_rgb=1.0, w_depth=1.0, w_semantic=1.0, w_fruit=1.0,
-                 sem_class_weights=None):
+                 sem_class_weights=None, depth_loss="mse"):
         super().__init__()
         self.image_size = image_size
         self.action_dim = action_dim
         self.free_bits, self.kl_dyn, self.kl_rep = free_bits, kl_dyn, kl_rep
         self.w = {"rgb": w_rgb, "depth": w_depth, "semantic": w_semantic, "fruit": w_fruit}
+
+        # Depth reconstruction loss. MSE (Round 1) has the CONDITIONAL MEAN as its
+        # optimum, which for a scene the latent cannot pin down is a blur -- R2-C
+        # measured the reconstruction carrying 11% of the ground truth's gradient
+        # energy. L1's optimum is the conditional MEDIAN, which is sharper, and it
+        # is also the loss that matches the metric the model is scored on (depth
+        # MAE in metres). Both are still computed in symlog space; only the
+        # penalty shape changes.
+        assert depth_loss in ("mse", "l1"), depth_loss
+        self.depth_loss = depth_loss
 
         # Optional per-class weights for the semantic cross-entropy.
         #
@@ -306,7 +316,8 @@ class WorldModel(nn.Module):
             return (per_step * m).sum() / denom
 
         l_rgb = _masked_mean((pred["rgb"] - data["rgb"]) ** 2, True)
-        l_depth = _masked_mean((pred["depth_symlog"] - data["depth_symlog"]) ** 2, True)
+        d_err = pred["depth_symlog"] - data["depth_symlog"]
+        l_depth = _masked_mean(d_err ** 2 if self.depth_loss == "mse" else d_err.abs(), True)
         ce = F.cross_entropy(
             pred["semantic_logits"].reshape(B * T, N_SEMANTIC_CLASSES, self.image_size, self.image_size),
             data["semantic"].reshape(B * T, self.image_size, self.image_size),
