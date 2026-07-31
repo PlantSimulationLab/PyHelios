@@ -30,17 +30,20 @@ from yogesh_dev.world_model.rssm import WorldModel, count_parameters
 from yogesh_dev.world_model.data import SequenceSampler
 
 
-def to_device_batch(batch, device):
-    return {k: (torch.from_numpy(v) if isinstance(v, np.ndarray) else v) for k, v in batch.items()}
+def to_device_batch(batch, device, zero_actions=False):
+    out = {k: (torch.from_numpy(v) if isinstance(v, np.ndarray) else v) for k, v in batch.items()}
+    if zero_actions and "action" in out:
+        out["action"] = torch.zeros_like(out["action"])
+    return out
 
 
-def evaluate(model, sampler, device, n_batches, batch_size):
+def evaluate(model, sampler, device, n_batches, batch_size, zero_actions=False):
     model.eval()
     accum = {}
     with torch.no_grad():
         for _ in range(n_batches):
             b = sampler.sample_batch(batch_size)
-            data = model.preprocess(to_device_batch(b, device), device)
+            data = model.preprocess(to_device_batch(b, device, zero_actions), device)
             _, m, _, _ = model.loss(data)
             for k, v in m.items():
                 accum[k] = accum.get(k, 0.0) + float(v)
@@ -78,6 +81,10 @@ def main():
     ap.add_argument("--cache-size", type=int, default=64)
     ap.add_argument("--prefetch", action="store_true", default=True)
     ap.add_argument("--no-prefetch", dest="prefetch", action="store_false")
+    ap.add_argument("--zero-actions", action="store_true",
+                    help="W6 no-action ablation: train with all actions set to zero. "
+                         "A model trained this way CANNOT use actions, so it is the "
+                         "control that proves the full model does.")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
 
@@ -152,7 +159,7 @@ def main():
             batch = next(producer)
         else:
             batch = train_sampler.sample_batch(args.batch_size)
-        data = model.preprocess(to_device_batch(batch, device), device)
+        data = model.preprocess(to_device_batch(batch, device, args.zero_actions), device)
         with amp_ctx:
             total, metrics, _, _ = model.loss(data)
         opt.zero_grad(set_to_none=True)
@@ -179,7 +186,8 @@ def main():
             running = {}
 
         if val_sampler is not None and (step + 1) % args.val_every == 0:
-            vm = evaluate(model, val_sampler, device, args.val_batches, args.batch_size)
+            vm = evaluate(model, val_sampler, device, args.val_batches, args.batch_size,
+                          args.zero_actions)
             row = {"step": step + 1, "split": "val", **vm, "elapsed_s": time.time() - t0}
             hist.write(json.dumps(row) + "\n"); hist.flush()
             log(f"  VAL step {step+1}: " + "  ".join(f"{k}={v:.5f}" for k, v in vm.items()))

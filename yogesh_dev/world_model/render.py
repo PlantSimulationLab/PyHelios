@@ -134,7 +134,11 @@ def verify_pixel_orientation(rgb_raw_hw, label_map):
     for name, fn in ORIENTATIONS.items():
         cand = fn(rgb_raw_hw)
         gr = cand[..., 1] / (cand[..., 0] + eps)
-        if leaf.sum() < 50 or fruit.sum() < 50:
+        # Require a decent pixel count in BOTH classes. With only a handful of
+        # fruit pixels the median ratio is unstable and can blow up by orders of
+        # magnitude, which is exactly how a mean-based aggregate picked the wrong
+        # orientation on a real run.
+        if leaf.sum() < 200 or fruit.sum() < 200:
             out[name] = None
             continue
         leaf_gr = float(np.median(gr[leaf]))
@@ -250,6 +254,22 @@ class ObservationRig:
         return time.time() - t0
 
     def _orient(self, arr):
+        """Apply the calibrated flip. **Only the raw RGB pixel array needs this.**
+
+        `getCameraPixelData` returns the radiance buffer in a different scan order
+        from `getPrimitiveDataLabelMap` / `writeDepthImageDataEXR`, which both
+        come out of the pixel-labelling pass whose geometry Phase 0 T0.3
+        validated sub-pixel against the `look_at_view_matrix` convention. So the
+        label map, instance map and depth are ALREADY in the Phase 0 frame and
+        must be left alone; only RGB is brought into that frame.
+
+        An earlier version of this file flipped all four modalities. That keeps
+        them mutually consistent -- and the contact sheet still looks like a
+        perfectly plausible orchard, which is exactly why it is a dangerous bug --
+        but it puts every modality in a left-right mirror of the pose matrix, so
+        any projection of a world point into the image would land on the wrong
+        side. Fixed, and checked by the reprojection test in run_w1.py.
+        """
         return ORIENTATIONS[self._orientation](arr)
 
     def read_camera(self, cam_index, exposure_scale=None, tmpdir=None):
@@ -270,14 +290,14 @@ class ObservationRig:
 
         semantic_raw = None
         if self.want_semantic:
-            semantic_raw = self.radiation.getPrimitiveDataLabelMap(label, SEMANTIC_CLASS_ID_FIELD)
-            sem = self._orient(semantic_raw)
+            # NOT flipped -- see _orient()'s docstring.
+            sem = self.radiation.getPrimitiveDataLabelMap(label, SEMANTIC_CLASS_ID_FIELD)
             sky = np.isnan(sem)
             sem_u8 = np.where(sky, SKY_SEMANTIC_ID, np.nan_to_num(sem, nan=0.0)).astype(np.uint8)
             out["semantic"] = sem_u8
             out["sky_mask"] = sky
         if self.want_instance:
-            inst = self._orient(self.radiation.getObjectDataLabelMap(label, "fruitID"))
+            inst = self.radiation.getObjectDataLabelMap(label, "fruitID")
             out["instance"] = np.where(np.isnan(inst), -1, np.nan_to_num(inst, nan=-1)).astype(np.int32)
         if self.want_depth:
             own_tmp = tmpdir is None
@@ -285,7 +305,7 @@ class ObservationRig:
             try:
                 self.radiation.writeDepthImageDataEXR(label, "d", image_path=td + os.sep)
                 depth = read_depth_exr(os.path.join(td, f"{label}_d.exr"))
-                out["depth"] = self._orient(depth).astype(np.float32)
+                out["depth"] = depth.astype(np.float32)
             finally:
                 if own_tmp:
                     import shutil
@@ -342,19 +362,47 @@ class ObservationRig:
                 per_cam.append(r)
         if not per_cam:
             self._orientation = saved
-            return {"best": saved, "applied": saved, "n_usable_cameras": 0,
+            return {"best": None, "applied": saved, "n_usable_cameras": 0,
+                    "best_score": None,
                     "note": "no calibration view had enough leaf AND fruit pixels"}
-        agg = {k: float(np.mean([c["score_per_orientation"][k] for c in per_cam]))
-               for k in ORIENTATIONS}
-        best = max(agg, key=lambda k: agg[k])
+
+        # Aggregate by MAJORITY VOTE, not by mean score. A first version used the
+        # mean and it picked the wrong orientation on a real run: one view with
+        # almost no fruit pixels produced a green/red ratio of ~1e7, which
+        # swamped 13 correct votes. The median score is kept as a diagnostic.
         votes = {k: 0 for k in ORIENTATIONS}
         for c in per_cam:
             votes[c["best"]] += 1
+        best = max(votes, key=lambda k: votes[k])
+        agg = {k: float(np.median([c["score_per_orientation"][k] for c in per_cam]))
+               for k in ORIENTATIONS}
+        share = votes[best] / len(per_cam)
         self._orientation = best
-        return {"score_per_orientation": agg, "best": best, "best_score": agg[best],
-                "per_camera_votes": votes, "n_usable_cameras": len(per_cam),
-                "applied": best, "method": per_cam[0]["method"],
+        return {"median_score_per_orientation": agg, "best": best, "best_score": agg[best],
+                "per_camera_votes": votes, "vote_share": share,
+                "n_usable_cameras": len(per_cam), "applied": best,
+                "method": per_cam[0]["method"] + " ; winner chosen by majority vote",
                 "example_diagnostics": per_cam[0]["diagnostics"]}
+
+    def collect_exposure_samples(self, poses):
+        """Solve once and return the raw radiance of every geometry-hit pixel,
+        across all bands and all given poses. Split out from
+        `calibrate_exposure` so one exposure scale can be computed over samples
+        pooled from SEVERAL growth stages -- the canopy at 540 d and at 580 d
+        have very different brightness distributions, and calibrating on only
+        one of them would drift the exposure across the dataset."""
+        self.solve(poses)
+        vals = []
+        w, h = self.resolution
+        for i in range(len(poses)):
+            label = self.camera_labels[i]
+            lm = self.radiation.getPrimitiveDataLabelMap(label, SEMANTIC_CLASS_ID_FIELD)
+            hit = ~np.isnan(lm)
+            for b in self.bands:
+                px = self._orient(np.asarray(self.radiation.getCameraPixelData(label, b),
+                                              dtype=np.float32).reshape(h, w))
+                vals.append(px[hit])
+        return np.concatenate(vals) if vals else np.zeros(0, dtype=np.float32)
 
     def calibrate_exposure(self, poses, percentile=99.0):
         """Compute ONE exposure scale from a set of calibration poses.
@@ -366,18 +414,9 @@ class ObservationRig:
         cluster that no flux setting removes): a max-based scale would be
         hostage to those pixels and crush everything else to black.
         """
-        self.solve(poses)
-        vals = []
-        for i in range(len(poses)):
-            label = self.camera_labels[i]
-            w, h = self.resolution
-            lm = self.radiation.getPrimitiveDataLabelMap(label, SEMANTIC_CLASS_ID_FIELD)
-            hit = ~np.isnan(self._orient(lm))
-            for b in self.bands:
-                px = self._orient(np.asarray(self.radiation.getCameraPixelData(label, b),
-                                              dtype=np.float32).reshape(h, w))
-                vals.append(px[hit])
-        allv = np.concatenate(vals) if vals else np.array([0.0], dtype=np.float32)
+        allv = self.collect_exposure_samples(poses)
+        if allv.size == 0:
+            allv = np.array([1.0], dtype=np.float32)
         scale = float(np.percentile(allv, percentile))
         report = {
             "percentile": percentile, "exposure_scale": scale,

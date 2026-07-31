@@ -3,44 +3,39 @@ W1 -- batched observation rig
 ==============================================================================
 
 [build] 2x10 orchard seed=10000 age=720.0d
-  830392 primitives in 35.7s (total incl. ground truth 39.9s)
+  830392 primitives in 34.4s (total incl. ground truth 38.3s)
 
-[rig] registering 256 cameras at (128, 128)
-  updateGeometry: 0.60s  HFOV=60.00 deg
+[rig] registering 128 cameras at (128, 128)
+  updateGeometry: 0.58s  HFOV=60.00 deg
 
 [V1] pixel-array orientation vs label map
-  method: median(green/red) on leaf pixels / same on fruit pixels; higher is better, ~1.0 means the labels are scrambled
-  as_is    leaf/fruit green-red score = 2.179504284286465
-  flipud   leaf/fruit green-red score = 1.0000027841458046
-  fliplr   leaf/fruit green-red score = 6.225636653224952
-  rot180   leaf/fruit green-red score = 1.0000016416429538
+  method: median(green/red) on leaf pixels / same on fruit pixels; higher is better, ~1.0 means the labels are scrambled ; winner chosen by majority vote
   per-camera votes: {'as_is': 0, 'flipud': 0, 'fliplr': 8, 'rot180': 0} (n usable views 8)
-  example diagnostics: {'as_is': {'leaf_green_over_red': 2.391031265258789, 'fruit_green_over_red': 0.9651507139205933}, 'flipud': {'leaf_green_over_red': 0.9651524424552917, 'fruit_green_over_red': 0.9651482701301575}, 'fliplr': {'leaf_green_over_red': 2.413541316986084, 'fruit_green_over_red': 0.3869043290615082}, 'rot180': {'leaf_green_over_red': 0.9651507139205933, 'fruit_green_over_red': 0.9651461243629456}}
-  -> applying 'fliplr' (score 6.225636653224952)
+  example diagnostics: {'as_is': {'leaf_green_over_red': 2.3912854194641113, 'fruit_green_over_red': 0.9651523232460022}, 'flipud': {'leaf_green_over_red': 0.9651522040367126, 'fruit_green_over_red': 0.9651482105255127}, 'fliplr': {'leaf_green_over_red': 2.4133248329162598, 'fruit_green_over_red': 0.38690435886383057}, 'rot180': {'leaf_green_over_red': 0.9651508331298828, 'fruit_green_over_red': 0.9651461243629456}}
+  -> applying 'fliplr' (score 6.223385486460817)
 
 [V2] fixed global exposure calibration
   {
   "percentile": 99.0,
-  "exposure_scale": 0.04799290746450424,
+  "exposure_scale": 0.04829884693026543,
   "n_samples": 635397,
   "raw_min": 0.0,
-  "raw_max": 0.08798470348119736,
-  "raw_mean": 0.017740994691848755,
-  "raw_median": 0.016584482043981552,
-  "frac_above_scale": 0.009998473395373287
+  "raw_max": 0.0991140753030777,
+  "raw_mean": 0.018879031762480736,
+  "raw_median": 0.01705760695040226,
+  "frac_above_scale": 0.009485408335261262
 }
 
 [V3] camera-batching throughput (solve only, 3 bands)
-  N=   1  solve=  4.975s  per-image=4.9755s
-  N=   4  solve=  5.009s  per-image=1.2524s
-  N=  16  solve=  4.899s  per-image=0.3062s
-  N=  32  solve=  4.835s  per-image=0.1511s
-  N=  64  solve=  4.883s  per-image=0.0763s
-  N= 128  solve=  4.853s  per-image=0.0379s
-  N= 256  solve=  4.855s  per-image=0.0190s
+  N=   1  solve=  4.647s  per-image=4.6473s
+  N=   4  solve=  4.641s  per-image=1.1602s
+  N=  16  solve=  4.660s  per-image=0.2912s
+  N=  32  solve=  4.638s  per-image=0.1449s
+  N=  64  solve=  4.641s  per-image=0.0725s
+  N= 128  solve=  4.649s  per-image=0.0363s
 
 [V3b] readback cost per image (128 cameras)
-  solve=4.86s  read=1.16s  (0.0091s/image, all 4 modalities)
+  solve=4.64s  read=1.17s  (0.0091s/image, all 4 modalities)
 
 [V4] contact sheets
   wrote 4 contact sheets to /home/yogesh/PyHelios/yogesh_dev/world_model/output/w1
@@ -60,6 +55,10 @@ W1 -- batched observation rig
   peduncle        230    0.01%
   sky          386549   18.43%
   W0 organ primitive counts: {'fruit': 106914, 'leaf': 216678, 'shoot': 381346, 'petiole': 118188, 'peduncle': 7266}
+
+[V7] fruit-centroid reprojection error (pose vs instance mask)
+  n=135  mean=0.80px  median=0.71px  p90=1.09px  max=3.26px  (at 128x128)
+  not-mirrored (median < 10% of image width): True
 
 [extra] full-resolution qualitative frame (512x512)
   wrote 4 512x512 frames

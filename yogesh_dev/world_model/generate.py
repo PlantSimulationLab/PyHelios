@@ -229,11 +229,27 @@ def generate_orchard(seed, split, out_root, n_steps=128, families=VIEW_FAMILIES,
     return records
 
 
-def calibrate_once(seed, stage_age, resolution, sun_zenith, sun_azimuth, log=print):
+def calibrate_once(seed, stages, resolution, sun_zenith, sun_azimuth, log=print):
     """Compute the ONE global exposure scale + the pixel orientation, from a
-    single orchard. Every episode in the dataset then uses these verbatim."""
+    single orchard, pooled over the FIRST and LAST growth stage.
+
+    Two real traps, both hit while building this:
+
+    1. **Orientation cannot be calibrated at stage 0.** The orientation test
+       needs both leaf and fruit pixels (it separates them by their green/red
+       reflectance ratio), and W0b measured that the apple model has ZERO fruit
+       at 540 d. A first version calibrated at `stages[0]` and silently fell
+       back to the default `as_is` orientation -- which would have written the
+       entire dataset left-right mirrored relative to the label maps. It now
+       calibrates at the last stage and RAISES if it still cannot decide.
+
+    2. **Exposure must not be calibrated on one stage.** The canopy at 540 d is
+       sparse and ground-dominated; at 580 d it is dense. Samples are pooled
+       across both so the single global scale is representative of the dataset
+       rather than of its first frame.
+    """
     ext = orchard_extent()
-    orch = build_orchard(seed=seed, age_days=stage_age)
+    orch = build_orchard(seed=seed, age_days=stages[0])
     try:
         rig = ObservationRig(orch, n_cameras=16, resolution=resolution,
                              sun_zenith=sun_zenith, sun_azimuth=sun_azimuth)
@@ -243,10 +259,38 @@ def calibrate_once(seed, stage_age, resolution, sun_zenith, sun_azimuth, log=pri
             A.sample_row_traversal(8, ext, rng),
             A.sample_random_walk(8, ext, rng)], axis=0)
         cal_poses = A.states_to_poses(cal_states)
+
+        samples = [rig.collect_exposure_samples(cal_poses)]
+        if len(stages) > 1:
+            orch.grow(stages[-1] - stages[0])
+            rig.radiation.updateGeometry()
         orient = rig.calibrate_orientation(cal_poses)
-        expo = rig.calibrate_exposure(cal_poses, percentile=99.0)
+        if orient.get("n_usable_cameras", 0) < 3 or orient.get("best_score") is None:
+            raise RuntimeError(
+                "orientation calibration failed: fewer than 3 calibration views had "
+                "enough leaf AND fruit pixels. Refusing to fall back to a default "
+                "orientation -- that silently mirrors the whole dataset. Calibrate at "
+                "an age with well-developed fruit (W0b: fruit area peaks near 580 d).")
+        if orient["best_score"] < 1.5:
+            raise RuntimeError(
+                f"orientation calibration is not discriminative (median score "
+                f"{orient['best_score']:.3f}, expected >> 1). Refusing to guess.")
+        if orient.get("vote_share", 0.0) < 0.6:
+            raise RuntimeError(
+                f"orientation calibration is not decisive: votes {orient['per_camera_votes']} "
+                f"({orient['vote_share']:.2f} share). Refusing to guess.")
+        samples.append(rig.collect_exposure_samples(cal_poses))
+        allv = np.concatenate(samples)
+        scale = float(np.percentile(allv, 99.0))
+        expo = {"percentile": 99.0, "exposure_scale": scale, "n_samples": int(allv.size),
+                "raw_min": float(allv.min()), "raw_max": float(allv.max()),
+                "raw_mean": float(allv.mean()), "raw_median": float(np.median(allv)),
+                "frac_above_scale": float((allv > scale).mean()),
+                "pooled_over_stages": [stages[0], stages[-1]]}
         rig.close()
-        log(f"  calibration: orientation={orient['applied']} exposure={expo['exposure_scale']:.5f}")
+        log(f"  calibration: orientation={orient['applied']} (score {orient['best_score']:.2f}, "
+            f"votes {orient.get('per_camera_votes')}) exposure={scale:.5f} "
+            f"over {allv.size} pooled samples")
         return orient, expo
     finally:
         orch.close()
@@ -287,7 +331,7 @@ def main():
         f"n_steps={args.n_steps} probes={args.n_growth_probes} res={res}")
     log(f"  seed split check: {verify_seed_split()}")
 
-    orient, expo = calibrate_once(list(TRAIN_SEEDS)[0], stages[0], res,
+    orient, expo = calibrate_once(list(TRAIN_SEEDS)[0], stages, res,
                                   args.sun_zenith, args.sun_azimuth, log=log)
 
     plan = ([(s, "train") for s in list(TRAIN_SEEDS)[:args.n_train]]

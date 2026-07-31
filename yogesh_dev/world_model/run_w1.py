@@ -103,7 +103,7 @@ def main():
         orient = rig.calibrate_orientation(cal_poses)
         results["orientation"] = orient
         _log(f"  method: {orient.get('method')}", lines)
-        for k, v in orient.get("score_per_orientation", {}).items():
+        for k, v in (orient.get("median_score_per_orientation") or orient.get("score_per_orientation") or {}).items():
             _log(f"  {k:8s} leaf/fruit green-red score = {v}", lines)
         _log(f"  per-camera votes: {orient.get('per_camera_votes')} "
              f"(n usable views {orient.get('n_usable_cameras')})", lines)
@@ -201,6 +201,61 @@ def main():
         results["semantic_histogram"] = named
         results["organ_primitive_counts"] = dict(orch.organ_counts)
         _log(f"  W0 organ primitive counts: {orch.organ_counts}", lines)
+
+        # -- V7 reprojection: does the pose matrix agree with the images? -----
+        # This is the check that catches an orientation bug. Every modality is
+        # mutually consistent no matter which flip is applied, and a mirrored
+        # orchard still looks like an orchard -- the only thing that can tell
+        # them apart is projecting a KNOWN world point through the recorded pose
+        # and seeing whether it lands on the right pixel. Same method Phase 1
+        # used to cross-validate transforms.json (1.41 px mean there).
+        _log("\n[V7] fruit-centroid reprojection error (pose vs instance mask)", lines)
+        from yogesh_dev.phase0.pose_convention import project
+        from pyhelios.types import vec3 as _vec3
+        centroid_by_id = {}
+        for r in orch.fruit_records:
+            oid = r.get("object_id")
+            c = r.get("centroid")
+            if oid is not None and c is not None:
+                centroid_by_id[int(oid)] = c
+        errs, n_used = [], 0
+        for f in frames[:32]:
+            inst = f["instance"]
+            ids = np.unique(inst[inst >= 0])
+            for fid in ids:
+                if int(fid) not in centroid_by_id:
+                    continue
+                mask = inst == fid
+                if mask.sum() < 30:      # tiny/partly occluded blobs give a biased centroid
+                    continue
+                rows, cols = np.where(mask)
+                u_meas, v_meas = float(cols.mean()), float(rows.mean())
+                c = centroid_by_id[int(fid)]
+                u_pred, v_pred = project(rig.K, f["viewmat"].astype(np.float64),
+                                         _vec3(float(c[0]), float(c[1]), float(c[2])))
+                errs.append(float(np.hypot(u_meas - u_pred, v_meas - v_pred)))
+                n_used += 1
+        if errs:
+            errs = np.asarray(errs)
+            results["reprojection"] = {
+                "n_fruit_observations": int(n_used),
+                "mean_px": float(errs.mean()), "median_px": float(np.median(errs)),
+                "p90_px": float(np.percentile(errs, 90)), "max_px": float(errs.max()),
+                "resolution": list(DEFAULT_RESOLUTION),
+                "orientation_applied": orient["applied"],
+            }
+            _log(f"  n={n_used}  mean={errs.mean():.2f}px  median={np.median(errs):.2f}px  "
+                 f"p90={np.percentile(errs,90):.2f}px  max={errs.max():.2f}px  "
+                 f"(at {DEFAULT_RESOLUTION[0]}x{DEFAULT_RESOLUTION[1]})", lines)
+            # Sanity band: a mirrored image would put centroids on the wrong side
+            # of the frame, i.e. errors on the order of the image width.
+            results["reprojection"]["pass_not_mirrored"] = bool(
+                np.median(errs) < DEFAULT_RESOLUTION[0] * 0.1)
+            _log(f"  not-mirrored (median < 10% of image width): "
+                 f"{results['reprojection']['pass_not_mirrored']}", lines)
+        else:
+            _log("  no usable fruit observations -- V7 inconclusive", lines)
+            results["reprojection"] = {"n_fruit_observations": 0}
 
         # -- full-res qualitative frame --------------------------------------
         _log("\n[extra] full-resolution qualitative frame (512x512)", lines)
