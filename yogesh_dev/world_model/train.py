@@ -73,7 +73,19 @@ def main():
                          "are that small, eps dominates the Adam denominator and the effective "
                          "step size explodes. 1e-5 is the DreamerV2/V3 value.")
     ap.add_argument("--grad-clip", type=float, default=100.0)
+    ap.add_argument("--weight-decay", type=float, default=0.0,
+                    help="Round 2 regularisation knob. >0 switches Adam -> AdamW. Round 1's "
+                         "val reconstruction bottomed at 14k steps while train loss kept "
+                         "falling on 12 orchards; this is one of the levers re-measured "
+                         "after the dataset was enlarged.")
     ap.add_argument("--growth-fraction", type=float, default=0.25)
+    ap.add_argument("--growth-subsample", action="store_true",
+                    help="Round 2 (R2-A): build growth windows from a random increasing "
+                         "SUBSEQUENCE of the growth stages, so a_grow takes values 5/10/15/20 "
+                         "days instead of the single constant sequence that every stored growth "
+                         "episode carries. Zero extra rendering: the frames are the same real "
+                         "renders, only the step between them changes.")
+    ap.add_argument("--growth-max-stride", type=int, default=3)
     ap.add_argument("--free-bits", type=float, default=1.0)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--log-every", type=int, default=50)
@@ -113,13 +125,16 @@ def main():
 
     train_sampler = SequenceSampler(args.data, "train", args.seq_len, args.image_size,
                                     args.growth_fraction, cache_size=args.cache_size,
-                                    seed=args.seed)
+                                    seed=args.seed, growth_subsample=args.growth_subsample,
+                                    growth_max_stride=args.growth_max_stride)
     log(f"train data: {train_sampler.stats()}")
     val_sampler = None
     if not args.overfit_one:
         val_sampler = SequenceSampler(args.data, "val", args.seq_len, args.image_size,
                                       args.growth_fraction, cache_size=max(8, args.cache_size // 4),
-                                      seed=args.seed + 1)
+                                      seed=args.seed + 1,
+                                      growth_subsample=args.growth_subsample,
+                                      growth_max_stride=args.growth_max_stride)
         log(f"val data: {val_sampler.stats()}")
 
     # -- W4: overfit a single trajectory ------------------------------------
@@ -135,7 +150,12 @@ def main():
                        deter=args.deter, stoch=args.stoch, classes=args.classes,
                        free_bits=args.free_bits).to(device)
     log(f"model parameters: {count_parameters(model):,}")
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=args.adam_eps)
+    if args.weight_decay > 0:
+        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=args.adam_eps,
+                                weight_decay=args.weight_decay)
+        log(f"optimiser: AdamW(weight_decay={args.weight_decay})")
+    else:
+        opt = torch.optim.Adam(model.parameters(), lr=args.lr, eps=args.adam_eps)
 
     start_step, best_val = 0, float("inf")
     ckpt_path = os.path.join(out, "ckpt.pt")

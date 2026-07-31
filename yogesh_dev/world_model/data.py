@@ -20,11 +20,12 @@ N_SEMANTIC_CLASSES = 7
 class EpisodeStore:
     """Lazily-decompressed npz episodes with a bounded LRU cache."""
 
-    def __init__(self, root, records, cache_size=32, image_size=None):
+    def __init__(self, root, records, cache_size=32, image_size=None, load_age=False):
         self.root = root
         self.records = records
         self.cache_size = cache_size
         self.image_size = image_size
+        self.load_age = load_age
         self._cache = {}
         self._order = []
 
@@ -60,6 +61,8 @@ class EpisodeStore:
                 "pose": z["pose"],
                 "state": z["state"],
             }
+            if self.load_age and "age_days" in z.files:
+                ep["age_days"] = z["age_days"].astype(np.float32)
         self._cache[idx] = ep
         self._order.append(idx)
         while len(self._order) > self.cache_size:
@@ -79,7 +82,8 @@ class SequenceSampler:
     """
 
     def __init__(self, root, split="train", seq_len=32, image_size=None,
-                 growth_fraction=0.25, cache_size=32, seed=0, manifest=None):
+                 growth_fraction=0.25, cache_size=32, seed=0, manifest=None,
+                 growth_subsample=False, growth_max_stride=3):
         self.root = root
         if manifest is None:
             with open(os.path.join(root, "manifest.json")) as f:
@@ -89,25 +93,75 @@ class SequenceSampler:
         self.view_records = [e for e in eps if e["episode_type"] == "view"]
         self.growth_records = [e for e in eps if e["episode_type"] == "growth"]
         self.view_store = EpisodeStore(root, self.view_records, cache_size, image_size)
-        self.growth_store = EpisodeStore(root, self.growth_records, cache_size, image_size)
+        self.growth_store = EpisodeStore(root, self.growth_records, cache_size, image_size,
+                                         load_age=growth_subsample)
         self.seq_len = seq_len
         self.growth_fraction = growth_fraction if self.growth_records else 0.0
         self.rng = np.random.default_rng(seed)
         self.image_size = image_size
         self.split = split
+        self.growth_subsample = bool(growth_subsample)
+        self.growth_max_stride = int(growth_max_stride)
         self._n_growth_drawn = 0
         self._n_drawn = 0
+        self._grow_dt_hist = {}
 
     def n_frames(self):
         return sum(e["n_steps"] for e in self.view_records + self.growth_records)
 
+    def _growth_index(self, T, ages):
+        """A random strictly-increasing subsequence of the growth stages.
+
+        R2-A measured that every growth episode in the dataset carries the SAME
+        `a_grow` sequence (5,5,5,5,5,5,10,0) -- one distinct sequence over all 320
+        episodes. A constant action carries no information beyond the frame
+        index, so nothing in the data can teach the model to respond to a
+        *different* number of days, and W6's "counterfactual growth" ablation was
+        querying a value the model had never seen.
+
+        Skipping stages fixes that at zero rendering cost: the frames are the same
+        real renders, but the step between them is now 5, 10, 15 or 20 days and
+        `a_grow` is recomputed from the stored ages, so the action genuinely
+        varies across training examples. This is a re-indexing of real ground
+        truth, not synthetic data.
+        """
+        # Start near the beginning on purpose: a uniform start over all stages
+        # makes most subsampled windows 2-3 frames long, which would shrink the
+        # growth channel's already-small share of the loss even further. Starting
+        # in the first three stages keeps the mean window length near 4 while
+        # every stage is still reachable.
+        i = int(self.rng.integers(0, min(3, max(1, T - 1))))
+        idx = [i]
+        while True:
+            nxt = idx[-1] + int(self.rng.integers(1, self.growth_max_stride + 1))
+            if nxt > T - 1:
+                break
+            idx.append(nxt)
+        if len(idx) < 2:                     # degenerate draw -> fall back to full
+            idx = list(range(T))
+        idx = np.asarray(idx, dtype=np.int64)
+        dt = np.zeros((len(idx), 1), np.float32)
+        dt[:-1, 0] = ages[idx[1:]] - ages[idx[:-1]]
+        for v in dt[:-1, 0]:
+            self._grow_dt_hist[float(v)] = self._grow_dt_hist.get(float(v), 0) + 1
+        return idx, dt
+
     def _window(self, ep, is_growth):
         T = ep["rgb"].shape[0]
-        L = min(self.seq_len, T)
-        t0 = int(self.rng.integers(0, T - L + 1)) if T > L else 0
-        sl = slice(t0, t0 + L)
-        a_view = ep["a_view"][sl]
-        a_grow = ep["a_grow"][sl]
+        if is_growth and self.growth_subsample and "age_days" in ep and T > 2:
+            sl, a_grow_sub = self._growth_index(T, ep["age_days"])
+            L = len(sl)
+            a_view = ep["a_view"][sl]
+            a_grow = a_grow_sub
+            ep = {**ep, "rgb": ep["rgb"][sl], "depth": ep["depth"][sl],
+                  "semantic": ep["semantic"][sl], "fruit_vis": ep["fruit_vis"][sl]}
+            sl = slice(0, L)
+        else:
+            L = min(self.seq_len, T)
+            t0 = int(self.rng.integers(0, T - L + 1)) if T > L else 0
+            sl = slice(t0, t0 + L)
+            a_view = ep["a_view"][sl]
+            a_grow = ep["a_grow"][sl]
         # Action vector = 4 view dims + 1 growth dim (days/10, so both channels
         # sit at a comparable scale; view deltas are ~0.1 m and growth steps are
         # 5-10 days).
@@ -212,4 +266,6 @@ class SequenceSampler:
                 "n_frames": self.n_frames(),
                 "growth_fraction_requested": self.growth_fraction,
                 "growth_fraction_realised": (self._n_growth_drawn / self._n_drawn
-                                             if self._n_drawn else None)}
+                                             if self._n_drawn else None),
+                "growth_subsample": self.growth_subsample,
+                "growth_dt_histogram": dict(sorted(self._grow_dt_hist.items()))}
