@@ -158,21 +158,22 @@ access. SSIM is reported instead and the substitution is stated rather than made
 `yogesh_dev/COMPLETE_SETUP.md`; that file is outside this task's write scope, so the text is
 proposed rather than applied — the same pattern Phase 6 used for the gsplat fixes.
 
-### Slack notification — **NOT SENT**
+### Slack notification — **NOT SENT, and the cause is known** (corrected in Round 2)
 
-The plan (rule 5) and the task both ask for a `notify_slack()` call on completion. Every
-long-running entrypoint here is wrapped in the required try/except that calls it, but the
-notification could not actually be delivered:
+The plan (rule 5) and the Round 1 task both ask for a `notify_slack()` call on completion. Every
+long-running entrypoint here is wrapped in the required try/except that calls it, and none of
+them delivered anything.
 
-- `~/.config/claude-notify/slack_webhook_url` does not exist on this machine. `notify_slack()`
-  returns `False` and silently no-ops when the webhook file is missing — by its own design — so
-  every such call in this run was a no-op regardless.
-- `notify_slack.py` itself is no longer present at the repo root. It **was** present at the start
-  of this session (it was read, and its contents are quoted in the wrappers). It was not created,
-  modified or removed by this work: `git diff --name-only` across all six commits touches nothing
-  outside `yogesh_dev/world_model/`, and no `rm` was ever run outside that directory and the
-  session scratchpad. Recreating it at the repo root would be outside this task's write scope, so
-  it was left alone and flagged here instead.
+Round 1 recorded this as an unexplained anomaly — that `notify_slack.py` had been present at the
+start of the session and was gone by the end, with nothing in this work's commits touching it.
+**That framing was wrong and is retracted here.** The explanation is mundane: `notify_slack.py`
+and `~/.config/claude-notify/slack_webhook_url` were **deleted deliberately by the user on
+2026-07-30**, mid-run, because Slack notification was no longer wanted. Nothing malfunctioned and
+nothing was lost.
 
-If the webhook is restored, `bash yogesh_dev/world_model/run_remaining.sh` and every `run_w*.py`
-will notify without any change.
+The consequence for this directory: the notification is **permanently removed, not pending**. The
+guarded call sites are harmless — `from notify_slack import notify_slack` raises `ImportError`
+inside a bare `except Exception: pass`, so they no-op — and they are left in place rather than
+stripped, because editing them would touch eight files for no behavioural change. Do not
+recreate `notify_slack.py`, and do not report its absence as an anomaly again. Round 2 adds no
+new notification call sites.

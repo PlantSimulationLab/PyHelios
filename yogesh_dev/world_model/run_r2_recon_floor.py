@@ -43,6 +43,27 @@ from yogesh_dev.world_model.evaluate import load_model, psnr, ssim, miou, rollou
 from yogesh_dev.world_model.data import SequenceSampler
 
 
+SEM_NAMES = ["ground", "fruit", "leaf", "shoot", "petiole", "peduncle", "sky"]
+
+
+@torch.no_grad()
+def class_stats(pred_cls, gt_cls, n=N_SEMANTIC_CLASSES):
+    """Per-class intersection / union / gt-pixels / pred-pixels, summed over the batch.
+
+    mIoU on its own does not say WHY it is low. With 7 classes of which two cover
+    <0.3% of pixels, a model that only ever emits ground/leaf/sky scores 0 on
+    every class it never predicts, and those zeros are averaged in -- so a
+    perfectly good three-class segmenter is capped near 3/6. This breakdown makes
+    that visible instead of leaving mIoU as an opaque number.
+    """
+    out = {}
+    for c in range(n):
+        pc, tc = (pred_cls == c), (gt_cls == c)
+        out[c] = {"inter": float((pc & tc).sum()), "union": float((pc | tc).sum()),
+                  "gt": float(tc.sum()), "pred": float(pc.sum())}
+    return out
+
+
 @torch.no_grad()
 def score_frame(p_rgb, p_dsl, p_sem_logits, p_fruit, data, t_abs, is_copy=False):
     gt_rgb = data["rgb"][:, t_abs]
@@ -55,14 +76,17 @@ def score_frame(p_rgb, p_dsl, p_sem_logits, p_fruit, data, t_abs, is_copy=False)
     if is_copy:
         oh = F.one_hot(p_sem_logits.long(), N_SEMANTIC_CLASSES).permute(0, 3, 1, 2).float()
         m = miou(oh, gt_sem)
+        pred_cls = p_sem_logits.long()
     else:
         m = miou(p_sem_logits, gt_sem)
+        pred_cls = p_sem_logits.argmax(1)
     return {
         "psnr_db": float(psnr(p_rgb, gt_rgb).mean()),
         "ssim": float(ssim(p_rgb + 0.5, gt_rgb + 0.5).mean()),
         "depth_mae_m": float(((derr * not_sky).flatten(1).sum(1) / n_valid).mean()),
         "miou": float(np.nanmean(m.cpu().numpy())),
         "fruit_vis_mae": float(((symexp(p_fruit) - symexp(gt_fruit)) / 100.0).abs().mean()),
+        "_cls": class_stats(pred_cls, gt_sem),
     }
 
 
@@ -94,8 +118,32 @@ def run(model, sampler, device, context, n_batches, batch_size, log):
             data["rgb"][:, context - 1], data["depth_symlog"][:, context - 1],
             data["semantic"][:, context - 1], data["fruit_vis"][:, context - 1],
             data, t_abs, is_copy=True))
-    return {k: {kk: float(np.nanmean([r[kk] for r in v])) for kk in v[0]}
-            for k, v in acc.items() if v}
+    out = {}
+    for k, v in acc.items():
+        if not v:
+            continue
+        rec = {kk: float(np.nanmean([r[kk] for r in v]))
+               for kk in v[0] if not kk.startswith("_")}
+        # Per-class IoU is pooled over the WHOLE split (sum intersections, sum
+        # unions) rather than averaged per frame: a per-frame average would let a
+        # single frame containing three fruit pixels dominate the fruit IoU.
+        per_cls = {}
+        for c in range(N_SEMANTIC_CLASSES):
+            inter = sum(r["_cls"][c]["inter"] for r in v)
+            union = sum(r["_cls"][c]["union"] for r in v)
+            gt = sum(r["_cls"][c]["gt"] for r in v)
+            pr = sum(r["_cls"][c]["pred"] for r in v)
+            tot = sum(sum(r["_cls"][cc]["gt"] for cc in range(N_SEMANTIC_CLASSES)) for r in v)
+            per_cls[SEM_NAMES[c]] = {
+                "iou": (inter / union) if union > 0 else None,
+                "gt_pixel_fraction": gt / max(1.0, tot),
+                "pred_pixel_fraction": pr / max(1.0, tot),
+            }
+        rec["per_class"] = per_cls
+        rec["n_classes_ever_predicted"] = sum(
+            1 for c in per_cls.values() if c["pred_pixel_fraction"] > 1e-6)
+        out[k] = rec
+    return out
 
 
 def main():
@@ -142,6 +190,20 @@ def main():
             v = r[k]
             log(f"  {k:18s} {v['psnr_db']:8.2f} {v['ssim']:7.4f} {v['depth_mae_m']:12.3f} "
                 f"{v['miou']:7.4f} {v['fruit_vis_mae']:9.4f}")
+        log(f"  per-class IoU (pooled over the split); "
+            f"gt% / pred% = share of pixels in ground truth / prediction")
+        log(f"    {'class':10s} " + "".join(f"{k:>26s}"
+                                            for k in ("posterior_recon", "copy_last_t1")))
+        for name in SEM_NAMES:
+            cells = ""
+            for k in ("posterior_recon", "copy_last_t1"):
+                c = r[k]["per_class"][name]
+                iou = "  --  " if c["iou"] is None else f"{c['iou']:.3f}"
+                cells += f"  IoU {iou}  gt {c['gt_pixel_fraction']*100:5.2f}% " \
+                         f"pred {c['pred_pixel_fraction']*100:5.2f}%"
+            log(f"    {name:10s}{cells}")
+        log(f"  classes the model ever predicts: "
+            f"{r['posterior_recon']['n_classes_ever_predicted']} of {N_SEMANTIC_CLASSES}")
         if "posterior_recon" in r and "openloop_t1" in r:
             a, b = r["posterior_recon"], r["openloop_t1"]
             log(f"  attribution: of the depth error at t+1, "

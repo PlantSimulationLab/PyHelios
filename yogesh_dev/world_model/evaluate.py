@@ -293,7 +293,8 @@ def load_model(ckpt_path, device):
     a = ck["args"]
     m = WorldModel(action_dim=5, image_size=a["image_size"], base=a["base_channels"],
                    deter=a["deter"], stoch=a["stoch"], classes=a["classes"],
-                   free_bits=a["free_bits"]).to(device)
+                   free_bits=a["free_bits"],
+                   sem_class_weights=a.get("sem_class_weights_resolved")).to(device)
     m.load_state_dict(ck["model"])
     m.eval()
     return m, ck

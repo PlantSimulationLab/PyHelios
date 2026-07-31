@@ -1,7 +1,17 @@
 
 === r1_main  (step 14000, 64x64, split=test) ===
   variant             PSNR dB    SSIM  depth MAE m    mIoU  fruitMAE
-  posterior_recon       18.10  0.5170        1.012  0.2656    0.0056
-  openloop_t1           18.03  0.5148        1.040  0.2639    0.0056
+  posterior_recon       18.13  0.5174        1.015  0.2663    0.0053
+  openloop_t1           18.05  0.5146        1.044  0.2630    0.0059
   copy_last_t1          16.57  0.5534        0.650  0.3284    0.0017
-  attribution: of the depth error at t+1, 1.012 m is already present in the teacher-forced reconstruction (97% of it); one step of dynamics adds +0.028 m.
+  per-class IoU (pooled over the split); gt% / pred% = share of pixels in ground truth / prediction
+    class                 posterior_recon              copy_last_t1
+    ground      IoU 0.857  gt 42.37% pred 46.80%  IoU 0.867  gt 42.37% pred 42.18%
+    fruit       IoU 0.000  gt  2.04% pred  0.00%  IoU 0.179  gt  2.04% pred  1.99%
+    leaf        IoU 0.374  gt 19.62% pred 18.80%  IoU 0.428  gt 19.62% pred 19.50%
+    shoot       IoU 0.013  gt  6.33% pred  0.19%  IoU 0.133  gt  6.33% pred  6.63%
+    petiole     IoU 0.000  gt  0.22% pred  0.00%  IoU 0.007  gt  0.22% pred  0.22%
+    peduncle    IoU 0.000  gt  0.03% pred  0.00%  IoU 0.014  gt  0.03% pred  0.03%
+    sky         IoU 0.618  gt 29.39% pred 34.20%  IoU 0.644  gt 29.39% pred 29.44%
+  classes the model ever predicts: 5 of 7
+  attribution: of the depth error at t+1, 1.015 m is already present in the teacher-forced reconstruction (97% of it); one step of dynamics adds +0.030 m.

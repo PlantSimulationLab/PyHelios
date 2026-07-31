@@ -166,12 +166,30 @@ class RSSM(nn.Module):
 class WorldModel(nn.Module):
     def __init__(self, action_dim=5, image_size=64, base=32, deter=512, stoch=32,
                  classes=32, hidden=512, free_bits=1.0, kl_dyn=0.5, kl_rep=0.1,
-                 w_rgb=1.0, w_depth=1.0, w_semantic=1.0, w_fruit=1.0):
+                 w_rgb=1.0, w_depth=1.0, w_semantic=1.0, w_fruit=1.0,
+                 sem_class_weights=None):
         super().__init__()
         self.image_size = image_size
         self.action_dim = action_dim
         self.free_bits, self.kl_dyn, self.kl_rep = free_bits, kl_dyn, kl_rep
         self.w = {"rgb": w_rgb, "depth": w_depth, "semantic": w_semantic, "fruit": w_fruit}
+
+        # Optional per-class weights for the semantic cross-entropy.
+        #
+        # Round 2 / R2-C measured why the Round 1 model's mIoU sits at 0.266: it
+        # emits ground, leaf and sky and NOTHING else. Fruit, petiole and peduncle
+        # get exactly 0.00% of predicted pixels and shoot gets 0.19% against 6.33%
+        # in the ground truth, so four of the seven classes score IoU 0 and are
+        # averaged in. (0.857 + 0 + 0.374 + 0.013 + 0 + 0 + 0.618)/7 = 0.266 --
+        # the plateau is class collapse under an unweighted cross-entropy on a
+        # distribution where the rarest class is 0.03% of pixels, not a mysterious
+        # ceiling. Registered as a buffer so it travels with the checkpoint.
+        if sem_class_weights is None:
+            self.register_buffer("sem_class_weights", None, persistent=False)
+        else:
+            w = torch.as_tensor(sem_class_weights, dtype=torch.float32)
+            assert w.numel() == N_SEMANTIC_CLASSES, w.shape
+            self.register_buffer("sem_class_weights", w)
 
         self.encoder = Encoder(4, base, image_size)
         self.rssm = RSSM(action_dim, deter, stoch, classes, hidden)
@@ -292,6 +310,7 @@ class WorldModel(nn.Module):
         ce = F.cross_entropy(
             pred["semantic_logits"].reshape(B * T, N_SEMANTIC_CLASSES, self.image_size, self.image_size),
             data["semantic"].reshape(B * T, self.image_size, self.image_size),
+            weight=self.sem_class_weights,
             reduction="none").view(B, T, -1).mean(2)
         l_sem = (ce * m).sum() / denom
         l_fruit = _masked_mean((pred["fruit_vis"] - data["fruit_vis"]) ** 2, False)

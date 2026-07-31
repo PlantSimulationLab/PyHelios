@@ -78,6 +78,15 @@ def main():
                          "val reconstruction bottomed at 14k steps while train loss kept "
                          "falling on 12 orchards; this is one of the levers re-measured "
                          "after the dataset was enlarged.")
+    ap.add_argument("--sem-class-weights", default="none",
+                    help="'none' (Round 1 behaviour), 'auto' (sqrt-inverse-frequency weights "
+                         "measured from this split's own class histogram, normalised to the "
+                         "median class and clamped to [0.25, 4]), or an explicit comma-separated "
+                         "list of 7 floats. R2-C measured that the unweighted model never "
+                         "predicts fruit, petiole or peduncle at all, which is exactly why mIoU "
+                         "sits at 0.266.")
+    ap.add_argument("--class-weight-batches", type=int, default=20,
+                    help="batches sampled to measure the class histogram for --sem-class-weights auto")
     ap.add_argument("--growth-fraction", type=float, default=0.25)
     ap.add_argument("--growth-subsample", action="store_true",
                     help="Round 2 (R2-A): build growth windows from a random increasing "
@@ -146,9 +155,34 @@ def main():
         fixed_batch = {"rgb": ep["rgb"], "depth": ep["depth"], "semantic": ep["semantic"],
                        "action": ep["action"], "fruit_vis": ep["fruit_vis"]}
 
+    # -- semantic class weights ---------------------------------------------
+    sem_w = None
+    if args.sem_class_weights not in ("none", "", None):
+        if args.sem_class_weights == "auto":
+            from yogesh_dev.world_model.data import N_SEMANTIC_CLASSES as NC
+            counts = np.zeros(NC, dtype=np.float64)
+            for _ in range(args.class_weight_batches):
+                b = train_sampler.sample_batch(args.batch_size)
+                counts += np.bincount(b["semantic"].reshape(-1), minlength=NC)
+            freq = counts / counts.sum()
+            # Reference the MEDIAN class rather than the mean: with a 0.03% class
+            # present, mean-referenced inverse frequency produces weights spanning
+            # three orders of magnitude and the rare classes hijack the gradient.
+            ref = float(np.median(freq[freq > 0]))
+            w = np.sqrt(ref / np.maximum(freq, 1e-9))
+            sem_w = np.clip(w, 0.25, 4.0).tolist()
+            log(f"class frequencies (measured over {args.class_weight_batches} batches): "
+                f"{np.round(freq, 5).tolist()}")
+        else:
+            sem_w = [float(x) for x in args.sem_class_weights.split(",")]
+        log(f"semantic class weights: {[round(x, 4) for x in sem_w]}")
+    # store the RESOLVED weights in the checkpoint args so evaluation can rebuild
+    # the same module (the buffer is part of state_dict when it exists)
+    args.sem_class_weights_resolved = sem_w
+
     model = WorldModel(action_dim=5, image_size=args.image_size, base=args.base_channels,
                        deter=args.deter, stoch=args.stoch, classes=args.classes,
-                       free_bits=args.free_bits).to(device)
+                       free_bits=args.free_bits, sem_class_weights=sem_w).to(device)
     log(f"model parameters: {count_parameters(model):,}")
     if args.weight_decay > 0:
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=args.adam_eps,
