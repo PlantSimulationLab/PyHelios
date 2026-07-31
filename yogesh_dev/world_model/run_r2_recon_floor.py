@@ -208,6 +208,10 @@ def main():
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--n-batches", type=int, default=24)
     ap.add_argument("--name", default="r2_recon_floor")
+    ap.add_argument("--seed", type=int, default=7,
+                    help="the RSSM samples its categorical latent, so two evaluations of the "
+                         "SAME checkpoint differ by ~0.015 m of depth MAE. Seeding torch makes "
+                         "the comparison between models exact rather than approximately equal.")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -221,6 +225,7 @@ def main():
     tags = args.tag or [f"model{i}" for i in range(len(args.ckpt))]
     results = {"split": args.split, "context": args.context, "models": {}}
     for ck_path, tag in zip(args.ckpt, tags):
+        torch.manual_seed(args.seed)
         model, ck = load_model(ck_path, device)
         img = ck["args"]["image_size"]
         sampler = SequenceSampler(args.data, args.split, args.seq_len, img,
