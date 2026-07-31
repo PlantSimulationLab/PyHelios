@@ -1,3 +1,12 @@
 [00:29:39] waiting for run_r2.sh (pid 307193)
 [04:32:43] run_r2.sh exited
 [04:32:43] === R2-E: capacity run (base 64, deter 1024, stoch 48x48) ===
+[05:58:32] r2_big exit=0
+[05:58:32] === R2-C: reconstruction floor, every model, held-out and train splits ===
+[05:59:08] recon floor (test) exit=0
+[05:59:46] recon floor (train) exit=0
+[05:59:46] === W6 evaluation of the capacity model ===
+[06:00:09] evaluation exit=0
+[06:00:09] === curves including the capacity run ===
+[06:00:09] curves exit=0
+[06:00:09] ROUND 2 PHASE B DONE

@@ -87,6 +87,8 @@ def score_frame(p_rgb, p_dsl, p_sem_logits, p_fruit, data, t_abs, is_copy=False)
         "miou": float(np.nanmean(m.cpu().numpy())),
         "fruit_vis_mae": float(((symexp(p_fruit) - symexp(gt_fruit)) / 100.0).abs().mean()),
         "sharpness_ratio": sharpness_ratio(p_rgb, gt_rgb),
+        "depth_sharpness_ratio": sharpness_ratio(symexp(p_dsl).unsqueeze(1),
+                                                 symexp(gt_dsl).unsqueeze(1)),
         "_cls": class_stats(pred_cls, gt_sem),
         "_depth_bins": depth_error_by_range(symexp(p_dsl), symexp(gt_dsl), not_sky),
     }
@@ -269,6 +271,16 @@ def main():
             f"posterior recon {r['posterior_recon']['sharpness_ratio']:.3f}, "
             f"open-loop t+1 {r['openloop_t1']['sharpness_ratio']:.3f}, "
             f"copy-last {r['copy_last_t1']['sharpness_ratio']:.3f}")
+        # DEPTH sharpness is reported separately because the two need not move
+        # together: an L1 depth head can produce a sharp depth map behind a
+        # blurred RGB decode, and r2_best does exactly that. The blurred-
+        # ground-truth control of R2-H blurs every modality by the same sigma,
+        # so indexing that bound by RGB sharpness alone under-states what a
+        # model with a decoupled depth head can reach.
+        log(f"  DEPTH sharpness (same measure, on metric depth): "
+            f"posterior recon {r['posterior_recon']['depth_sharpness_ratio']:.3f}, "
+            f"open-loop t+1 {r['openloop_t1']['depth_sharpness_ratio']:.3f}, "
+            f"copy-last {r['copy_last_t1']['depth_sharpness_ratio']:.3f}")
         if "posterior_recon" in r and "openloop_t1" in r:
             a, b = r["posterior_recon"], r["openloop_t1"]
             log(f"  attribution: of the depth error at t+1, "

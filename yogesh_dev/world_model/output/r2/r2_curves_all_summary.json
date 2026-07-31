@@ -22,33 +22,6 @@
     "best_val_recon_step": 32000,
     "best_val_recon": 0.6841013621306047,
     "final_val_recon": 0.7441288264235482
-  }
-}
-wrote yogesh_dev/world_model/output/r2/r2_curves.png
-{
-  "r2_main": {
-    "n_train_points": 80,
-    "n_val_points": 40,
-    "final_step": 40000,
-    "best_val_recon_step": 26000,
-    "best_val_recon": 0.6959494649199769,
-    "final_val_recon": 0.7166648709680885
-  },
-  "r2_noaction": {
-    "n_train_points": 80,
-    "n_val_points": 40,
-    "final_step": 40000,
-    "best_val_recon_step": 26000,
-    "best_val_recon": 0.7132945555495098,
-    "final_val_recon": 0.7343548892531544
-  },
-  "r2_growth": {
-    "n_train_points": 80,
-    "n_val_points": 40,
-    "final_step": 40000,
-    "best_val_recon_step": 32000,
-    "best_val_recon": 0.6841013621306047,
-    "final_val_recon": 0.7441288264235482
   },
   "r2_big": {
     "n_train_points": 60,
@@ -59,4 +32,3 @@ wrote yogesh_dev/world_model/output/r2/r2_curves.png
     "final_val_recon": 0.7194404096808285
   }
 }
-wrote yogesh_dev/world_model/output/r2/r2_curves_all.png

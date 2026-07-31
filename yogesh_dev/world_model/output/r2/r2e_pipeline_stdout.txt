@@ -1,1 +1,3 @@
 [00:58:26] waiting for phase C (pid 308302)
+[05:56:31] phase C exited
+[05:56:31] === R2-I: relaxed information bottleneck (free-bits 6, kl 0.2/0.04) ===

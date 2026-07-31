@@ -480,35 +480,50 @@ If the model's outputs carry 11.5% of the ground truth's gradient energy, how we
 take the **correct** frame — the perfect prediction — blur it, and score it with exactly
 `evaluate.py`'s metrics.
 
-| Gaussian σ (px, at 64×64) | sharpness | depth MAE | RGB PSNR | mIoU |
-|---|---|---|---|---|
-| 0 (perfect) | 1.000 | 0.000 m | ∞ | 1.000 |
-| 0.5 | 0.651 | 0.283 m | 28.03 dB | 1.000 |
-| 1.0 | 0.271 | 0.622 m | 21.27 dB | 0.476 |
-| 1.5 | 0.181 | 0.752 m | 20.29 dB | 0.392 |
-| 2.0 | 0.139 | 0.841 m | 19.84 dB | 0.357 |
-| 3.0 | 0.100 | 0.972 m | 19.35 dB | 0.324 |
-| 4.0 | 0.080 | 1.071 m | 19.04 dB | 0.307 |
-| 6.0 | 0.060 | 1.225 m | 18.62 dB | 0.288 |
-| **copy-last-frame** | 0.992 | **0.657 m** | 16.71 dB | 0.333 |
+| Gaussian σ (px, at 64×64) | RGB sharpness | depth sharpness | depth MAE | RGB PSNR | mIoU |
+|---|---|---|---|---|---|
+| 0 (perfect) | 1.000 | 1.000 | 0.000 m | ∞ | 1.000 |
+| 0.5 | 0.651 | 0.669 | 0.283 m | 28.03 dB | 1.000 |
+| 1.0 | 0.271 | 0.336 | 0.622 m | 21.27 dB | 0.476 |
+| 1.5 | 0.181 | 0.247 | 0.752 m | 20.29 dB | 0.392 |
+| 2.0 | 0.139 | 0.199 | 0.841 m | 19.84 dB | 0.357 |
+| 3.0 | 0.100 | 0.149 | 0.972 m | 19.35 dB | 0.324 |
+| 4.0 | 0.080 | 0.121 | 1.071 m | 19.04 dB | 0.307 |
+| 6.0 | 0.060 | 0.089 | 1.225 m | 18.62 dB | 0.288 |
+| **copy-last-frame** | 0.992 | 0.985 | **0.657 m** | 16.71 dB | 0.333 |
 
-The Round 1 model's sharpness of 0.115 sits between σ = 2 and σ = 3, around σ ≈ 2.6. Read the
-table there:
+### A correction to this section, made after the Round 2 runs
 
-1. **A perfectly correct depth map, blurred to the model's sharpness, still scores ~0.94 m —
-   worse than copy-last-frame's 0.657 m.** The depth criterion is therefore *unreachable at this
-   output sharpness no matter how accurate the prediction is*. Beating copy-last on depth
-   requires sharpness above about 0.26 (σ ≈ 1), more than twice what the model produces.
-2. The model's actual 1.035 m is only ~0.09 m worse than that bound, so roughly **90% of its
-   depth deficit is blur, not prediction error**.
-3. mIoU behaves differently. The blurred oracle keeps ~0.33 at the model's sharpness while the
-   model scores 0.268 — so unlike depth, mIoU has real headroom that is not explained by blur.
-   That is consistent with §13: the mIoU gap is class collapse, and class collapse is fixable
-   without touching sharpness.
+An earlier version of this section indexed the bound by **RGB** sharpness only. The Round 1
+model's RGB sharpness is 0.115, which sits near σ ≈ 2.6, giving a bound of ~0.94 m and the
+conclusion that ~90% of the model's depth deficit was blur. **That was wrong, and the run that
+disproved it is `r2_best` (§18):** an L1 depth head produces a sharp depth map behind a *blurred*
+RGB decode, so the two sharpnesses are not locked together and the RGB-indexed bound understates
+what a model can reach on depth. Measured separately, depth sharpness is roughly twice RGB
+sharpness for every model here (r1_main 0.228 vs 0.115; r2_main 0.220 vs 0.108; r2_best **0.281**
+vs 0.105). The table now reports both, and the bound must be read off the **depth** column.
 
-This is the single most useful frame for reading every number in Round 2. **Depth is a sharpness
-problem; mIoU is a class-balance problem.** They need different fixes, and neither of them is
-"more orchards".
+Re-read correctly:
+
+1. **A uniformly blurred perfect predictor needs depth sharpness ≥ ≈0.31 to match copy-last-frame
+   on depth MAE** (interpolating the 0.622 m / 0.752 m rows against copy-last's 0.657 m). Every
+   model in this work is below that: 0.228 (Round 1), 0.220 (44 orchards), **0.281** (`r2_best`).
+   So the conclusion that *the depth criterion is unreachable at the sharpness these models
+   achieve* survives — but `r2_best` is close to the threshold rather than far from it.
+2. **The blur share of the gap is much smaller than first claimed.** At Round 1's depth sharpness
+   of 0.228 the bound is ~0.79 m, so of its 1.035 − 0.657 = 0.378 m deficit against copy-last,
+   ~0.13 m (**35%**) is blur-irreducible and ~0.25 m (**65%**) is the model being worse than a
+   perfectly-blurred oracle. For `r2_best`: bound ~0.72 m, deficit 0.224 m, of which ~0.06 m
+   (28%) is blur. Blur is a real and binding constraint, but it is not 90% of the problem, and
+   the earlier statement to that effect is retracted.
+3. mIoU behaves differently again. The blurred oracle keeps ~0.32–0.36 at these sharpnesses while
+   the models score 0.268–0.284 — so unlike depth, mIoU headroom is not mainly blur. That is
+   consistent with §13: the mIoU gap is class collapse, and class collapse is fixable without
+   touching sharpness (§18 shows it partly is).
+
+This is still the most useful frame for reading Round 2. **Depth is limited by sharpness *and* by
+accuracy in roughly a 1:2 ratio; mIoU is limited by class balance.** Neither is limited by the
+number of orchards.
 
 ## 15. The growth channel: the action is a constant, and the RGB signal is at the noise floor
 
