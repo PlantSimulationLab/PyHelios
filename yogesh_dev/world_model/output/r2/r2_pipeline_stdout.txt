@@ -1,1 +1,15 @@
 [00:27:10] waiting for generator pid 305550
+[03:02:13] generator exited
+[03:02:13] dataset: 3.9G, train orchards = 44
+[03:02:13] === split integrity check ===
+  train:  44 orchards, 1760 episodes, 140800 frames  seeds [10000, 10001, 10002]..[10043]
+  val  :   4 orchards,  160 episodes,  12800 frames  seeds [11000, 11001, 11002]..[11003]
+  test :   4 orchards,  160 episodes,  12800 frames  seeds [12000, 12001, 12002]..[12003]
+  pairwise seed overlaps: {'train_val': [], 'train_test': [], 'val_test': []}
+  episodes in the wrong directory: 0   missing files: 0   duplicate paths: 0
+  DISJOINT AND CONSISTENT: True
+[03:02:13] === R2-B: RGB noise floor at the growth probe poses (helios env) ===
+[03:04:31] noise floor exit=0
+[03:04:31] === R2-A: growth signal analysis on the extended dataset ===
+[03:04:32] growth signal exit=0
+[03:04:32] === training: r2_main + r2_noaction + r2_growth, concurrently ===

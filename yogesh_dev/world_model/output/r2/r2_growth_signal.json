@@ -1,5 +1,5 @@
 {
- "data": "/home/yogesh/PyHelios/yogesh_dev/world_model/output/dataset",
+ "data": "yogesh_dev/world_model/output/dataset",
  "split": "test",
  "stages": [
   540.0,
@@ -11,12 +11,12 @@
   570.0,
   580.0
  ],
- "n_growth_all": 320,
+ "n_growth_all": 832,
  "n_growth_split": 64,
  "sim_rgb_noise_floor_db": 20.82,
  "m1_distinct_a_grow_sequences": 1,
  "m1_a_grow_sequences": {
-  "5,5,5,5,5,5,10,0": 320
+  "5,5,5,5,5,5,10,0": 832
  },
  "m1_view_action_std": [
   0.08915209770202637,
@@ -211,5 +211,5 @@
   "growth_depth_mae": 0.10120797956351227,
   "view_depth_mae": 0.4669734799356511
  },
- "wall_clock_s": 1.194441318511963
+ "wall_clock_s": 1.0996198654174805
 }

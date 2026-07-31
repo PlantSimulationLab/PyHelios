@@ -522,11 +522,12 @@ that sit upstream of any training decision.
 Collect the `a_grow` sequence of every growth episode in the dataset:
 
 ```
-distinct a_grow sequences over 320 growth episodes: 1
-  [5,5,5,5,5,5,10,0] x320
+distinct a_grow sequences over 832 growth episodes: 1
+  [5,5,5,5,5,5,10,0] x832
 ```
 
-**One.** Every growth episode in train, val and test carries the identical action sequence. A
+**One.** Every growth episode in train, val and test carries the identical action sequence — 320
+of them in the Round 1 dataset, all 832 of them after the Round 2 extension. A
 constant action carries no information beyond the frame index, so:
 
 - nothing in the data can teach the model to respond to a *different* number of days;
@@ -556,16 +557,31 @@ Per-step ground-truth change between consecutive growth stages, on the held-out 
 | 6→7 | 570→580 | 10 d | 21.05 dB | 0.055 m | 0.868 | +0.0010 |
 | **mean** | | | **20.60 dB** | 0.101 m | 0.764 | |
 
-Compare that 20.60 dB with §9's measured **20.82 dB** simulator re-render reproducibility. In RMS
-terms the growth step is **23.8 levels** and the Monte-Carlo render noise is **23.2 levels** — a
-ratio of **1.03**. Both quantities contain the same noise, so the growth-induced RGB change is
-*at or below* the noise in which it is embedded. There is essentially no RGB growth signal to
-learn between consecutive stages. (Only the 540→545 step, at 17.97 dB, rises clearly above it —
-that is the step where the canopy leafs out.)
+Compare that 20.60 dB with §9's measured **20.82 dB** simulator re-render reproducibility and the
+growth step looks like pure noise. **That comparison is not quite fair**, because §9's floor was
+measured on *view* episodes — different orchard, different poses, different scene content — and
+the noise level depends on what is in frame. `run_r2_noise_floor.py` therefore measures both
+quantities in the same run, at the same growth-probe poses, on the same held-out orchard (seed
+12000), by rendering each stage **twice** without touching the scene:
 
-Depth and semantics are a different story: they are bit-exact (§9), so their per-step changes —
-0.199 m falling to 0.055 m, self-mIoU 0.484 rising to 0.868 — are **entirely real signal**. If
-the growth channel is learnable at all, it is learnable there and not in RGB.
+| | RGB PSNR | RMS levels | depth MAE | semantic agreement |
+|---|---|---|---|---|
+| re-render the identical scene | **22.75 dB** | 18.57 | **0.000000 m** | **1.000000** |
+| advance one growth stage | **20.41 dB** | 24.32 | 0.172 m | 0.949 |
+
+At these poses the noise floor is 22.75 dB, not 20.82 dB. Subtracting the noise in quadrature
+leaves a true growth signal of √(24.32² − 18.57²) = **15.70 RMS levels**, i.e. an **SNR of
+0.85**. So the corrected statement is not "there is no RGB growth signal" — there is one, and it
+is *smaller than the render noise it is embedded in*. Recovering it would require the model to
+average over the noise, which it cannot do from a single stored realisation of each frame.
+
+Depth and semantics are a completely different regime, and the same run proves it in the
+strongest possible way: **re-rendering the identical scene reproduces depth to 0.000000 m and the
+semantic map to 1.000000 agreement, at every one of the 8 stages**, while advancing a stage moves
+depth by 0.11–0.31 m and the label map by ~5% of pixels. Their growth SNR is not 0.85 — it is
+unbounded. If the growth channel is learnable at all, it is learnable in depth and semantics and
+not in RGB. (The 540→545 step, at 17.97 dB and 0.199 m, is also the one step that rises clearly
+above the noise in RGB too — that is where the canopy leafs out.)
 
 For scale, one *view* step (a camera move) changes the image by 17.77 dB / 0.467 m / 0.339 mIoU.
 A growth step is about 4.6× smaller in depth and 4.4× smaller in RGB RMS than a camera step.
