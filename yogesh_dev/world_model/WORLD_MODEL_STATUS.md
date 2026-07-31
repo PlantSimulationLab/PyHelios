@@ -157,3 +157,22 @@ access. SSIM is reported instead and the substitution is stated rather than made
 `COMPLETE_SETUP_PATCH.md` holds the pointer text the plan asks to add to
 `yogesh_dev/COMPLETE_SETUP.md`; that file is outside this task's write scope, so the text is
 proposed rather than applied — the same pattern Phase 6 used for the gsplat fixes.
+
+### Slack notification — **NOT SENT**
+
+The plan (rule 5) and the task both ask for a `notify_slack()` call on completion. Every
+long-running entrypoint here is wrapped in the required try/except that calls it, but the
+notification could not actually be delivered:
+
+- `~/.config/claude-notify/slack_webhook_url` does not exist on this machine. `notify_slack()`
+  returns `False` and silently no-ops when the webhook file is missing — by its own design — so
+  every such call in this run was a no-op regardless.
+- `notify_slack.py` itself is no longer present at the repo root. It **was** present at the start
+  of this session (it was read, and its contents are quoted in the wrappers). It was not created,
+  modified or removed by this work: `git diff --name-only` across all six commits touches nothing
+  outside `yogesh_dev/world_model/`, and no `rm` was ever run outside that directory and the
+  session scratchpad. Recreating it at the repo root would be outside this task's write scope, so
+  it was left alone and flagged here instead.
+
+If the webhook is restored, `bash yogesh_dev/world_model/run_remaining.sh` and every `run_w*.py`
+will notify without any change.
