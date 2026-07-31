@@ -100,6 +100,15 @@ def main():
                          "renders, only the step between them changes.")
     ap.add_argument("--growth-max-stride", type=int, default=3)
     ap.add_argument("--free-bits", type=float, default=1.0)
+    ap.add_argument("--kl-dyn", type=float, default=0.5,
+                    help="weight on the dynamics KL. Round 1 ran 0.5 with --free-bits 1.0 and "
+                         "the KL settled at 1.37 nats -- 2.0 bits per frame out of a 160-bit "
+                         "latent, i.e. the posterior barely deviates from the prior and the "
+                         "encoder is nearly bypassed. Lowering this (with a higher free-bits "
+                         "floor) is the direct knob on how much scene information the latent "
+                         "is allowed to carry.")
+    ap.add_argument("--kl-rep", type=float, default=0.1,
+                    help="weight on the representation KL (see --kl-dyn)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--log-every", type=int, default=50)
     ap.add_argument("--val-every", type=int, default=500)
@@ -186,8 +195,8 @@ def main():
 
     model = WorldModel(action_dim=5, image_size=args.image_size, base=args.base_channels,
                        deter=args.deter, stoch=args.stoch, classes=args.classes,
-                       free_bits=args.free_bits, sem_class_weights=sem_w,
-                       depth_loss=args.depth_loss).to(device)
+                       free_bits=args.free_bits, kl_dyn=args.kl_dyn, kl_rep=args.kl_rep,
+                       sem_class_weights=sem_w, depth_loss=args.depth_loss).to(device)
     log(f"model parameters: {count_parameters(model):,}")
     if args.weight_decay > 0:
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=args.adam_eps,
