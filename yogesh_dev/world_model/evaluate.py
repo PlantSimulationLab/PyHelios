@@ -237,6 +237,57 @@ def run_eval(model, sampler, device, context, horizons, n_batches, batch_size,
     return {k: _finalize(v) for k, v in variants.items() if v}
 
 
+@torch.no_grad()
+def action_sensitivity(model, sampler, device, context, horizons, n_batches, batch_size):
+    """How far does the PREDICTION move when the ACTION changes?
+
+    PSNR against ground truth is a blunt instrument for "does the model use
+    actions": a model that predicts a blurry orchard-shaped average scores
+    almost the same whatever action you feed it, and the PSNR gap between the
+    true-action and zero-action rollouts can sit inside the noise. This measures
+    the thing directly.
+
+    For each batch, roll out from the same context three ways -- true actions,
+    zeroed actions, and negated actions -- and report the RMS difference between
+    the predicted RGB images, in units of the RMS difference between the
+    corresponding GROUND-TRUTH frames at the same horizon. A ratio near 0 means
+    the action does nothing to the prediction; a ratio near 1 means a change of
+    action moves the prediction about as much as it moves reality.
+    """
+    out = {}
+    for _ in range(n_batches):
+        b = sampler.sample_batch(batch_size)
+        data = model.preprocess({k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v
+                                 for k, v in b.items()}, device)
+        T = data["obs"].shape[1]
+        if T < context + max(horizons):
+            continue
+        p_true = rollout(model, data, context)
+        p_zero = rollout(model, data, context, torch.zeros_like(data["action"]))
+        p_neg = rollout(model, data, context, -data["action"])
+        for hzn in horizons:
+            idx, t_abs = hzn - 1, context + hzn - 1
+            if t_abs >= T or idx >= p_true["rgb"].shape[1]:
+                continue
+            def rms(a, b_):
+                return float(torch.sqrt(((a - b_) ** 2).mean()))
+            # GT reference scale: how much does the image change over `hzn`
+            # steps of real motion? That is what the action is supposed to cause.
+            gt_scale = rms(data["rgb"][:, t_abs], data["rgb"][:, context - 1])
+            d = out.setdefault(f"t+{hzn}", {"zero_vs_true": [], "neg_vs_true": [],
+                                            "gt_motion_rms": [],
+                                            "zero_vs_true_ratio": [], "neg_vs_true_ratio": []})
+            z = rms(p_true["rgb"][:, idx], p_zero["rgb"][:, idx])
+            n = rms(p_true["rgb"][:, idx], p_neg["rgb"][:, idx])
+            d["zero_vs_true"].append(z)
+            d["neg_vs_true"].append(n)
+            d["gt_motion_rms"].append(gt_scale)
+            d["zero_vs_true_ratio"].append(z / max(1e-9, gt_scale))
+            d["neg_vs_true_ratio"].append(n / max(1e-9, gt_scale))
+    return {hz: {k: {"mean": float(np.mean(v)), "std": float(np.std(v)), "n": len(v)}
+                 for k, v in rec.items()} for hz, rec in out.items()}
+
+
 def load_model(ckpt_path, device):
     ck = torch.load(ckpt_path, map_location=device, weights_only=False)
     a = ck["args"]
@@ -310,6 +361,21 @@ def main():
             log(f"    {variant:16s} PSNR={r['psnr_db']['mean']:6.2f}dB  "
                 f"SSIM={r['ssim']['mean']:.4f}  depthMAE={r['depth_mae_m']['mean']:6.3f}m  "
                 f"mIoU={r['miou']['mean']:.4f}  fruitMAE={r['fruit_vis_mae']['mean']:.4f}")
+
+    # -- R2b: direct action sensitivity ------------------------------------
+    log("\n=== R2b  ACTION SENSITIVITY (how far the prediction moves when the action changes) ===")
+    asens = action_sensitivity(model, view_sampler, device, args.context, horizons,
+                               max(4, args.n_batches // 2), args.batch_size)
+    results["action_sensitivity"] = asens
+    for hz in [f"t+{h}" for h in horizons]:
+        if hz not in asens:
+            continue
+        r = asens[hz]
+        log(f"  {hz:5s} zeroed-vs-true RMS={r['zero_vs_true']['mean']:.5f} "
+            f"({r['zero_vs_true_ratio']['mean']*100:5.2f}% of real motion)   "
+            f"negated-vs-true RMS={r['neg_vs_true']['mean']:.5f} "
+            f"({r['neg_vs_true_ratio']['mean']*100:5.2f}%)   "
+            f"real motion RMS={r['gt_motion_rms']['mean']:.5f}")
 
     # -- R3: growth episodes -----------------------------------------------
     # Growth episodes are only n_stages long. Using the view seq_len would pad

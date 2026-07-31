@@ -1,0 +1,88 @@
+loaded yogesh_dev/world_model/output/train/main/ckpt.pt (step 30000, image_size 64)
+loaded no-action ablation yogesh_dev/world_model/output/train/noaction/ckpt.pt (step 30000)
+
+view episodes: {'split': 'test', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 0.0, 'growth_fraction_realised': None}
+
+=== R1/R2/R4  VIEW CHANNEL (open-loop rollout) ===
+  t+1
+    full             PSNR= 18.14dB  SSIM=0.5170  depthMAE= 1.041m  mIoU=0.2665  fruitMAE=0.0054
+    zero_action      PSNR= 18.14dB  SSIM=0.5190  depthMAE= 1.044m  mIoU=0.2647  fruitMAE=0.0046
+    shuffled_action  PSNR= 18.11dB  SSIM=0.5175  depthMAE= 1.048m  mIoU=0.2653  fruitMAE=0.0050
+    copy_last        PSNR= 16.71dB  SSIM=0.5591  depthMAE= 0.657m  mIoU=0.3329  fruitMAE=0.0016
+    noaction_model   PSNR= 18.10dB  SSIM=0.5199  depthMAE= 1.050m  mIoU=0.2664  fruitMAE=0.0053
+  t+5
+    full             PSNR= 17.98dB  SSIM=0.5134  depthMAE= 1.089m  mIoU=0.2701  fruitMAE=0.0061
+    zero_action      PSNR= 17.95dB  SSIM=0.5137  depthMAE= 1.104m  mIoU=0.2685  fruitMAE=0.0055
+    shuffled_action  PSNR= 17.89dB  SSIM=0.5107  depthMAE= 1.117m  mIoU=0.2678  fruitMAE=0.0056
+    copy_last        PSNR= 15.63dB  SSIM=0.4722  depthMAE= 0.968m  mIoU=0.2639  fruitMAE=0.0039
+    noaction_model   PSNR= 17.91dB  SSIM=0.5152  depthMAE= 1.129m  mIoU=0.2687  fruitMAE=0.0056
+  t+10
+    full             PSNR= 17.79dB  SSIM=0.5075  depthMAE= 1.128m  mIoU=0.2673  fruitMAE=0.0078
+    zero_action      PSNR= 17.66dB  SSIM=0.5061  depthMAE= 1.170m  mIoU=0.2607  fruitMAE=0.0075
+    shuffled_action  PSNR= 17.55dB  SSIM=0.5020  depthMAE= 1.199m  mIoU=0.2592  fruitMAE=0.0073
+    copy_last        PSNR= 15.38dB  SSIM=0.4517  depthMAE= 1.096m  mIoU=0.2495  fruitMAE=0.0057
+    noaction_model   PSNR= 17.66dB  SSIM=0.5090  depthMAE= 1.183m  mIoU=0.2626  fruitMAE=0.0078
+  t+25
+    full             PSNR= 17.45dB  SSIM=0.4973  depthMAE= 1.211m  mIoU=0.2553  fruitMAE=0.0094
+    zero_action      PSNR= 17.28dB  SSIM=0.4938  depthMAE= 1.255m  mIoU=0.2502  fruitMAE=0.0092
+    shuffled_action  PSNR= 17.14dB  SSIM=0.4891  depthMAE= 1.275m  mIoU=0.2471  fruitMAE=0.0097
+    copy_last        PSNR= 15.14dB  SSIM=0.4349  depthMAE= 1.205m  mIoU=0.2368  fruitMAE=0.0074
+    noaction_model   PSNR= 17.27dB  SSIM=0.4958  depthMAE= 1.297m  mIoU=0.2501  fruitMAE=0.0088
+
+growth episodes: {'split': 'test', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 1.0, 'growth_fraction_realised': None} (n_stages=8, context=2, horizons=(1, 2, 3, 5))
+
+=== R3  GROWTH CHANNEL (counterfactual advanceTime) ===
+  t+1
+    full             PSNR= 19.26dB  SSIM=0.6217  depthMAE= 1.486m  mIoU=0.2700  fruitMAE=0.0014
+    zero_action      PSNR= 19.67dB  SSIM=0.6446  depthMAE= 1.421m  mIoU=0.2784  fruitMAE=0.0030
+    shuffled_action  PSNR= 19.25dB  SSIM=0.6225  depthMAE= 1.476m  mIoU=0.2676  fruitMAE=0.0013
+    copy_last        PSNR= 20.97dB  SSIM=0.8104  depthMAE= 0.259m  mIoU=0.7312  fruitMAE=0.0025
+    noaction_model   PSNR= 19.89dB  SSIM=0.6628  depthMAE= 1.389m  mIoU=0.2738  fruitMAE=0.0030
+  t+2
+    full             PSNR= 18.55dB  SSIM=0.5942  depthMAE= 1.476m  mIoU=0.2678  fruitMAE=0.0022
+    zero_action      PSNR= 19.09dB  SSIM=0.6237  depthMAE= 1.418m  mIoU=0.2835  fruitMAE=0.0036
+    shuffled_action  PSNR= 18.47dB  SSIM=0.5933  depthMAE= 1.486m  mIoU=0.2658  fruitMAE=0.0022
+    copy_last        PSNR= 19.52dB  SSIM=0.7667  depthMAE= 0.451m  mIoU=0.6159  fruitMAE=0.0054
+    noaction_model   PSNR= 19.04dB  SSIM=0.6368  depthMAE= 1.423m  mIoU=0.2671  fruitMAE=0.0056
+  t+3
+    full             PSNR= 17.94dB  SSIM=0.5681  depthMAE= 1.479m  mIoU=0.2660  fruitMAE=0.0034
+    zero_action      PSNR= 18.50dB  SSIM=0.5993  depthMAE= 1.430m  mIoU=0.2805  fruitMAE=0.0046
+    shuffled_action  PSNR= 17.85dB  SSIM=0.5666  depthMAE= 1.490m  mIoU=0.2616  fruitMAE=0.0035
+    copy_last        PSNR= 18.43dB  SSIM=0.7292  depthMAE= 0.589m  mIoU=0.5569  fruitMAE=0.0088
+    noaction_model   PSNR= 18.27dB  SSIM=0.6111  depthMAE= 1.454m  mIoU=0.2614  fruitMAE=0.0087
+  t+5
+    full             PSNR= 17.07dB  SSIM=0.5325  depthMAE= 1.470m  mIoU=0.2614  fruitMAE=0.0069
+    zero_action      PSNR= 17.43dB  SSIM=0.5647  depthMAE= 1.450m  mIoU=0.2730  fruitMAE=0.0081
+    shuffled_action  PSNR= 17.05dB  SSIM=0.5324  depthMAE= 1.466m  mIoU=0.2590  fruitMAE=0.0073
+    copy_last        PSNR= 16.83dB  SSIM=0.6760  depthMAE= 0.780m  mIoU=0.4714  fruitMAE=0.0161
+    noaction_model   PSNR= 16.97dB  SSIM=0.5737  depthMAE= 1.523m  mIoU=0.2500  fruitMAE=0.0153
+
+=== ACCEPTANCE ===
+{
+  "t+1": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": false,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+5": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+10": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+25": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  }
+}
+
+wrote 3 qualitative rollout strips (top row = Helios ground truth at t+[1, 5, 10, 25], bottom = model imagination)

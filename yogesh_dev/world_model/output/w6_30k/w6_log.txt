@@ -1,0 +1,94 @@
+loaded yogesh_dev/world_model/output/train/main/ckpt_30k.pt (step 30000, image_size 64)
+loaded no-action ablation yogesh_dev/world_model/output/train/noaction/ckpt_30k.pt (step 30000)
+
+view episodes: {'split': 'test', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 0.0, 'growth_fraction_realised': None}
+
+=== R1/R2/R4  VIEW CHANNEL (open-loop rollout) ===
+  t+1
+    full             PSNR= 18.16dB  SSIM=0.5181  depthMAE= 1.044m  mIoU=0.2673  fruitMAE=0.0053
+    zero_action      PSNR= 18.12dB  SSIM=0.5181  depthMAE= 1.046m  mIoU=0.2661  fruitMAE=0.0052
+    shuffled_action  PSNR= 18.09dB  SSIM=0.5168  depthMAE= 1.053m  mIoU=0.2660  fruitMAE=0.0051
+    copy_last        PSNR= 16.71dB  SSIM=0.5591  depthMAE= 0.657m  mIoU=0.3329  fruitMAE=0.0016
+    noaction_model   PSNR= 18.08dB  SSIM=0.5199  depthMAE= 1.051m  mIoU=0.2646  fruitMAE=0.0056
+  t+5
+    full             PSNR= 18.04dB  SSIM=0.5161  depthMAE= 1.067m  mIoU=0.2718  fruitMAE=0.0056
+    zero_action      PSNR= 17.89dB  SSIM=0.5125  depthMAE= 1.109m  mIoU=0.2674  fruitMAE=0.0056
+    shuffled_action  PSNR= 17.84dB  SSIM=0.5103  depthMAE= 1.131m  mIoU=0.2675  fruitMAE=0.0060
+    copy_last        PSNR= 15.63dB  SSIM=0.4722  depthMAE= 0.968m  mIoU=0.2639  fruitMAE=0.0039
+    noaction_model   PSNR= 17.84dB  SSIM=0.5136  depthMAE= 1.133m  mIoU=0.2658  fruitMAE=0.0060
+  t+10
+    full             PSNR= 17.79dB  SSIM=0.5086  depthMAE= 1.123m  mIoU=0.2659  fruitMAE=0.0072
+    zero_action      PSNR= 17.60dB  SSIM=0.5047  depthMAE= 1.182m  mIoU=0.2612  fruitMAE=0.0078
+    shuffled_action  PSNR= 17.50dB  SSIM=0.5029  depthMAE= 1.209m  mIoU=0.2578  fruitMAE=0.0075
+    copy_last        PSNR= 15.38dB  SSIM=0.4517  depthMAE= 1.096m  mIoU=0.2495  fruitMAE=0.0057
+    noaction_model   PSNR= 17.56dB  SSIM=0.5064  depthMAE= 1.202m  mIoU=0.2575  fruitMAE=0.0080
+  t+25
+    full             PSNR= 17.50dB  SSIM=0.4988  depthMAE= 1.190m  mIoU=0.2575  fruitMAE=0.0088
+    zero_action      PSNR= 17.22dB  SSIM=0.4914  depthMAE= 1.265m  mIoU=0.2493  fruitMAE=0.0090
+    shuffled_action  PSNR= 17.12dB  SSIM=0.4896  depthMAE= 1.289m  mIoU=0.2460  fruitMAE=0.0097
+    copy_last        PSNR= 15.14dB  SSIM=0.4349  depthMAE= 1.205m  mIoU=0.2368  fruitMAE=0.0074
+    noaction_model   PSNR= 17.22dB  SSIM=0.4943  depthMAE= 1.305m  mIoU=0.2473  fruitMAE=0.0093
+
+=== R2b  ACTION SENSITIVITY (how far the prediction moves when the action changes) ===
+  t+1   zeroed-vs-true RMS=0.03387 (21.93% of real motion)   negated-vs-true RMS=0.03771 (24.46%)   real motion RMS=0.15438
+  t+5   zeroed-vs-true RMS=0.04833 (27.69% of real motion)   negated-vs-true RMS=0.05207 (29.79%)   real motion RMS=0.17502
+  t+10  zeroed-vs-true RMS=0.05652 (30.97% of real motion)   negated-vs-true RMS=0.06278 (34.28%)   real motion RMS=0.18360
+  t+25  zeroed-vs-true RMS=0.07351 (39.41% of real motion)   negated-vs-true RMS=0.07993 (42.80%)   real motion RMS=0.18713
+
+growth episodes: {'split': 'test', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 1.0, 'growth_fraction_realised': None} (n_stages=8, context=2, horizons=(1, 2, 3, 5))
+
+=== R3  GROWTH CHANNEL (counterfactual advanceTime) ===
+  t+1
+    full             PSNR= 19.24dB  SSIM=0.6189  depthMAE= 1.470m  mIoU=0.2684  fruitMAE=0.0014
+    zero_action      PSNR= 19.65dB  SSIM=0.6473  depthMAE= 1.411m  mIoU=0.2756  fruitMAE=0.0029
+    shuffled_action  PSNR= 19.25dB  SSIM=0.6195  depthMAE= 1.500m  mIoU=0.2694  fruitMAE=0.0014
+    copy_last        PSNR= 20.97dB  SSIM=0.8104  depthMAE= 0.259m  mIoU=0.7312  fruitMAE=0.0025
+    noaction_model   PSNR= 19.91dB  SSIM=0.6634  depthMAE= 1.358m  mIoU=0.2741  fruitMAE=0.0029
+  t+2
+    full             PSNR= 18.53dB  SSIM=0.5922  depthMAE= 1.472m  mIoU=0.2661  fruitMAE=0.0024
+    zero_action      PSNR= 19.07dB  SSIM=0.6262  depthMAE= 1.428m  mIoU=0.2790  fruitMAE=0.0035
+    shuffled_action  PSNR= 18.51dB  SSIM=0.5923  depthMAE= 1.492m  mIoU=0.2669  fruitMAE=0.0024
+    copy_last        PSNR= 19.52dB  SSIM=0.7667  depthMAE= 0.451m  mIoU=0.6159  fruitMAE=0.0054
+    noaction_model   PSNR= 19.07dB  SSIM=0.6388  depthMAE= 1.388m  mIoU=0.2675  fruitMAE=0.0054
+  t+3
+    full             PSNR= 17.92dB  SSIM=0.5659  depthMAE= 1.475m  mIoU=0.2623  fruitMAE=0.0037
+    zero_action      PSNR= 18.51dB  SSIM=0.6028  depthMAE= 1.431m  mIoU=0.2778  fruitMAE=0.0044
+    shuffled_action  PSNR= 17.91dB  SSIM=0.5662  depthMAE= 1.484m  mIoU=0.2637  fruitMAE=0.0039
+    copy_last        PSNR= 18.43dB  SSIM=0.7292  depthMAE= 0.589m  mIoU=0.5569  fruitMAE=0.0088
+    noaction_model   PSNR= 18.29dB  SSIM=0.6124  depthMAE= 1.419m  mIoU=0.2601  fruitMAE=0.0085
+  t+5
+    full             PSNR= 17.10dB  SSIM=0.5304  depthMAE= 1.464m  mIoU=0.2592  fruitMAE=0.0073
+    zero_action      PSNR= 17.46dB  SSIM=0.5693  depthMAE= 1.454m  mIoU=0.2732  fruitMAE=0.0081
+    shuffled_action  PSNR= 17.06dB  SSIM=0.5313  depthMAE= 1.473m  mIoU=0.2589  fruitMAE=0.0081
+    copy_last        PSNR= 16.83dB  SSIM=0.6760  depthMAE= 0.780m  mIoU=0.4714  fruitMAE=0.0161
+    noaction_model   PSNR= 16.99dB  SSIM=0.5742  depthMAE= 1.484m  mIoU=0.2513  fruitMAE=0.0153
+
+=== ACCEPTANCE ===
+{
+  "t+1": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+5": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+10": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+25": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  }
+}
+
+wrote 3 qualitative rollout strips (top row = Helios ground truth at t+[1, 5, 10, 25], bottom = model imagination)

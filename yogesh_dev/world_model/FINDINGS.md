@@ -199,3 +199,125 @@ Two things follow for anyone continuing this work:
 2. **"Byte-identical regeneration" is the wrong acceptance criterion for a ray-traced dataset**
    unless the sampler is seeded. The right one is what this section reports: bit-exact geometry
    and labels, plus a stated and measured radiance reproducibility.
+
+---
+
+## 10. The trained world model: what it does and does not do
+
+Trained at 64×64 (nearest 2× downsample of the stored 128×128; 64² is DreamerV3's own
+resolution), batch 24, sequence 32, 30,000 steps, on 12 train orchards (38,400 frames). A second
+model was trained **identically except with all actions zeroed** — the real no-action ablation.
+Both took 2,674 s, run concurrently on the RTX 5090. Evaluated on 4 held-out test orchard seeds
+(96 view episodes, 64 growth episodes), conditioning on 5 real frames and then rolling the prior
+forward open-loop with the recorded actions.
+
+### View channel — RGB PSNR (dB), test split
+
+| horizon | full model | zeroed actions (eval) | shuffled actions | **no-action model (trained)** | copy-last-frame |
+|---|---|---|---|---|---|
+| t+1 | **18.14** | 18.14 | 18.11 | 18.10 | 16.71 |
+| t+5 | **17.98** | 17.95 | 17.89 | 17.91 | 15.63 |
+| t+10 | **17.79** | 17.66 | 17.55 | 17.66 | 15.38 |
+| t+25 | **17.45** | 17.28 | 17.14 | 17.27 | 15.14 |
+
+The full model beats copy-last-frame at every horizon, and the ordering
+full > zeroed > shuffled holds at every horizon. **But the margins over the ablations are
+0.03–0.31 dB**, which is small enough that PSNR alone cannot support the claim that the model
+uses its actions.
+
+### Depth and semantics — where it clearly loses
+
+| horizon | model depth MAE | copy-last depth MAE | model mIoU | copy-last mIoU |
+|---|---|---|---|---|
+| t+1 | 1.041 m | **0.657 m** | 0.267 | **0.333** |
+| t+5 | 1.089 m | **0.968 m** | 0.270 | 0.264 |
+| t+10 | **1.128 m** | 1.096 m | 0.267 | 0.250 |
+| t+25 | **1.211 m** | 1.205 m | 0.255 | 0.237 |
+
+At short horizons copy-last-frame is *better* on depth and semantics. The model only pulls level
+at t+10 and beyond, and only because copy-last degrades, not because the model improves.
+
+### What the qualitative rollouts show, and why the PSNR table is misleading on its own
+
+`output/w6_30k/rollout_*.png` (top row = Helios ground truth, bottom = model imagination) shows
+the honest picture: **the model has learned the global layout — sky band above, textured ground
+below, roughly the right colours — and essentially none of the canopy structure.** Its
+predictions are low-frequency smears. That is exactly why it beats copy-last on PSNR (a blurry
+image of the right average is a better L2 predictor of a moved scene than a sharp image of the
+wrong scene) while losing on depth and mIoU (which are not forgiving of blur).
+
+Note also that the model's PSNR *barely degrades with horizon* (18.14 → 17.45 over 25 steps)
+while copy-last drops 1.6 dB. A predictor that is equally accurate at t+1 and t+25 is not
+tracking the scene; it has converged to a horizon-independent average.
+
+### PSNR ablations badly understate action usage — a methodological finding
+
+Because the predictions are blurry, moving them in the correct direction buys almost no PSNR, so
+the no-action ablation the plan specifies is nearly uninformative here. Measuring the thing
+directly (`action_sensitivity` in `evaluate.py`: roll out from the same context with true, zeroed
+and negated actions, and compare the *predictions to each other*, scaled by how much the real
+image actually changes over the same interval):
+
+| horizon | zeroing the action moves the prediction by | negating it moves it by | (real inter-frame motion) |
+|---|---|---|---|
+| t+1 | 0.0339 RMS = **21.9%** of real motion | 0.0377 = 24.5% | 0.1544 |
+| t+5 | 0.0483 = **27.7%** | 0.0521 = 29.8% | 0.1750 |
+| t+10 | 0.0565 = **31.0%** | 0.0628 = 34.3% | 0.1836 |
+| t+25 | 0.0735 = **39.4%** | 0.0799 = 42.8% | 0.1871 |
+
+So the model is **not** ignoring its actions: changing the action displaces the prediction by
+22–43% of the magnitude by which the real image changes over the same interval, and the
+displacement grows with horizon exactly as it should. The plan's risk table lists "model ignores
+actions" as the thing the no-action ablation exists to catch — here the ablation would have
+suggested near-indifference (0.03 dB at t+1) while a direct probe shows substantial
+action-conditioning. **A PSNR-based no-action ablation is a weak test when the model's outputs
+are blurry; report a direct sensitivity measure alongside it.**
+
+### Growth channel — a negative result
+
+Conditioning on 2 growth stages and imagining forward (each step = 5 simulated days):
+
+| horizon | full | zeroed action | copy-last |
+|---|---|---|---|
+| t+1 (5 d) | 19.26 dB / mIoU 0.270 / depth 1.49 m | **19.67 dB** / 0.278 / 1.42 m | **20.97 dB** / **0.731** / **0.26 m** |
+| t+3 (15 d) | 17.94 / 0.266 / 1.48 | **18.50** / 0.281 / 1.43 | 18.43 / **0.557** / **0.59** |
+| t+5 (25 d) | **17.07** | 17.43 | 16.83 |
+
+**The growth channel does not work at this training scale.** The full model is *worse* than the
+same model with the growth action zeroed at every horizon on PSNR, and far worse than
+copy-last-frame on depth (1.47 m vs 0.26 m) and semantics (0.27 vs 0.73) at short horizons. It
+only overtakes copy-last on PSNR at t+5, i.e. after 25 simulated days of canopy change.
+
+The likely reason is the channel imbalance the plan's own risk table anticipated: growth frames
+are **4.0%** of the dataset (2,560 of 64,000), and although the sampler oversamples them to a
+measured 25.0% of batch *elements*, each growth episode is only 8 frames against 32 for a view
+window, so after pad-masking they contribute roughly 6% of the actual loss. Reported as a
+negative result rather than dressed up.
+
+### Comparison with the 3DGS view-synthesis reference
+
+| horizon | world model (RGB PSNR) | 3DGS matched (5 views) | 3DGS generous (28 views) | simulator noise floor |
+|---|---|---|---|---|
+| t+1 | 18.14 | 20.98 | 21.67 | ~20.8 |
+| t+5 | 17.98 | 20.12 | 21.15 | ~20.8 |
+| t+10 | 17.79 | 18.17 | 20.50 | ~20.8 |
+| t+25 | 17.45 | 16.67 | 20.36 | ~20.8 |
+
+3DGS wins at short horizons and the world model overtakes the *matched-information* splat at
+t+25 — but this comparison is heavily in 3DGS's favour and should be read that way: **the splat
+is given the true camera pose of every target frame**, while the world model gets only the
+action sequence and must infer where the camera ended up. The "generous" splat additionally gets
+27 posed views of the exact scene it must render, and it lands at ~20.4–21.7 dB, essentially at
+the simulator's own re-render noise floor (§9) — which is what you would expect from a method
+that is effectively interpolating between views it has already seen.
+
+### Honest bottom line on the model
+
+At this training scale (30k steps, 12 orchards, 64×64) the RSSM has learned the orchard's
+*global photometric layout* and a real but weak action-conditioned displacement of it. It has
+not learned canopy structure on unseen orchards, its depth predictions are worse than a
+copy-last baseline at short horizons, and its growth channel is not working. The infrastructure
+— dataset, action space, training loop, evaluation harness, ablations, baselines — is real and
+re-runnable; the model is under-trained relative to what the architecture would need, and the
+plan's own priority note ("cut training scale, not correctness or honesty") is exactly the
+trade-off that was made.
