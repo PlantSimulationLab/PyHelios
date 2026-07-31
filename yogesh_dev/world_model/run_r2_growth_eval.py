@@ -61,7 +61,7 @@ def build_episodes(root, split, image_size, limit=None):
 
 
 @torch.no_grad()
-def evaluate_ckpt(ckpt, root, split, device, limit, batch, log):
+def evaluate_ckpt(ckpt, root, split, device, limit, batch, log, train_max_dt=20.0):
     model, ck = load_model(ckpt, device)
     img = ck["args"]["image_size"]
     man, recs, store = build_episodes(root, split, img, limit)
@@ -85,7 +85,13 @@ def evaluate_ckpt(ckpt, root, split, device, limit, batch, log):
 
     per_d = {}
     resp = {"pred_pairs": [], "gt_pairs": []}
-    confusion = np.zeros((len(cands), len(cands)), dtype=np.int64)
+    # Per-episode error matrix rather than just the argmin, so identification
+    # accuracy can be recomputed on any subset of the candidates. That matters
+    # because only the candidates with dt <= --train-max-dt are values the stage
+    # subsampling actually produces (5/10/15/20 d at stride <= 3); 25 d and 35 d
+    # are out of distribution for every model here, and scoring them together
+    # with the rest would blame a model for failing on an action it never saw.
+    err_mats = []
 
     for s in range(0, E, batch):
         sl = slice(s, min(s + batch, E))
@@ -139,14 +145,12 @@ def evaluate_ckpt(ckpt, root, split, device, limit, batch, log):
             ((data["rgb"][:, j_lo] - data["rgb"][:, j_hi]) ** 2).mean())))
 
         # ---- G2: dt identification ----------------------------------------
+        rows = []
         for a, (d, j) in enumerate(cands):
-            errs = []
-            for b, (d2, j2) in enumerate(cands):
-                errs.append(((preds[d]["rgb"][:, 0] - data["rgb"][:, j2]) ** 2)
-                            .flatten(1).mean(1))
-            k = torch.stack(errs, 1).argmin(1)
-            for v in k.cpu().numpy():
-                confusion[a, int(v)] += 1
+            errs = [((preds[d]["rgb"][:, 0] - data["rgb"][:, j2]) ** 2).flatten(1).mean(1)
+                    for _, j2 in cands]
+            rows.append(torch.stack(errs, 1))          # (B, n_cands)
+        err_mats.append(torch.stack(rows, 1).cpu().numpy())   # (B, asked, target)
 
     out = {"ckpt": ckpt, "step": int(ck["step"]), "split": split,
            "n_episodes": int(E), "base_age_days": float(base_age),
@@ -163,16 +167,42 @@ def evaluate_ckpt(ckpt, root, split, device, limit, batch, log):
         f"the ground-truth frames differ by {out['g1_dt_response']['gt_rms_lo_vs_hi']:.5f} "
         f"=> {out['g1_dt_response']['ratio']*100:.1f}% of real growth change")
 
-    diag = float(np.trace(confusion) / max(1, confusion.sum()))
-    out["g2_confusion"] = confusion.tolist()
-    out["g2_identification_accuracy"] = diag
-    out["g2_chance"] = 1.0 / len(cands)
-    log(f"  [G2] dt identification accuracy {diag*100:.1f}% "
-        f"(chance {100.0/len(cands):.1f}%)")
+    EM = np.concatenate(err_mats, axis=0)              # (E, asked, target)
+    nc = len(cands)
+
+    def identification(keep):
+        """Accuracy when both the question and the answer set are restricted to
+        the candidate indices in `keep`."""
+        k = np.asarray(keep)
+        sub = EM[:, k][:, :, k]
+        pick = sub.argmin(2)
+        correct = (pick == np.arange(len(k))[None, :]).mean()
+        conf = np.zeros((len(k), len(k)), dtype=np.int64)
+        for a in range(len(k)):
+            for v in pick[:, a]:
+                conf[a, int(v)] += 1
+        return float(correct), conf
+
+    all_idx = list(range(nc))
+    in_idx = [i for i, (d, _) in enumerate(cands) if d <= train_max_dt]
+    acc_all, conf_all = identification(all_idx)
+    out["g2_confusion"] = conf_all.tolist()
+    out["g2_identification_accuracy"] = acc_all
+    out["g2_chance"] = 1.0 / nc
+    log(f"  [G2] dt identification accuracy {acc_all*100:.1f}% (chance {100.0/nc:.1f}%) "
+        f"over all {nc} candidates")
     log("       rows = dt asked for, cols = nearest ground-truth age")
     log("        " + "".join(f"{stages[j]:>7.0f}" for _, j in cands))
     for a, (d, j) in enumerate(cands):
-        log(f"   {d:>3.0f}d " + "".join(f"{v:>7d}" for v in confusion[a]))
+        log(f"   {d:>3.0f}d " + "".join(f"{v:>7d}" for v in conf_all[a]))
+    if 1 < len(in_idx) < nc:
+        acc_in, _ = identification(in_idx)
+        out["g2_identification_accuracy_in_distribution"] = acc_in
+        out["g2_chance_in_distribution"] = 1.0 / len(in_idx)
+        out["g2_train_max_dt_days"] = float(train_max_dt)
+        log(f"       restricted to dt <= {train_max_dt:.0f} d (the values stage "
+            f"subsampling actually produces): {acc_in*100:.1f}% "
+            f"(chance {100.0/len(in_idx):.1f}%)")
 
     g3 = {}
     log(f"  [G3] {'dt':>4} {'target':>7} | {'PSNR':>7} {'copy':>7} | "
@@ -201,6 +231,11 @@ def main():
     ap.add_argument("--split", default="test")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--train-max-dt", type=float, default=20.0,
+                    help="largest a_grow value the training augmentation can produce "
+                         "(stage subsampling with stride <= 3 yields 5/10/15/20 d). "
+                         "Candidates above this are out of distribution for every "
+                         "model and are reported separately.")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -216,7 +251,8 @@ def main():
     for ck, tag in zip(args.ckpt, tags):
         log(f"\n=== {tag} ===")
         results["models"][tag] = evaluate_ckpt(ck, args.data, args.split, device,
-                                               args.limit, args.batch, log)
+                                               args.limit, args.batch, log,
+                                               args.train_max_dt)
 
     with open(os.path.join(args.out, "r2_growth_eval.json"), "w") as f:
         json.dump(results, f, indent=2)
