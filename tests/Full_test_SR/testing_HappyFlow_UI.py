@@ -95,9 +95,19 @@ UI = {
     # ---- Radiation panel : Driven by / Source -------------------------
     "driven_by": "solar",         # solar | manual
     "source_type": "collimated",  # collimated | sunsphere
-    "manual_par": 400.0,          # only used when driven_by = manual
-    "manual_nir": 450.0,
-    "manual_fdiff": 0.10,
+    # MEASURED mode: you supply band TOTALS (what a pyranometer reports); the
+    # diffuse fraction still comes from Solar Position.
+    "measured_par_total": 400.0,
+    "measured_nir_total": 450.0,
+    # MANUAL mode: you supply the two numbers radiation actually consumes, per
+    # band, exactly as the artifact's band groups show them. Nothing is derived.
+    #   direct  -> radiation.setSourceFlux(sunID, band, value)
+    #   diffuse -> radiation.setDiffuseRadiationFlux(band, value)
+    "manual_PAR_direct": 400.0,
+    "manual_PAR_diffuse": 40.0,
+    "manual_NIR_direct": 450.0,
+    "manual_NIR_diffuse": 45.0,
+    "manual_LW_diffuse": 380.0,
     # ---- Radiation panel : Flux mode ----------------------------------
     "flux_mode": "flat",          # flat | spectral
     "source_spectrum": "solar_spectrum_direct_ASTMG173",
@@ -158,18 +168,61 @@ def rule(title, char="="):
     print(char * 78)
 
 
-def row(key, label, note="", advanced=False):
-    """One panel row. Returns the printable line, or None if hidden."""
-    if advanced and not ADVANCED:
-        return None
+# ---------------------------------------------------------------------------
+# CONDITIONAL FIELDS
+# ---------------------------------------------------------------------------
+# A real panel reveals a field the moment the mode needing it is selected:
+# choose "manual" and the direct/diffuse boxes appear, switch to "spectral" and
+# the spectrum pickers appear. Without this, a field tagged "advanced" stays
+# hidden even after you pick the mode that requires it - which is the dead end
+# behind "I shifted to manual and there is nowhere to type the flux".
+#
+# Relevance overrides the advanced flag in BOTH directions: a field its mode
+# needs is always shown, and a field its mode ignores is always hidden, because
+# editing it would change nothing.
+RELEVANT_WHEN = {
+    # MEASURED: band totals typed in, diffuse fraction still from Solar.
+    "measured_par_total": lambda: UI["driven_by"] == "measured" and UI["band_PAR"],
+    "measured_nir_total": lambda: UI["driven_by"] == "measured" and UI["band_NIR"],
+    # MANUAL: the two numbers radiation actually consumes, per band.
+    "manual_PAR_direct": lambda: UI["driven_by"] == "manual" and UI["band_PAR"],
+    "manual_PAR_diffuse": lambda: UI["driven_by"] == "manual" and UI["band_PAR"],
+    "manual_NIR_direct": lambda: UI["driven_by"] == "manual" and UI["band_NIR"],
+    "manual_NIR_diffuse": lambda: UI["driven_by"] == "manual" and UI["band_NIR"],
+    "manual_LW_diffuse": lambda: UI["driven_by"] == "manual" and UI["band_LW"],
+    # Mode- and band-dependent fields elsewhere in the panel.
+    "source_spectrum": lambda: UI["flux_mode"] == "spectral",
+    "sky_spectrum": lambda: UI["flux_mode"] == "spectral",
+    "measured_ghi": lambda: UI["cloud_calibration"],
+    "ground_albedo": lambda: UI["prague_sky"],
+    "emissivity_LW": lambda: UI["band_LW"],
+    "lambda_PAR": lambda: UI["band_PAR"],
+    "lambda_NIR": lambda: UI["band_NIR"],
+    "lambda_LW": lambda: UI["band_LW"],
+    "scatter_PAR": lambda: UI["band_PAR"],
+    "scatter_NIR": lambda: UI["band_NIR"],
+}
+
+
+def _format_row(key, label, note):
+    """Render one field as a panel line."""
     value = UI[key]
     if isinstance(value, bool):
         shown = "[ON ]" if value else "[off]"
     elif isinstance(value, tuple):
-        shown = "-".join(str(v) for v in value)
+        shown = ", ".join(str(v) for v in value)
     else:
         shown = str(value)
     return f"  {label:<26} {shown:<34} {note}"
+
+
+def row(key, label, note="", advanced=False):
+    """One panel row. Returns the printable line, or None if hidden."""
+    if key in RELEVANT_WHEN:
+        return _format_row(key, label, note) if RELEVANT_WHEN[key]() else None
+    if advanced and not ADVANCED:
+        return None
+    return _format_row(key, label, note)
 
 
 # Menu layout: (key, label, note, advanced). None key = section header.
@@ -216,9 +269,13 @@ PANEL = [
     ("min_scatter_energy", "Min scatter energy", "cutoff", True),
     ("source_spectrum", "Source spectrum", "spectral mode only", True),
     ("sky_spectrum", "Sky spectrum", "spectral mode only", True),
-    ("manual_par", "Manual PAR", "driven_by=manual only", True),
-    ("manual_nir", "Manual NIR", "driven_by=manual only", True),
-    ("manual_fdiff", "Manual diffuse frac", "driven_by=manual only", True),
+    ("measured_par_total", "PAR total measured", "W/m2 beam-normal", True),
+    ("measured_nir_total", "NIR total measured", "W/m2 beam-normal", True),
+    ("manual_PAR_direct", "PAR direct flux", "-> setSourceFlux", True),
+    ("manual_PAR_diffuse", "PAR diffuse flux", "-> setDiffuseRadiationFlux", True),
+    ("manual_NIR_direct", "NIR direct flux", "-> setSourceFlux", True),
+    ("manual_NIR_diffuse", "NIR diffuse flux", "-> setDiffuseRadiationFlux", True),
+    ("manual_LW_diffuse", "LW diffuse flux", "-> setDiffuseRadiationFlux", True),
 
     (None, "SCENE", "", False),
     ("crop", "Crop", "maize, soybean, tomato...", False),
@@ -689,19 +746,24 @@ def run():
                                         "solar.getSolarFluxNIR()",
                                         "solar.getDiffuseFraction()")
         elif UI["driven_by"] == "measured":
-            par_total, nir_total = UI["manual_par"], UI["manual_nir"]
+            par_total, nir_total = UI["measured_par_total"], UI["measured_nir_total"]
             fdiff = solar.getDiffuseFraction()
-            src_par = src_nir = "measured value typed by the user"
+            src_par = src_nir = "measured band total typed by the user"
             src_fd = "solar.getDiffuseFraction()  (still from Solar Position)"
-            trace.note("driven_by = measured: the FLUX is yours, but the sun DIRECTION and "
-                       "the diffuse FRACTION still come from Solar Position. This is the "
-                       "mode to use with a pyranometer reading.")
+            trace.note("driven_by = measured: the band TOTAL is yours, but the sun DIRECTION "
+                       "and the diffuse FRACTION still come from Solar Position, so the "
+                       "direct/diffuse split is still computed. Use this with a pyranometer.")
         else:
-            par_total, nir_total, fdiff = UI["manual_par"], UI["manual_nir"], UI["manual_fdiff"]
-            src_par = src_nir = src_fd = "typed by the user (driven_by = manual)"
-            trace.note("driven_by = manual: Solar Position contributes NOTHING to the flux. "
-                       "Its sun vector is still used for the source direction, because the "
-                       "radiation model needs a direction from somewhere.")
+            # MANUAL: nothing is derived. You type the two numbers radiation
+            # actually consumes, per band, so there is no split step at all and
+            # no diffuse fraction anywhere in the chain.
+            par_total = nir_total = None
+            fdiff = None
+            src_par = src_nir = src_fd = "not used - manual mode types direct/diffuse directly"
+            trace.note("driven_by = manual: no split happens. The direct and diffuse boxes go "
+                       "straight to setSourceFlux and setDiffuseRadiationFlux, so Solar "
+                       "Position contributes only the sun DIRECTION. Nothing here is derived, "
+                       "which also means nothing checks that your two numbers are consistent.")
 
         # Values the artifact shows in its 'Incoming from Solar' readout but
         # which the pipeline does not otherwise surface.
@@ -727,25 +789,43 @@ def run():
 
         longwave = solar.getAmbientLongwaveFlux()
 
-        flux = {
-            "PAR": dict(direct=par_total * (1 - fdiff), diffuse=par_total * fdiff),
-            "NIR": dict(direct=nir_total * (1 - fdiff), diffuse=nir_total * fdiff),
-            "LW": dict(direct=0.0, diffuse=longwave),
-        }
-
-        trace.value("PAR total", f"{par_total:.2f}", "W/m2 beam-normal", src_par, "split below")
-        trace.value("NIR total", f"{nir_total:.2f}", "W/m2 beam-normal", src_nir, "split below")
-        trace.value("Diffuse fraction", f"{fdiff:.4f}", "", src_fd, "splits both bands")
-        trace.value("Sky longwave", f"{longwave:.2f}", "W/m2",
-                    "solar.getAmbientLongwaveFlux()  [Prata 1996]",
-                    'radiation.setDiffuseRadiationFlux("LW", ...)')
-        for band in ("PAR", "NIR"):
-            trace.value(f"{band} direct", f"{flux[band]['direct']:.2f}", "W/m2",
-                        f"{band} total x (1 - fdiff)   <- YOUR CODE, not Helios",
-                        f'radiation.setSourceFlux(sunID, "{band}", ...)')
-            trace.value(f"{band} diffuse", f"{flux[band]['diffuse']:.2f}", "W/m2",
-                        f"{band} total x fdiff         <- YOUR CODE, not Helios",
-                        f'radiation.setDiffuseRadiationFlux("{band}", ...)')
+        if UI["driven_by"] == "manual":
+            # Typed straight through. No total, no fraction, no split.
+            flux = {
+                "PAR": dict(direct=UI["manual_PAR_direct"], diffuse=UI["manual_PAR_diffuse"]),
+                "NIR": dict(direct=UI["manual_NIR_direct"], diffuse=UI["manual_NIR_diffuse"]),
+                "LW": dict(direct=0.0, diffuse=UI["manual_LW_diffuse"]),
+            }
+            for band in ("PAR", "NIR", "LW"):
+                if band != "LW":
+                    trace.value(f"{band} direct", f"{flux[band]['direct']:.2f}", "W/m2",
+                                f"UI manual_{band}_direct   <- typed, nothing derived",
+                                f'radiation.setSourceFlux(sunID, "{band}", ...)')
+                trace.value(f"{band} diffuse", f"{flux[band]['diffuse']:.2f}", "W/m2",
+                            f"UI manual_{band}_diffuse  <- typed, nothing derived",
+                            f'radiation.setDiffuseRadiationFlux("{band}", ...)')
+            trace.value("Sky longwave", f"{longwave:.2f}", "W/m2",
+                        "solar.getAmbientLongwaveFlux()  [computed but NOT used in manual mode]",
+                        "ignored - the LW diffuse box overrides it")
+        else:
+            flux = {
+                "PAR": dict(direct=par_total * (1 - fdiff), diffuse=par_total * fdiff),
+                "NIR": dict(direct=nir_total * (1 - fdiff), diffuse=nir_total * fdiff),
+                "LW": dict(direct=0.0, diffuse=longwave),
+            }
+            trace.value("PAR total", f"{par_total:.2f}", "W/m2 beam-normal", src_par, "split below")
+            trace.value("NIR total", f"{nir_total:.2f}", "W/m2 beam-normal", src_nir, "split below")
+            trace.value("Diffuse fraction", f"{fdiff:.4f}", "", src_fd, "splits both bands")
+            trace.value("Sky longwave", f"{longwave:.2f}", "W/m2",
+                        "solar.getAmbientLongwaveFlux()  [Prata 1996]",
+                        'radiation.setDiffuseRadiationFlux("LW", ...)')
+            for band in ("PAR", "NIR"):
+                trace.value(f"{band} direct", f"{flux[band]['direct']:.2f}", "W/m2",
+                            f"{band} total x (1 - fdiff)   <- YOUR CODE, not Helios",
+                            f'radiation.setSourceFlux(sunID, "{band}", ...)')
+                trace.value(f"{band} diffuse", f"{flux[band]['diffuse']:.2f}", "W/m2",
+                            f"{band} total x fdiff         <- YOUR CODE, not Helios",
+                            f'radiation.setDiffuseRadiationFlux("{band}", ...)')
 
         # ---- radiation ------------------------------------------------
         rule("STEP 3   RADIATION MODEL")
@@ -966,11 +1046,25 @@ def run():
             "Below the horizon there is no direct beam at all. If you did not intend "
             "night, the usual cause is a flipped longitude or UTC offset sign - both are "
             "POSITIVE-WEST in Helios, inverted from every other tool.")
-        trace.check(
-            abs((flux["PAR"]["direct"] + flux["PAR"]["diffuse"]) - par_total) < 1e-3,
-            "PAR direct + diffuse adds back to the PAR total",
-            "The split must conserve energy. This is pure arithmetic in this file, so a "
-            "failure means the diffuse fraction is outside 0..1.")
+        if par_total is not None:
+            # Only meaningful when a split actually happened. In manual mode you
+            # type direct and diffuse independently, so there is no total to add
+            # back to and nothing to conserve.
+            trace.check(
+                abs((flux["PAR"]["direct"] + flux["PAR"]["diffuse"]) - par_total) < 1e-3,
+                "PAR direct + diffuse adds back to the PAR total",
+                "The split must conserve energy. This is pure arithmetic in this file, so a "
+                "failure means the diffuse fraction is outside 0..1.")
+        else:
+            # Manual mode has no derived quantity to check, so the only sanity
+            # available is that the typed numbers are physical.
+            trace.check(
+                all(flux[b]["direct"] >= 0 and flux[b]["diffuse"] >= 0
+                    for b in flux),
+                "all typed flux values are non-negative",
+                "Manual mode derives nothing, so nothing cross-checks your numbers. This is "
+                "the only guard there is: negative flux is unphysical. If your results look "
+                "wrong in manual mode, the inputs are the first place to look.")
 
         # ---- report ---------------------------------------------------
         rule("PROVENANCE   every value, where it came from, where it went")
