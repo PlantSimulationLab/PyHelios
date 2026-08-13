@@ -104,7 +104,9 @@ PYHELIOS_API void setFarquharCoefficientsFromLibraryForUUIDs(PhotosynthesisModel
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param species Name of the species (case insensitive, supports aliases)
  * @param coefficients Output array for coefficients [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
- * @param coeff_size Size of coefficients array (must be at least 20)
+ * @param coeff_size Size of coefficients array. Minimum 18 (legacy layout); pass 38 to
+ *        carry mesophyll conductance gm (slots 18..21) and the Vcmax/Jmax/Rd/alpha
+ *        temperature responses (slots 22..37). Shorter buffers are zero-filled.
  */
 PYHELIOS_API void getFarquharCoefficientsFromLibrary(PhotosynthesisModel* photosynthesis_model, const char* species, float* coefficients, unsigned int coeff_size);
 
@@ -134,7 +136,10 @@ PYHELIOS_API void setEmpiricalModelCoefficientsForUUIDs(PhotosynthesisModel* pho
  * @brief Set Farquhar model coefficients for all primitives
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param coefficients Array of Farquhar coefficients [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
- * @param coeff_count Number of coefficients (must be at least 20)
+ * @param coeff_count Number of coefficients. Minimum 18 (legacy layout); pass 38 to
+ *        carry mesophyll conductance gm (slots 18..21) and the Vcmax/Jmax/Rd/alpha
+ *        temperature responses (slots 22..37). Blocks absent from a shorter buffer
+ *        are not applied.
  */
 PYHELIOS_API void setFarquharModelCoefficients(PhotosynthesisModel* photosynthesis_model, const float* coefficients, unsigned int coeff_count);
 
@@ -142,7 +147,10 @@ PYHELIOS_API void setFarquharModelCoefficients(PhotosynthesisModel* photosynthes
  * @brief Set Farquhar model coefficients for specific primitives
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param coefficients Array of Farquhar coefficients [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
- * @param coeff_count Number of coefficients (must be at least 20)
+ * @param coeff_count Number of coefficients. Minimum 18 (legacy layout); pass 38 to
+ *        carry mesophyll conductance gm (slots 18..21) and the Vcmax/Jmax/Rd/alpha
+ *        temperature responses (slots 22..37). Blocks absent from a shorter buffer
+ *        are not applied.
  * @param uuids Array of primitive UUIDs
  * @param uuid_count Number of UUIDs in the array
  */
@@ -357,7 +365,9 @@ PYHELIOS_API void getEmpiricalModelCoefficients(PhotosynthesisModel* photosynthe
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param uuid Primitive UUID
  * @param coefficients Output array for coefficients [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
- * @param coeff_size Size of coefficients array (must be at least 20)
+ * @param coeff_size Size of coefficients array. Minimum 18 (legacy layout); pass 38 to
+ *        carry mesophyll conductance gm (slots 18..21) and the Vcmax/Jmax/Rd/alpha
+ *        temperature responses (slots 22..37). Shorter buffers are zero-filled.
  */
 PYHELIOS_API void getFarquharModelCoefficients(PhotosynthesisModel* photosynthesis_model, unsigned int uuid, float* coefficients, unsigned int coeff_size);
 

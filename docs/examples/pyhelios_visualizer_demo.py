@@ -15,6 +15,8 @@ The example shows:
 Requirements:
 - PyHelios built with visualizer plugin
 - OpenGL-capable graphics system
+
+Exported images are written to docs/examples/output/visualizer_demo/.
 """
 
 import sys
@@ -23,13 +25,15 @@ import os
 # Add PyHelios to path if running from examples directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
+from example_output import display_path, get_output_dir
+
 try:
     from pyhelios import Context, Visualizer, WeberPennTree, WPTType
     from pyhelios.types import *
-    if hasattr(Visualizer, 'VisualizerError'):
-        from pyhelios.Visualizer import VisualizerError
-    else:
-        VisualizerError = Exception
+    # VisualizerError is a module-level class, not an attribute of Visualizer.
+    # Guarding this import with hasattr(Visualizer, ...) silently falls back to
+    # bare Exception and makes the handlers below swallow unrelated errors.
+    from pyhelios.Visualizer import VisualizerError
 except ImportError as e:
     print(f"Error importing PyHelios: {e}")
     print("Make sure PyHelios is installed and built with visualizer plugin.")
@@ -148,15 +152,16 @@ def demonstrate_lighting_comparison():
                 ]
                 
                 print("Comparing lighting models...")
+                output_dir = get_output_dir("visualizer_demo")
                 for mode, filename in lighting_modes:
                     visualizer.setLightingModel(mode)
                     visualizer.plotUpdate()
-                    
-                    output_path = os.path.join(os.path.dirname(__file__), filename)
+
+                    output_path = str(output_dir / filename)
                     visualizer.printWindow(output_path)
                     
                     mode_names = {0: "None", 1: "Phong", 2: "Phong with Shadows"}
-                    print(f"  Saved {mode_names[mode]}: {filename}")
+                    print(f"  Saved {mode_names[mode]}: {display_path(output_path)}")
                 
     except VisualizerError as e:
         print(f"Lighting comparison error: {e}")
@@ -186,31 +191,18 @@ def main():
         print("  build_scripts/build_helios --plugins visualizer")
         return 1
     
-    success_count = 0
-    total_demos = 3
-    
-    # Run demonstrations
-    if demonstrate_basic_visualization():
-        success_count += 1
-        
-    # if demonstrate_lighting_comparison():
-    #     success_count += 1
-    
+    # Run demonstrations. Keep total_demos in step with the calls below --
+    # counting demos that are not actually run makes a clean run self-report
+    # as a failure and exit non-zero.
+    demos = [demonstrate_basic_visualization]
+    total_demos = len(demos)
+    success_count = sum(1 for demo in demos if demo())
+
     print(f"\n=== Demo Summary ===")
     print(f"Completed {success_count}/{total_demos} demonstrations successfully")
     
     if success_count == total_demos:
         print("✓ All demonstrations completed successfully!")
-        print("\nGenerated image files:")
-        image_files = [
-            "view_perspective.jpg", "view_side.jpg", "view_front.jpg", "view_top.jpg",
-            "lighting_none.jpg", "lighting_phong.jpg", "lighting_shadowed.jpg"
-        ]
-        for img in image_files:
-            img_path = os.path.join(os.path.dirname(__file__), img)
-            if os.path.exists(img_path):
-                print(f"  - {img}")
-        
         return 0
     else:
         print("⚠ Some demonstrations failed")

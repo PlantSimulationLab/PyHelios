@@ -6,6 +6,7 @@ capabilities with graceful plugin handling and informative error messages.
 """
 
 import logging
+import math
 from typing import List, Optional, Union, NamedTuple
 from contextlib import contextmanager
 
@@ -522,10 +523,14 @@ class StomatalConductanceModel:
             >>> # Set different time constants for specific leaves
             >>> stomatal.setDynamicTimeConstants(tau_open=60.0, tau_close=180.0, uuids=[leaf1_uuid])
         """
-        if tau_open <= 0.0:
-            raise ValueError("Opening time constant must be positive")
-        if tau_close <= 0.0:
-            raise ValueError("Closing time constant must be positive")
+        # tau appears in the denominator of the forward Euler update, so zero gives a
+        # non-finite conductance and a negative value inverts the relaxation so that stomata
+        # diverge away from the steady-state value. Mirrors validateDynamicTimeConstants
+        # added in helios-core 1.3.80.
+        if not math.isfinite(tau_open) or tau_open <= 0.0:
+            raise ValueError("Opening time constant must be finite and positive")
+        if not math.isfinite(tau_close) or tau_close <= 0.0:
+            raise ValueError("Closing time constant must be finite and positive")
         
         self._check_context_alive()
         try:

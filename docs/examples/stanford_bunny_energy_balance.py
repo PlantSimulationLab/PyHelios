@@ -43,7 +43,8 @@ def main():
         # Load Stanford Bunny PLY file  
         ply_path = os.path.join(os.path.dirname(__file__), '..', '..', 'helios-core', 'PLY', 'StanfordBunny.ply')
 
-        # Load bunny with scaling factor of 4 (matching C++ sample)
+        # height is the absolute height of the loaded geometry in metres, not a
+        # multiplier: the model is scaled so its final extent is exactly 4 m.
         bunny_uuids = context.loadPLY(ply_path, origin=vec3(0, 0, 0), height=4.0, upaxis="YUP")
             
         print(f"Loaded Stanford Bunny with {len(bunny_uuids)} triangles")
@@ -57,10 +58,9 @@ def main():
         ground_uuids = []
         for j in range(size.y):
             for i in range(size.x):
-                
-                # Rotation pattern from C++ sample
-                rot = ((j * size.x + i) % 3) * np.pi * 0.5
-                
+                # The C++ sample also spins each tile about its normal. That is
+                # omitted here: the tiles are flat, uniformly coloured squares, so
+                # the rotation changes neither the geometry nor the energy balance.
                 for jj in range(subsize.y):
                     for ii in range(subsize.x):
                         center = vec3(
@@ -117,9 +117,27 @@ def main():
             print("Running longwave radiation simulation...")
             radiation_model.runBand("LW")
 
+        # Set the environmental boundary conditions the energy balance needs.
+        # Without these, Helios falls back to internal defaults and emits
+        # "missing_emissivity" / boundary-layer-conductance warnings for every
+        # primitive, so the resulting temperatures reflect unstated assumptions.
+        all_uuids = context.getAllUUIDs()
+        for uuid in all_uuids:
+            context.setPrimitiveDataFloat(uuid, "emissivity_LW", 0.98)
+            context.setPrimitiveDataFloat(uuid, "air_temperature", 300.0)  # K
+            context.setPrimitiveDataFloat(uuid, "air_humidity", 0.5)       # relative
+            context.setPrimitiveDataFloat(uuid, "wind_speed", 1.0)         # m/s
+            # Initial guess for the iterative solve.
+            context.setPrimitiveDataFloat(uuid, "temperature", 300.0)      # K
+            # Characteristic length driving boundary-layer conductance. These
+            # primitives are not members of a compound object, so it must be set
+            # explicitly or Helios falls back to the individual primitive size.
+            context.setPrimitiveDataFloat(uuid, "object_length", 0.05)     # m
+        print(f"Set environmental boundary conditions on {len(all_uuids)} primitives")
+
         # Set up energy balance model (matching C++ sample)
         with EnergyBalanceModel(context) as energy_balance:
-            
+
             # Add radiation bands for energy balance calculations
             energy_balance.addRadiationBand("SW")
             energy_balance.addRadiationBand("LW")
@@ -148,13 +166,12 @@ def main():
             # Load geometry from context into visualizer
             visualizer.buildContextGeometry(context)
             
-            # Color primitives by temperature data
+            # Color primitives by temperature data. This also auto-enables the
+            # colorbar, with its range taken from the data min/max.
             visualizer.colorContextPrimitivesByData("temperature")
-            
-            # Enable and configure colorbar
-            #visualizer.setColorbarRange(300.0, 320.0)  # Temperature range in Kelvin
-            #visualizer.setColorbarTitle("Temperature (K)")
-            
+
+            visualizer.setColorbarTitle("Temperature (K)")
+
             print("Launching interactive visualization...")
             print("Close the visualization window to exit.")
             

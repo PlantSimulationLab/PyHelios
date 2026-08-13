@@ -569,6 +569,137 @@ class AxisRotation(ctypes.Structure):
             return False
 
 
+
+class AdaptiveTileRefinement(ctypes.Structure):
+    """
+    Parameters controlling the adaptive sub-patch refinement of an adaptive tile object.
+
+    Sub-patch edge length grows with distance from ``target``, from ``subpatch_size_min`` at the
+    target itself up to ``subpatch_size_max`` at the point of the tile farthest from it.
+    Refinement is performed by recursive quadtree subdivision, so the achieved sizes are the
+    requested sizes rounded onto a power-of-two ladder; both ends are typically within about 20%
+    of the request. Query what was actually achieved with
+    ``Context.getAdaptiveTileObjectSubpatchSizeRange()``.
+
+    Attributes:
+        target: Point of maximum refinement, in tile-local coordinates relative to the tile center
+            and before rotation is applied (default: (0, 0), the tile center). A target outside the
+            tile is permitted, but the finest requested sub-patch size will then not be reached
+            anywhere and helios issues a warning.
+        subpatch_size_min: Requested edge length of the finest sub-patches, which occur at the
+            target point (default: 0.05, i.e. 5 cm for a scene measured in meters).
+        subpatch_size_max: Requested edge length of the coarsest sub-patches, which occur farthest
+            from the target (default: 1.0). Must be no more than half the smaller tile dimension.
+        transition_exponent: Exponent controlling how rapidly sub-patch size grows with distance
+            from the target (default: 0.35, which suits a typical ground plane). Useful values run
+            from about 0.25 to 1. This does not change the achieved size range, but it is by far
+            the most consequential parameter for the sub-patch count -- on a 50 m tile refined from
+            2 m to 2 cm, 0.25 gives roughly 9 thousand sub-patches and 2 gives roughly 2 million.
+            Use ``Context.predictAdaptiveTileObjectSubpatchCount()`` to check before building.
+
+    Examples:
+        >>> refinement = AdaptiveTileRefinement(target=vec2(0, 0), subpatch_size_min=0.02,
+        ...                                     subpatch_size_max=2.0)
+        >>> refinement.subpatch_size_min
+        0.02
+    """
+    _fields_ = [
+        ('target', vec2),
+        ('subpatch_size_min', ctypes.c_float),
+        ('subpatch_size_max', ctypes.c_float),
+        ('transition_exponent', ctypes.c_float)
+    ]
+
+    def __repr__(self) -> str:
+        return (f'AdaptiveTileRefinement(target=vec2({self.target.x}, {self.target.y}), '
+                f'subpatch_size_min={self.subpatch_size_min}, '
+                f'subpatch_size_max={self.subpatch_size_max}, '
+                f'transition_exponent={self.transition_exponent})')
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __new__(cls, target=None, subpatch_size_min=None, subpatch_size_max=None,
+                transition_exponent=None):
+        """Create instance - only pass cls to prevent TypeError on Windows."""
+        return ctypes.Structure.__new__(cls)
+
+    def __init__(self, target: 'vec2' = None, subpatch_size_min: float = 0.05,
+                 subpatch_size_max: float = 1.0, transition_exponent: float = 0.35):
+        """
+        Initialize AdaptiveTileRefinement fields with validation.
+        Do not call super().__init__() for Windows compatibility.
+
+        Defaults match helios::AdaptiveTileRefinement.
+
+        Raises:
+            ValueError: If target is not a vec2, if either size is not a positive finite number,
+                if subpatch_size_min exceeds subpatch_size_max, if their ratio exceeds the largest
+                supported value of 16777216, or if transition_exponent is not positive and finite.
+        """
+        if target is None:
+            target = vec2(0.0, 0.0)
+        if not isinstance(target, vec2):
+            raise ValueError(f"AdaptiveTileRefinement.target must be a vec2, "
+                             f"got {type(target).__name__}: {target}")
+        if not self._is_finite_numeric(target.x) or not self._is_finite_numeric(target.y):
+            raise ValueError(f"AdaptiveTileRefinement.target must be finite, got {target}")
+
+        if not self._is_finite_numeric(subpatch_size_min) or float(subpatch_size_min) <= 0:
+            raise ValueError(f"AdaptiveTileRefinement.subpatch_size_min must be a positive finite "
+                             f"number, got {type(subpatch_size_min).__name__}: {subpatch_size_min}")
+        if not self._is_finite_numeric(subpatch_size_max) or float(subpatch_size_max) <= 0:
+            raise ValueError(f"AdaptiveTileRefinement.subpatch_size_max must be a positive finite "
+                             f"number, got {type(subpatch_size_max).__name__}: {subpatch_size_max}")
+        if float(subpatch_size_min) > float(subpatch_size_max):
+            raise ValueError(f"AdaptiveTileRefinement.subpatch_size_min of {subpatch_size_min} is "
+                             f"greater than subpatch_size_max of {subpatch_size_max}.")
+        if float(subpatch_size_max) / float(subpatch_size_min) > 16777216.0:
+            raise ValueError(f"AdaptiveTileRefinement size ratio of "
+                             f"{float(subpatch_size_max) / float(subpatch_size_min)} exceeds the "
+                             f"largest supported ratio of 16777216. Increase subpatch_size_min or "
+                             f"decrease subpatch_size_max.")
+        if not self._is_finite_numeric(transition_exponent) or float(transition_exponent) <= 0:
+            raise ValueError(f"AdaptiveTileRefinement.transition_exponent must be a positive "
+                             f"finite number, got {type(transition_exponent).__name__}: "
+                             f"{transition_exponent}")
+
+        self.target = target
+        self.subpatch_size_min = float(subpatch_size_min)
+        self.subpatch_size_max = float(subpatch_size_max)
+        self.transition_exponent = float(transition_exponent)
+
+    def from_list(self, input_list: List[float]):
+        """Initialize from list [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]"""
+        if len(input_list) < 5:
+            raise ValueError("AdaptiveTileRefinement.from_list requires a list with at least 5 "
+                             "elements [target_x, target_y, subpatch_size_min, subpatch_size_max, "
+                             "transition_exponent]")
+        self.target = vec2(float(input_list[0]), float(input_list[1]))
+        self.subpatch_size_min = input_list[2]
+        self.subpatch_size_max = input_list[3]
+        self.transition_exponent = input_list[4]
+
+    def to_list(self) -> List[float]:
+        """
+        Convert to the flat 5-element form used across the C ABI.
+
+        Element order matches the order helios itself uses to serialize the struct to XML:
+        [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+        """
+        return [self.target.x, self.target.y, self.subpatch_size_min,
+                self.subpatch_size_max, self.transition_exponent]
+
+    @staticmethod
+    def _is_finite_numeric(value) -> bool:
+        """Check if value is a finite number (not NaN or inf)."""
+        try:
+            float_value = float(value)
+            return math.isfinite(float_value)
+        except (ValueError, TypeError, OverflowError):
+            return False
+
+
 # Factory functions to match C++ API
 def make_int2(x: int, y: int) -> int2:
     """Make an int2 from two integers"""

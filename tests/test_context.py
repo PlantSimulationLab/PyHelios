@@ -3379,6 +3379,17 @@ _OBJ_TYPE_BOX = 3
 _OBJ_TYPE_DISK = 4
 _OBJ_TYPE_POLYMESH = 5
 _OBJ_TYPE_CONE = 6
+_OBJ_TYPE_ADAPTIVE_TILE = 7
+
+
+def _find_test_texture():
+    """Absolute path to a texture image shipped with helios-core, or None if unavailable."""
+    for relative in ('helios-core/core/lib/images/disk_texture.png',
+                     'helios-core/plugins/canopygenerator/textures/dirt.jpg'):
+        candidate = os.path.join(REPO_ROOT_CTX, relative)
+        if os.path.exists(candidate):
+            return candidate
+    return None
 
 
 @pytest.mark.native_only
@@ -3403,8 +3414,13 @@ class TestObjectGeometryQueries:
         assert basic_context.getObjectType(sphere_id) == _OBJ_TYPE_SPHERE
         assert basic_context.getObjectType(box_id) == _OBJ_TYPE_BOX
         assert basic_context.getObjectType(disk_id) == _OBJ_TYPE_DISK
+        adaptive_tile_id = basic_context.addAdaptiveTileObject(
+            center=vec3(20, 0, 0), size=vec2(4, 4),
+            refinement=AdaptiveTileRefinement(subpatch_size_min=0.5, subpatch_size_max=2.0))
+
         assert basic_context.getObjectType(tube_id) == _OBJ_TYPE_TUBE
         assert basic_context.getObjectType(cone_id) == _OBJ_TYPE_CONE
+        assert basic_context.getObjectType(adaptive_tile_id) == _OBJ_TYPE_ADAPTIVE_TILE
 
     def test_get_object_center_and_bounding_box(self, basic_context):
         box_id = basic_context.addBoxObject(
@@ -3460,6 +3476,253 @@ class TestObjectGeometryQueries:
         verts = basic_context.getTileObjectVertices(obj_id)
         assert len(verts) > 0
         assert all(isinstance(v, vec3) for v in verts)
+
+    def test_adaptive_tile_object_queries(self, basic_context):
+        refinement = AdaptiveTileRefinement(
+            target=vec2(1.0, -2.0), subpatch_size_min=0.25,
+            subpatch_size_max=2.0, transition_exponent=0.5)
+        obj_id = basic_context.addAdaptiveTileObject(
+            center=vec3(1, 2, 3), size=vec2(20, 20),
+            rotation=SphericalCoord(1, 0, 0), refinement=refinement)
+
+        c = basic_context.getAdaptiveTileObjectCenter(obj_id)
+        assert c.x == pytest.approx(1.0)
+        assert c.y == pytest.approx(2.0)
+        assert c.z == pytest.approx(3.0)
+
+        s = basic_context.getAdaptiveTileObjectSize(obj_id)
+        assert s.x == pytest.approx(20.0)
+        assert s.y == pytest.approx(20.0)
+
+        n = basic_context.getAdaptiveTileObjectNormal(obj_id)
+        assert isinstance(n, vec3)
+
+        verts = basic_context.getAdaptiveTileObjectVertices(obj_id)
+        assert len(verts) == 4
+        assert all(isinstance(v, vec3) for v in verts)
+
+        # Refinement parameters round-trip as they were requested
+        got = basic_context.getAdaptiveTileObjectRefinement(obj_id)
+        assert isinstance(got, AdaptiveTileRefinement)
+        assert got.target.x == pytest.approx(1.0)
+        assert got.target.y == pytest.approx(-2.0)
+        assert got.subpatch_size_min == pytest.approx(0.25)
+        assert got.subpatch_size_max == pytest.approx(2.0)
+        assert got.transition_exponent == pytest.approx(0.5)
+
+        base = basic_context.getAdaptiveTileObjectBaseSubdivisionCount(obj_id)
+        assert isinstance(base, int2)
+        assert base.x > 0 and base.y > 0
+
+        max_level = basic_context.getAdaptiveTileObjectMaxRefinementLevel(obj_id)
+        assert isinstance(max_level, int)
+        assert max_level > 0
+
+        # Achieved sizes bracket the requested range to within the documented ~20%
+        achieved = basic_context.getAdaptiveTileObjectSubpatchSizeRange(obj_id)
+        assert isinstance(achieved, vec2)
+        assert achieved.x <= achieved.y
+        assert achieved.x == pytest.approx(0.25, rel=0.25)
+        assert achieved.y == pytest.approx(2.0, rel=0.25)
+
+        repeat = basic_context.getAdaptiveTileObjectTextureRepeat(obj_id)
+        assert (repeat.x, repeat.y) == (1, 1), "an untextured adaptive tile defaults to a 1x1 repeat"
+
+    def test_adaptive_tile_subpatches_are_non_uniform_and_finest_at_target(self, basic_context):
+        """Sub-patch area should grow with distance from the refinement target."""
+        refinement = AdaptiveTileRefinement(
+            target=vec2(0, 0), subpatch_size_min=0.25, subpatch_size_max=2.0)
+        obj_id = basic_context.addAdaptiveTileObject(
+            center=vec3(0, 0, 0), size=vec2(20, 20), refinement=refinement)
+
+        uuids = basic_context.getObjectPrimitiveUUIDs(obj_id)
+        assert len(uuids) > 1
+
+        areas = [basic_context.getPrimitiveArea(u) for u in uuids]
+        # A uniform tile would give one area; an adaptive tile must give several
+        assert len(set(round(a, 6) for a in areas)) > 1
+
+        centers = [basic_context.getPatchCenter(u) for u in uuids]
+        near = min(range(len(uuids)), key=lambda i: centers[i].x ** 2 + centers[i].y ** 2)
+        far = max(range(len(uuids)), key=lambda i: centers[i].x ** 2 + centers[i].y ** 2)
+        assert areas[near] < areas[far]
+
+    def test_predict_adaptive_tile_subpatch_count_matches_built_geometry(self, basic_context):
+        refinement = AdaptiveTileRefinement(
+            target=vec2(0, 0), subpatch_size_min=0.25, subpatch_size_max=2.0)
+        predicted = basic_context.predictAdaptiveTileObjectSubpatchCount(vec2(20, 20), refinement)
+        assert predicted > 0
+
+        obj_id = basic_context.addAdaptiveTileObject(
+            center=vec3(0, 0, 0), size=vec2(20, 20), refinement=refinement)
+        assert len(basic_context.getObjectPrimitiveUUIDs(obj_id)) == predicted
+
+    def test_predict_adaptive_tile_subpatch_count_grows_with_transition_exponent(self, basic_context):
+        def count(exponent):
+            return basic_context.predictAdaptiveTileObjectSubpatchCount(
+                vec2(50, 50),
+                AdaptiveTileRefinement(subpatch_size_min=0.05, subpatch_size_max=2.0,
+                                       transition_exponent=exponent))
+
+        assert count(0.25) < count(0.35) < count(0.5) < count(1.0)
+
+    def test_adaptive_tile_object_color_and_texture_variants(self, basic_context):
+        refinement = AdaptiveTileRefinement(subpatch_size_min=0.5, subpatch_size_max=2.0)
+
+        colored = basic_context.addAdaptiveTileObject(
+            size=vec2(10, 10), refinement=refinement, color=RGBcolor(1, 0, 0))
+        assert basic_context.getObjectType(colored) == _OBJ_TYPE_ADAPTIVE_TILE
+
+        texture = _find_test_texture()
+        if texture is None:
+            pytest.skip("No texture file available for adaptive tile texture test")
+
+        textured = basic_context.addAdaptiveTileObject(
+            size=vec2(10, 10), refinement=refinement, texturefile=texture)
+        default_repeat = basic_context.getAdaptiveTileObjectTextureRepeat(textured)
+        assert (default_repeat.x, default_repeat.y) == (1, 1)
+
+        repeated = basic_context.addAdaptiveTileObject(
+            size=vec2(10, 10), refinement=refinement, texturefile=texture,
+            texture_repeat=int2(2, 2))
+        rep = basic_context.getAdaptiveTileObjectTextureRepeat(repeated)
+        # An adaptive tile applies the requested repeat exactly (unlike a uniform tile)
+        assert (rep.x, rep.y) == (2, 2)
+
+    def test_adaptive_tile_rejects_max_larger_than_half_the_tile(self, basic_context):
+        with pytest.raises(HeliosError, match="too large for a tile"):
+            basic_context.addAdaptiveTileObject(
+                size=vec2(1, 1),
+                refinement=AdaptiveTileRefinement(subpatch_size_min=0.05, subpatch_size_max=1.0))
+
+    def test_adaptive_tile_rejects_excessive_subpatch_count(self, basic_context):
+        refinement = AdaptiveTileRefinement(
+            subpatch_size_min=0.005, subpatch_size_max=2.0, transition_exponent=2.0)
+        with pytest.raises(HeliosError, match="sub-patches"):
+            basic_context.addAdaptiveTileObject(size=vec2(500, 500), refinement=refinement)
+        with pytest.raises(HeliosError, match="sub-patches"):
+            basic_context.predictAdaptiveTileObjectSubpatchCount(vec2(500, 500), refinement)
+
+    def test_adaptive_tile_queries_reject_unknown_object_id(self, basic_context):
+        with pytest.raises(HeliosError):
+            basic_context.getAdaptiveTileObjectCenter(999999)
+
+    def test_tile_object_texture_repeat_queries(self, basic_context):
+        texture = _find_test_texture()
+        if texture is None:
+            pytest.skip("No texture file available for tile texture repeat test")
+
+        obj_id = basic_context.addTileObject(
+            size=vec2(10, 10), subdiv=int2(10, 10),
+            texturefile=texture, texture_repeat=int2(5, 5))
+
+        requested = basic_context.getTileObjectTextureRepeat(obj_id)
+        effective = basic_context.getTileObjectEffectiveTextureRepeat(obj_id)
+        assert (requested.x, requested.y) == (5, 5)
+        assert (effective.x, effective.y) == (5, 5)
+
+    def test_tile_object_effective_texture_repeat_is_reduced_when_it_does_not_divide(self, basic_context):
+        texture = _find_test_texture()
+        if texture is None:
+            pytest.skip("No texture file available for tile texture repeat test")
+
+        # 4 does not evenly divide a subdivision count of 9
+        obj_id = basic_context.addTileObject(
+            size=vec2(10, 10), subdiv=int2(9, 9),
+            texturefile=texture, texture_repeat=int2(4, 4))
+
+        requested = basic_context.getTileObjectTextureRepeat(obj_id)
+        effective = basic_context.getTileObjectEffectiveTextureRepeat(obj_id)
+        assert (requested.x, requested.y) == (4, 4)
+        assert effective.x < requested.x
+        assert effective.y < requested.y
+
+    def test_tile_object_retains_texture_repeat_across_subdivision_change(self, basic_context):
+        """helios-core 1.3.81: changing the subdivision count used to reset texture repeat to 1x1."""
+        texture = _find_test_texture()
+        if texture is None:
+            pytest.skip("No texture file available for tile texture repeat test")
+
+        obj_id = basic_context.addTileObject(
+            size=vec2(10, 10), subdiv=int2(10, 10),
+            texturefile=texture, texture_repeat=int2(5, 5))
+
+        basic_context.setTileObjectSubdivisionCount(obj_id, int2(20, 20))
+
+        requested = basic_context.getTileObjectTextureRepeat(obj_id)
+        effective = basic_context.getTileObjectEffectiveTextureRepeat(obj_id)
+        assert (requested.x, requested.y) == (5, 5), "requested repeat must survive a subdivision change"
+        assert (effective.x, effective.y) == (5, 5), "repeat must be re-applied, not reset to 1x1"
+
+    def test_uniform_tile_operations_skip_adaptive_tiles(self, basic_context):
+        """Sweeping tile operations over a scene must not overwrite an adaptive layout."""
+        adaptive_id = basic_context.addAdaptiveTileObject(
+            size=vec2(10, 10),
+            refinement=AdaptiveTileRefinement(subpatch_size_min=0.5, subpatch_size_max=2.0))
+        subpatches_before = len(basic_context.getObjectPrimitiveUUIDs(adaptive_id))
+
+        # helios warns and skips rather than treating the adaptive tile as a uniform one
+        assert basic_context.getTileObjectAreaRatio(adaptive_id) == pytest.approx(0.0)
+
+        basic_context.setTileObjectSubdivisionCount(adaptive_id, int2(2, 2))
+        assert len(basic_context.getObjectPrimitiveUUIDs(adaptive_id)) == subpatches_before
+
+    def test_tile_texture_repeat_survives_xml_round_trip(self, basic_context, tmp_path):
+        """helios-core 1.3.81 writes an optional <texture_repeat> element for tiled textures."""
+        texture = _find_test_texture()
+        if texture is None:
+            pytest.skip("No texture file available for tile texture repeat test")
+
+        obj_id = basic_context.addTileObject(
+            size=vec2(10, 10), subdiv=int2(10, 10),
+            texturefile=texture, texture_repeat=int2(5, 5))
+        assert (basic_context.getTileObjectTextureRepeat(obj_id).x,
+                basic_context.getTileObjectTextureRepeat(obj_id).y) == (5, 5)
+
+        xml_path = tmp_path / "tile_repeat.xml"
+        basic_context.writeXML(str(xml_path), quiet=True)
+
+        with Context() as reloaded:
+            reloaded.loadXML(str(xml_path), quiet=True)
+            tile_ids = [o for o in reloaded.getAllObjectIDs()
+                        if reloaded.getObjectType(o) == _OBJ_TYPE_TILE]
+            assert len(tile_ids) == 1
+            repeat = reloaded.getTileObjectTextureRepeat(tile_ids[0])
+            assert (repeat.x, repeat.y) == (5, 5), (
+                "texture repeat must survive the XML round trip, otherwise the defect returns "
+                "on the next subdivision change")
+
+    def test_adaptive_tile_survives_xml_round_trip(self, basic_context, tmp_path):
+        refinement = AdaptiveTileRefinement(
+            target=vec2(1.0, -1.0), subpatch_size_min=0.5,
+            subpatch_size_max=2.0, transition_exponent=0.5)
+        obj_id = basic_context.addAdaptiveTileObject(
+            center=vec3(1, 2, 3), size=vec2(20, 20), refinement=refinement)
+        subpatches = len(basic_context.getObjectPrimitiveUUIDs(obj_id))
+
+        xml_path = tmp_path / "adaptive_tile.xml"
+        basic_context.writeXML(str(xml_path), quiet=True)
+
+        with Context() as reloaded:
+            reloaded.loadXML(str(xml_path), quiet=True)
+            adaptive_ids = [o for o in reloaded.getAllObjectIDs()
+                            if reloaded.getObjectType(o) == _OBJ_TYPE_ADAPTIVE_TILE]
+            assert len(adaptive_ids) == 1
+            restored = adaptive_ids[0]
+
+            assert len(reloaded.getObjectPrimitiveUUIDs(restored)) == subpatches
+
+            got = reloaded.getAdaptiveTileObjectRefinement(restored)
+            assert got.target.x == pytest.approx(1.0)
+            assert got.target.y == pytest.approx(-1.0)
+            assert got.subpatch_size_min == pytest.approx(0.5)
+            assert got.subpatch_size_max == pytest.approx(2.0)
+            assert got.transition_exponent == pytest.approx(0.5)
+
+            center = reloaded.getAdaptiveTileObjectCenter(restored)
+            assert center.x == pytest.approx(1.0)
+            assert center.y == pytest.approx(2.0)
+            assert center.z == pytest.approx(3.0)
 
     def test_sphere_object_queries(self, basic_context):
         obj_id = basic_context.addSphereObject(ndivs=6, center=vec3(0, 0, 0), radius=0.75)
@@ -3647,6 +3910,109 @@ class TestSetPrimitiveColorValidation:
             basic_context.setPrimitiveColor(uuid, vec3(1, 0, 0))
         with pytest.raises(ValueError):
             basic_context.setPrimitiveColor(uuid, (1, 0, 0))
+
+
+@pytest.mark.cross_platform
+class TestAdaptiveTileRefinementValidation:
+    """AdaptiveTileRefinement construction is pure Python, so it validates without a native library."""
+
+    def test_defaults_match_helios(self):
+        r = AdaptiveTileRefinement()
+        assert r.target.x == pytest.approx(0.0)
+        assert r.target.y == pytest.approx(0.0)
+        assert r.subpatch_size_min == pytest.approx(0.05)
+        assert r.subpatch_size_max == pytest.approx(1.0)
+        assert r.transition_exponent == pytest.approx(0.35)
+
+    def test_to_list_uses_the_c_abi_element_order(self):
+        r = AdaptiveTileRefinement(target=vec2(1.5, -2.5), subpatch_size_min=0.1,
+                                   subpatch_size_max=4.0, transition_exponent=0.75)
+        values = r.to_list()
+        assert len(values) == 5
+        assert values[0] == pytest.approx(1.5)
+        assert values[1] == pytest.approx(-2.5)
+        assert values[2] == pytest.approx(0.1)
+        assert values[3] == pytest.approx(4.0)
+        assert values[4] == pytest.approx(0.75)
+
+    def test_from_list_round_trips(self):
+        r = AdaptiveTileRefinement()
+        r.from_list([1.0, 2.0, 0.5, 8.0, 0.6])
+        assert r.target.x == pytest.approx(1.0)
+        assert r.target.y == pytest.approx(2.0)
+        assert r.subpatch_size_min == pytest.approx(0.5)
+        assert r.subpatch_size_max == pytest.approx(8.0)
+        assert r.transition_exponent == pytest.approx(0.6)
+
+    def test_rejects_non_vec2_target(self):
+        with pytest.raises(ValueError, match="target must be a vec2"):
+            AdaptiveTileRefinement(target=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="target must be a vec2"):
+            AdaptiveTileRefinement(target=(0, 0))
+
+    def test_rejects_non_positive_sizes(self):
+        with pytest.raises(ValueError, match="subpatch_size_min must be a positive finite number"):
+            AdaptiveTileRefinement(subpatch_size_min=0)
+        with pytest.raises(ValueError, match="subpatch_size_max must be a positive finite number"):
+            AdaptiveTileRefinement(subpatch_size_max=-1.0)
+
+    def test_rejects_inverted_size_range(self):
+        with pytest.raises(ValueError, match="greater than subpatch_size_max"):
+            AdaptiveTileRefinement(subpatch_size_min=2.0, subpatch_size_max=1.0)
+
+    def test_rejects_size_ratio_beyond_the_supported_maximum(self):
+        with pytest.raises(ValueError, match="16777216"):
+            AdaptiveTileRefinement(subpatch_size_min=1e-9, subpatch_size_max=1e3)
+
+    def test_rejects_non_positive_transition_exponent(self):
+        with pytest.raises(ValueError, match="transition_exponent must be a positive finite number"):
+            AdaptiveTileRefinement(transition_exponent=0)
+        with pytest.raises(ValueError, match="transition_exponent must be a positive finite number"):
+            AdaptiveTileRefinement(transition_exponent=float('inf'))
+
+
+@pytest.mark.cross_platform
+class TestAddAdaptiveTileObjectValidation:
+    """Wrong-type arguments must be rejected whether passed positionally or by keyword."""
+
+    def test_rejects_wrong_types_positionally(self, basic_context):
+        # Positional order is (center, size, rotation, refinement, ...)
+        with pytest.raises(ValueError, match="Center must be a vec3"):
+            basic_context.addAdaptiveTileObject(RGBcolor(1, 0, 0), vec2(10, 10))
+        with pytest.raises(ValueError, match="Size must be a vec2"):
+            basic_context.addAdaptiveTileObject(vec3(0, 0, 0), vec3(10, 10, 10))
+        with pytest.raises(ValueError, match="Rotation must be a SphericalCoord"):
+            basic_context.addAdaptiveTileObject(vec3(0, 0, 0), vec2(10, 10), vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="Refinement must be an AdaptiveTileRefinement"):
+            basic_context.addAdaptiveTileObject(
+                vec3(0, 0, 0), vec2(10, 10), SphericalCoord(1, 0, 0), "not-a-refinement")
+
+    def test_rejects_wrong_types_as_keywords(self, basic_context):
+        with pytest.raises(ValueError, match="Center must be a vec3"):
+            basic_context.addAdaptiveTileObject(center=vec2(0, 0))
+        with pytest.raises(ValueError, match="Size must be a vec2"):
+            basic_context.addAdaptiveTileObject(size=int2(10, 10))
+        with pytest.raises(ValueError, match="Rotation must be a SphericalCoord"):
+            basic_context.addAdaptiveTileObject(rotation=vec3(0, 0, 0))
+        with pytest.raises(ValueError, match="Refinement must be an AdaptiveTileRefinement"):
+            basic_context.addAdaptiveTileObject(refinement=vec2(0, 0))
+        with pytest.raises(ValueError, match="Color must be an RGBcolor"):
+            basic_context.addAdaptiveTileObject(color=vec3(1, 0, 0))
+        with pytest.raises(ValueError, match="texture_repeat must be an int2"):
+            basic_context.addAdaptiveTileObject(texturefile="x.png", texture_repeat=vec2(2, 2))
+
+    def test_texture_repeat_requires_a_texture_file(self, basic_context):
+        with pytest.raises(ValueError, match="texture_repeat requires texturefile"):
+            basic_context.addAdaptiveTileObject(size=vec2(10, 10), texture_repeat=int2(2, 2))
+
+    def test_predict_rejects_wrong_types(self, basic_context):
+        with pytest.raises(ValueError, match="Size must be a vec2"):
+            basic_context.predictAdaptiveTileObjectSubpatchCount(vec3(10, 10, 10))
+        with pytest.raises(ValueError, match="Refinement must be an AdaptiveTileRefinement"):
+            basic_context.predictAdaptiveTileObjectSubpatchCount(vec2(10, 10), "nope")
+        with pytest.raises(ValueError, match="texture_repeat must be an int2"):
+            basic_context.predictAdaptiveTileObjectSubpatchCount(
+                vec2(10, 10), AdaptiveTileRefinement(), vec2(1, 1))
 
 
 @pytest.mark.native_only
@@ -5141,24 +5507,20 @@ class TestRotationValidation:
 
 
 @pytest.mark.native_only
-@pytest.mark.xfail(
-    reason="Requires the getObjectBoundingBox() fix landing in helios-core after v1.3.78. "
-           "The submodule currently pins v1.3.78, which still seeds the box from the first "
-           "primitive's first vertex and skips that primitive's remaining vertices. These "
-           "tests assert the fixed behavior and will XPASS once the submodule pointer "
-           "advances to a core containing the fix; drop this marker at that point.",
-    strict=False,
-)
 class TestObjectBoundingBox:
     """Test getObjectBoundingBox.
 
-    Regression coverage for a native seeding bug: getObjectBoundingBox() seeded
-    min/max from the first primitive's first vertex and then `continue`d to the
-    next primitive, so the rest of that primitive's vertices were never compared.
-    A single-primitive object therefore reported min == max == its first vertex.
+    Regression coverage for a native seeding bug fixed in helios-core v1.3.79:
+    getObjectBoundingBox() seeded min/max from the first primitive's first vertex
+    and then `continue`d to the next primitive, so the rest of that primitive's
+    vertices were never compared. A single-primitive object therefore reported
+    min == max == its first vertex, and in a list only the first object was
+    affected, so a list whose first object held a unique extreme lost it.
 
-    The fix lives in the Helios repository (core/src/Context.cpp), not in this
-    repo — PyHelios must never patch the vendored helios-core submodule.
+    These tests were xfailed while the submodule pinned v1.3.78; the pin has since
+    advanced to v1.3.80 and they assert the fixed behavior directly. A regression
+    here means the core fix was lost, not that the pin is stale — the fix belongs
+    in the Helios repository, never in the vendored helios-core submodule.
     """
 
     @staticmethod

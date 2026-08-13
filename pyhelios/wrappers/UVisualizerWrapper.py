@@ -6,6 +6,7 @@ the native Helios Visualizer plugin via the C++ wrapper layer.
 """
 
 import ctypes
+import sys
 from typing import List, Optional
 
 from ..plugins import helios_lib
@@ -124,6 +125,9 @@ try:
     # Window Data Access Functions
     helios_lib.getWindowPixelsRGB.argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_uint)]
     helios_lib.getWindowPixelsRGB.restype = None
+
+    helios_lib.getWindowPixelsRGB_sized.argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getWindowPixelsRGB_sized.restype = ctypes.POINTER(ctypes.c_uint)
 
     helios_lib.getDepthMap.argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
     helios_lib.getDepthMap.restype = None
@@ -299,6 +303,35 @@ def _check_for_helios_error():
     if _ERROR_MANAGEMENT_AVAILABLE:
         check_helios_error(helios_lib.getLastErrorCode, helios_lib.getLastErrorMessage, helios_lib.clearError)
 
+
+# GLFW init hint values (GLFW 3.3, plugins/visualizer/lib/glfw-3.3.2/include/GLFW/glfw3.h)
+_GLFW_COCOA_CHDIR_RESOURCES = 0x00051001
+_GLFW_FALSE = 0
+
+
+def _suppress_glfw_cocoa_chdir():
+    """Stop GLFW from changing the process working directory during glfwInit() on macOS.
+
+    GLFW's ``GLFW_COCOA_CHDIR_RESOURCES`` init hint defaults to true, which makes glfwInit()
+    chdir into the host application bundle's Contents/Resources. A framework-build Python
+    interpreter is such a bundle, so the working directory that
+    ``Visualizer._visualizer_working_directory()`` just set is moved out from under helios before
+    it loads its runtime assets, and construction fails resolving the relative path
+    ``plugins/visualizer/textures/gradient_background.jpg``.
+
+    helios-core does not set this hint itself as of v1.3.81; it is reported upstream and expected
+    in v1.3.82, after which this call becomes a harmless no-op and can be removed. Setting the
+    hint is idempotent, only affects the next glfwInit(), and is ignored on non-Cocoa platforms.
+    """
+    if sys.platform != 'darwin':
+        return
+    try:
+        helios_lib.glfwInitHint(ctypes.c_int(_GLFW_COCOA_CHDIR_RESOURCES), ctypes.c_int(_GLFW_FALSE))
+    except AttributeError:
+        # GLFW not statically linked into this build; nothing to suppress.
+        pass
+
+
 # Wrapper functions
 
 def create_visualizer(width: int, height: int, headless: bool = False) -> Optional[ctypes.POINTER(UVisualizer)]:
@@ -323,11 +356,13 @@ def create_visualizer(width: int, height: int, headless: bool = False) -> Option
             "Rebuild with visualizer plugin enabled."
         )
     
+    _suppress_glfw_cocoa_chdir()
+
     try:
         # The errcheck callback will handle error checking and null pointer validation
         visualizer = helios_lib.createVisualizer(
             ctypes.c_uint32(width),
-            ctypes.c_uint32(height), 
+            ctypes.c_uint32(height),
             ctypes.c_bool(headless)
         )
         return visualizer
@@ -363,6 +398,8 @@ def create_visualizer_with_antialiasing(width: int, height: int, antialiasing_sa
             "Rebuild with visualizer plugin enabled."
         )
     
+    _suppress_glfw_cocoa_chdir()
+
     try:
         # The errcheck callback will handle error checking and null pointer validation
         visualizer = helios_lib.createVisualizerWithAntialiasing(

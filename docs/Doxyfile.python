@@ -136,6 +136,7 @@ INPUT                  = pyhelios \
                          docs/plugin_energybalance.md \
                          docs/plugin_leafoptics.md \
                          docs/plugin_lidar.md \
+                         docs/plugin_parameteroptimization.md \
                          docs/plugin_photosynthesis.md \
                          docs/plugin_plantarchitecture.md \
                          docs/plugin_radiation.md \

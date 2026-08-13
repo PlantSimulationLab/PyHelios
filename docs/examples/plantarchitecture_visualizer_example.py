@@ -30,6 +30,9 @@ def main():
         with PlantArchitecture(context) as plantarch:
             print("[OK] PlantArchitecture plugin available")
 
+            # Clip organs that would otherwise droop below the ground tile at z=0
+            plantarch.enableGroundClipping(0.0)
+
             # Get available plant models
             models = plantarch.getAvailablePlantModels()
             print(f"Available plant models: {len(models)}")
@@ -64,7 +67,7 @@ def main():
                 print(f"  + {species.capitalize():12} at {position} (age: {age:2.0f} days) -> ID: {plant_id}")
 
             # Simulate some growth
-            print("\nAdvancing plant growth by 7 days...")
+            print("\nAdvancing plant growth by 35 days...")
             plantarch.advanceTime(35.0)
 
             # Display plant statistics
@@ -83,6 +86,8 @@ def main():
 
             # Set up visualization
             vis.buildContextGeometry(context)
+
+            vis.setBackgroundColor(RGBcolor(0.4, 0.6, 0.9))
 
             vis.setLightingModel("phong_shadowed")
 

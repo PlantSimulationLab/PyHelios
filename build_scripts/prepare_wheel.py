@@ -222,7 +222,10 @@ def copy_assets_for_packaging(project_root):
         # abscoef.dat from "plugins/solarposition/ssolar_goa", so the source
         # path assets/ssolar_goa must be flattened to ssolar_goa at the
         # destination (see flatten_asset_dirs below).
-        'solarposition': ['assets/ssolar_goa'],
+        # enablePragueSkyModel() loads the ~26 MB dataset from
+        # "plugins/solarposition/lib/prague_sky_model", so that nested path is
+        # preserved verbatim at the destination.
+        'solarposition': ['assets/ssolar_goa', 'lib/prague_sky_model'],
         # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
     }
 

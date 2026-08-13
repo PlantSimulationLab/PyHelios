@@ -72,7 +72,7 @@ with Context() as context:
      <td>W/m<sup>2</sup></td>
      <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
      <td>PAR photon flux density. Note W/m<sup>2</sup> is automatically converted to \f$\mu\f$mol/m<sup>2</sup>/s using a factor of 4.57.</td>
-     <td>BMF</td>
+     <td>BMF, BB</td>
      <td>Can be computed by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in.</td>
      <td>0</td>
   </tr>
@@ -165,6 +165,16 @@ with Context() as context:
         <td>BBL</td>
         <td>Can be computed by \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in (need to enable optional primitive data output).</td>
         <td>100 \f$\mu\f$mol/mol</td>
+    </tr>
+    <tr>
+        <td>xylem_water_potential</td>
+        <td>\f$\Psi_x\f$</td>
+        <td>MPa</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Water potential of the xylem supplying the leaf.</td>
+        <td>BB</td>
+        <td>N/A</td>
+        <td>-0.1 MPa</td>
     </tr>
 
  </table>
@@ -571,6 +581,57 @@ Below are example parameter values for several different tree crop species (a de
        <td>0.972</td>
    </tr>
 </table>
+
+## Bailey Model Theory {#BBTheory}
+
+The Bailey model is a simplified hydromechanical model in which stomatal conductance is proportional to the guard cell turgor pressure \f$P_g\f$:
+
+\f[g_s = \beta\chi P_g,\qquad P_g = \mathrm{max}\left(0,\,\pi_g+\Psi_e\right),\f]
+
+where \f$\chi\f$ (mol/m<sup>2</sup>-s-MPa) is a proportionality constant. The guard cell osmotic pressure \f$\pi_g\f$ increases with the photosynthetic photon flux density \f$Q\f$ toward a saturating value, and both \f$\pi_g\f$ and the epidermal water potential \f$\Psi_e\f$ decrease as transpiration draws water through the xylem-to-epidermis hydraulic resistance:
+
+\f[\pi_g = \pi_0+\left(\pi_m-\pi_0\right)\frac{Q}{Q+\theta}+\sigma\left(\Psi_x-R_{xe}f_e g_s D_s\right),\f]
+\f[\Psi_e = \Psi_x-R_{xe}f_e g_s D_s,\f]
+
+where \f$\Psi_x\f$ is the xylem water potential (MPa), \f$D_s\f$ is the vapor pressure deficit between the sub-stomatal cavity and the leaf surface (calculated as described for the other models above), \f$f_e=0.5\f$ is the fraction of the epidermal water potential transmitted to the guard cells, and \f$R_{xe}=200\f$ MPa m<sup>2</sup> s/mol is the xylem-to-epidermis hydraulic resistance. \f$f_e\f$ and \f$R_{xe}\f$ are treated as fixed constants in this simplified form of the model. The parameters \f$\pi_0,\,\pi_m,\,\theta,\,\sigma,\f$ and \f$\chi\f$ are given by \ref pyhelios.StomatalConductance.BBCoefficients "BBcoefficients".
+
+Because \f$g_s\f$ appears on both sides of these expressions but enters only linearly, the implicit relation is solved in closed form rather than iterated:
+
+\f[g_s = \beta\,\mathrm{max}\left(0,\,\frac{\chi\left[\pi_0+\left(\pi_m-\pi_0\right)\frac{Q}{Q+\theta}+\left(1+\sigma\right)\Psi_x\right]}{1+\chi\left(1+\sigma\right)R_{xe}f_eD_s}\right).\f]
+
+As with the other models, \f$D_s\f$ is obtained by iteratively solving the water vapor flux balance at the leaf surface, so the Bailey model responds to the boundary-layer conductance. This model requires the xylem water potential (primitive data `xylem_water_potential`) rather than the net photosynthetic flux.
+
+\note **Changed in helios-core 1.3.80:** the Bailey model was rewritten. It is now coupled to the boundary layer in the same way as the other models — previously it used the air-to-cavity vapor pressure deficit directly and was the only model that ignored the boundary-layer conductance entirely. It also now applies the soil moisture factor \f$\beta\f$, which it previously ignored (the `beta_soil` primitive data had no effect on Bailey model results). Bailey model results will therefore differ from earlier Helios versions.
+
+## Error Conditions {#StomatalErrors}
+
+The plug-in follows a fail-fast philosophy: physically meaningless inputs produce an error rather than a silently substituted value. As of helios-core 1.3.80, \ref pyhelios.StomatalConductance.StomatalConductanceModel::run "run()" raises an error if any of the following conditions is encountered.
+
+Note that a boundary-layer conductance of exactly **zero is not an error**. It is physically attainable (a zero-size primitive, or zero wind speed) and is produced by the boundary-layer conductance plug-in in those cases. In that limit no water vapor can be exchanged with the air outside the boundary layer, so stomatal conductance no longer influences the transpiration rate and the steady-state value is taken to be \f$g_s = 0\f$. A warning is issued rather than an error. A **negative or non-finite** boundary-layer conductance, by contrast, is an error — previously it was clipped to zero with a warning, which then produced a division by zero.
+
+<table>
+    <tr><th>Condition</th><th>Reason</th></tr>
+    <tr>
+        <td>Boundary-layer conductance is negative or non-finite</td>
+        <td>It appears in the denominator of both the surface CO<sub>2</sub> balance and the vapor flux balance, and a negative value has no physical interpretation.</td>
+    </tr>
+    <tr>
+        <td>Ambient CO<sub>2</sub> concentration (\c air_CO2) is zero, negative, or non-finite</td>
+        <td>Not physically meaningful. (BWB, BBL, and Medlyn optimality models only.)</td>
+    </tr>
+    <tr>
+        <td>Surface CO<sub>2</sub> concentration \f$C_s\f$ evaluates to a non-positive value</td>
+        <td>Occurs when the assimilation rate is too large to be supplied through the given boundary-layer conductance. All three \f$A\f$-based models divide by \f$C_s\f$, so this would flip the sign of \f$g_s\f$. Note that a negative \f$A\f$ (dark respiration) legitimately gives \f$C_s>C_a\f$ and is not an error.</td>
+    </tr>
+    <tr>
+        <td>\f$C_s\le\Gamma\f$ in the Ball-Berry-Leuning model</td>
+        <td>The model has a pole at \f$C_s=\Gamma\f$, so approaching it produces an unbounded conductance.</td>
+    </tr>
+    <tr>
+        <td>A dynamic response time constant is zero, negative, or non-finite</td>
+        <td>\f$\tau\f$ appears in the denominator of the forward Euler update, and a negative value would invert the direction of the relaxation. Checked by \ref pyhelios.StomatalConductance.StomatalConductanceModel::setDynamicTimeConstants "setDynamicTimeConstants()" for both the opening and closing time constants.</td>
+    </tr>
+ </table>
 
 ## Using the Stomatal Conductance Model {#StomatalUse}
 

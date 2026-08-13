@@ -221,6 +221,15 @@ try:
     helios_lib.disableCollisionDetection.argtypes = [ctypes.POINTER(UPlantArchitecture)]
     helios_lib.disableCollisionDetection.restype = None
 
+    helios_lib.plantArchitectureEnableMessages.argtypes = [ctypes.POINTER(UPlantArchitecture)]
+    helios_lib.plantArchitectureEnableMessages.restype = None
+
+    helios_lib.plantArchitectureDisableMessages.argtypes = [ctypes.POINTER(UPlantArchitecture)]
+    helios_lib.plantArchitectureDisableMessages.restype = None
+
+    helios_lib.enableGroundClipping.argtypes = [ctypes.POINTER(UPlantArchitecture), ctypes.c_float]
+    helios_lib.enableGroundClipping.restype = None
+
     helios_lib.setSoftCollisionAvoidanceParameters.argtypes = [
         ctypes.POINTER(UPlantArchitecture),
         ctypes.c_float,  # view_half_angle_deg
@@ -410,6 +419,12 @@ try:
     ]
     helios_lib.setPlantPhenologicalThresholds.restype = ctypes.c_int
 
+    helios_lib.disablePlantPhenology.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint     # plantID
+    ]
+    helios_lib.disablePlantPhenology.restype = ctypes.c_int
+
     # Carbohydrate / nitrogen model parameter functions
     helios_lib.getDefaultCarbohydrateParametersJSON.argtypes = []
     helios_lib.getDefaultCarbohydrateParametersJSON.restype = ctypes.c_char_p
@@ -481,6 +496,9 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.getPlantAge.errcheck = _check_error
     helios_lib.getPlantHeight.errcheck = _check_error
     helios_lib.sumPlantLeafArea.errcheck = _check_error
+    helios_lib.plantArchitectureEnableMessages.errcheck = _check_error
+    helios_lib.plantArchitectureDisableMessages.errcheck = _check_error
+    helios_lib.enableGroundClipping.errcheck = _check_error
     # Collision detection error checking
     helios_lib.enableSoftCollisionAvoidance.errcheck = _check_error
     helios_lib.disableCollisionDetection.errcheck = _check_error
@@ -507,6 +525,7 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
 if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
     helios_lib.defineShootTypeFromJSON.errcheck = _check_error
     helios_lib.setPlantPhenologicalThresholds.errcheck = _check_error
+    helios_lib.disablePlantPhenology.errcheck = _check_error
     helios_lib.getDefaultCarbohydrateParametersJSON.errcheck = _check_error
     helios_lib.setPlantCarbohydrateParametersFromJSON.errcheck = _check_error
     helios_lib.getDefaultNitrogenParametersJSON.errcheck = _check_error
@@ -1150,6 +1169,34 @@ def enableSoftCollisionAvoidance(plantarch_ptr: ctypes.POINTER(UPlantArchitectur
     if result != 0:
         raise RuntimeError("Failed to enable soft collision avoidance")
 
+def enableMessages(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> None:
+    """Re-enable standard output from the plantarchitecture plugin"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    helios_lib.plantArchitectureEnableMessages(plantarch_ptr)
+
+def disableMessages(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> None:
+    """Suppress standard output from the plantarchitecture plugin"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    helios_lib.plantArchitectureDisableMessages(plantarch_ptr)
+
+def enableGroundClipping(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                         ground_height: float = 0.0) -> None:
+    """Enable automatic removal of plant organs below the ground plane"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    helios_lib.enableGroundClipping(plantarch_ptr, ctypes.c_float(ground_height))
+
 def disableCollisionDetection(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> None:
     """Disable collision detection for plant growth"""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
@@ -1617,6 +1664,23 @@ def setPlantPhenologicalThresholds(
     
     if result != 0:
         raise RuntimeError(f"Failed to set phenological thresholds for plant {plant_id}")
+
+
+def disablePlantPhenology(
+    plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+    plant_id: int
+) -> None:
+    """Disable phenological progression for a plant"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Phenological control functions not available. Rebuild with latest plantarchitecture support.")
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.disablePlantPhenology(plantarch_ptr, plant_id)
+
+    if result != 0:
+        raise RuntimeError(f"Failed to disable phenology for plant {plant_id}")
 
 # Carbohydrate / nitrogen model parameter wrapper functions
 def getDefaultCarbohydrateParameters() -> dict:

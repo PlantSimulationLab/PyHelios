@@ -235,11 +235,29 @@ PYHELIOS_API void displayImageFromFile(Visualizer* visualizer, const char* file_
 //=============================================================================
 
 /**
- * @brief Get RGB pixel data from current window
+ * @brief Get RGB pixel data from current window into a caller-allocated buffer
  * @param visualizer Pointer to the Visualizer
- * @param buffer Buffer to store pixel data (must be pre-allocated)
+ * @param buffer Buffer to store pixel data. Must hold 3*width*height elements, where width and
+ *        height come from getFramebufferSize() -- NOT getWindowSize() and NOT the dimensions
+ *        passed to the Visualizer constructor. On a high-DPI (Retina) display the framebuffer is
+ *        larger than the window, typically 2x per axis, so sizing from the window dimensions
+ *        overflows the buffer. Prefer getWindowPixelsRGB_sized(), which sizes it for you.
  */
 PYHELIOS_API void getWindowPixelsRGB(Visualizer* visualizer, unsigned int* buffer);
+
+/**
+ * @brief Get RGB pixel data from current window into a library-owned, correctly-sized buffer
+ *
+ * Wraps the std::vector overload of Visualizer::getWindowPixelsRGB(), which resizes its output to
+ * the current framebuffer dimensions and so cannot be undersized by the caller.
+ *
+ * @param visualizer Pointer to the Visualizer
+ * @param width_pixels Receives the width of the returned image in pixels
+ * @param height_pixels Receives the height of the returned image in pixels
+ * @param size Receives the number of elements in the returned buffer (3*width*height)
+ * @return Pointer to a thread-local buffer valid until the next call on this thread, or nullptr on error
+ */
+PYHELIOS_API unsigned int* getWindowPixelsRGB_sized(Visualizer* visualizer, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* size);
 
 /**
  * @brief Get depth map from current window

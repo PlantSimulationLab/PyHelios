@@ -53,6 +53,14 @@ SPECIES_ALIASES = {
 }
 
 
+# Topt sentinel: PhotosyntheticTemperatureResponseParameters stores Topt in Kelvin and uses
+# 10000 K to mean "no optimum". After conversion to Celsius that is ~9726.85, far above the
+# 100 C that helios-core's own validateOptimalTemperature accepts, so any value at or above
+# 200 C in the flat array must be the sentinel rather than user data. Mirrors
+# C4_NO_OPTIMUM_TOPT_C in native/src/pyhelios_wrapper_photosynthesis.cpp.
+_NO_OPTIMUM_TOPT_C = 200.0
+
+
 @dataclass
 class PhotosyntheticTemperatureResponseParameters:
     """
@@ -82,6 +90,17 @@ class PhotosyntheticTemperatureResponseParameters:
             raise ValueError("dHd must be finite and non-negative")
         if not math.isfinite(self.Topt) or self.Topt < 0:
             raise ValueError("Topt must be finite and non-negative")
+        # Mirrors validateDeactivationEnergy in helios-core 1.3.80: the peaked Arrhenius form
+        # evaluates ln(dHd/dHa - 1), which is undefined unless dHd > dHa. dHa <= 0 means no
+        # Arrhenius term is applied, so dHd is unused.
+        if self.dHa > 0 and self.dHd <= self.dHa:
+            raise ValueError(
+                f"Deactivation energy dHd must be strictly greater than activation energy dHa "
+                f"for a peaked temperature response. Received dHa = {self.dHa} kJ/mol and "
+                f"dHd = {self.dHd} kJ/mol. The peaked Arrhenius form evaluates "
+                f"ln(dHd/dHa - 1), which is undefined when dHd <= dHa. Increase dHd "
+                f"(a typical value is 10*dHa, or 200-600 kJ/mol) or omit dHd to use the default."
+            )
 
 
 @dataclass
@@ -139,6 +158,23 @@ class EmpiricalModelCoefficients:
             raise ValueError("Respiration activation energy cannot be negative")
         if self.kC < 0:
             raise ValueError("CO2 response coefficient cannot be negative")
+        # Mirrors the coefficient checks helios-core 1.3.80 added to the empirical
+        # temperature response f_T. Before 1.3.80 the Tmin/Topt/Tref/q coefficients were
+        # completely inert; now they drive f_T, and these two combinations make its
+        # reference denominator zero, giving an infinite or NaN assimilation rate.
+        if self.Tref <= self.Tmin:
+            raise ValueError(
+                f"Reference temperature Tref ({self.Tref} K) must be greater than the minimum "
+                f"temperature Tmin ({self.Tmin} K); otherwise the empirical temperature "
+                f"response f_T has a zero or negative reference denominator."
+            )
+        denom_ref = (1.0 + self.q) * self.Topt - self.Tmin - self.q * self.Tref
+        if abs(denom_ref) < 1e-6:
+            raise ValueError(
+                f"Empirical temperature response coefficients are degenerate: "
+                f"(1+q)*Topt - Tmin - q*Tref = {denom_ref}, which makes the reference "
+                f"denominator of f_T zero. Adjust Topt, Tmin, Tref or q."
+            )
     
     def to_array(self) -> List[float]:
         """Convert to float array for C++ interface."""
@@ -248,10 +284,13 @@ class FarquharModelCoefficients:
             self._vcmax_temp_response = PhotosyntheticTemperatureResponseParameters(vcmax_at_25c, dha)
         elif dhd is None:
             # 3-parameter version
-            self._vcmax_temp_response = PhotosyntheticTemperatureResponseParameters(vcmax_at_25c, dha, topt)
+            # C++ defaults dHd to 10*dHa for the 3-argument peaked form.
+            self._vcmax_temp_response = PhotosyntheticTemperatureResponseParameters(
+                vcmax_at_25c, dHa=dha, dHd=10.0 * dha, Topt=273.15 + topt)
         else:
             # 4-parameter version
-            self._vcmax_temp_response = PhotosyntheticTemperatureResponseParameters(vcmax_at_25c, dha, dhd, topt)
+            self._vcmax_temp_response = PhotosyntheticTemperatureResponseParameters(
+                vcmax_at_25c, dHa=dha, dHd=dhd, Topt=273.15 + topt)
         
         self.Vcmax = vcmax_at_25c
     
@@ -263,9 +302,12 @@ class FarquharModelCoefficients:
         elif topt is None:
             self._jmax_temp_response = PhotosyntheticTemperatureResponseParameters(jmax_at_25c, dha)
         elif dhd is None:
-            self._jmax_temp_response = PhotosyntheticTemperatureResponseParameters(jmax_at_25c, dha, topt)
+            # C++ defaults dHd to 10*dHa for the 3-argument peaked form.
+            self._jmax_temp_response = PhotosyntheticTemperatureResponseParameters(
+                jmax_at_25c, dHa=dha, dHd=10.0 * dha, Topt=273.15 + topt)
         else:
-            self._jmax_temp_response = PhotosyntheticTemperatureResponseParameters(jmax_at_25c, dha, dhd, topt)
+            self._jmax_temp_response = PhotosyntheticTemperatureResponseParameters(
+                jmax_at_25c, dHa=dha, dHd=dhd, Topt=273.15 + topt)
         
         self.Jmax = jmax_at_25c
     
@@ -277,9 +319,12 @@ class FarquharModelCoefficients:
         elif topt is None:
             self._rd_temp_response = PhotosyntheticTemperatureResponseParameters(rd_at_25c, dha)
         elif dhd is None:
-            self._rd_temp_response = PhotosyntheticTemperatureResponseParameters(rd_at_25c, dha, topt)
+            # C++ defaults dHd to 10*dHa for the 3-argument peaked form.
+            self._rd_temp_response = PhotosyntheticTemperatureResponseParameters(
+                rd_at_25c, dHa=dha, dHd=10.0 * dha, Topt=273.15 + topt)
         else:
-            self._rd_temp_response = PhotosyntheticTemperatureResponseParameters(rd_at_25c, dha, dhd, topt)
+            self._rd_temp_response = PhotosyntheticTemperatureResponseParameters(
+                rd_at_25c, dHa=dha, dHd=dhd, Topt=273.15 + topt)
         
         self.Rd = rd_at_25c
     
@@ -291,9 +336,12 @@ class FarquharModelCoefficients:
         elif topt is None:
             self._alpha_temp_response = PhotosyntheticTemperatureResponseParameters(alpha_at_25c, dha)
         elif dhd is None:
-            self._alpha_temp_response = PhotosyntheticTemperatureResponseParameters(alpha_at_25c, dha, topt)
+            # C++ defaults dHd to 10*dHa for the 3-argument peaked form.
+            self._alpha_temp_response = PhotosyntheticTemperatureResponseParameters(
+                alpha_at_25c, dHa=dha, dHd=10.0 * dha, Topt=273.15 + topt)
         else:
-            self._alpha_temp_response = PhotosyntheticTemperatureResponseParameters(alpha_at_25c, dha, dhd, topt)
+            self._alpha_temp_response = PhotosyntheticTemperatureResponseParameters(
+                alpha_at_25c, dHa=dha, dHd=dhd, Topt=273.15 + topt)
         
         self.alpha = alpha_at_25c
     
@@ -305,9 +353,12 @@ class FarquharModelCoefficients:
         elif topt is None:
             self._theta_temp_response = PhotosyntheticTemperatureResponseParameters(theta_at_25c, dha)
         elif dhd is None:
-            self._theta_temp_response = PhotosyntheticTemperatureResponseParameters(theta_at_25c, dha, topt)
+            # C++ defaults dHd to 10*dHa for the 3-argument peaked form.
+            self._theta_temp_response = PhotosyntheticTemperatureResponseParameters(
+                theta_at_25c, dHa=dha, dHd=10.0 * dha, Topt=273.15 + topt)
         else:
-            self._theta_temp_response = PhotosyntheticTemperatureResponseParameters(theta_at_25c, dha, dhd, topt)
+            self._theta_temp_response = PhotosyntheticTemperatureResponseParameters(
+                theta_at_25c, dHa=dha, dHd=dhd, Topt=273.15 + topt)
     
     def getVcmaxTempResponse(self) -> PhotosyntheticTemperatureResponseParameters:
         """Get Vcmax temperature response parameters."""
@@ -339,15 +390,36 @@ class FarquharModelCoefficients:
             return PhotosyntheticTemperatureResponseParameters(0.7)
         return self._theta_temp_response
     
+    def _temp_response_block(self, response: PhotosyntheticTemperatureResponseParameters,
+                             fallback_value: float) -> List[float]:
+        """Pack a temperature response into its 4-float (value, dHa, Topt_C, dHd) block.
+
+        ``Topt`` is stored in Kelvin and defaults to 10000 K to mean "no optimum". The flat
+        array carries Topt in Celsius with -1 as the no-optimum sentinel, matching
+        ``packTempResponse`` in native/src/pyhelios_wrapper_photosynthesis.cpp.
+        """
+        if response is None:
+            return [fallback_value, -1.0, -1.0, -1.0]
+        topt_c = response.Topt - 273.15
+        if topt_c >= _NO_OPTIMUM_TOPT_C:
+            topt_c = -1.0
+        return [response.value_at_25C, response.dHa, topt_c, response.dHd]
+
     def to_array(self) -> List[float]:
-        """Convert to float array for C++ interface (22 floats; helios-core 1.3.72+).
+        """Convert to float array for C++ interface (38 floats; helios-core 1.3.80+).
 
         Slots 0..17 are the legacy Farquhar fields (Vcmax/Jmax/alpha/Rd/O/TPU_flag plus
         the 12 c_*/dH_* temperature constants). Slots 18..21 carry the mesophyll
         conductance gm temperature response: (gm_at_25C, dHa, Topt_C, dHd) using the
-        -1 sentinel convention (dHa < 0 → constant gm with no temperature response,
-        Topt_C < 0 → monotonic Arrhenius, dHd < 0 → default deactivation energy).
-        Default ``gm_at_25C`` is ``+inf`` which reproduces the legacy ``Cc = Ci`` behaviour.
+        -1 sentinel convention (dHa < 0 → constant, Topt_C < 0 → monotonic Arrhenius,
+        dHd < 0 → default deactivation energy). Slots 22..37 carry the same 4-float block
+        for Vcmax, Jmax, Rd and alpha in that order.
+
+        The rate blocks in slots 22..37 exist because slots 0..3 can only express a rate at
+        25 C. As of helios-core 1.3.80 the C++ setters stamp the deprecated scalar fields to
+        -1 so the temperature-response object is authoritative, and every species in the
+        library is populated through those setters — so slots 0..3 alone cannot round-trip a
+        peaked response.
         """
         return [
             self.Vcmax, self.Jmax, self.alpha, self.Rd, self.O, float(self.TPU_flag),
@@ -357,15 +429,21 @@ class FarquharModelCoefficients:
             self.c_Ko, self.dH_Ko, self.c_Gamma, self.dH_Gamma,
             # Mesophyll conductance gm temperature response (1.3.72+)
             self.gm_at_25C, self.dHa_gm, self.Topt_gm_C, self.dHd_gm,
+            # Full rate temperature responses (1.3.80+)
+            *self._temp_response_block(self._vcmax_temp_response, self.Vcmax),
+            *self._temp_response_block(self._jmax_temp_response, self.Jmax),
+            *self._temp_response_block(self._rd_temp_response, self.Rd),
+            *self._temp_response_block(self._alpha_temp_response, self.alpha),
         ]
 
     @classmethod
     def from_array(cls, coefficients: List[float]) -> 'FarquharModelCoefficients':
         """Create from float array (from C++ interface).
 
-        Accepts both the legacy 18-float layout (pre-1.3.72) and the 22-float layout
-        with mesophyll conductance gm in slots 18..21. When the array is 18 floats,
-        gm defaults to +infinity (legacy ``Cc = Ci`` behaviour).
+        Accepts the legacy 18-float layout (pre-1.3.72), the 22-float layout with mesophyll
+        conductance gm in slots 18..21, and the 38-float layout (1.3.80+) that additionally
+        carries the Vcmax/Jmax/Rd/alpha temperature responses in slots 22..37. Shorter arrays
+        leave the corresponding responses unset, reproducing the earlier behaviour.
         """
         if len(coefficients) < 18:
             raise ValueError("Need at least 18 coefficients for Farquhar model")
@@ -375,7 +453,7 @@ class FarquharModelCoefficients:
         Topt_gm_C = coefficients[20] if len(coefficients) > 20 else -1.0
         dHd_gm = coefficients[21] if len(coefficients) > 21 else -1.0
 
-        return cls(
+        instance = cls(
             Vcmax=coefficients[0], Jmax=coefficients[1], alpha=coefficients[2],
             Rd=coefficients[3], O=coefficients[4], TPU_flag=int(coefficients[5]),
             c_Vcmax=coefficients[6], dH_Vcmax=coefficients[7],
@@ -386,6 +464,21 @@ class FarquharModelCoefficients:
             c_Gamma=coefficients[16], dH_Gamma=coefficients[17],
             gm_at_25C=gm_at_25C, dHa_gm=dHa_gm, Topt_gm_C=Topt_gm_C, dHd_gm=dHd_gm,
         )
+
+        if len(coefficients) >= 38:
+            for offset, setter in ((22, instance.setVcmax), (26, instance.setJmax),
+                                   (30, instance.setRd), (34, instance.setQuantumEfficiency_alpha)):
+                value, dha, topt, dhd = coefficients[offset:offset + 4]
+                if dha < 0:
+                    setter(value)
+                elif topt < 0:
+                    setter(value, dha)
+                elif dhd < 0:
+                    setter(value, dha, topt)
+                else:
+                    setter(value, dha, topt, dhd)
+
+        return instance
 
 
 def validate_species_name(species: str) -> str:

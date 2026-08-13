@@ -222,13 +222,12 @@ def main():
     
     # ==================== PRIMITIVE DATA EXAMPLE ====================
     print("\n7. Primitive Data (User-defined key-value pairs)")
-    print("   Note: Primitive data methods require additional C++ wrapper implementation")
-    print("   This demonstrates the intended API for user-defined metadata:")
-    print("   - context.setPrimitiveData(uuid, 'temperature', 25.5)")
-    print("   - context.setPrimitiveData(uuid, 'material_id', 42)")
-    print("   - context.setPrimitiveData(uuid, 'source_file', 'imported_model.obj')")
+    print("   Setters are type-specific; the getter auto-detects the stored type:")
+    print("   - context.setPrimitiveDataFloat(uuid, 'temperature', 25.5)")
+    print("   - context.setPrimitiveDataInt(uuid, 'material_id', 42)")
+    print("   - context.setPrimitiveDataString(uuid, 'source_file', 'imported_model.obj')")
     print("   - temp = context.getPrimitiveData(uuid, 'temperature')  # Auto-detects type")
-    print("   - temp = context.getPrimitiveData(uuid, 'temperature', float)  # Explicit type (optional)")
+    print("   See docs/examples/primitive_data_sample.py for a runnable demonstration.")
     
     # ==================== INTEGRATION WITH POPULAR LIBRARIES ====================
     print("\n8. Integration with Popular Python 3D Libraries")

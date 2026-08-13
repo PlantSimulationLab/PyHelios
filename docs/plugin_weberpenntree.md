@@ -102,7 +102,7 @@ The \ref pyhelios.WeberPennTree.WeberPennTree "WeberPennTree" class is initializ
       <nSplitAngle> 40 10 10 0 </nSplitAngle>
       <nSplitAngleV> 0 0 0 0 </nSplitAngleV>
       <nCurveRes> 8 5 3 1 </nCurveRes>
-      <nCurve> -60 -40 10 </nCurve>
+      <nCurve> -60 -40 10 0 </nCurve>
       <nCurveV> 0 0 0 0 </nCurveV>
       <nCurveBack> 0 -70 0 0 </nCurveBack>
       <nLength> 1 0.6 0.4 0.3 </nLength>
@@ -128,6 +128,8 @@ The \ref pyhelios.WeberPennTree.WeberPennTree "WeberPennTree" class is initializ
 The WeberPennTree member function \ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree()" is used to add and instance of a tree from the library. This function takes two required arguments in addition to one optional argument. The user must specify 1) the label for the tree as defined in the tree library XML file (see above), and 2) the (x,y,z) position to place the tree (note that this position is with respect to the base of the trunk). A third optional argument specifies a scaling factor to apply to the tree, where scale<1 makes the tree smaller, and scale>1 makes the tree bigger. The \ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree()" function returns a uint that gives an identifier for the particular instance of the tree. This can be used later to reference the tree.
 
 The tree building process involves adding primitives to the Helios context that comprise a particular tree geometry. The UUIDs for the primitives that comprise trees can be queried via the functions \ref pyhelios.WeberPennTree.WeberPennTree::getTrunkUUIDs "getTrunkUUIDs()", \ref pyhelios.WeberPennTree.WeberPennTree::getBranchUUIDs "getBranchUUIDs()", and \ref pyhelios.WeberPennTree.WeberPennTree::getLeafUUIDs "getLeafUUIDs()" along with the identifier of the tree.
+
+Note that these functions, along with \ref pyhelios.WeberPennTree.WeberPennTree::getAllUUIDs "getAllUUIDs()", prune the UUIDs of any primitives that have since been deleted from the Context, so only UUIDs that currently exist in the Context are returned.
 
 <table>
  <tr><th>Tree Building Functions</th></tr>
@@ -163,7 +165,7 @@ User-specified XML tree library files can be utilized via the \ref pyhelios.Webe
 
 ![](images/weberpenntree/Sketch_RLevels.jpeg)
 
- The general idea behind the tree geometries is by specifying parameters that define the growth pattern of recursive branching levels (see figure above).  The base structure of the tree is the trunk, which is the 0th recursive level.  Braches are considered "children" of their "parent", which in this case is the trunk.  The first branching level is dependent on the size and orientation of the trunk.  Further levels of recursion are created by generating branches that are children of the previous branching level.  Each branching level follows the same set of rules but has different parameters that define the way they grow.  The number of recursion levels is given by the parameter <b>Levels</b>.  Importantly, the last level of recursion always corresponds to leaves, which follows the same general rules as branches.  So setting Levels = 3 would give a trunk, two branching levels, plus leaves.
+ The general idea behind the tree geometries is by specifying parameters that define the growth pattern of recursive branching levels (see figure above).  The base structure of the tree is the trunk, which is the 0th recursive level.  Braches are considered "children" of their "parent", which in this case is the trunk.  The first branching level is dependent on the size and orientation of the trunk.  Further levels of recursion are created by generating branches that are children of the previous branching level.  Each branching level follows the same set of rules but has different parameters that define the way they grow.  The number of recursion levels is given by the parameter <b>Levels</b>.  Importantly, the last level of recursion always corresponds to leaves, which follows the same general rules as branches.  So setting Levels = 3 would give a trunk, two branching levels, plus leaves.  Because the leaves are placed at recursion level Levels, <b>Levels</b> must be between 1 and 3, and each of the per-level parameter arrays described below must be given at least Levels+1 values.  A tree definition that violates either requirement, or that gives a value of `nCurveRes` less than 1 for any level, is rejected with an error naming the offending parameter when the library is loaded with \ref pyhelios.WeberPennTree.WeberPennTree::loadXML "loadXML()" (or when the underlying C++ `setTreeParameters()` is called).
 
  Many parameter names are prepended with the letter "n", which indicates that these parameters vary with recursion level.  For example, the parameter <b>Scale</b> is a scaling factor applied to the whole tree, and thus it does not depend on the recursion level.  The parameter <b>nBraches</b> gives the maximum number of branches <b>for each recursion level</b> (note the "n" in the name), and therefore can have a different value for each recursion level.  Below, each recursion level will be referred to by replacing "n" by the level number (e.g., 0Branches, 1Branches, 2Branches, etc.).
 
@@ -229,25 +231,27 @@ User-specified XML tree library files can be utilized via the \ref pyhelios.Webe
 
   <center>\f$\sum\limits_{i=1}^N\,g_{L,i}\Delta \theta_L=1\f$</center>
 
-  If this condition is not met by the PDF input by the user, the program will ignore it and revert to the default behavior.
+  If this condition is not met by the PDF input by the user, an error is thrown when the tree library XML file is loaded by \ref pyhelios.WeberPennTree.WeberPennTree::loadXML "loadXML()". The error message reports the value that the given PDF integrates to, the value the entries must sum to for the number of inclination classes given (\f$1/\Delta \theta_L\f$, where \f$\Delta \theta_L = \pi/N\f$), and the factor to divide each value by in order to normalize the distribution. The tolerance is 0.001.
 
 As a simple example, imagine we had only one leaf with an inclination of \f$\theta_L=0.1\f$ rad. This leaf would fall in the first discrete bin of \f$g_L\f$, which would have a value of \f$1/\Delta \theta_L\f$ and all other bins would be zero.
 
 For a typical almond tree, the PDF for N=18 is tabulated below. Note that we have the capability to have leaves pointing upward from their base (\f$\theta_L<\pi/2\f$) or leaves pointiing downward from their base (\f$\theta_L>\pi/2\f$). For simplicity, the distribution below considers only upward-facing normals.
 
+> **Note:** The inclination is applied as a rotation of the leaf about its own axis, so a leaf placed at \f$\theta_L\f$ and one placed at \f$\pi-\theta_L\f$ have normals that differ only in sign. If the leaf inclination angle is subsequently measured from the primitive normal (e.g. as \f$\mathrm{acos}(|n_z|)\f$), the two are indistinguishable, and a measured distribution will therefore appear folded onto the range 0 to \f$\pi/2\f$. Specifying probability mass above \f$\pi/2\f$ still affects which way the leaf faces, but it cannot be recovered from the leaf normal alone.
+
   <center>
   <table>
   <caption>Typical leaf angle distribution for almond</caption>
   <tr><th>\f$\theta_L\f$ bin (degrees)</th><th>\f$g_L(\theta_L)\f$</th></tr>
-  <tr><td>0-10</td><td>0.229</td></tr>
-  <tr><td>10-20</td><td>0.665</td></tr>
-  <tr><td>20-30</td><td>0.917</td></tr>
-  <tr><td>30-40</td><td>0.945</td></tr>
-  <tr><td>40-50</td><td>0.865</td></tr>
-  <tr><td>50-60</td><td>0.745</td></tr>
-  <tr><td>60-70</td><td>0.619</td></tr>
-  <tr><td>70-80</td><td>0.424</td></tr>
-  <tr><td>80-90</td><td>0.315</td></tr>
+  <tr><td>0-10</td><td>0.2294</td></tr>
+  <tr><td>10-20</td><td>0.6662</td></tr>
+  <tr><td>20-30</td><td>0.9187</td></tr>
+  <tr><td>30-40</td><td>0.9467</td></tr>
+  <tr><td>40-50</td><td>0.8666</td></tr>
+  <tr><td>50-60</td><td>0.7464</td></tr>
+  <tr><td>60-70</td><td>0.6201</td></tr>
+  <tr><td>70-80</td><td>0.4248</td></tr>
+  <tr><td>80-90</td><td>0.3106</td></tr>
   <tr><td>90-100</td><td>0</td></tr>
   <tr><td>100-110</td><td>0</td></tr>
   <tr><td>110-120</td><td>0</td></tr>
@@ -270,7 +274,7 @@ For a typical almond tree, the PDF for N=18 is tabulated below. Note that we hav
       <!--
       Many other parameters here
       -->
-      <LeafAngleDist>0.2290 0.6650 0.9170 0.9450 0.8650 0.7450 0.6190 0.4240 0.3100 0 0 0 0 0 0 0 0 0</LeafAngleDist>
+      <LeafAngleDist>0.2294 0.6662 0.9187 0.9467 0.8666 0.7464 0.6201 0.4248 0.3106 0 0 0 0 0 0 0 0 0</LeafAngleDist>
     </WeberPennTree>
 
   </helios>

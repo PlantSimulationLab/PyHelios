@@ -535,7 +535,8 @@ class PlantArchitecture:
         'distribution' and 'parameters'.
 
         Args:
-            shoot_type_label: Label for the shoot type (e.g., "stem", "branch")
+            shoot_type_label: Label for the shoot type. Labels are species-specific,
+                e.g. "trifoliate" (bean), "trunk"/"scaffold" (almond).
             return_typed: If True, return a typed
                 :class:`pyhelios.plant_architecture_params.ShootParameters`
                 object instead of a plain nested dict.
@@ -554,11 +555,11 @@ class PlantArchitecture:
 
         Example:
             >>> plantarch.loadPlantModelFromLibrary("bean")
-            >>> params = plantarch.getCurrentShootParameters("stem")
+            >>> params = plantarch.getCurrentShootParameters("trifoliate")
             >>> print(params['max_nodes'])
-            {'distribution': 'constant', 'parameters': [15.0]}
+            {'distribution': 'constant', 'parameters': [25.0]}
             >>> print(params['phytomer_parameters']['leaf']['pitch'])
-            {'distribution': 'constant', 'parameters': [0.0]}
+            {'distribution': 'normal', 'parameters': [0.0, 20.0]}
         """
         if not shoot_type_label:
             raise ValueError("Shoot type label cannot be empty")
@@ -599,7 +600,7 @@ class PlantArchitecture:
         Example:
             >>> from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
             >>> plantarch.loadPlantModelFromLibrary("bean")
-            >>> sp = plantarch.getCurrentShootParameters("stem", return_typed=True)
+            >>> sp = plantarch.getCurrentShootParameters("trifoliate", return_typed=True)
             >>> sp.max_nodes = RandomParameterFloat.constant(20)
             >>> sp.phytomer_parameters.leaf.pitch = RandomParameterFloat.uniform(40, 50)
             >>> plantarch.defineShootType("TallStem", sp)
@@ -1264,6 +1265,47 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to set phenological thresholds for plant {plant_id}: {e}")
 
+    def disablePlantPhenology(self, plant_id: int) -> None:
+        """
+        Disable phenological progression for a plant.
+
+        The plant continues to grow, but no phenological stage is ever scheduled: it does not
+        enter dormancy, and flower and fruit stages are skipped. This is the explicit form of the
+        state a plant is already in when :meth:`setPlantPhenologicalThresholds` has never been
+        called on it, so it is mainly useful for turning phenology back off on a plant that had
+        thresholds set earlier.
+
+        Args:
+            plant_id: Identifier of the plant whose phenology is to be disabled
+
+        Warning:
+            helios-core's ``disablePlantPhenology()`` sets ``dd_to_fruit_maturity`` to ``-1``,
+            whereas the "no phenology scheduled" default for that field is ``1e6``. The field is
+            used as a divisor in the fruit-growth branch of ``advanceTime()``, which is gated only
+            on a bud being in the ``BUD_FRUITING`` state, and ``appendPhytomerToShoot()`` can set
+            that state from shoot structure alone. On a plant that already has a fruiting bud, a
+            subsequent ``advanceTime()`` can therefore compute a negative fruit scale factor. Avoid
+            calling this on a plant with fruiting buds until it is fixed upstream; a plant that
+            never had thresholds set is already in the no-phenology state and does not need it.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If disabling phenology fails
+
+        Example:
+            >>> plantarch.setPlantPhenologicalThresholds(plant_id, 60, 90, 105, 120, 200, 280)
+            >>> plantarch.disablePlantPhenology(plant_id)  # growth only, no dormancy or fruiting
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.disablePlantPhenology(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to disable phenology for plant {plant_id}: {e}")
+
     # Collision detection methods
     def enableSoftCollisionAvoidance(self,
                                     target_object_UUIDs: Optional[List[int]] = None,
@@ -1317,6 +1359,73 @@ class PlantArchitecture:
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to enable soft collision avoidance: {e}")
+
+    def enableGroundClipping(self, ground_height: float = 0.0) -> None:
+        """
+        Enable automatic removal of plant organs that fall below the ground plane.
+
+        Organ vertices below `ground_height` are clipped as plant geometry is
+        built, which prevents drooping leaves and low branches from poking
+        through a ground tile.
+
+        Args:
+            ground_height: Height of the ground plane (default 0.0)
+
+        Raises:
+            ValueError: If ground_height is not a number
+            PlantArchitectureError: If the call fails
+
+        Example:
+            >>> plantarch.enableGroundClipping(0.0)
+            >>> plantarch.advanceTime(30.0)
+        """
+        self._check_context_alive()
+
+        if isinstance(ground_height, bool) or not isinstance(ground_height, (int, float)):
+            raise ValueError(f"Ground height must be a number, got {type(ground_height).__name__}")
+
+        try:
+            plantarch_wrapper.enableGroundClipping(self._plantarch_ptr, float(ground_height))
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable ground clipping: {e}")
+
+    def disableMessages(self) -> None:
+        """
+        Suppress standard output from the plantarchitecture plugin.
+
+        This silences progress bars and informational messages the C++ plugin
+        writes to stdout, including the "BVH not cached" warning emitted during
+        the first growth steps of a collision-enabled canopy (before any plant
+        geometry exists for the BVH to contain).
+
+        Raises:
+            PlantArchitectureError: If the call fails
+
+        Example:
+            >>> plantarch.disableMessages()
+            >>> plantarch.advanceTime(30.0)  # runs quietly
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.disableMessages(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to disable messages: {e}")
+
+    def enableMessages(self) -> None:
+        """
+        Re-enable standard output from the plantarchitecture plugin.
+
+        Raises:
+            PlantArchitectureError: If the call fails
+
+        Example:
+            >>> plantarch.enableMessages()
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.enableMessages(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable messages: {e}")
 
     def disableCollisionDetection(self) -> None:
         """
@@ -1519,15 +1628,17 @@ class PlantArchitecture:
             PlantArchitectureError: If static obstacle configuration fails
 
         Note:
-            Call this method BEFORE enabling collision avoidance for best performance.
+            Collision avoidance must be enabled BEFORE calling this method -- the
+            native call raises "Collision detection must be enabled before setting
+            static obstacles" otherwise.
             Static obstacles cannot be modified or moved after being marked static.
 
         Example:
-            >>> # Mark ground and building geometry as static
+            >>> # Enable collision avoidance first
+            >>> plantarch.enableSoftCollisionAvoidance()
+            >>> # Then mark ground and building geometry as static
             >>> static_uuids = ground_uuids + building_uuids
             >>> plantarch.setStaticObstacles(static_uuids)
-            >>> # Now enable collision avoidance
-            >>> plantarch.enableSoftCollisionAvoidance()
         """
         if not target_UUIDs:
             raise ValueError("target_UUIDs list cannot be empty")
@@ -2061,7 +2172,7 @@ class PlantArchitecture:
             PlantArchitectureError: If shoot creation fails or shoot type doesn't exist
 
         Example:
-            >>> from pyhelios import AxisRotation
+            >>> from pyhelios.types import vec3, AxisRotation
             >>>
             >>> # REQUIRED: Load a plant model to define shoot types
             >>> plantarch.loadPlantModelFromLibrary("bean")
@@ -2069,7 +2180,10 @@ class PlantArchitecture:
             >>> # Create empty plant for custom building
             >>> plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
             >>>
-            >>> # Add base stem using shoot type from loaded model
+            >>> # Add base stem using a shoot type from the loaded model. Labels are
+            >>> # species-specific: bean defines "unifoliate"/"trifoliate", almond
+            >>> # defines "trunk"/"scaffold"/"proleptic"/"sylleptic". There is no
+            >>> # generic "stem" type.
             >>> shoot_id = plantarch.addBaseStemShoot(
             ...     plant_id=plant_id,
             ...     current_node_number=1,
@@ -2079,7 +2193,7 @@ class PlantArchitecture:
             ...     internode_length_scale_factor_fraction=1.0,
             ...     leaf_scale_factor_fraction=1.0,
             ...     radius_taper=0.9,            # Gradual taper
-            ...     shoot_type_label="stem"      # Must match loaded model
+            ...     shoot_type_label="trifoliate"  # Must match loaded model
             ... )
         """
         if plant_id < 0:
@@ -2172,7 +2286,7 @@ class PlantArchitecture:
             ...     internode_length_scale_factor_fraction=1.0,
             ...     leaf_scale_factor_fraction=0.8,  # Smaller leaves
             ...     radius_taper=0.85,
-            ...     shoot_type_label="stem"
+            ...     shoot_type_label="trifoliate"
             ... )
         """
         if plant_id < 0:
@@ -2273,13 +2387,13 @@ class PlantArchitecture:
             ...     internode_length_scale_factor_fraction=1.0,
             ...     leaf_scale_factor_fraction=0.9,
             ...     radius_taper=0.8,
-            ...     shoot_type_label="stem"
+            ...     shoot_type_label="trifoliate"
             ... )
             >>>
             >>> # Add second branch from opposite petiole
             >>> branch_id2 = plantarch.addChildShoot(
             ...     plant_id, main_shoot_id, 3, 1, AxisRotation(45, 270, 0),
-            ...     0.005, 0.06, 1.0, 0.9, 0.8, "stem", petiole_index=1
+            ...     0.005, 0.06, 1.0, 0.9, 0.8, "trifoliate", petiole_index=1
             ... )
         """
         if plant_id < 0:

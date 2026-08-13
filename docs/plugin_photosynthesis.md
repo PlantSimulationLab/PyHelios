@@ -320,6 +320,8 @@ As \f$T_{opt}\f$ \f$\to \infty\f$, then the peaked form approaches the standard,
 
 In the Photosynthesis Plugin, the Arrhenius form will be assumed as it requires fewer parameters, unless the additional parameters \f$dH_d\f$ and \f$T_{opt}\f$ are specified by the user.
 
+\warning The peaked form evaluates \f$\ln\left(dH_d/dH_a-1\right)\f$, which requires \f$dH_d > dH_a\f$. As of helios-core 1.3.80, supplying \f$dH_d \le dH_a\f$ to a **four-argument** setter raises an error rather than silently producing NaN. This affects `setVcmax()`, `setJmax()`, `setRd()`, `setQuantumEfficiency_alpha()`, `setTPU()`, `setLightResponseCurvature_theta()` and `setMesophyllConductance_gm()` when called with all four arguments. The three-argument (\f$k_{25}\f$, \f$dH_a\f$, \f$T_{opt}\f$) setters are unaffected: they default \f$dH_d = 10\,dH_a\f$, which always satisfies the constraint.
+
 | Parameter | Description                            | Units                     |
 | --------- | -------------------------------------- | ------------------------- |
 | \f$k_{25}\f$  | reference rate at 25\f$^\circ\f$C     | \f$\mu mol\,m^{-2}\,s^{-1}\f$ |
@@ -357,21 +359,27 @@ The table below gives example model parameters obtained for several different sp
 
 | Species            | \f$V_{cmax25}\f$ | \f$J_{max25}\f$ | \f$TPU_{25}\f$ | \f$R_{d25}\f$ | \f$\alpha\f$ | \f$\theta\f$ | \f$\Delta H_{a,Vcmax}\f$ | \f$T _{opt,Vcmax}\f$ | \f$\Delta H_{d,Vcmax}\f$ | \f$\Delta H_{a,Jmax}\f$ | \f$T _{opt,Jmax}\f$ | \f$\Delta H_{d,Jmax}\f$ | \f$\Delta H_{a,TPU}\f$ | \f$T _{opt,TPU}\f$ | \f$\Delta H_{d,TPU}\f$ |
 | ----------         | ------------ | ----------- | ---------- | --------- | -------- | -------- | -------------------- | ---------------- | -------------------- | ------------------- | --------------- | ------------------- | ------------------ | -------------- | ------------------ |
-| Almond             | 105.9        | 166.34      | --         | 1.49      | 0.336    | 0        | 65.33                | --               | --                   | 46.36               | --              | --                  | --                 | --             | --                 |
+| Almond             | 72.6         | 144.2       | 6.4        | 0.2       | 0.094    | 0        | 27.3                 | 315.3            | 478.4                | 64.1                | 314.9           | 508.4               | 37.1               | 311.3          | 477.9              |
 | California Bay     | 97.5         | 193         | 3.3        | 0.1       | 0.037    | 0        | 49.1                 | 308.6            | 505.8                | 34                  | 308.5           | 456.7               | 0.1                | 309.4          | 477.5              |
 | Elderberry         | 37.7         | 149.7       | 7.3        | 1.3       | 0.202    | 0.472    | 66                   | 319.4            | 496                  | 24.5                | 314.8           | 492.9               | 33.6               | 314.5          | 497.5              |
 | Grape              | 74.5         | 180.2       | 7.7        | 1.3       | 0.304    | 0        | 76.1                 | 318.8            | 499.8                | 23                  | 313.8           | 502.3               | 24                 | 314.6          | 496.4              |
 | Maple              | 96.4         | 168         | 2.7        | 0.1       | 0.077    | 0        | 48.9                 | 307.1            | 505                  | 8.5                 | 304.7           | 476.7               | 32.1               | 308.3          | 471.6              |
 | Olive              | 75.9         | 170.4       | 8.3        | 1.9       | 0.398    | 0        | 55.4                 | 315.2            | 497                  | 32.2                | 312.5           | 493.4               | 37.2               | 311.7          | 498.9              |
-| Pistachio (female) | 138.99       | 221.76      | --         | 2.85      | 0.366    | 0        | 65.33                | --               | --                   | 43.80               | --              | --                  | --                 | --             | --                 |
+| Pistachio (female) | 101.8        | 223.0       | 9.8        | 1.5       | 0.216    | 0.65     | 56.5                 | 316.6            | 483.1                | 27.7                | 314.6           | 458.5               | 39.9               | 315.4          | 494.3              |
 | Pistachio (male)   | 154.17       | 243.20      | --         | 2.05      | 0.335    | 0        | 65.33                | --               | --                   | 50.89               | --              | --                  | --                 | --             | --                 |
 | Toyon              | 52.8         | 142.4       | 6.6        | 0.8       | 0.29     | 0.532    | 42.1                 | 315.1            | 483                  | 9                   | 313             | 486.2               | 14                 | 314.8          | 493.8              |
-| Walnut             | 121.85       | 197.25      | --         | 1.96      | 0.404    | 0        | 65.33                | --               | --                   | 48.35               | --              | --                  | --                 | --             | --                 |
+| Walnut             | 81.6         | 201.9       | 10.2       | 0.9       | 0.362    | 0        | 85.3                 | 316.5            | 500.6                | 41.4                | 308.6           | 308.2               | 21.9               | 310.4          | 434.9              |
 | Redbud             | 68.5         | 132.4       | 6.6        | 0.8       | 0.41     | 0.04     | 66.6                 | 315.1            | 496                  | 41.2                | 313.1           | 474                 | 34.3               | 312.8          | 463.2              |
 | Apple              | 101.08       | 167.03      | --         | 3.00      | 0.432    | 0        | 65.33                | --               | --                   | 47.62               | --              | --                  | --                 | --             | --                 |
 | Cherry             | 75.65        | 129.06      | --         | 2.12      | 0.404    | 0        | 65.33                | --               | --                   | 48.49               | --              | --                  | --                 | --             | --                 |
 | Pear               | 107.69       | 176.71      | --         | 1.51      | 0.274    | 0        | 65.33                | --               | --                   | 46.04               | --              | --                  | --                 | --             | --                 |
 | Prune              | 75.88        | 129.41      | --         | 1.65      | 0.402    | 0        | 65.33                | --               | --                   | 48.58               | --              | --                  | --                 | --             | --                 |
+
+All \f$T_{opt}\f$ values in the table are in Kelvin, matching the \f$T_{opt}\f$ convention of the temperature response equations above. Note that the PyHelios and C++ setter functions take \f$T_{opt}\f$ in **degrees Celsius**, so a table entry of 315.3 K is passed to `setVcmax()` as `42.15`. A `--` in a \f$T_{opt}\f$ or \f$\Delta H_d\f$ column means that species uses the unpeaked Arrhenius form for that rate; a `--` in the \f$TPU_{25}\f$ column means TPU limitation is disabled for that species.
+
+\note As of helios-core 1.3.80, Almond, Pistachio (female) and Walnut were re-fit to the **peaked** temperature response with **TPU limitation enabled** (previously they used the unpeaked Arrhenius form with no TPU term). The Prune \f$R_{d25}\f$ was also updated to 1.65. Results from these four species will differ from earlier Helios versions.
+
+\note Pistachio is available as two separate cultivar fits. The species keys `"PistachioFemale"` and the bare key `"Pistachio"` both select the female parameter set. The key `"PistachioMale"` selects the separate male fit, which uses the unpeaked Arrhenius form with no TPU limitation.
 
 #### Setting FvCB Model Parameters {#FvCBSettingPhotoParams}
 
@@ -393,6 +401,20 @@ Each parameter has a setter function, which is the means by which the underlying
 2. Non-rectangular hyperbola: Call both setter functions \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setQuantumEfficiency_alpha "setQuantumEfficiency_alpha()" and \ref pyhelios.types.photosynthesis.FarquharModelCoefficients::setLightResponseCurvature_theta "setLightResponseCurvature_theta()". This will enable the non-rectangular hyperbola light response. Each of these can also be called with multiple arguments to specify a temperature response as described above.
 
 Note that the parameter sets in the library vary in terms of which response functions are used based on the data available for parameter fitting.
+
+<u>Deprecated Scalar Fields</u>
+
+\warning \ref pyhelios.types.photosynthesis.FarquharModelCoefficients "FarquharModelCoefficients" also exposes the scalar fields `Vcmax`, `Jmax`, `Rd` and `alpha`, which are **deprecated legacy parameters** retained only for backwards compatibility. Assigning one directly (rather than calling the setter) selects a simple non-peaked Arrhenius response built from the corresponding `c_*`/`dH_*` coefficient, bypassing the temperature response object entirely. As of helios-core 1.3.80, calling the matching setter resets the scalar field to its `-1` sentinel so that the setter is always authoritative — the two representations can no longer silently disagree about which value the model uses. Prefer the setter API in new code; mixing the two is not supported.
+
+Because every species in the library is populated through the setters, the scalar fields alone cannot round-trip a peaked response. PyHelios therefore passes a flat coefficient array of **38 floats** across the C++ interface:
+
+| Slots | Contents |
+| ----- | -------- |
+| 0–17  | Legacy fields: `Vcmax`, `Jmax`, `alpha`, `Rd`, `O`, `TPU_flag`, then the 12 `c_*`/`dH_*` temperature constants |
+| 18–21 | Mesophyll conductance \f$g_m\f$ response: (`gm_at_25C`, `dHa`, `Topt_C`, `dHd`) |
+| 22–37 | Full temperature response blocks of (`value_at_25C`, `dHa`, `Topt_C`, `dHd`) for \f$V_{cmax}\f$, \f$J_{max}\f$, \f$R_d\f$, \f$\alpha\f$, in that order |
+
+Each 4-float block uses the `-1` sentinel convention: `dHa < 0` means constant (no temperature response), `Topt_C < 0` means a monotonic Arrhenius response, and `dHd < 0` means the default deactivation energy. Note that `Topt_C` is stored in **degrees Celsius**, not Kelvin. Because slots 22–37 carry the full response, a peaked response round-trips correctly through \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::getFarquharModelCoefficients "getFarquharModelCoefficients()" and \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharModelCoefficients "setFarquharModelCoefficients()". Shorter arrays are still accepted on read for backwards compatibility (the 18-float layout predating \f$g_m\f$, and the 22-float layout predating the rate response blocks); the corresponding responses are simply left unset.
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
@@ -497,7 +519,13 @@ It is assumed that the maximum CO<sub>2</sub> assimilation rate \f$A_{max}\f$ de
 
    \f$f_T(T_s) = \left(\dfrac{T_s-T_{min}}{T_{ref}-T_{min}}\right)^q\left(\dfrac{(1+q)T_{opt}-T_{min}-qT_s}{(1+q)T_{opt}-T_{min}-qT_{ref}}\right)\f$,
 
-   where \f$T_{min}\f$ is the minimum temperature at which assimilation occurs, \f$T_{opt}\f$ is the temperature at which the maximum assimilation rate occurs, \f$T_{ref}\f$ is the reference temperature chosen to define \f$A_{ref}\f$, and \f$q\f$ is a shape parameter.
+   where \f$T_{min}\f$ is the minimum temperature at which assimilation occurs, \f$T_{opt}\f$ is the temperature at which the maximum assimilation rate occurs, \f$T_{ref}\f$ is the reference temperature chosen to define \f$A_{ref}\f$, and \f$q\f$ is a shape parameter. All four are in Kelvin (\f$q\f$ is unitless).
+
+\note **Changed in helios-core 1.3.80:** the empirical model now actually applies \f$f_T\f$. In earlier versions the \f$T_{min}\f$, \f$T_{opt}\f$, \f$T_{ref}\f$ and \f$q\f$ coefficients were settable and were serialized, but were completely **inert** — a leaf at 5 &deg;C and a leaf at 45 &deg;C returned the same gross assimilation rate. Gross assimilation is now scaled by \f$f_T\f$ as the equation \f$A = A_{sat}f_Lf_Tf_C-R_d\f$ has always claimed, so empirical-model results will differ from earlier Helios versions wherever the leaf temperature is away from \f$T_{ref}\f$.
+
+   \f$f_T\f$ is clamped to zero outside the range over which it is defined: at or below \f$T_{min}\f$, and above the upper temperature at which the second factor \f$\left((1+q)T_{opt}-T_{min}-qT_s\right)\f$ changes sign. In those regimes gross assimilation is zero and the net rate reduces to \f$A = -R_d\f$. \f$f_T\f$ therefore never goes negative.
+
+\warning Coefficient sets that make the reference denominator of \f$f_T\f$ degenerate are rejected with an error. The coefficients must satisfy \f$T_{ref} > T_{min}\f$ and \f$(1+q)T_{opt}-T_{min}-qT_{ref} \neq 0\f$. This validation is performed **before** the \f$T_s \le T_{min}\f$ early return, so an invalid coefficient set raises on every timestep regardless of the leaf temperature — it will not be silently skipped on cold timesteps and reported as a well-formed \f$A = -R_d\f$.
 
    The "dark" respiration rate \f$R_d\f$ is assumed to increase exponentially with temperature following the Arrhenius equation (and assumed not to vary with ambient CO<sub>2</sub> concentration).  Thus, the dark respiration rate is calculated simply as
 

@@ -842,6 +842,72 @@ PYHELIOS_API unsigned int addTileObject_texture(helios::Context* context, float*
  */
 PYHELIOS_API unsigned int addTileObject_texture_repeat(helios::Context* context, float* center, float* size, float* rotation, int* subdiv, const char* texturefile, int* texture_repeat);
 
+/*
+ * addAdaptiveTileObject - 4 overloads.
+ *
+ * The helios::AdaptiveTileRefinement struct is marshalled across the C ABI as a flat array of 5
+ * floats, in the same order helios uses to serialize it to XML:
+ *   [0] target.x, [1] target.y, [2] subpatch_size_min, [3] subpatch_size_max, [4] transition_exponent
+ */
+
+/**
+ * @brief Add an adaptive-resolution tiled patch object (basic)
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param refinement Array of 5 floats [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+ * @return Object ID of new adaptive tile object
+ */
+PYHELIOS_API unsigned int addAdaptiveTileObject_basic(helios::Context* context, float* center, float* size, float* rotation, float* refinement);
+
+/**
+ * @brief Add an adaptive-resolution tiled patch object with color
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param refinement Array of 5 floats [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+ * @param color Array of 3 floats [r, g, b] for color
+ * @return Object ID of new adaptive tile object
+ */
+PYHELIOS_API unsigned int addAdaptiveTileObject_color(helios::Context* context, float* center, float* size, float* rotation, float* refinement, float* color);
+
+/**
+ * @brief Add an adaptive-resolution tiled patch object with texture
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param refinement Array of 5 floats [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+ * @param texturefile Path to texture image file
+ * @return Object ID of new adaptive tile object
+ */
+PYHELIOS_API unsigned int addAdaptiveTileObject_texture(helios::Context* context, float* center, float* size, float* rotation, float* refinement, const char* texturefile);
+
+/**
+ * @brief Add an adaptive-resolution tiled patch object with texture and repeat
+ * @param context Pointer to the Context
+ * @param center Array of 3 floats [x, y, z] for tile center
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param rotation Array of 3 floats [radius, elevation, azimuth] for rotation
+ * @param refinement Array of 5 floats [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+ * @param texturefile Path to texture image file
+ * @param texture_repeat Array of 2 ints [x, y] for texture repetitions
+ * @return Object ID of new adaptive tile object
+ */
+PYHELIOS_API unsigned int addAdaptiveTileObject_texture_repeat(helios::Context* context, float* center, float* size, float* rotation, float* refinement, const char* texturefile, int* texture_repeat);
+
+/**
+ * @brief Count the sub-patches an adaptive tile object would contain, without building geometry
+ * @param context Pointer to the Context
+ * @param size Array of 2 floats [x, y] for tile size
+ * @param refinement Array of 5 floats [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+ * @param texture_repeat Array of 2 ints [x, y] for texture repetitions
+ * @return Number of sub-patches that would be created, or 0 if an error was set
+ */
+PYHELIOS_API unsigned long long predictAdaptiveTileObjectSubpatchCount(helios::Context* context, float* size, float* refinement, int* texture_repeat);
+
 // addBoxObject
 PYHELIOS_API unsigned int addBoxObject_basic(helios::Context* context, float* center, float* size, int* subdiv);
 PYHELIOS_API unsigned int addBoxObject_color(helios::Context* context, float* center, float* size, int* subdiv, float* color);
@@ -2229,6 +2295,21 @@ PYHELIOS_API int* getTileObjectSubdivisionCount(helios::Context* context, unsign
 PYHELIOS_API float* getTileObjectNormal(helios::Context* context, unsigned int objID);
 PYHELIOS_API float* getTileObjectTextureUV(helios::Context* context, unsigned int objID, unsigned int* size);
 PYHELIOS_API float* getTileObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size);
+PYHELIOS_API int* getTileObjectTextureRepeat(helios::Context* context, unsigned int objID);
+PYHELIOS_API int* getTileObjectEffectiveTextureRepeat(helios::Context* context, unsigned int objID);
+
+// Adaptive Tile
+PYHELIOS_API float* getAdaptiveTileObjectCenter(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getAdaptiveTileObjectSize(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getAdaptiveTileObjectNormal(helios::Context* context, unsigned int objID);
+PYHELIOS_API float* getAdaptiveTileObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size);
+//! Returns 5 floats [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+PYHELIOS_API float* getAdaptiveTileObjectRefinement(helios::Context* context, unsigned int objID);
+PYHELIOS_API int* getAdaptiveTileObjectBaseSubdivisionCount(helios::Context* context, unsigned int objID);
+PYHELIOS_API unsigned int getAdaptiveTileObjectMaxRefinementLevel(helios::Context* context, unsigned int objID);
+//! Returns 2 floats [achieved_min_edge_length, achieved_max_edge_length]
+PYHELIOS_API float* getAdaptiveTileObjectSubpatchSizeRange(helios::Context* context, unsigned int objID);
+PYHELIOS_API int* getAdaptiveTileObjectTextureRepeat(helios::Context* context, unsigned int objID);
 
 // Sphere
 PYHELIOS_API float* getSphereObjectCenter(helios::Context* context, unsigned int objID);

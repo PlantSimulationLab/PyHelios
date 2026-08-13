@@ -456,10 +456,13 @@ def getFarquharCoefficientsFromLibrary(photosynthesis_model: ctypes.POINTER(UPho
     if not species:
         raise ValueError("Species name cannot be empty.")
     
-    # Create coefficients array
-    coeff_size = 20
+    # 38-float layout; see FARQUHAR_COEFF_COUNT in native/src/pyhelios_wrapper_photosynthesis.cpp.
+    # Library species are populated through the C++ setters, which as of helios-core 1.3.80
+    # leave the deprecated scalar fields at -1, so the temperature-response blocks in slots
+    # 22..37 are what actually carry each species' rates.
+    coeff_size = 38
     coefficients = (ctypes.c_float * coeff_size)()
-    
+
     helios_lib.getFarquharCoefficientsFromLibrary(photosynthesis_model, species.encode('utf-8'), coefficients, coeff_size)
     
     # Convert to Python list
@@ -691,10 +694,11 @@ def getFarquharModelCoefficients(photosynthesis_model: ctypes.POINTER(UPhotosynt
     if uuid < 0:
         raise ValueError("UUID must be non-negative.")
     
-    # 22-float layout (helios-core 1.3.72+): 18 legacy + 4 mesophyll-conductance gm
-    # temperature-response slots. Older builds that only fill 18 elements still work
-    # because the C wrapper zero-fills the tail.
-    coeff_size = 22
+    # 38-float layout (helios-core 1.3.80+): 18 legacy slots, 4 mesophyll-conductance gm
+    # slots, then 16 slots carrying the full (value, dHa, Topt_C, dHd) temperature response
+    # for Vcmax, Jmax, Rd and alpha. Older builds that only fill 18 or 22 elements still
+    # work because the C wrapper zero-fills the tail.
+    coeff_size = 38
     coefficients = (ctypes.c_float * coeff_size)()
 
     helios_lib.getFarquharModelCoefficients(photosynthesis_model, uuid, coefficients, coeff_size)

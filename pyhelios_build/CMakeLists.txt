@@ -132,6 +132,10 @@ if("lidar" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_lidar.cpp)
 endif()
 
+if("parameteroptimization" IN_LIST PLUGINS)
+    list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_parameteroptimization.cpp)
+endif()
+
 # Only build static library if not building for wheels
 if(NOT DEFINED ENV{CIBUILDWHEEL})
     add_library(pyhelios_interface STATIC ${PYHELIOS_WRAPPER_SOURCES})
@@ -248,6 +252,19 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
         )
+    endif()
+endif()
+
+if(NOT DEFINED ENV{CIBUILDWHEEL})
+    if("parameteroptimization" IN_LIST PLUGINS)
+        target_include_directories(pyhelios_interface PRIVATE
+            ${BASE_DIRECTORY}/plugins/parameteroptimization/include
+        )
+        # HELIOS_HAVE_NLOPT/HELIOS_HAVE_LBFGS are PUBLIC on the parameteroptimization
+        # target, so they only reach this translation unit through a target dependency.
+        # Without them the shim would report the NLopt-backed algorithms unavailable
+        # even in a build where they work.
+        target_link_libraries(pyhelios_interface PUBLIC parameteroptimization)
     endif()
 endif()
 
@@ -375,6 +392,12 @@ if("lidar" IN_LIST PLUGINS)
         ${BASE_DIRECTORY}/plugins/visualizer/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
+    )
+endif()
+
+if("parameteroptimization" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_shared PRIVATE
+        ${BASE_DIRECTORY}/plugins/parameteroptimization/include
     )
 endif()
 

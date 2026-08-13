@@ -98,6 +98,8 @@ def get_asset_files():
                     # Platform-independent, so kept out of the Windows/Linux-only
                     # spectral_data block below.
                     'plugins/*/ssolar_goa/*.dat',
+                    # Prague sky model dataset (~26 MB) and its license.
+                    'plugins/*/lib/prague_sky_model/*',
                     # Camera and light models
                     'plugins/*/camera_light_models/*.xml',
                     'plugins/*/camera_light_models/*.json',
@@ -241,6 +243,9 @@ package_data = {
         'assets/build/plugins/*/camera_light_models/*',
         'assets/build/plugins/*/*',  # Nested structures
         'assets/build/plugins/*/*/*',  # Deeply nested
+        # Prague sky model dataset lives at plugins/solarposition/lib/prague_sky_model/,
+        # one level deeper than the patterns above reach.
+        'assets/build/plugins/*/*/*/*',
     ]
 }
 

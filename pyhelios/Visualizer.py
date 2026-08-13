@@ -985,32 +985,85 @@ class Visualizer:
 
     # Window Data Access Methods
 
-    def getWindowPixelsRGB(self, buffer: List[int]) -> None:
+    def getWindowPixelsRGB(self, buffer: Optional[List[int]] = None):
         """
-        Get RGB pixel data from current window.
-        
+        Get RGB pixel data from the current window.
+
+        Data is stored as r-g-b * column * row, so indices (0,1,2) are the RGB values for row 0
+        column 0, indices (3,4,5) are row 0 column 1, and so on.
+
+        Call without arguments to have the buffer allocated for you at the correct size -- this is
+        the recommended form and cannot be undersized::
+
+            pixels, width, height = visualizer.getWindowPixelsRGB()
+
         Args:
-            buffer: Pre-allocated buffer to store pixel data
-            
+            buffer: Optional pre-allocated list to fill in place. It must hold exactly
+                ``3 * width * height`` elements, where width and height come from
+                :meth:`getFramebufferSize` -- **not** :meth:`getWindowSize` and not the dimensions
+                passed to the constructor. On a high-DPI (Retina) display the framebuffer is larger
+                than the window, typically by a factor of two per axis, so a buffer sized from the
+                window dimensions is four times too small.
+
+        Returns:
+            If ``buffer`` is None, a tuple of ``(pixel_data, width, height)``. Otherwise ``None``;
+            ``buffer`` is filled in place.
+
         Raises:
-            ValueError: If buffer is invalid
+            ValueError: If ``buffer`` is not a list, or is not sized for the current framebuffer
             VisualizerError: If operation fails
         """
         self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
-        
+
+        if buffer is None:
+            try:
+                width = ctypes.c_uint()
+                height = ctypes.c_uint()
+                size = ctypes.c_uint()
+                ptr = helios_lib.getWindowPixelsRGB_sized(
+                    self.visualizer, ctypes.byref(width), ctypes.byref(height), ctypes.byref(size)
+                )
+                visualizer_wrapper._check_for_helios_error()
+                if not ptr or size.value == 0:
+                    raise VisualizerError(
+                        "getWindowPixelsRGB() returned no pixel data; the framebuffer reported "
+                        f"{width.value}x{height.value}"
+                    )
+                arr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint * size.value)).contents
+                return ([int(v) for v in arr], width.value, height.value)
+            except VisualizerError:
+                raise
+            except Exception as e:
+                raise VisualizerError(f"Failed to get window pixels: {e}")
+
         if not isinstance(buffer, list):
             raise ValueError("Buffer must be a list")
-        
+
+        # Reject an undersized buffer here rather than letting the native call write past its end.
+        fb_width, fb_height = self.getFramebufferSize()
+        required = 3 * fb_width * fb_height
+        if len(buffer) != required:
+            raise ValueError(
+                f"Buffer must hold exactly {required} elements for the current framebuffer of "
+                f"{fb_width}x{fb_height} (3*width*height), got {len(buffer)}. Note the framebuffer "
+                f"may be larger than the window on a high-DPI display; use getFramebufferSize(), "
+                f"not getWindowSize(). Call getWindowPixelsRGB() with no argument to have the "
+                f"buffer allocated for you."
+            )
+
         try:
             # Convert buffer to ctypes array
             buffer_array = (ctypes.c_uint * len(buffer))(*buffer)
             helios_lib.getWindowPixelsRGB(self.visualizer, buffer_array)
-            
+            visualizer_wrapper._check_for_helios_error()
+
             # Copy results back to Python list
             for i in range(len(buffer)):
                 buffer[i] = buffer_array[i]
+        except VisualizerError:
+            raise
         except Exception as e:
             raise VisualizerError(f"Failed to get window pixels: {e}")
 
@@ -1068,7 +1121,19 @@ class Visualizer:
     def clearGeometry(self) -> None:
         """
         Clear all geometry from visualizer.
-        
+
+        Warning:
+            Do NOT use this to refresh a scene between animation frames. The
+            visualizer syncs from the Context incrementally using the Context's
+            dirty flags. Clearing discards the visualizer's geometry while the
+            Context primitives remain marked clean, so the next rebuild pulls in
+            nothing and subsequent frames render empty -- printWindow() then
+            silently writes no file.
+
+            To animate a changing Context, just call buildContextGeometry()
+            and plotUpdate() each frame without clearing; additions, deletions
+            and modifications are all picked up automatically.
+
         Raises:
             VisualizerError: If operation fails
         """
@@ -1386,25 +1451,29 @@ class Visualizer:
     def setColorbarRange(self, min_val: float, max_val: float) -> None:
         """
         Set colorbar range.
-        
+
+        Setting a range explicitly stops the colorbar from auto-ranging over the data, including
+        for the degenerate range ``setColorbarRange(0, 0)``.
+
         Args:
             min_val: Minimum value
-            max_val: Maximum value
-            
+            max_val: Maximum value. Must be greater than or equal to ``min_val``; helios ignores an
+                inverted range.
+
         Raises:
             ValueError: If range is invalid
             VisualizerError: If operation fails
         """
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
-        
+
         if not isinstance(min_val, _NUMERIC_TYPES):
             raise ValueError("Minimum value must be numeric")
         if not isinstance(max_val, _NUMERIC_TYPES):
             raise ValueError("Maximum value must be numeric")
-        if min_val >= max_val:
-            raise ValueError("Minimum value must be less than maximum value")
-        
+        if min_val > max_val:
+            raise ValueError("Minimum value must not be greater than maximum value")
+
         try:
             helios_lib.setColorbarRange(self.visualizer, float(min_val), float(max_val))
         except Exception as e:
@@ -1413,10 +1482,16 @@ class Visualizer:
     def setColorbarTicks(self, ticks: List[float]) -> None:
         """
         Set colorbar tick marks.
-        
+
         Args:
             ticks: List of tick values
-            
+
+        Note:
+            If a tick value falls outside the colorbar range, the range is automatically expanded
+            to fit it. Because the colormap limits follow the colorbar range, this changes the
+            colors shown as well as the labels. To keep an explicit range authoritative, call
+            :meth:`setColorbarRange` after :meth:`setColorbarTicks`.
+
         Raises:
             ValueError: If ticks are invalid
             VisualizerError: If operation fails
@@ -1821,10 +1896,15 @@ class Visualizer:
     def plotOnce(self, get_keystrokes: bool = True) -> None:
         """
         Run one rendering loop.
-        
+
+        Any geometry pending upload is transferred to the GPU before rendering, but unlike
+        :meth:`plotUpdate` the Context geometry is not rebuilt. Call :meth:`buildContextGeometry`
+        or :meth:`plotUpdate` if primitives have been added to or changed in the Context since the
+        last render.
+
         Args:
             get_keystrokes: Whether to process keystrokes
-            
+
         Raises:
             VisualizerError: If operation fails
         """

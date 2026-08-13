@@ -145,7 +145,18 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         optional=True,
         test_symbols=["createSolarPosition", "getSunElevation", "getSolarFlux"]
     ),
-    
+
+    "parameteroptimization": PluginMetadata(
+        name="parameteroptimization",
+        description="Parameter optimization for model calibration with genetic algorithm, Bayesian optimization, CMA-ES, Adam, and derivative-free local search",
+        system_dependencies=[],
+        plugin_dependencies=[],
+        platforms=["windows", "linux", "macos"],
+        gpu_required=False,
+        optional=True,
+        test_symbols=["createParameterOptimization", "runParameterOptimization"]
+    ),
+
 }
 
 

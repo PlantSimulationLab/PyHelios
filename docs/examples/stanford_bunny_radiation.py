@@ -41,7 +41,8 @@ def main():
         # Load Stanford Bunny PLY file  
         ply_path = os.path.join(os.path.dirname(__file__), '..', '..', 'helios-core', 'PLY', 'StanfordBunny.ply')
 
-        # Load bunny with scaling factor of 4
+        # height is the absolute height of the loaded geometry in metres, not a
+        # multiplier: the model is scaled so its final extent is exactly 4 m.
         bunny_uuids = context.loadPLY(ply_path, origin=vec3(0, 0, 0), height=4.0, upaxis="YUP")
             
         print(f"Loaded Stanford Bunny with {len(bunny_uuids)} triangles")

@@ -64,6 +64,15 @@ PYHELIOS_API float* getPlantShootInternodeRadii(PlantArchitecture* plantarch, un
 PYHELIOS_API void freeStringArray(char** strings, int count);
 PYHELIOS_API void freeIntArray(unsigned int* array);
 
+// Message control
+// Prefixed with "plantArchitecture" because the visualizer wrapper already
+// exports plain enableMessages/disableMessages with C linkage.
+PYHELIOS_API void plantArchitectureEnableMessages(PlantArchitecture* plantarch);
+PYHELIOS_API void plantArchitectureDisableMessages(PlantArchitecture* plantarch);
+
+// Ground clipping
+PYHELIOS_API void enableGroundClipping(PlantArchitecture* plantarch, float ground_height);
+
 // Collision detection functions
 PYHELIOS_API int enableSoftCollisionAvoidance(PlantArchitecture* plantarch, const unsigned int* target_UUIDs, int uuid_count, const unsigned int* target_IDs, int id_count, bool enable_petiole, bool enable_fruit);
 PYHELIOS_API void disableCollisionDetection(PlantArchitecture* plantarch);
@@ -101,6 +110,7 @@ PYHELIOS_API int setPlantNitrogenParametersFromJSON(PlantArchitecture* plantarch
 
 // Phenological control functions
 PYHELIOS_API int setPlantPhenologicalThresholds(PlantArchitecture* plantarch, unsigned int plantID, float time_to_dormancy_break, float time_to_flower_initiation, float time_to_flower_opening, float time_to_fruit_set, float time_to_fruit_maturity, float time_to_dormancy, float max_leaf_lifespan, int is_evergreen);
+PYHELIOS_API int disablePlantPhenology(PlantArchitecture* plantarch, unsigned int plantID);
 
 // Plant state query functions
 PYHELIOS_API float getPlantAge(PlantArchitecture* plantarch, unsigned int plantID);

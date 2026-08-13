@@ -6,12 +6,79 @@ offering comprehensive solar angle calculations, radiation modeling, and
 time-dependent solar functions for atmospheric physics and plant modeling.
 """
 
+import logging
+import os
+from contextlib import contextmanager
+from pathlib import Path
 from typing import List, Tuple, Optional, Union
 from .wrappers import USolarPositionWrapper as solar_wrapper
 from .Context import Context, check_context_alive
 from .plugins.registry import get_plugin_registry
 from .exceptions import HeliosError
+from .assets import get_asset_manager
 from .wrappers.DataTypes import Time, Date, vec3, SphericalCoord
+
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _solarposition_working_directory():
+    """
+    Context manager that temporarily changes working directory to where SolarPosition assets are located.
+
+    SolarPosition C++ code opens the Prague sky model dataset through the hardcoded relative path
+    "plugins/solarposition/lib/prague_sky_model/PragueSkyModelReduced.dat", so it is only resolvable
+    when the process is running from the build directory. This manager temporarily changes to the
+    build directory where the dataset actually lives.
+
+    Raises:
+        RuntimeError: If the build directory or the Prague dataset are not found, indicating a
+                      build system error.
+    """
+    asset_manager = get_asset_manager()
+    working_dir = asset_manager._get_helios_build_path()
+
+    if working_dir and working_dir.exists():
+        solarposition_assets = working_dir / 'plugins' / 'solarposition'
+    else:
+        # For wheel installations, check packaged assets
+        current_dir = Path(__file__).parent
+        packaged_build = current_dir / 'assets' / 'build'
+
+        if packaged_build.exists():
+            working_dir = packaged_build
+            solarposition_assets = working_dir / 'plugins' / 'solarposition'
+        else:
+            # Fallback to development paths
+            repo_root = current_dir.parent
+            build_lib_dir = repo_root / 'pyhelios_build' / 'build' / 'lib'
+            working_dir = build_lib_dir.parent
+            solarposition_assets = working_dir / 'plugins' / 'solarposition'
+
+            if not build_lib_dir.exists():
+                raise RuntimeError(
+                    f"PyHelios build directory not found at {build_lib_dir}. "
+                    f"Run: build_scripts/build_helios --clean"
+                )
+
+    prague_dataset = (solarposition_assets / 'lib' / 'prague_sky_model' /
+                      'PragueSkyModelReduced.dat')
+    if not prague_dataset.exists():
+        raise RuntimeError(
+            f"Prague sky model dataset not found at {prague_dataset}. "
+            f"This indicates a build system error. The build script should copy the "
+            f"~26 MB dataset to this location. "
+            f"Rebuild with: build_scripts/build_helios --clean"
+        )
+
+    original_dir = os.getcwd()
+    try:
+        os.chdir(working_dir)
+        logger.debug(f"Changed working directory to {working_dir} for SolarPosition asset access")
+        yield working_dir
+    finally:
+        os.chdir(original_dir)
+        logger.debug(f"Restored working directory to {original_dir}")
 
 
 class SolarPositionError(HeliosError):
@@ -744,7 +811,8 @@ class SolarPosition:
         """
         self._check_context_alive()
         try:
-            solar_wrapper.enablePragueSkyModel(self._solar_pos)
+            with _solarposition_working_directory():
+                solar_wrapper.enablePragueSkyModel(self._solar_pos)
         except Exception as e:
             raise SolarPositionError(f"Failed to enable Prague Sky Model: {e}")
 
@@ -795,7 +863,8 @@ class SolarPosition:
         """
         self._check_context_alive()
         try:
-            solar_wrapper.updatePragueSkyModel(self._solar_pos, ground_albedo)
+            with _solarposition_working_directory():
+                solar_wrapper.updatePragueSkyModel(self._solar_pos, ground_albedo)
         except Exception as e:
             raise SolarPositionError(f"Failed to update Prague Sky Model: {e}")
 

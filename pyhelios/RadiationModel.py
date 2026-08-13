@@ -128,10 +128,7 @@ class CameraProperties:
             lens_focal_length: Camera lens optical focal length in meters (physical, not 35mm equiv). Default: 0.05 (50mm)
             sensor_width_mm: Physical sensor width in mm. Default: 35.0 (full-frame)
             manufacturer: Camera manufacturer (e.g., "Canon", "Nikon", "Apple"). In helios-core
-                v1.3.73 this maps to the EXIF Make tag (empty ⇒ "Helios"). NOTE: like the other
-                string fields (model, lens_make, etc.), this attribute is not yet plumbed through to
-                the native camera and currently has no effect on written images; the C++ default is
-                used. It is exposed for forward compatibility. Default: ""
+                v1.3.73 this maps to the EXIF Make tag (empty ⇒ "Helios"). Default: ""
             model: Camera model name (e.g., "Nikon D700", "Canon EOS 5D"). Default: "generic"
             lens_make: Lens manufacturer (e.g., "Canon", "Nikon"). Default: ""
             lens_model: Lens model name (e.g., "AF-S NIKKOR 50mm f/1.8G"). Default: ""
@@ -279,10 +276,8 @@ class SIFCameraProperties(CameraProperties):
     Note:
         String fields inherited from :class:`CameraProperties` (``model``,
         ``lens_make``, ``lens_model``, ``lens_specification``, ``exposure``,
-        ``white_balance``) are currently NOT plumbed through to the C++ camera
-        — the wrapper hard-codes ``"generic"`` / ``"auto"`` defaults. Set them
-        on this dataclass for self-documentation only; they will not affect
-        rendering. This matches the existing ``addRadiationCamera`` behaviour.
+        ``white_balance``) are passed through to the C++ camera, so they affect
+        rendering and EXIF metadata just as they do for ``addRadiationCamera``.
     """
 
     def __init__(self, excitation_bin_width_nm: float = 10.0,
@@ -477,13 +472,55 @@ class RadiationModel:
                         "This may indicate a problem with the native library or GPU initialization."
                     )
             logger.info("RadiationModel created successfully")
-            
+
+            # Bands created with explicit wavelength bounds. Tracked so cameras
+            # can warn about the bounded-band + spectral-response combination
+            # (see _warn_if_bounded_bands_with_camera_response).
+            self._bounded_bands = set()
+
         except Exception as e:
             raise RadiationModelError(f"Failed to initialize RadiationModel: {e}")
     
     def _check_context_alive(self):
         """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""
         check_context_alive(getattr(self, "context", None), "RadiationModel")
+
+    def _warn_if_bounded_bands_with_camera_response(self, camera_label: str,
+                                                    band_labels: List[str],
+                                                    operation: str):
+        """Warn when bands have explicit wavelength bounds and the camera has a
+        spectral response.
+
+        The two combined silently produce wrong colors. Helios computes camera
+        pixels by integrating surface reflectance against the camera's spectral
+        response curve, but computes SCATTERED flux by integrating over the
+        band's wavelength bounds instead. When bounds are absent Helios
+        deliberately falls back to the camera-weighted average for scattering,
+        so both paths agree; setting bounds breaks that agreement.
+
+        With scattering enabled most camera-visible light is scattered, so the
+        image carries band-limited color the camera never expected. Low-chroma
+        natural surfaces are hit hardest: a measured soil spectrum whose true
+        red/green ratio is 1.2 renders at 2.6 -- brown soil comes out pink --
+        while saturated colorboard-style spectra survive and look fine, which
+        makes the problem easy to miss.
+
+        Nothing errors and no output looks obviously broken, so this is a
+        warning at the point the camera is created rather than a failure.
+        """
+        bounded = [b for b in band_labels if b in getattr(self, "_bounded_bands", ())]
+        if not bounded:
+            return
+
+        logger.warning(
+            f"Camera '{camera_label}' ({operation}) uses a spectral response, but "
+            f"band(s) {bounded} were created with explicit wavelength bounds. "
+            f"Camera pixels integrate reflectance against the spectral response "
+            f"while scattered flux integrates over the band bounds, so rendered "
+            f"colors will be skewed (brown surfaces tend to render pink). Create "
+            f"these bands without wavelength_min/wavelength_max -- the camera's "
+            f"spectral response defines what each band measures."
+        )
 
     def _check_camera_has_pixel_data(self, camera: str, bands: List[str], operation: str):
         """Raise an actionable error if a camera/band has no rendered pixel data.
@@ -616,10 +653,12 @@ class RadiationModel:
             validate_wavelength_range(wavelength_min, wavelength_max, "wavelength_min", "wavelength_max", "addRadiationBand")
             self._check_context_alive()
             radiation_wrapper.addRadiationBandWithWavelengths(self.radiation_model, band_label, wavelength_min, wavelength_max)
+            self._bounded_bands.add(band_label)
             logger.debug(f"Added radiation band {band_label}: {wavelength_min}-{wavelength_max} nm")
         else:
             self._check_context_alive()
             radiation_wrapper.addRadiationBand(self.radiation_model, band_label)
+            self._bounded_bands.discard(band_label)
             logger.debug(f"Added radiation band: {band_label}")
     
     @require_plugin('radiation', 'copy radiation band')
@@ -647,8 +686,14 @@ class RadiationModel:
         self._check_context_alive()
         radiation_wrapper.copyRadiationBand(self.radiation_model, old_label, new_label, wavelength_min, wavelength_max)
         if wavelength_min is not None:
+            self._bounded_bands.add(new_label)
             logger.debug(f"Copied radiation band {old_label} to {new_label} with wavelengths {wavelength_min}-{wavelength_max} nm")
         else:
+            # Without explicit bounds the copy inherits the source band's bounds.
+            if old_label in self._bounded_bands:
+                self._bounded_bands.add(new_label)
+            else:
+                self._bounded_bands.discard(new_label)
             logger.debug(f"Copied radiation band {old_label} to {new_label}")
     
     @require_plugin('radiation', 'add radiation source')
@@ -1852,7 +1897,8 @@ class RadiationModel:
                     radius, elevation, azimuth,
                     camera_properties.to_array(),
                     validated_samples,
-                    camera_properties.exposure
+                    camera_properties.exposure,
+                    camera_properties_obj=camera_properties
                 )
             else:
                 # vec3 case
@@ -1864,7 +1910,8 @@ class RadiationModel:
                     validated_direction.x, validated_direction.y, validated_direction.z,
                     camera_properties.to_array(),
                     validated_samples,
-                    camera_properties.exposure
+                    camera_properties.exposure,
+                    camera_properties_obj=camera_properties
                 )
 
         except Exception as e:
@@ -1941,6 +1988,7 @@ class RadiationModel:
                     camera_properties.excitation_bin_width_nm,
                     camera_properties.excitation_scattering_depth,
                     validated_samples,
+                    camera_properties_obj=camera_properties,
                 )
             else:
                 radiation_wrapper.addSIFCameraVec3(
@@ -1953,6 +2001,7 @@ class RadiationModel:
                     camera_properties.excitation_bin_width_nm,
                     camera_properties.excitation_scattering_depth,
                     validated_samples,
+                    camera_properties_obj=camera_properties,
                 )
         except Exception as e:
             raise RadiationModelError(f"Failed to add SIF camera '{validated_label}': {e}")
@@ -2135,6 +2184,8 @@ class RadiationModel:
         self._check_context_alive()
         radiation_wrapper.setCameraSpectralResponse(self.radiation_model, camera_label, band_label, global_data)
         logger.debug(f"Set spectral response for camera '{camera_label}', band '{band_label}'")
+        self._warn_if_bounded_bands_with_camera_response(
+            camera_label, [band_label], "setCameraSpectralResponse")
 
     @require_plugin('radiation', 'configure camera from library')
     def setCameraSpectralResponseFromLibrary(self, camera_label: str, camera_library_name: str):
@@ -2264,6 +2315,10 @@ class RadiationModel:
                 position, lookat, antialiasing_samples, band_labels
             )
             logger.info(f"Added camera '{camera_label}' from library '{library_camera_label}'")
+            # A library camera always brings measured spectral response curves.
+            if band_labels:
+                self._warn_if_bounded_bands_with_camera_response(
+                    camera_label, band_labels, "addRadiationCameraFromLibrary")
         except Exception as e:
             raise RadiationModelError(f"Failed to add camera from library: {e}")
 

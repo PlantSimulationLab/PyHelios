@@ -745,3 +745,75 @@ class TestSolarPositionModernAPI:
                     # Error should mention atmospheric conditions
                     error_msg = str(e).lower()
                     assert "atmospheric" in error_msg or "condition" in error_msg or "setAtmosphericConditions" in str(e)
+
+class TestPragueSkyModelAssetPaths:
+    """Prague sky model dataset must be found regardless of working directory.
+
+    The Helios C++ code opens the dataset through a hardcoded relative path
+    ("plugins/solarposition/lib/prague_sky_model/PragueSkyModelReduced.dat"),
+    so it is only resolvable from the build directory. SolarPosition must
+    manage the working directory internally the way RadiationModel and
+    PlantArchitecture do -- otherwise the sky model silently fails to enable
+    for any user whose CWD is not the build directory (i.e. everyone), and
+    camera renders come out with a black sky.
+    """
+
+    @pytest.mark.native_only
+    def test_enable_prague_sky_model_from_arbitrary_directory(self, tmp_path, monkeypatch):
+        """enablePragueSkyModel must work when CWD is not the build directory."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('solarposition'):
+            pytest.skip("solarposition plugin not available")
+
+        # A directory with no Helios assets under it at all.
+        monkeypatch.chdir(tmp_path)
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+            with SolarPosition(context) as solar:
+                solar.setAtmosphericConditions(101325.0, 293.15, 0.5, 0.05)
+                solar.enablePragueSkyModel()
+                assert solar.isPragueSkyModelEnabled()
+
+    @pytest.mark.native_only
+    def test_update_prague_sky_model_from_arbitrary_directory(self, tmp_path, monkeypatch):
+        """updatePragueSkyModel must populate sky data from any working directory."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('solarposition'):
+            pytest.skip("solarposition plugin not available")
+
+        monkeypatch.chdir(tmp_path)
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+            with SolarPosition(context) as solar:
+                solar.setAtmosphericConditions(101325.0, 293.15, 0.5, 0.05)
+                solar.enablePragueSkyModel()
+                solar.updatePragueSkyModel(ground_albedo=0.25)
+
+                # The valid flag is what RadiationModel checks before using
+                # atmospheric sky radiance for camera rendering.
+                assert context.doesGlobalDataExist("prague_sky_valid")
+
+    @pytest.mark.native_only
+    def test_working_directory_is_restored(self, tmp_path, monkeypatch):
+        """The CWD must be restored after the sky model calls."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('solarposition'):
+            pytest.skip("solarposition plugin not available")
+
+        monkeypatch.chdir(tmp_path)
+        import os
+        expected = os.getcwd()
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+            with SolarPosition(context) as solar:
+                solar.setAtmosphericConditions(101325.0, 293.15, 0.5, 0.05)
+                solar.enablePragueSkyModel()
+                solar.updatePragueSkyModel(ground_albedo=0.25)
+
+        assert os.getcwd() == expected

@@ -1,10 +1,71 @@
 # Changelog
 
+# [v0.1.28] 2026-08-13
+
+🚨++ New Plug-in Integrated ++ 🚨
+- Parameter optimization plug-in integrated
+
+- Updated helios-core to v1.3.81
+
+## Context
+- Added `Context.addAdaptiveTileObject()`, a tile whose sub-patches are refined by quadtree subdivision so they are finest at a target point and coarser away from it, in plain, color, texture and texture-with-repeat forms
+- Added the `AdaptiveTileRefinement` type (`target`, `subpatch_size_min`, `subpatch_size_max`, `transition_exponent`) for specifying that refinement
+- Added `Context.predictAdaptiveTileObjectSubpatchCount()`, which reports how many sub-patches a refinement would generate without building any geometry
+- Added `getAdaptiveTileObjectCenter()`, `getAdaptiveTileObjectSize()`, `getAdaptiveTileObjectNormal()`, `getAdaptiveTileObjectVertices()`, `getAdaptiveTileObjectRefinement()`, `getAdaptiveTileObjectBaseSubdivisionCount()`, `getAdaptiveTileObjectMaxRefinementLevel()`, `getAdaptiveTileObjectSubpatchSizeRange()` and `getAdaptiveTileObjectTextureRepeat()`
+- Added `Context.getTileObjectTextureRepeat()` and `Context.getTileObjectEffectiveTextureRepeat()`, returning the requested and the actually-applied texture repeat counts of a tile object
+- `getObjectType()` now also returns `7` for an adaptive tile object
+- Fixed `setTileObjectSubdivisionCount()` resetting a tile object's texture repeat to 1x1, so a ground tile built with `texture_repeat=int2(5,5)` rendered as one stretched copy of the image after any subdivision change
+
+## Visualizer
+- `getWindowPixelsRGB()` can now be called with no argument, returning `(pixels, width, height)` with the buffer sized from the framebuffer; a caller-supplied buffer that is not `3*width*height` for the current framebuffer is now rejected instead of being overflowed by the native call
+- Fixed `plotOnce()` crashing with a segmentation fault on a freshly constructed `Visualizer`, which previously required calling `setBackgroundColor()` first as a workaround
+- Fixed `Visualizer` failing to construct on macOS with a misleading OpenGL error, caused by GLFW changing the process working directory during initialization so that the visualizer's runtime assets could no longer be found
+- `setColorbarRange()` now accepts a degenerate range such as `(0, 0)`, which helios treats as an explicit range, and rejects only an inverted one
+- Fixed text and the watermark rendering grainy and jagged on high-DPI (Retina) displays, and reduced visualizer texture memory by roughly 24x
+- Fixed several colorbar defects: an auto-ranged colorbar frequently showing only one tick label, tick labels stating values different from the ticks they marked, and colorbar geometry accumulating on every refresh
+
+## Parameter Optimization
+- Integrated the `parameteroptimization` plugin: `ParameterOptimization`, `Parameter`, `OptimizationResult`, and settings dataclasses for `GeneticAlgorithm`, `BayesianOptimization`, `CMAES`, `Adam`, `BOBYQA` and `SLSQP`
+- Objectives and gradients are ordinary Python callables receiving `{name: value}`; gradients may instead be estimated by the plugin with `finite_difference=True`
+- Exceptions and `KeyboardInterrupt` raised inside an objective or gradient now propagate to the caller with their original type, message and traceback instead of being swallowed by ctypes and returned as `0.0`
+- Non-finite objective and gradient values, and gradients omitting or inventing a parameter, are now rejected per evaluation instead of silently corrupting the optimizer
+- Added `ParameterOptimization.runConstrained()` for nonlinear inequality constraints, returning a `ConstrainedResult` (requires `SLSQP` and all-FLOAT parameters, both checked before the run starts)
+- Added `make_constrained_simulation()` to compose separate objective and constraint callables into the single-pass combined simulation form
+- `explore()`/`exploit()` presets are read from the native library rather than transcribed into Python, so they cannot drift from helios-core
+- Passing an `INTEGER` or `CATEGORICAL` parameter to any algorithm other than `GeneticAlgorithm` now raises `ValueError`; `CMAES` and `BayesianOptimization` previously optimized categoricals to `0.0` with no diagnostic
+- `ParameterOptimization.availableAlgorithms()` reports what the build supports, and selecting an unavailable algorithm raises at `setAlgorithm()` time; NLopt is built without its LGPL-2.1 Luksan sources (`HELIOS_NLOPT_LUKSAN=OFF`) to keep the distributed library MIT-licensed, which excludes L-BFGS
+
+## Photosynthesis
+- Fixed `getSpeciesCoefficients()` returning `-1` for Vcmax, Jmax, alpha and Rd for every species, after helios-core 1.3.80 made the deprecated scalar coefficient fields sentinel-valued
+- Extended the flat Farquhar coefficient array from 22 to 38 floats so peaked Arrhenius responses survive a read/write round trip instead of collapsing to a bare 25 °C rate (18- and 22-float buffers still accepted)
+- `setVcmax()`, `setJmax()`, `setDarkRespiration()` and `setQuantumEfficiency()` now call their dedicated native entry points, so their `dha`/`topt`/`dhd` arguments take effect
+- Fixed transposed arguments in the 3- and 4-argument temperature-response forms of `FarquharModelCoefficients.setVcmax()`/`setJmax()`/`setRd()`/`setQuantumEfficiency_alpha()`, and converted `Topt` from Celsius to Kelvin
+- `PhotosyntheticTemperatureResponseParameters` now rejects `dHd <= dHa` when `dHa > 0`, which previously produced NaN assimilation
+- `EmpiricalModelCoefficients` now rejects `Tref <= Tmin` and coefficients where `(1+q)*Topt - Tmin - q*Tref` is zero, both of which zero the temperature-response denominator that 1.3.80 made active
+
+## Plant Architecture
+- Added `enableGroundClipping(ground_height=0.0)`, which removes plant organs falling below the ground plane as geometry is built
+- Added `disableMessages()`/`enableMessages()` to suppress the plugin's stdout, including the "BVH not cached" warning emitted while a collision-enabled canopy is still empty
+- Added `disablePlantPhenology(plant_id)`, which stops a plant from entering dormancy or scheduling flower and fruit stages
+- Fixed `advanceTime()` stripping every leaf and petiole from a manually-built plant (one created with `addPlantInstance()` and `addBaseStemShoot()`/`appendShoot()`/`addChildShoot()` without calling `setPlantPhenologicalThresholds()`), which shrank the plant instead of growing it with no error or warning
+- `writePlantStructureXML()` now records the plant's phenological thresholds and `readPlantStructureXML()` restores them, so a reloaded plant no longer silently falls back to the defaults
+
+## Radiation
+- Fixed the `CameraProperties` string fields (`manufacturer`, `model`, `lens_make`, `lens_model`, `lens_specification`, `white_balance`) being replaced by hard-coded C++ defaults; they now reach the camera in `addRadiationCamera()`, `addSIFCamera()` and `updateCameraParameters()`, affecting both rendering and written EXIF metadata
+- Attaching a camera spectral response to a band created with explicit wavelength bounds now logs a warning; camera pixels and scattered flux are then integrated over different wavelength weightings, which skews rendered colors (brown surfaces render pink)
+
+## Solar Position
+- Fixed `enablePragueSkyModel()` and `updatePragueSkyModel()` only working when the process was run from the Helios build directory, which is where the C++ code looks for the Prague sky model dataset
+
+## Stomatal Conductance
+- `setDynamicTimeConstants()` now rejects non-finite time constants in addition to non-positive ones
+
 # [v0.1.27] 2026-07-30
 
 - Updated helios-core to v1.3.79
 
 ## Core
+- `TestObjectBoundingBox` is no longer marked `xfail`. Its eight tests cover a native seeding bug in `Context::getObjectBoundingBox()` — the box was seeded from the first primitive's first vertex and then `continue`d to the next primitive, so a single-primitive object reported `min == max == ` that vertex, and in a list only the first object was affected, silently losing its extent if it held a unique extreme. The fix shipped in helios-core `7ec2f1d64` (v1.3.79) and the submodule pin has since advanced to v1.3.80, so all eight began XPASSing. They now assert the corrected behavior as ordinary tests: a failure means the core fix was lost, rather than that the pin is stale.
 - Added `Location` field validation mirroring the new `helios::Location::validate()`. Both native parameterized constructors now validate, and `Context::setLocation()` re-validates on the way in (leaving the Context's location unchanged when a field is out of range). PyHelios checks the same bounds in `Location.__init__`, so the failure arrives as a `ValueError` naming the offending value at the point of construction, and behaves identically in mock mode instead of only where a native library is loaded. Ranges: latitude -90 to 90, longitude -180 to 180, UTC offset **-14 to 12**, altitude any finite value. The UTC range is asymmetric because Helios counts the offset positive moving West, which inverts the real-world UTC-12..UTC+14 span (Kiribati keeps the latter) to +12..-14 — so `-14` is legal and `+14` is not. The previous code comment asserting that "the C++ `Helios::Location` accepts any latitude" and that bounds were enforced "at the call site" was wrong on both counts and is gone; no bound was enforced anywhere.
 - Fixed `SolarPosition(context, utc_offset=...)` rejecting legitimate UTC offsets of -13 and -14. Both the Python guard and the C wrapper hard-coded a symmetric -12..+12 bound, which disagrees with the -14..+12 range helios-core now states explicitly. Offsets of -13/-14 (real-world UTC+13/UTC+14) were refused with "UTC offset must be between -12 and +12 hours" even though the native library accepts them. Both layers now use -14..+12. Offsets beyond either end are still rejected, and `+13`/`+14` remain invalid.
 - Added `Global.gpuRequiredByEnvironment()` and `Global.requireGPUOrFail(context_message)`, wrapping the new `core/global.h` functions. `gpuRequiredByEnvironment()` reports whether `HELIOS_REQUIRE_GPU` is set to anything other than `"0"`, re-reading the environment on every call so a change made through `os.environ` is observed immediately. `requireGPUOrFail()` is the counterpart to the `HELIOS_NO_GPU` veto: called where code would otherwise skip for want of a GPU, it turns that skip into a failure, so a CI runner whose whole purpose is exercising GPU code cannot report success after silently skipping every GPU test. It does not itself probe for hardware — reaching it is taken as proof the caller already found none — so it always raises when `HELIOS_REQUIRE_GPU` is set, and reports the contradictory `HELIOS_REQUIRE_GPU` + `HELIOS_NO_GPU` combination rather than letting one silently win. Both live in the unconditionally-compiled common wrapper, so they are available in any native build regardless of which plugins were selected.

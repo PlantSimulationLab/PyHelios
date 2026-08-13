@@ -11,6 +11,22 @@
 #include <atomic>
 #include <unordered_map>
 
+namespace {
+    //! Unpack the flat 5-float C-ABI representation of helios::AdaptiveTileRefinement
+    /**
+     * Element order matches the order helios itself uses to serialize the struct to XML:
+     * target.x, target.y, subpatch_size_min, subpatch_size_max, transition_exponent.
+     */
+    helios::AdaptiveTileRefinement unpackAdaptiveTileRefinement(const float* refinement) {
+        helios::AdaptiveTileRefinement r;
+        r.target = helios::make_vec2(refinement[0], refinement[1]);
+        r.subpatch_size_min = refinement[2];
+        r.subpatch_size_max = refinement[3];
+        r.transition_exponent = refinement[4];
+        return r;
+    }
+}
+
 extern "C" {
     // Context management - core functionality required by PyHelios
     PYHELIOS_API helios::Context* createContext() {
@@ -2295,6 +2311,134 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTileObject): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTileObject): Unknown error adding tile object.");
+        }
+        return 0;
+    }
+
+    // addAdaptiveTileObject - 4 overloads
+
+    PYHELIOS_API unsigned int addAdaptiveTileObject_basic(helios::Context* context, float* center, float* size, float* rotation, float* refinement) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0;
+            }
+            if (!center || !size || !rotation || !refinement) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Parameter pointer is null");
+                return 0;
+            }
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord(rotation[0], rotation[1], rotation[2]);
+            return context->addAdaptiveTileObject(center_vec, size_vec, rotation_coord, unpackAdaptiveTileRefinement(refinement));
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addAdaptiveTileObject): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addAdaptiveTileObject): Unknown error adding adaptive tile object.");
+        }
+        return 0;
+    }
+
+    PYHELIOS_API unsigned int addAdaptiveTileObject_color(helios::Context* context, float* center, float* size, float* rotation, float* refinement, float* color) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0;
+            }
+            if (!center || !size || !rotation || !refinement || !color) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Parameter pointer is null");
+                return 0;
+            }
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord(rotation[0], rotation[1], rotation[2]);
+            helios::RGBcolor color_rgb(color[0], color[1], color[2]);
+            return context->addAdaptiveTileObject(center_vec, size_vec, rotation_coord, unpackAdaptiveTileRefinement(refinement), color_rgb);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addAdaptiveTileObject): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addAdaptiveTileObject): Unknown error adding adaptive tile object.");
+        }
+        return 0;
+    }
+
+    PYHELIOS_API unsigned int addAdaptiveTileObject_texture(helios::Context* context, float* center, float* size, float* rotation, float* refinement, const char* texturefile) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0;
+            }
+            if (!center || !size || !rotation || !refinement || !texturefile) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Parameter pointer is null");
+                return 0;
+            }
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord(rotation[0], rotation[1], rotation[2]);
+            return context->addAdaptiveTileObject(center_vec, size_vec, rotation_coord, unpackAdaptiveTileRefinement(refinement), texturefile);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addAdaptiveTileObject): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addAdaptiveTileObject): Unknown error adding adaptive tile object.");
+        }
+        return 0;
+    }
+
+    PYHELIOS_API unsigned int addAdaptiveTileObject_texture_repeat(helios::Context* context, float* center, float* size, float* rotation, float* refinement, const char* texturefile, int* texture_repeat) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0;
+            }
+            if (!center || !size || !rotation || !refinement || !texturefile || !texture_repeat) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Parameter pointer is null");
+                return 0;
+            }
+            helios::vec3 center_vec(center[0], center[1], center[2]);
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::SphericalCoord rotation_coord(rotation[0], rotation[1], rotation[2]);
+            helios::int2 texture_repeat_int2(texture_repeat[0], texture_repeat[1]);
+            return context->addAdaptiveTileObject(center_vec, size_vec, rotation_coord, unpackAdaptiveTileRefinement(refinement), texturefile, texture_repeat_int2);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addAdaptiveTileObject): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addAdaptiveTileObject): Unknown error adding adaptive tile object.");
+        }
+        return 0;
+    }
+
+    PYHELIOS_API unsigned long long predictAdaptiveTileObjectSubpatchCount(helios::Context* context, float* size, float* refinement, int* texture_repeat) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return 0;
+            }
+            if (!size || !refinement || !texture_repeat) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Parameter pointer is null");
+                return 0;
+            }
+            helios::vec2 size_vec(size[0], size[1]);
+            helios::int2 texture_repeat_int2(texture_repeat[0], texture_repeat[1]);
+            return static_cast<unsigned long long>(context->predictAdaptiveTileObjectSubpatchCount(size_vec, unpackAdaptiveTileRefinement(refinement), texture_repeat_int2));
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::predictAdaptiveTileObjectSubpatchCount): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::predictAdaptiveTileObjectSubpatchCount): Unknown error predicting sub-patch count.");
         }
         return 0;
     }
@@ -8501,6 +8645,124 @@ extern "C" {
         } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
         catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectVertices): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API int* getTileObjectTextureRepeat(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::int2 v = context->getTileObjectTextureRepeat(objID);
+            static thread_local int r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectTextureRepeat): Unknown error."); static thread_local int e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API int* getTileObjectEffectiveTextureRepeat(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::int2 v = context->getTileObjectEffectiveTextureRepeat(objID);
+            static thread_local int r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getTileObjectEffectiveTextureRepeat): Unknown error."); static thread_local int e_r[2]={0,0}; return e_r; }
+    }
+
+    // Adaptive Tile object queries
+
+    PYHELIOS_API float* getAdaptiveTileObjectCenter(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getAdaptiveTileObjectCenter(objID);
+            static thread_local float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectCenter): Unknown error."); static thread_local float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getAdaptiveTileObjectSize(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec2 v = context->getAdaptiveTileObjectSize(objID);
+            static thread_local float r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local float e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local float e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectSize): Unknown error."); static thread_local float e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getAdaptiveTileObjectNormal(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec3 v = context->getAdaptiveTileObjectNormal(objID);
+            static thread_local float r[3]; r[0]=v.x; r[1]=v.y; r[2]=v.z; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local float e_r[3]={0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local float e_r[3]={0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectNormal): Unknown error."); static thread_local float e_r[3]={0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API float* getAdaptiveTileObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size) {
+        try {
+            clearError();
+            std::vector<helios::vec3> vs = context->getAdaptiveTileObjectVertices(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(vs.size()*3);
+            for (const auto& v : vs) { buf.push_back(v.x); buf.push_back(v.y); buf.push_back(v.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectVertices): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getAdaptiveTileObjectRefinement(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::AdaptiveTileRefinement v = context->getAdaptiveTileObjectRefinement(objID);
+            static thread_local float r[5];
+            r[0]=v.target.x; r[1]=v.target.y; r[2]=v.subpatch_size_min; r[3]=v.subpatch_size_max; r[4]=v.transition_exponent;
+            return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local float e_r[5]={0,0,0,0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local float e_r[5]={0,0,0,0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectRefinement): Unknown error."); static thread_local float e_r[5]={0,0,0,0,0}; return e_r; }
+    }
+
+    PYHELIOS_API int* getAdaptiveTileObjectBaseSubdivisionCount(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::int2 v = context->getAdaptiveTileObjectBaseSubdivisionCount(objID);
+            static thread_local int r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectBaseSubdivisionCount): Unknown error."); static thread_local int e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API unsigned int getAdaptiveTileObjectMaxRefinementLevel(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            return context->getAdaptiveTileObjectMaxRefinementLevel(objID);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectMaxRefinementLevel): Unknown error."); }
+        return 0;
+    }
+
+    PYHELIOS_API float* getAdaptiveTileObjectSubpatchSizeRange(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::vec2 v = context->getAdaptiveTileObjectSubpatchSizeRange(objID);
+            static thread_local float r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local float e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local float e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectSubpatchSizeRange): Unknown error."); static thread_local float e_r[2]={0,0}; return e_r; }
+    }
+
+    PYHELIOS_API int* getAdaptiveTileObjectTextureRepeat(helios::Context* context, unsigned int objID) {
+        try {
+            clearError();
+            helios::int2 v = context->getAdaptiveTileObjectTextureRepeat(objID);
+            static thread_local int r[2]; r[0]=v.x; r[1]=v.y; return r;
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_UUID_NOT_FOUND, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); static thread_local int e_r[2]={0,0}; return e_r; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getAdaptiveTileObjectTextureRepeat): Unknown error."); static thread_local int e_r[2]={0,0}; return e_r; }
     }
 
     // ---- Sphere ----

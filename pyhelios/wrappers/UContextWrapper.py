@@ -814,6 +814,29 @@ try:
     helios_lib.addTileObject_texture_repeat.restype = ctypes.c_uint
     helios_lib.addTileObject_texture_repeat.errcheck = _check_error
 
+    # addAdaptiveTileObject prototypes.
+    # `refinement` is a flat array of 5 floats:
+    #   [target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent]
+    helios_lib.addAdaptiveTileObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addAdaptiveTileObject_basic.restype = ctypes.c_uint
+    helios_lib.addAdaptiveTileObject_basic.errcheck = _check_error
+
+    helios_lib.addAdaptiveTileObject_color.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.addAdaptiveTileObject_color.restype = ctypes.c_uint
+    helios_lib.addAdaptiveTileObject_color.errcheck = _check_error
+
+    helios_lib.addAdaptiveTileObject_texture.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
+    helios_lib.addAdaptiveTileObject_texture.restype = ctypes.c_uint
+    helios_lib.addAdaptiveTileObject_texture.errcheck = _check_error
+
+    helios_lib.addAdaptiveTileObject_texture_repeat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+    helios_lib.addAdaptiveTileObject_texture_repeat.restype = ctypes.c_uint
+    helios_lib.addAdaptiveTileObject_texture_repeat.errcheck = _check_error
+
+    helios_lib.predictAdaptiveTileObjectSubpatchCount.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int)]
+    helios_lib.predictAdaptiveTileObjectSubpatchCount.restype = ctypes.c_ulonglong
+    helios_lib.predictAdaptiveTileObjectSubpatchCount.errcheck = _check_error
+
     # addBoxObject prototypes
     helios_lib.addBoxObject_basic.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int)]
     helios_lib.addBoxObject_basic.restype = ctypes.c_uint
@@ -2176,6 +2199,89 @@ def addTileObject_texture_repeat(context, center: List[float], size: List[float]
     texture_repeat_ptr = (ctypes.c_int * 2)(*texture_repeat)
     texturefile_bytes = texturefile.encode('utf-8')
     return helios_lib.addTileObject_texture_repeat(context, center_ptr, size_ptr, rotation_ptr, subdiv_ptr, texturefile_bytes, texture_repeat_ptr)
+
+
+def _adaptive_tile_common_ptrs(center: List[float], size: List[float], rotation: List[float], refinement: List[float]):
+    """Validate and marshal the arguments shared by every addAdaptiveTileObject overload."""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(center) != 3:
+        raise ValueError("center must have 3 elements [x, y, z]")
+    if len(size) != 2:
+        raise ValueError("size must have 2 elements [x, y]")
+    if len(rotation) != 3:
+        raise ValueError("rotation must have 3 elements [radius, elevation, azimuth]")
+    if len(refinement) != 5:
+        raise ValueError(
+            "refinement must have 5 elements [target_x, target_y, subpatch_size_min, "
+            "subpatch_size_max, transition_exponent]"
+        )
+
+    return ((ctypes.c_float * 3)(*center),
+            (ctypes.c_float * 2)(*size),
+            (ctypes.c_float * 3)(*rotation),
+            (ctypes.c_float * 5)(*refinement))
+
+
+def addAdaptiveTileObject_basic(context, center: List[float], size: List[float], rotation: List[float], refinement: List[float]) -> int:
+    """Add an adaptive-resolution tiled patch object (returns object ID)"""
+    center_ptr, size_ptr, rotation_ptr, refinement_ptr = _adaptive_tile_common_ptrs(center, size, rotation, refinement)
+    return helios_lib.addAdaptiveTileObject_basic(context, center_ptr, size_ptr, rotation_ptr, refinement_ptr)
+
+
+def addAdaptiveTileObject_color(context, center: List[float], size: List[float], rotation: List[float], refinement: List[float], color: List[float]) -> int:
+    """Add an adaptive-resolution tiled patch object with color (returns object ID)"""
+    center_ptr, size_ptr, rotation_ptr, refinement_ptr = _adaptive_tile_common_ptrs(center, size, rotation, refinement)
+    if len(color) != 3:
+        raise ValueError("color must have 3 elements [r, g, b]")
+    color_ptr = (ctypes.c_float * 3)(*color)
+    return helios_lib.addAdaptiveTileObject_color(context, center_ptr, size_ptr, rotation_ptr, refinement_ptr, color_ptr)
+
+
+def addAdaptiveTileObject_texture(context, center: List[float], size: List[float], rotation: List[float], refinement: List[float], texturefile: str) -> int:
+    """Add an adaptive-resolution tiled patch object with texture (returns object ID)"""
+    center_ptr, size_ptr, rotation_ptr, refinement_ptr = _adaptive_tile_common_ptrs(center, size, rotation, refinement)
+    texturefile_bytes = texturefile.encode('utf-8')
+    return helios_lib.addAdaptiveTileObject_texture(context, center_ptr, size_ptr, rotation_ptr, refinement_ptr, texturefile_bytes)
+
+
+def addAdaptiveTileObject_texture_repeat(context, center: List[float], size: List[float], rotation: List[float], refinement: List[float], texturefile: str, texture_repeat: List[int]) -> int:
+    """Add an adaptive-resolution tiled patch object with texture and repeat (returns object ID)"""
+    center_ptr, size_ptr, rotation_ptr, refinement_ptr = _adaptive_tile_common_ptrs(center, size, rotation, refinement)
+    if len(texture_repeat) != 2:
+        raise ValueError("texture_repeat must have 2 elements [x, y]")
+    texture_repeat_ptr = (ctypes.c_int * 2)(*texture_repeat)
+    texturefile_bytes = texturefile.encode('utf-8')
+    return helios_lib.addAdaptiveTileObject_texture_repeat(context, center_ptr, size_ptr, rotation_ptr, refinement_ptr, texturefile_bytes, texture_repeat_ptr)
+
+
+def predictAdaptiveTileObjectSubpatchCount(context, size: List[float], refinement: List[float], texture_repeat: List[int]) -> int:
+    """Count the sub-patches an adaptive tile object would contain, without building geometry"""
+    if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Object-returning compound geometry functions not available in current Helios library. "
+            "Rebuild PyHelios with updated native interface."
+        )
+
+    if len(size) != 2:
+        raise ValueError("size must have 2 elements [x, y]")
+    if len(refinement) != 5:
+        raise ValueError(
+            "refinement must have 5 elements [target_x, target_y, subpatch_size_min, "
+            "subpatch_size_max, transition_exponent]"
+        )
+    if len(texture_repeat) != 2:
+        raise ValueError("texture_repeat must have 2 elements [x, y]")
+
+    size_ptr = (ctypes.c_float * 2)(*size)
+    refinement_ptr = (ctypes.c_float * 5)(*refinement)
+    texture_repeat_ptr = (ctypes.c_int * 2)(*texture_repeat)
+    return int(helios_lib.predictAdaptiveTileObjectSubpatchCount(context, size_ptr, refinement_ptr, texture_repeat_ptr))
+
 
 def addBoxObject_basic(context, center: List[float], size: List[float], subdiv: List[int]) -> int:
     if not _COMPOUND_GEOMETRY_FUNCTIONS_AVAILABLE:
@@ -5842,6 +5948,32 @@ try:
         getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
         getattr(helios_lib, _fn).errcheck = _check_error
 
+    for _fn in ("getTileObjectTextureRepeat", "getTileObjectEffectiveTextureRepeat"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_int)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    # Adaptive Tile
+    for _fn in ("getAdaptiveTileObjectCenter", "getAdaptiveTileObjectNormal",
+                "getAdaptiveTileObjectSize", "getAdaptiveTileObjectSubpatchSizeRange",
+                "getAdaptiveTileObjectRefinement"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    for _fn in ("getAdaptiveTileObjectBaseSubdivisionCount", "getAdaptiveTileObjectTextureRepeat"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_int)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getAdaptiveTileObjectMaxRefinementLevel.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getAdaptiveTileObjectMaxRefinementLevel.restype = ctypes.c_uint
+    helios_lib.getAdaptiveTileObjectMaxRefinementLevel.errcheck = _check_error
+
+    helios_lib.getAdaptiveTileObjectVertices.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getAdaptiveTileObjectVertices.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getAdaptiveTileObjectVertices.errcheck = _check_error
+
     # Sphere
     for _fn in ("getSphereObjectCenter", "getSphereObjectRadius"):
         getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
@@ -6134,6 +6266,67 @@ def getTileObjectVerticesWrapper(context, objID: int):
     ptr = helios_lib.getTileObjectVertices(context, objID, ctypes.byref(size))
     vals = _pull_float_array(ptr, size.value)
     return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getTileObjectTextureRepeatWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _int2_from_ptr(helios_lib.getTileObjectTextureRepeat(context, objID))
+
+
+def getTileObjectEffectiveTextureRepeatWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _int2_from_ptr(helios_lib.getTileObjectEffectiveTextureRepeat(context, objID))
+
+
+# Adaptive Tile
+def getAdaptiveTileObjectCenterWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getAdaptiveTileObjectCenter(context, objID))
+
+
+def getAdaptiveTileObjectSizeWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float2_from_ptr(helios_lib.getAdaptiveTileObjectSize(context, objID))
+
+
+def getAdaptiveTileObjectNormalWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float3_from_ptr(helios_lib.getAdaptiveTileObjectNormal(context, objID))
+
+
+def getAdaptiveTileObjectVerticesWrapper(context, objID: int):
+    _require_ctx_ext()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getAdaptiveTileObjectVertices(context, objID, ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getAdaptiveTileObjectRefinementWrapper(context, objID: int):
+    """Returns (target_x, target_y, subpatch_size_min, subpatch_size_max, transition_exponent)"""
+    _require_ctx_ext()
+    ptr = helios_lib.getAdaptiveTileObjectRefinement(context, objID)
+    return tuple(float(ptr[i]) for i in range(5))
+
+
+def getAdaptiveTileObjectBaseSubdivisionCountWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _int2_from_ptr(helios_lib.getAdaptiveTileObjectBaseSubdivisionCount(context, objID))
+
+
+def getAdaptiveTileObjectMaxRefinementLevelWrapper(context, objID: int) -> int:
+    _require_ctx_ext()
+    return int(helios_lib.getAdaptiveTileObjectMaxRefinementLevel(context, objID))
+
+
+def getAdaptiveTileObjectSubpatchSizeRangeWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _float2_from_ptr(helios_lib.getAdaptiveTileObjectSubpatchSizeRange(context, objID))
+
+
+def getAdaptiveTileObjectTextureRepeatWrapper(context, objID: int):
+    _require_ctx_ext()
+    return _int2_from_ptr(helios_lib.getAdaptiveTileObjectTextureRepeat(context, objID))
 
 
 # Sphere

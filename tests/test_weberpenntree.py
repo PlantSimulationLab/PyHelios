@@ -142,7 +142,35 @@ class TestTreeStructureQueries:
         # Check that all_uuids contains all component UUIDs
         all_uuids_set = set(all_uuids)
         assert all_component_uuids == all_uuids_set
-    
+
+    def test_uuid_getters_prune_deleted_primitives(self, weber_penn_tree, basic_context):
+        """Deleted primitives must not be reported by the UUID getters.
+
+        Regression test for helios-core 1.3.80: the plug-in caches the UUIDs it creates at
+        build time and never learned about deletions made directly through the Context, so
+        deleting tree geometry left the getters handing back dangling UUIDs. Because
+        getAllUUIDs() is typically passed straight to another plug-in, that surfaced as a
+        "does not exist in the Context" error far from the deletion.
+        """
+        tree_id = weber_penn_tree.buildTree(WPTType.OLIVE)
+
+        leaf_uuids = weber_penn_tree.getLeafUUIDs(tree_id)
+        assert len(leaf_uuids) > 2, "Need several leaves to delete a subset"
+        all_before = weber_penn_tree.getAllUUIDs(tree_id)
+
+        deleted = leaf_uuids[:2]
+        for uuid in deleted:
+            basic_context.deletePrimitive(uuid)
+
+        leaf_after = weber_penn_tree.getLeafUUIDs(tree_id)
+        all_after = weber_penn_tree.getAllUUIDs(tree_id)
+
+        for uuid in deleted:
+            assert uuid not in leaf_after, f"getLeafUUIDs still returns deleted primitive {uuid}"
+            assert uuid not in all_after, f"getAllUUIDs still returns deleted primitive {uuid}"
+        assert len(leaf_after) == len(leaf_uuids) - len(deleted)
+        assert len(all_after) == len(all_before) - len(deleted)
+
     def test_invalid_tree_id_queries(self, weber_penn_tree):
         """Test queries with invalid tree ID."""
         invalid_tree_id = 99999

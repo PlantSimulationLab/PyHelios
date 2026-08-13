@@ -523,6 +523,41 @@ class TestPhotosynthesisParameterValidation:
         assert hasattr(coeffs, 'Jmax')
         assert coeffs.Vcmax == -1.0  # Uninitialized default
 
+    def test_peaked_response_rejects_dhd_not_exceeding_dha(self):
+        """dHd <= dHa is undefined for the peaked Arrhenius form and must be rejected.
+
+        Mirrors validateDeactivationEnergy added in helios-core 1.3.80. Before it, the
+        response returned NaN and propagated it into net_photosynthesis with no diagnostic.
+        """
+        with pytest.raises(ValueError, match="strictly greater"):
+            PhotosyntheticTemperatureResponseParameters(100.0, dHa=60.0, dHd=60.0, Topt=310.0)
+
+        with pytest.raises(ValueError, match="strictly greater"):
+            PhotosyntheticTemperatureResponseParameters(100.0, dHa=60.0, dHd=30.0, Topt=310.0)
+
+        # dHa <= 0 applies no Arrhenius term, so dHd is unused and must not be rejected.
+        PhotosyntheticTemperatureResponseParameters(100.0, dHa=0.0, dHd=0.0, Topt=310.0)
+        # The default 10*dHa relationship stays valid.
+        PhotosyntheticTemperatureResponseParameters(100.0, dHa=60.0, dHd=600.0, Topt=310.0)
+
+    def test_empirical_coefficients_reject_degenerate_temperature_response(self):
+        """Coefficient sets that make the f_T reference denominator zero must be rejected.
+
+        helios-core 1.3.80 made the Tmin/Topt/Tref/q coefficients live (previously inert).
+        These two combinations give an infinite or NaN assimilation rate.
+        """
+        # Tref <= Tmin
+        with pytest.raises(ValueError, match="must be greater than the minimum"):
+            EmpiricalModelCoefficients(Tref=290.0, Tmin=290.0, Topt=303.0)
+
+        # (1+q)*Topt - Tmin - q*Tref == 0, chosen so Tmin < Topt still holds.
+        # With q=1: 2*Topt - Tmin - Tref == 0 -> Tref = 2*Topt - Tmin.
+        with pytest.raises(ValueError, match="degenerate"):
+            EmpiricalModelCoefficients(Tmin=290.0, Topt=303.0, q=1.0, Tref=316.0)
+
+        # The defaults must remain valid.
+        EmpiricalModelCoefficients()
+
 
 # ============================================================================
 # C4 Photosynthesis Bindings (helios-core v1.3.72+)
@@ -695,13 +730,107 @@ class TestC4PhotosynthesisNative:
             # Set a finite gm with a small dHa so it travels through the array layout.
             photo.setFarquharMesophyllConductance(0.4, dha=49.6, uuids=[uuid])
 
-            # 22-element layout: slots 18..21 are (gm_at_25C, dHa, Topt_C, dHd).
+            # 38-element layout (1.3.80+): slots 18..21 are (gm_at_25C, dHa, Topt_C, dHd).
             arr = photo.getFarquharModelCoefficients(uuid)
-            assert len(arr) == 22
+            assert len(arr) == 38
             assert arr[18] == pytest.approx(0.4, abs=1e-4)
             assert arr[19] == pytest.approx(49.6, abs=1e-4)
             # Topt was not set, so it must round-trip as the "no optimum" sentinel (-1).
             assert arr[20] < 0.0
+
+    def test_species_library_returns_real_rates_not_sentinels(self):
+        """Library species must report their actual Vcmax/Jmax/alpha/Rd, not -1 sentinels.
+
+        Regression test for helios-core 1.3.80: every entry in the C++ species library is
+        populated via ``setVcmax()``/``setJmax()``/``setRd()``/``setQuantumEfficiency_alpha()``,
+        and as of 1.3.80 those setters stamp the deprecated scalar fields
+        (``FarquharModelCoefficients::Vcmax`` etc.) to the -1 sentinel so that the
+        temperature-response object is unambiguously authoritative. The PyHelios wrapper read
+        slots 0..3 straight from those deprecated fields, so after the bump every species
+        reported Vcmax = Jmax = alpha = Rd = -1.
+        """
+        with PhotosynthesisModel(Context()) as photo:
+            for species in ("almond", "apple", "walnut"):
+                coeffs = photo.getSpeciesCoefficients(species)
+                assert coeffs[0] > 0.0, f"{species}: Vcmax is {coeffs[0]}, expected a positive rate"
+                assert coeffs[1] > 0.0, f"{species}: Jmax is {coeffs[1]}, expected a positive rate"
+                assert coeffs[2] > 0.0, f"{species}: alpha is {coeffs[2]}, expected a positive value"
+                assert coeffs[3] > 0.0, f"{species}: Rd is {coeffs[3]}, expected a positive rate"
+
+    def test_peaked_temperature_response_survives_library_roundtrip(self):
+        """A peaked (4-parameter) temperature response must survive get/set through the array.
+
+        Regression test for helios-core 1.3.80: Almond, Walnut and PistachioFemale were
+        re-fitted to use the peaked Arrhenius form with TPU limitation. Slots 0..3 of the flat
+        array carried only the rate value, so reading a peaked species and writing it back
+        collapsed it to a bare constant — silently discarding dHa/Topt/dHd. The extended
+        layout carries the full (value, dHa, Topt_C, dHd) block for each rate.
+        """
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                color=RGBcolor(0.3, 0.7, 0.2))
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeFarquhar()
+            photo.setFarquharCoefficientsFromLibrary("almond", uuids=[uuid])
+
+            before = photo.getFarquharModelCoefficients(uuid)
+            # Slots 22..25 are the Vcmax response block (value, dHa, Topt_C, dHd).
+            # Almond is peaked: Vcmax(72.6, dHa=27.3, Topt=42.15 C, dHd=478.4).
+            assert before[0] == pytest.approx(72.6, abs=0.5)
+            assert before[22] == pytest.approx(72.6, abs=0.5), "Vcmax value lost"
+            assert before[23] == pytest.approx(27.3, abs=0.5), "Vcmax dHa lost"
+            assert before[24] == pytest.approx(42.15, abs=0.5), "Vcmax Topt lost"
+            assert before[25] == pytest.approx(478.4, abs=1.0), "Vcmax dHd lost"
+
+            # Round-trip unchanged: read, write back, read again.
+            photo.setFarquharModelCoefficients(
+                FarquharModelCoefficients.from_array(before), [uuid])
+            after = photo.getFarquharModelCoefficients(uuid)
+
+            for slot, name in ((0, "Vcmax"), (23, "Vcmax dHa"),
+                               (24, "Vcmax Topt"), (25, "Vcmax dHd")):
+                assert after[slot] == pytest.approx(before[slot], abs=1e-3), \
+                    f"{name} changed across round-trip: {before[slot]} -> {after[slot]}"
+
+    def test_rate_response_blocks_are_not_transposed(self):
+        """Each rate's temperature-response block must land in its own slots.
+
+        Slots 22..37 are four 4-float blocks in the order Vcmax, Jmax, Rd, alpha. An
+        off-by-four in either the pack or the unpack would silently swap two rates — most
+        likely Rd and alpha, which are adjacent and both small — while every length and
+        finiteness check still passed. Distinct sentinel values per rate make a swap visible.
+        """
+        from pyhelios.types import vec3, vec2, RGBcolor
+
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                color=RGBcolor(0.3, 0.7, 0.2))
+
+        with PhotosynthesisModel(context) as photo:
+            photo.setModelTypeFarquhar()
+            photo.setFarquharCoefficientsFromLibrary("apple", uuids=[uuid])
+
+            # Deliberately distinct per rate so a transposition cannot coincide.
+            photo.setVcmax(111.0, [uuid], dha=61.0, topt=41.0, dhd=611.0)
+            photo.setJmax(222.0, [uuid], dha=62.0, topt=42.0, dhd=622.0)
+            photo.setDarkRespiration(3.3, [uuid], dha=63.0, topt=43.0, dhd=633.0)
+            photo.setQuantumEfficiency(0.44, [uuid], dha=64.0, topt=44.0, dhd=644.0)
+
+            arr = photo.getFarquharModelCoefficients(uuid)
+            expected = {
+                "Vcmax": (22, 111.0, 61.0, 41.0, 611.0),
+                "Jmax": (26, 222.0, 62.0, 42.0, 622.0),
+                "Rd": (30, 3.3, 63.0, 43.0, 633.0),
+                "alpha": (34, 0.44, 64.0, 44.0, 644.0),
+            }
+            for name, (base, value, dha, topt, dhd) in expected.items():
+                assert arr[base] == pytest.approx(value, abs=1e-2), f"{name} value in wrong slot"
+                assert arr[base + 1] == pytest.approx(dha, abs=1e-2), f"{name} dHa in wrong slot"
+                assert arr[base + 2] == pytest.approx(topt, abs=1e-2), f"{name} Topt in wrong slot"
+                assert arr[base + 3] == pytest.approx(dhd, abs=1e-2), f"{name} dHd in wrong slot"
 
 
 if __name__ == "__main__":

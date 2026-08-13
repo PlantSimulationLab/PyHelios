@@ -19,6 +19,71 @@ enum class ColorCorrectionAlgorithm {
 };
 
 // =============================================================================
+// Camera string-property helpers (C++ linkage — outside the extern "C" block).
+// =============================================================================
+
+namespace pyhelios_radiation_internal {
+
+//! Index into the camera string-property array passed across the C boundary.
+/**
+ * These fields are std::string in CameraProperties, so they cannot travel in the
+ * numeric camera_properties[] array. They are passed as a parallel array of
+ * const char* instead. A NULL array, or a NULL entry within it, leaves the
+ * corresponding field at its CameraProperties default.
+ */
+enum CameraStringProperty {
+    CAMERA_STR_EXPOSURE = 0,
+    CAMERA_STR_WHITE_BALANCE = 1,
+    CAMERA_STR_MANUFACTURER = 2,
+    CAMERA_STR_MODEL = 3,
+    CAMERA_STR_LENS_MAKE = 4,
+    CAMERA_STR_LENS_MODEL = 5,
+    CAMERA_STR_LENS_SPECIFICATION = 6,
+    CAMERA_STR_COUNT = 7
+};
+
+//! Apply the string camera properties, leaving defaults in place for NULL entries.
+/**
+ * \param[in,out] props Camera properties struct to populate.
+ * \param[in] camera_strings Array of CAMERA_STR_COUNT C strings, or NULL.
+ * \param[in] string_count Number of valid entries in camera_strings.
+ * \param[in] exposure_legacy Exposure from the older dedicated parameter. Used
+ *            only when the string array does not supply one, so existing callers
+ *            keep working unchanged.
+ */
+inline void applyCameraStringProperties(CameraProperties &props,
+                                        const char** camera_strings,
+                                        size_t string_count,
+                                        const char* exposure_legacy = nullptr) {
+    // Defaults matching CameraProperties' own constructor.
+    props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
+    props.model = "generic";
+    props.lens_make = "";
+    props.lens_model = "";
+    props.lens_specification = "";
+    props.exposure = exposure_legacy ? std::string(exposure_legacy) : "auto";
+    props.white_balance = "auto";
+
+    if (!camera_strings) {
+        return;
+    }
+
+    auto entry = [&](size_t i) -> const char* {
+        return (i < string_count && camera_strings[i]) ? camera_strings[i] : nullptr;
+    };
+
+    if (const char* v = entry(CAMERA_STR_EXPOSURE)) props.exposure = v;
+    if (const char* v = entry(CAMERA_STR_WHITE_BALANCE)) props.white_balance = v;
+    if (const char* v = entry(CAMERA_STR_MANUFACTURER)) props.manufacturer = v;
+    if (const char* v = entry(CAMERA_STR_MODEL)) props.model = v;
+    if (const char* v = entry(CAMERA_STR_LENS_MAKE)) props.lens_make = v;
+    if (const char* v = entry(CAMERA_STR_LENS_MODEL)) props.lens_model = v;
+    if (const char* v = entry(CAMERA_STR_LENS_SPECIFICATION)) props.lens_specification = v;
+}
+
+} // namespace pyhelios_radiation_internal
+
+// =============================================================================
 // SIF helpers (must have C++ linkage — kept outside the extern "C" block below).
 // =============================================================================
 
@@ -28,7 +93,9 @@ namespace pyhelios_radiation_internal {
 // (same layout as addRadiationCameraVec3) plus the two SIF-specific fields.
 inline SIFCameraProperties buildSIFCameraProperties(const float* camera_properties,
                                                     float excitation_bin_width_nm,
-                                                    unsigned int excitation_scattering_depth) {
+                                                    unsigned int excitation_scattering_depth,
+                                                    const char** camera_strings = nullptr,
+                                                    size_t string_count = 0) {
     SIFCameraProperties props;
     props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
     props.focal_plane_distance = camera_properties[2];
@@ -41,12 +108,7 @@ inline SIFCameraProperties buildSIFCameraProperties(const float* camera_properti
     props.shutter_speed = camera_properties[8];
     props.camera_zoom = camera_properties[9];
 
-    props.model = "generic";
-    props.lens_make = "";
-    props.lens_model = "";
-    props.lens_specification = "";
-    props.exposure = "auto";
-    props.white_balance = "auto";
+    applyCameraStringProperties(props, camera_strings, string_count);
 
     props.excitation_bin_width_nm = excitation_bin_width_nm;
     props.excitation_scattering_depth = excitation_scattering_depth;
@@ -2071,7 +2133,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                                              float position_x, float position_y, float position_z,
                                              float lookat_x, float lookat_y, float lookat_z,
                                              const float* camera_properties, unsigned int antialiasing_samples,
-                                             const char* exposure) {
+                                             const char* exposure,
+                                             const char** camera_strings, size_t string_count) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2114,15 +2177,10 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             // Extended properties (v1.3.58+) - use defaults then override if provided
             props.lens_focal_length = 0.05f;     // 50mm default
             props.sensor_width_mm = 35.0f;        // Full-frame default
-            props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
-            props.model = "generic";
-            props.lens_make = "";
-            props.lens_model = "";
-            props.lens_specification = "";
-            props.exposure = exposure ? std::string(exposure) : "auto";
             props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
-            props.white_balance = "auto";
             props.camera_zoom = 1.0f;             // No zoom default (v1.3.60+)
+            pyhelios_radiation_internal::applyCameraStringProperties(
+                props, camera_strings, string_count, exposure);
 
             // Override with extended properties if provided
             // Python's to_array() provides 10 elements
@@ -2145,7 +2203,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                                                   float position_x, float position_y, float position_z,
                                                   float radius, float elevation, float azimuth,
                                                   const float* camera_properties, unsigned int antialiasing_samples,
-                                                  const char* exposure) {
+                                                  const char* exposure,
+                                                  const char** camera_strings, size_t string_count) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2188,15 +2247,10 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             // Extended properties (v1.3.58+) - use defaults then override if provided
             props.lens_focal_length = 0.05f;     // 50mm default
             props.sensor_width_mm = 35.0f;        // Full-frame default
-            props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
-            props.model = "generic";
-            props.lens_make = "";
-            props.lens_model = "";
-            props.lens_specification = "";
-            props.exposure = exposure ? std::string(exposure) : "auto";
             props.shutter_speed = 1.0f / 125.0f;  // 1/125s default
-            props.white_balance = "auto";
             props.camera_zoom = 1.0f;             // No zoom default (v1.3.60+)
+            pyhelios_radiation_internal::applyCameraStringProperties(
+                props, camera_strings, string_count, exposure);
 
             // Override with extended properties if provided
             // Python's to_array() provides 10 elements
@@ -2224,7 +2278,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                                        float lookat_x, float lookat_y, float lookat_z,
                                        const float* camera_properties,
                                        float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
-                                       unsigned int antialiasing_samples) {
+                                       unsigned int antialiasing_samples,
+                                       const char** camera_strings, size_t string_count) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2256,7 +2311,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
 
             SIFCameraProperties props = buildSIFCameraProperties(camera_properties,
                                                                  excitation_bin_width_nm,
-                                                                 excitation_scattering_depth);
+                                                                 excitation_scattering_depth,
+                                                                 camera_strings, string_count);
 
             radiation_model->addSIFCamera(std::string(camera_label), band_vector, position, lookat, props, antialiasing_samples);
 
@@ -2273,7 +2329,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                                             float radius, float elevation, float azimuth,
                                             const float* camera_properties,
                                             float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
-                                            unsigned int antialiasing_samples) {
+                                            unsigned int antialiasing_samples,
+                                            const char** camera_strings, size_t string_count) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2305,7 +2362,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
 
             SIFCameraProperties props = buildSIFCameraProperties(camera_properties,
                                                                  excitation_bin_width_nm,
-                                                                 excitation_scattering_depth);
+                                                                 excitation_scattering_depth,
+                                                                 camera_strings, string_count);
 
             radiation_model->addSIFCamera(std::string(camera_label), band_vector, position, viewing_direction, props, antialiasing_samples);
 
@@ -2756,7 +2814,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
     PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
                                              const char* camera_label,
                                              const float* camera_properties,
-                                             const char* exposure) {
+                                             const char* exposure,
+                                             const char** camera_strings, size_t string_count) {
         try {
             clearError();
             if (!radiation_model) {
@@ -2787,13 +2846,8 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
 
             // String fields use defaults (cannot be updated via this interface),
             // except exposure mode which is plumbed through from CameraProperties.
-            props.manufacturer = "";  // empty => EXIF "Helios" fallback (helios-core v1.3.73+)
-            props.model = "generic";
-            props.lens_make = "";
-            props.lens_model = "";
-            props.lens_specification = "";
-            props.exposure = exposure ? std::string(exposure) : "auto";
-            props.white_balance = "auto";
+            pyhelios_radiation_internal::applyCameraStringProperties(
+                props, camera_strings, string_count, exposure);
 
             radiation_model->updateCameraParameters(std::string(camera_label), props);
 

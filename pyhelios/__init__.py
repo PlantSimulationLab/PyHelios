@@ -176,6 +176,37 @@ except (AttributeError, ImportError):
     SingleReturnSelection = None
     RisleyPrism = None
 
+try:
+    from .ParameterOptimization import (
+        ParameterOptimization, ParameterOptimizationError, OptimizationResult,
+        ConstrainedResult, make_constrained_simulation,
+        Parameter, ParameterType,
+        GeneticAlgorithm, BayesianOptimization, CMAES, Adam, LBFGS, BOBYQA, SLSQP,
+        BLXAlphaCrossover, BLXPCACrossover,
+        PerGeneMutation, IsotropicMutation, HybridMutation,
+    )
+except (AttributeError, ImportError):
+    # ParameterOptimization functions not available in current library
+    ParameterOptimization = None
+    ParameterOptimizationError = None
+    OptimizationResult = None
+    ConstrainedResult = None
+    make_constrained_simulation = None
+    Parameter = None
+    ParameterType = None
+    GeneticAlgorithm = None
+    BayesianOptimization = None
+    CMAES = None
+    Adam = None
+    LBFGS = None
+    BOBYQA = None
+    SLSQP = None
+    BLXAlphaCrossover = None
+    BLXPCACrossover = None
+    PerGeneMutation = None
+    IsotropicMutation = None
+    HybridMutation = None
+
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
 from .exceptions import (

@@ -101,6 +101,28 @@ model.
 > global data on every `run()` so the radiation plugin's SIF camera can look them up
 > per primitive when building Fluspect-B emission kernels.
 
+### Input Validation {#LOValidation}
+
+As of helios-core 1.3.80, the model validates its inputs before computing a spectrum and raises \ref pyhelios.LeafOptics.LeafOpticsError "LeafOpticsError" for values that are physically meaningless:
+
+<table>
+ <tr><th>Parameter</th><th>Requirement</th><th>Reason</th></tr>
+ <tr><td>numberlayers</td><td>\f$N \ge 1\f$</td><td>\f$N\f$ counts the elementary layers making up the leaf. \f$N < 1\f$ makes the Stokes exponent \f$N-1\f$ negative, which inverts the layer stack, and \f$N = 0\f$ divides by zero when computing the per-layer absorption coefficient. Use \f$N = 1\f$ for a single compact layer.</td></tr>
+ <tr><td>All constituent contents</td><td>\f$\ge 0\f$</td><td>Constituent contents are masses (or concentrations) per unit leaf area. A negative value would contribute negative absorption. Set a constituent to zero to disable it.</td></tr>
+</table>
+
+The constituent contents subject to the non-negativity check are `chlorophyllcontent`, `carotenoidcontent`, `anthocyancontent`, `brownpigments`, `watermass`, `drymass`, `protein`, and `carbonconstituents`.
+
+Validation applies to every entry point that computes a spectrum, including \ref pyhelios.LeafOptics.LeafOptics::getLeafSpectra "getLeafSpectra()" and \ref pyhelios.LeafOptics.LeafOptics::run "run()".
+
+Note that the SIF fields `V2Z` and `fqe` are **not** validated, since they are inert for the PROSPECT reflectance/transmittance calculation.
+
+#### Leaves With No Dry Matter {#LOModeNoDryMatter}
+
+If `drymass`, `protein`, and `carbonconstituents` are all zero, the leaf has no dry matter at all. This is **not** an error — the model still runs and returns a spectrum — but it is almost always a mistake, so a warning is printed unless messages have been disabled with \ref pyhelios.LeafOptics.LeafOptics::disableMessages "disableMessages()". Set at least one dry-matter parameter to a non-zero value to suppress it.
+
+Note that a leaf with no dry matter *and* no water and no pigments is perfectly non-absorbing at every wavelength. This is handled correctly (the elementary-layer transmittance is 1, so the leaf reflects and transmits all incident radiation with no absorption), but such a leaf is not physically meaningful.
+
 ## Integration with the Radiation SIF Pipeline {#LOSIFIntegration}
 
 The radiation plugin includes a Fluspect-B / van der Tol pipeline for simulating solar-induced chlorophyll fluorescence (SIF) — see [SIF camera](plugin_radiation.md#sif-camera) in the radiation docs. LeafOptics is the canonical way to author the per-leaf biochemistry that pipeline needs.
@@ -216,7 +238,7 @@ The method returns a \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsPr
 
 ### Available Species {#LOLibrarySpecies}
 
-The library contains PROSPECT-D parameters fitted to LOPEX93 spectral library samples using the `fit_prospect_visrobust.py` script with robust optimization. All species use PROSPECT-D mode (drymass > 0, protein = 0, carbonconstituents = 0).
+The library contains PROSPECT-D parameters fitted to measured leaf spectra using the `fit_prospect_visrobust.py` script with robust optimization. Most species are fitted to LOPEX93 spectral library samples; `"common_bean"` and `"cowpea"` are fitted to spectra from the GEMINI field experiments. All species use PROSPECT-D mode (drymass > 0, protein = 0, carbonconstituents = 0).
 
 <table>
  <tr><th>Species Label</th><th>Scientific Name</th><th>N</th><th>Cab<br>(µg/cm²)</th><th>Car<br>(µg/cm²)</th><th>Ant<br>(µg/cm²)</th><th>Cbrown</th><th>Cw<br>(g/cm²)</th><th>Cm<br>(g/cm²)</th><th>R²</th><th>Source</th></tr>
@@ -230,11 +252,13 @@ The library contains PROSPECT-D parameters fitted to LOPEX93 spectral library sa
  <tr><td>"soybean"</td><td><i>Glycine max</i> L.</td><td>1.54</td><td>46.4</td><td>12.1</td><td>0.65</td><td>0.000</td><td>0.0101</td><td>0.0029</td><td>0.997</td><td>LOPEX93 sample 0116</td></tr>
  <tr><td>"wine_grape"</td><td><i>Vitis vinifera</i> L.</td><td>1.43</td><td>50.9</td><td>12.5</td><td>1.44</td><td>0.080</td><td>0.0109</td><td>0.0060</td><td>0.997</td><td>LOPEX93 sample 0276</td></tr>
  <tr><td>"tomato"</td><td><i>Lycopersicum esculentum</i></td><td>1.40</td><td>48.3</td><td>11.6</td><td>1.45</td><td>0.000</td><td>0.0156</td><td>0.0026</td><td>0.997</td><td>LOPEX93 sample 0316</td></tr>
+ <tr><td>"common_bean"</td><td><i>Phaseolus vulgaris</i> L.</td><td>1.44</td><td>42.4</td><td>15.6</td><td>0.84</td><td>0.000</td><td>0.0150</td><td>0.0020</td><td>-</td><td>GEMINI field experiments, day 35</td></tr>
+ <tr><td>"cowpea"</td><td><i>Vigna unguiculata</i> L.</td><td>1.23</td><td>61.5</td><td>25.6</td><td>2.52</td><td>0.000</td><td>0.0221</td><td>0.0011</td><td>-</td><td>GEMINI field experiments, day 48</td></tr>
 </table>
 
 **Notes:**
 - Species names are case-insensitive (e.g., "corn" and "CORN" are equivalent).
-- R² values computed as 1 - (RMSE² / variance), indicating goodness-of-fit to measured spectra.
+- R² values computed as 1 - (RMSE² / variance), indicating goodness-of-fit to measured spectra. A dash indicates that the reference spectra are not distributed with Helios, so the value is not reported.
 - All parameters were fitted without affine calibration using visible-robust optimization.
 - LOPEX93 dataset: Hosgood B. et al. (1994), Leaf Optical Properties Experiment 93 (LOPEX93), EUR 16095 EN.
 

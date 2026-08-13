@@ -1058,6 +1058,54 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void plantArchitectureEnableMessages(PlantArchitecture* plantarch) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+
+            plantarch->enableMessages();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::enableMessages): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::enableMessages): Unknown error enabling messages.");
+        }
+    }
+
+    PYHELIOS_API void plantArchitectureDisableMessages(PlantArchitecture* plantarch) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+
+            plantarch->disableMessages();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::disableMessages): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::disableMessages): Unknown error disabling messages.");
+        }
+    }
+
+    PYHELIOS_API void enableGroundClipping(PlantArchitecture* plantarch, float ground_height) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return;
+            }
+
+            plantarch->enableGroundClipping(ground_height);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::enableGroundClipping): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::enableGroundClipping): Unknown error enabling ground clipping.");
+        }
+    }
+
     PYHELIOS_API void disableCollisionDetection(PlantArchitecture* plantarch) {
         try {
             clearError();
@@ -1726,6 +1774,24 @@ extern "C" {
             return -1;
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPlantPhenologicalThresholds): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int disablePlantPhenology(PlantArchitecture* plantarch, unsigned int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            plantarch->disablePlantPhenology(plantID);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::disablePlantPhenology): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::disablePlantPhenology): Unknown error.");
             return -1;
         }
     }

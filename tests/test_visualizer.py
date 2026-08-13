@@ -35,11 +35,17 @@ def is_headless_environment():
     """
     import sys
 
-    # On macOS, OpenGL context creation from non-GUI apps (like pytest in terminal)
-    # typically fails even when a display is present. Skip unless explicitly enabled.
+    # On macOS these tests are opt-in via PYHELIOS_TEST_VISUALIZER, because a CI runner may have
+    # no window server session at all. They do work from a terminal on a machine with a display.
+    #
+    # Note: this gate previously carried a comment claiming macOS terminal processes cannot create
+    # OpenGL contexts. That was a misdiagnosis. The actual failure was GLFW's
+    # GLFW_COCOA_CHDIR_RESOURCES init hint moving the working directory during glfwInit(), which
+    # broke helios's relative asset paths and surfaced as a generic "failed to create visualizer"
+    # error. See _suppress_glfw_cocoa_chdir() in pyhelios/wrappers/UVisualizerWrapper.py.
     if sys.platform == 'darwin':
         if not os.environ.get('PYHELIOS_TEST_VISUALIZER'):
-            return True  # macOS terminal apps can't create OpenGL contexts
+            return True
 
     # Check for display availability (Linux/other)
     display = os.environ.get('DISPLAY')
@@ -707,9 +713,14 @@ class TestVisualizerNewMethodsNative:
             with pytest.raises(ValueError, match="must be numeric"):
                 visualizer.setColorbarRange("0", 100.0)
             
-            with pytest.raises(ValueError, match="Minimum value must be less than maximum value"):
+            with pytest.raises(ValueError, match="Minimum value must not be greater than maximum value"):
                 visualizer.setColorbarRange(100.0, 50.0)
-            
+
+            # helios-core 1.3.81 tracks "range was set" in a flag rather than inferring it from
+            # (0, 0), so a degenerate range is a legitimate explicit range and must be accepted.
+            visualizer.setColorbarRange(0.0, 0.0)
+            visualizer.setColorbarRange(5.0, 5.0)
+
             # Test colorbar title
             visualizer.setColorbarTitle("Temperature (°C)")
             
@@ -1137,6 +1148,121 @@ class TestVisualizerPointCullingAPI:
         sig = inspect.signature(Visualizer.getPointRenderingMetrics)
         params = list(sig.parameters.keys())
         assert 'self' in params
+
+
+@pytest.mark.cross_platform
+class TestVisualizerV1381API:
+    """Signature-level checks for helios-core 1.3.81 visualizer changes."""
+
+    def test_get_window_pixels_rgb_buffer_argument_is_optional(self):
+        import inspect
+        sig = inspect.signature(Visualizer.getWindowPixelsRGB)
+        assert sig.parameters['buffer'].default is None, (
+            "getWindowPixelsRGB() must be callable with no argument so the buffer is sized from "
+            "the framebuffer rather than by the caller"
+        )
+
+    def test_get_window_pixels_rgb_documents_framebuffer_sizing(self):
+        doc = Visualizer.getWindowPixelsRGB.__doc__ or ""
+        assert "getFramebufferSize" in doc, (
+            "the buffer-sizing requirement must be documented; sizing from getWindowSize() "
+            "overflows the buffer on a high-DPI display"
+        )
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(is_headless_environment(), reason="Skipping visualizer tests in headless environment")
+class TestVisualizerV1381Native:
+    """helios-core 1.3.81 visualizer behavior."""
+
+    def test_get_window_pixels_rgb_self_sizes_to_framebuffer(self):
+        """The no-argument form allocates from the framebuffer, so it cannot be undersized."""
+        context = Context()
+        context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        with Visualizer(400, 300, headless=True) as visualizer:
+            visualizer.buildContextGeometry(context)
+            visualizer.plotUpdate()
+
+            pixels, width, height = visualizer.getWindowPixelsRGB()
+
+            fb_width, fb_height = visualizer.getFramebufferSize()
+            assert (width, height) == (fb_width, fb_height)
+            assert len(pixels) == 3 * fb_width * fb_height
+            assert all(isinstance(p, int) for p in pixels[:12])
+
+    def test_get_window_pixels_rgb_rejects_buffer_sized_from_the_window(self):
+        """Sizing from getWindowSize() underallocates 4x on a Retina display; reject it up front."""
+        context = Context()
+        context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        with Visualizer(400, 300, headless=True) as visualizer:
+            visualizer.buildContextGeometry(context)
+            visualizer.plotUpdate()
+
+            fb_width, fb_height = visualizer.getFramebufferSize()
+            required = 3 * fb_width * fb_height
+
+            with pytest.raises(ValueError, match="getFramebufferSize"):
+                visualizer.getWindowPixelsRGB([0] * (required // 2))
+
+            with pytest.raises(ValueError, match="getFramebufferSize"):
+                visualizer.getWindowPixelsRGB([0] * (required + 3))
+
+    def test_get_window_pixels_rgb_accepts_a_correctly_sized_buffer(self):
+        context = Context()
+        context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        with Visualizer(400, 300, headless=True) as visualizer:
+            visualizer.buildContextGeometry(context)
+            visualizer.plotUpdate()
+
+            fb_width, fb_height = visualizer.getFramebufferSize()
+            buffer = [0] * (3 * fb_width * fb_height)
+            visualizer.getWindowPixelsRGB(buffer)
+
+            pixels, _, _ = visualizer.getWindowPixelsRGB()
+            assert buffer == pixels
+
+    def test_colorbar_range_accepts_degenerate_and_rejects_inverted(self):
+        with Visualizer(400, 300, headless=True) as visualizer:
+            visualizer.setColorbarRange(0.0, 0.0)
+            visualizer.setColorbarRange(-1.0, 1.0)
+            with pytest.raises(ValueError, match="must not be greater than"):
+                visualizer.setColorbarRange(1.0, -1.0)
+
+    def test_plot_once_on_fresh_visualizer_does_not_crash(self):
+        """helios-core 1.3.81: plotOnce() used to SIGSEGV without a prior setBackgroundColor().
+
+        Run in a subprocess and assert on the exit code -- an in-process segfault would take down
+        the test runner rather than reporting a failure.
+        """
+        import subprocess
+        import textwrap
+
+        repro = textwrap.dedent(
+            """
+            from pyhelios import Context, Visualizer
+            from pyhelios.types import vec2, vec3
+
+            context = Context()
+            context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            with Visualizer(400, 300, headless=True) as visualizer:
+                visualizer.buildContextGeometry(context)
+                # No setBackgroundColor() -- the default gradient background is what used to be
+                # drawn against zero-byte vertex buffers.
+                visualizer.plotOnce(False)
+            print("SURVIVED")
+            """
+        )
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env = dict(os.environ, PYTHONPATH=repo_root)
+        result = subprocess.run([sys.executable, "-c", repro], cwd=repo_root, env=env,
+                                capture_output=True, text=True, timeout=180)
+
+        assert result.returncode == 0, (
+            f"plotOnce() on a fresh Visualizer exited with {result.returncode} "
+            f"(-11/139 indicates SIGSEGV).\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "SURVIVED" in result.stdout
 
 
 if __name__ == "__main__":

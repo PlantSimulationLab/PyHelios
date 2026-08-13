@@ -393,6 +393,68 @@ class TestLeafOpticsErrorHandling:
             with pytest.raises(ValueError, match="empty"):
                 leafoptics.getPropertiesFromLibrary("")
 
+    def test_prospect_pro_spectra_are_finite(self, basic_context):
+        """A PROSPECT-PRO leaf with no water must produce finite spectra everywhere.
+
+        Regression test for helios-core 1.3.80: the elementary-layer transmittance returned 0
+        instead of 1 when the absorption coefficient k was exactly zero, which made the
+        internal transmissivity zero and divided by it in the Stokes solution, producing NaN
+        reflectance and transmittance. This is reachable with documented inputs — the protein
+        absorption spectrum is identically zero over 400-1432 nm and PROSPECT-PRO forces
+        drymass to zero, so such a leaf absorbs nothing at 652 of the 2101 wavelengths. The
+        NaN spectra were written to global data and consumed by the radiation plugin with no
+        diagnostic.
+
+        Asserting finiteness specifically: the pre-existing range check (0 <= value <= 1)
+        would also catch NaN, but no existing test ever drove k to zero because they all kept
+        watermass and drymass non-zero.
+        """
+        import math
+        from pyhelios import LeafOptics, LeafOpticsProperties
+
+        with LeafOptics(basic_context) as leafoptics:
+            # PROSPECT-PRO mode: protein and carbon constituents instead of bulk dry mass,
+            # and no water, so absorption is exactly zero across much of the spectrum.
+            props = LeafOpticsProperties(
+                numberlayers=1.5,
+                chlorophyllcontent=0.0,
+                carotenoidcontent=0.0,
+                anthocyancontent=0.0,
+                brownpigments=0.0,
+                watermass=0.0,
+                drymass=0.0,
+                protein=0.001,
+                # Must stay zero: the carbon-constituents absorption spectrum is non-zero
+                # everywhere, so any positive value keeps k > 0 and never reaches the bug.
+                carbonconstituents=0.0,
+            )
+            leafoptics.disableMessages()
+            wavelengths, reflectance, transmittance = leafoptics.getLeafSpectra(props)
+
+            assert len(reflectance) == 2101 and len(transmittance) == 2101
+            for i in range(len(reflectance)):
+                assert math.isfinite(reflectance[i]), \
+                    f"non-finite reflectance {reflectance[i]} at {wavelengths[i]} nm"
+                assert math.isfinite(transmittance[i]), \
+                    f"non-finite transmittance {transmittance[i]} at {wavelengths[i]} nm"
+
+    def test_invalid_prospect_inputs_are_rejected(self, basic_context):
+        """numberlayers < 1 and negative constituents must raise, not produce garbage.
+
+        helios-core 1.3.80 added input validation: N < 1 makes the Stokes exponent negative,
+        which inverts the layer stack and can drive the zero-absorption denominator through
+        zero, and N = 0 divides by zero outright. Negative constituent contents would
+        contribute negative absorption.
+        """
+        from pyhelios import LeafOptics, LeafOpticsProperties, HeliosError
+
+        with LeafOptics(basic_context) as leafoptics:
+            with pytest.raises(HeliosError):
+                leafoptics.getLeafSpectra(LeafOpticsProperties(numberlayers=0.5))
+
+            with pytest.raises(HeliosError):
+                leafoptics.getLeafSpectra(LeafOpticsProperties(chlorophyllcontent=-1.0))
+
 
 @pytest.mark.native_only
 class TestLeafOpticsIntegration:

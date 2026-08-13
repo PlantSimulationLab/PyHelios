@@ -2539,6 +2539,171 @@ class TestPlantStateQueries:
 
 
 @pytest.mark.native_only
+class TestPhenologyDefaultsAndXMLRoundTrip:
+    """helios-core 1.3.81 phenology fixes, exercised through the PyHelios API."""
+
+    def test_manually_built_plant_keeps_its_leaves_across_advance_time(self, basic_context):
+        """A manual build never calls setPlantPhenologicalThresholds().
+
+        Before helios-core 1.3.81 every PlantInstance phenological threshold defaulted to 0, so
+        the dormancy predicate in advanceTime() fired on the first timestep and on every step
+        after, calling Shoot::makeDormant() -- which strips every leaf and marks all non-dormant
+        buds BUD_DEAD. Because breakDormancy() only revives buds that are not BUD_DEAD, the plant
+        was permanently defoliated rather than growing.
+        """
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                models = plantarch.getAvailablePlantModels()
+                if 'bean' not in models:
+                    pytest.skip("Bean model not available for testing")
+                plantarch.loadPlantModelFromLibrary('bean')
+
+                plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
+                plantarch.addBaseStemShoot(
+                    plant_id, 3, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate"
+                )
+
+                leaves_before = len(plantarch.getPlantLeafObjectIDs(plant_id))
+                assert leaves_before > 0, "test precondition: the manual build must produce leaves"
+
+                # No setPlantPhenologicalThresholds() call -- the defaults must schedule no phenology
+                plantarch.advanceTime(1.0)
+                assert len(plantarch.getPlantLeafObjectIDs(plant_id)) > 0, (
+                    "plant was defoliated on the first timestep")
+
+                plantarch.advanceTime(5.0)
+                leaves_after = len(plantarch.getPlantLeafObjectIDs(plant_id))
+                assert leaves_after >= leaves_before, (
+                    f"plant shrank instead of growing: {leaves_before} -> {leaves_after} leaves")
+                assert plantarch.getPlantLeafArea(plant_id) > 0.0
+
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_phenological_thresholds_are_written_to_plant_structure_xml(self, basic_context, tmp_path):
+        """1.3.81 added the 8 phenology tags; they are not derivable from the shoot structure."""
+        import re
+
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                models = plantarch.getAvailablePlantModels()
+                if 'bean' not in models:
+                    pytest.skip("Bean model not available for testing")
+                plantarch.loadPlantModelFromLibrary('bean')
+
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+                plantarch.setPlantPhenologicalThresholds(
+                    plant_id, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, True
+                )
+
+                xml_path = tmp_path / "plant_phenology.xml"
+                plantarch.writePlantStructureXML(plant_id, str(xml_path))
+                assert xml_path.exists()
+
+                text = xml_path.read_text()
+                expected = {
+                    'dd_to_dormancy_break': 100.0,
+                    'dd_to_flower_initiation': 200.0,
+                    'dd_to_flower_opening': 300.0,
+                    'dd_to_fruit_set': 400.0,
+                    'dd_to_fruit_maturity': 500.0,
+                    'dd_to_dormancy': 600.0,
+                    'max_leaf_lifespan': 700.0,
+                }
+                for tag, value in expected.items():
+                    match = re.search(rf'<{tag}>\s*([^<\s]+)\s*</{tag}>', text)
+                    assert match is not None, f"<{tag}> missing from written plant structure XML"
+                    assert float(match.group(1)) == pytest.approx(value), (
+                        f"<{tag}> round-tripped as {match.group(1)}, expected {value}")
+
+                # The 8th positional argument is max_leaf_lifespan and the 9th is is_evergreen;
+                # a swap here would silently write 0 for the lifespan and False for evergreen.
+                evergreen = re.search(r'<is_evergreen>\s*([^<\s]+)\s*</is_evergreen>', text)
+                assert evergreen is not None, "<is_evergreen> missing from written plant structure XML"
+                assert evergreen.group(1) in ('1', 'true'), (
+                    f"is_evergreen round-tripped as {evergreen.group(1)}, expected true")
+
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_disable_plant_phenology_keeps_a_plant_growing(self, basic_context):
+        """Explicitly turning phenology back off on a plant that had thresholds set."""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                models = plantarch.getAvailablePlantModels()
+                if 'bean' not in models:
+                    pytest.skip("Bean model not available for testing")
+                plantarch.loadPlantModelFromLibrary('bean')
+
+                plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
+                plantarch.addBaseStemShoot(
+                    plant_id, 3, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate"
+                )
+
+                # A dormancy period short enough to fire on the next timestep
+                plantarch.setPlantPhenologicalThresholds(
+                    plant_id, 0.0, -1.0, -1.0, -1.0, 1e6, 1.0
+                )
+                plantarch.disablePlantPhenology(plant_id)
+
+                plantarch.advanceTime(5.0)
+                assert len(plantarch.getPlantLeafObjectIDs(plant_id)) > 0, (
+                    "disablePlantPhenology() should prevent the dormancy cycle that strips leaves")
+
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_disable_plant_phenology_surfaces_the_native_error(self, basic_context):
+        """A native failure must reach the user, not be flattened into a generic message."""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                models = plantarch.getAvailablePlantModels()
+                if 'bean' not in models:
+                    pytest.skip("Bean model not available for testing")
+                plantarch.loadPlantModelFromLibrary('bean')
+                plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+
+                with pytest.raises(PlantArchitectureError,
+                                   match=r"PlantArchitecture::disablePlantPhenology"):
+                    plantarch.disablePlantPhenology(99999)
+
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_disable_plant_phenology_rejects_negative_plant_id(self, basic_context):
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                with pytest.raises(ValueError, match="Plant ID must be non-negative"):
+                    plantarch.disablePlantPhenology(-1)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+    def test_plant_structure_xml_with_phenology_can_be_read_back(self, basic_context, tmp_path):
+        """The new tags are optional on read, and a file containing them must still load."""
+        try:
+            with PlantArchitecture(basic_context) as plantarch:
+                models = plantarch.getAvailablePlantModels()
+                if 'bean' not in models:
+                    pytest.skip("Bean model not available for testing")
+                plantarch.loadPlantModelFromLibrary('bean')
+
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+                plantarch.setPlantPhenologicalThresholds(
+                    plant_id, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, False
+                )
+
+                xml_path = tmp_path / "plant_roundtrip.xml"
+                plantarch.writePlantStructureXML(plant_id, str(xml_path))
+
+                restored = plantarch.readPlantStructureXML(str(xml_path), quiet=True)
+                assert isinstance(restored, list)
+                assert len(restored) >= 1
+
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture not available: {e}")
+
+
+@pytest.mark.native_only
 class TestPhenologicalControl:
     """Test phenological control methods"""
 
@@ -2838,3 +3003,224 @@ class TestPlantArchitectureShootTopology:
             plantarch.getShoot(-1, 0)
         with pytest.raises(ValueError):
             plantarch.getShootChildIDs(0, -1)
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureMessageControl:
+    """Test suppression of plantarchitecture stdout messages."""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        try:
+            instance = PlantArchitecture(context)
+            yield instance
+            instance.__exit__(None, None, None)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+
+    # Emitted from the CollisionDetection constructor on builds compiled
+    # without OpenMP, gated on that object's own message flag while it is still
+    # being constructed. disableMessages() cannot reach it: PlantArchitecture
+    # only forwards the call to an already-existing CollisionDetection, and the
+    # instance is not created until enableSoftCollisionAvoidance() runs. So its
+    # presence tracks how the native library was built, not whether message
+    # suppression works, and it is filtered out rather than asserted on.
+    _BUILD_DEPENDENT_OUTPUT = ("WARNING (CollisionDetection): OpenMP not available",)
+
+    @classmethod
+    def _strip_build_dependent_output(cls, output):
+        """Drop warnings whose presence depends on native build flags."""
+        return "\n".join(
+            line for line in output.splitlines()
+            if not any(marker in line for marker in cls._BUILD_DEPENDENT_OUTPUT)
+        )
+
+    @staticmethod
+    def _require_chatty_build(output):
+        """Skip when this build emits nothing for disableMessages() to suppress.
+
+        Everything the plugin writes during growth is conditional: the progress
+        bar needs Nsteps > 1, and the "BVH not cached" warning only appears when
+        collision avoidance runs before the BVH is cached. A build that produces
+        neither (the Windows --nogpu CI build is one) gives these tests no signal
+        to distinguish "messages are on" from "messages are off", so asserting on
+        it reports a build difference as a suppression bug. The paired
+        test_disable_messages_suppresses_bvh_warning still covers the actual
+        contract wherever output exists.
+        """
+        if output.strip() == "":
+            pytest.skip(
+                "Native build emits no plantarchitecture growth output "
+                "(no progress bar or BVH warning) - nothing to suppress"
+            )
+
+    @staticmethod
+    def _grow_capturing_stdout(plantarch):
+        """Grow a small collision-enabled canopy, capturing C++-level stdout.
+
+        The plugin writes from C++, so it bypasses sys.stdout. Redirect the
+        underlying file descriptor to catch it.
+        """
+        import os
+        import tempfile
+
+        stdout_fd = 1
+        saved_fd = os.dup(stdout_fd)
+        with tempfile.TemporaryFile(mode="w+b") as tmp:
+            try:
+                os.dup2(tmp.fileno(), stdout_fd)
+                plantarch.loadPlantModelFromLibrary("bean")
+                plantarch.enableSoftCollisionAvoidance()
+                # age>0 grows the canopy immediately, which is where the
+                # "BVH not cached" warning is emitted.
+                plantarch.buildPlantCanopyFromLibrary(
+                    canopy_center=vec3(0, 0, 0),
+                    plant_spacing=vec2(0.3, 0.3),
+                    plant_count=int2(2, 2),
+                    age=4.0,
+                )
+            finally:
+                os.dup2(saved_fd, stdout_fd)
+                os.close(saved_fd)
+            tmp.seek(0)
+            return tmp.read().decode("utf-8", errors="replace")
+
+    def test_disable_messages_suppresses_bvh_warning(self, plantarch):
+        """disableMessages() silences the 'BVH not cached' spam during growth."""
+        plantarch.disableMessages()
+        output = self._grow_capturing_stdout(plantarch)
+        assert "BVH not cached" not in output, (
+            f"Expected no BVH warnings after disableMessages(), got:\n{output[:2000]}"
+        )
+        suppressible = self._strip_build_dependent_output(output)
+        assert suppressible.strip() == "", (
+            f"Expected fully silent growth after disableMessages(), got:\n{suppressible[:2000]}"
+        )
+
+    def test_messages_emitted_by_default(self, plantarch):
+        """Without disableMessages() the plugin still writes progress output.
+
+        Guards against the suppression being a no-op that silences nothing, and
+        against it being permanently on.
+        """
+        output = self._strip_build_dependent_output(
+            self._grow_capturing_stdout(plantarch)
+        )
+        self._require_chatty_build(output)
+        assert output.strip() != "", "Expected plugin output when messages are enabled"
+
+    def test_enable_messages_restores_output(self, plantarch):
+        """enableMessages() undoes a previous disableMessages()."""
+        plantarch.disableMessages()
+        plantarch.enableMessages()
+        output = self._strip_build_dependent_output(
+            self._grow_capturing_stdout(plantarch)
+        )
+        self._require_chatty_build(output)
+        assert output.strip() != "", "Expected output to resume after enableMessages()"
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureGroundClipping:
+    """Test removal of plant organs falling below the ground plane."""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        try:
+            instance = PlantArchitecture(context)
+            yield instance
+            instance.__exit__(None, None, None)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+
+    # Unclipped canopies measured at ~230k-300k primitives across runs, while
+    # clipping at z=0.15 lands near ~45k-50k. 150k sits well clear of both.
+    UNCLIPPED_PRIMITIVE_FLOOR = 150000
+
+    # Seeding the Context RNG makes bean growth reproducible. Without it the
+    # canopy's minimum z ranged from about -0.14 to -0.007 across runs, so the
+    # -0.01 baseline assertion failed intermittently on the shallow tail. This
+    # seed puts min z at about -0.085, clear of the threshold, and pins the
+    # primitive count so the clipping comparisons are exact rather than
+    # probabilistic. Any fixed seed works; this one was checked to droop.
+    RANDOM_SEED = 12345
+
+    @staticmethod
+    def _grow_beans(context, plantarch):
+        """Grow a small bean canopy, returning (primitive count, min z).
+
+        Bean growth is stochastic, so the Context RNG is seeded to keep the
+        result reproducible. Several plants are grown so below-ground geometry
+        is well established for the baseline assertion, while still requiring
+        clipping to hold across every plant.
+        """
+        context.seedRandomGenerator(
+            TestPlantArchitectureGroundClipping.RANDOM_SEED)
+        plantarch.disableMessages()
+        plantarch.loadPlantModelFromLibrary("bean")
+        plant_ids = [
+            plantarch.buildPlantInstanceFromLibrary(vec3(x, y, 0), 25.0)
+            for x in (-0.3, 0.3)
+            for y in (-0.3, 0.3)
+        ]
+        plantarch.advanceTime(35.0)
+        uuids = [u for pid in plant_ids for u in plantarch.getAllPlantUUIDs(pid)]
+        min_z = min(v.z for u in uuids for v in context.getPrimitiveVertices(u))
+        return len(uuids), min_z
+
+    def test_beans_droop_below_ground_without_clipping(self, context, plantarch):
+        """Baseline: an unclipped bean canopy puts geometry below z=0.
+
+        Without this the clipping assertion could pass vacuously on plants that
+        never crossed the ground plane in the first place.
+        """
+        _, min_z = self._grow_beans(context, plantarch)
+        assert min_z < -0.01, (
+            f"Expected below-ground geometry without clipping, got min z={min_z}"
+        )
+
+    def test_ground_clipping_removes_below_ground_geometry(self, context, plantarch):
+        """enableGroundClipping(0) lifts plant geometry to the ground plane."""
+        plantarch.enableGroundClipping(0.0)
+        count, min_z = self._grow_beans(context, plantarch)
+        assert count > 0, "Expected the clipped plant to retain geometry"
+        assert min_z > -0.01, (
+            f"Expected no geometry below z=0 after clipping, got min z={min_z}"
+        )
+
+    def test_ground_clipping_honors_nonzero_height(self, context, plantarch):
+        """A raised ground plane prunes strictly more organs than z=0.
+
+        Clipping deletes whole organs that dip below the plane rather than
+        trimming geometry to it, so this asserts on the organ count rather than
+        on min z (the stem is rooted at z=0 and survives either way).
+        """
+        plantarch.enableGroundClipping(0.15)
+        count, _ = self._grow_beans(context, plantarch)
+        assert count > 0, "Expected the clipped canopy to retain geometry"
+        assert count < self.UNCLIPPED_PRIMITIVE_FLOOR, (
+            f"Expected a raised ground plane to prune organs, got {count} primitives"
+        )
+
+    def test_ground_clipping_rejects_non_numeric_height(self, plantarch):
+        """Non-numeric ground heights raise ValueError, positionally and by keyword."""
+        with pytest.raises(ValueError, match="Ground height must be a number"):
+            plantarch.enableGroundClipping("0.0")
+        with pytest.raises(ValueError, match="Ground height must be a number"):
+            plantarch.enableGroundClipping(ground_height=vec3(0, 0, 0))

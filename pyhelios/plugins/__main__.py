@@ -18,10 +18,32 @@ from pathlib import Path
 # Add pyhelios to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from pyhelios.plugins import print_plugin_status, get_plugin_info
+from pyhelios.plugins import print_plugin_status
 from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.config.plugin_metadata import PLUGIN_METADATA, get_all_plugin_names, get_platform_compatible_plugins
 from pyhelios.config.dependency_resolver import PluginDependencyResolver
+
+
+def _make_output_encoding_safe():
+    """Allow the CLI's status symbols to print on a legacy-codepage console.
+
+    Windows consoles default to a codepage such as cp1252, whose codec has no
+    mapping for the check and cross marks used below and raises
+    UnicodeEncodeError rather than substituting. Prefer UTF-8, and fall back to
+    replacing unencodable characters so output degrades to '?' instead of
+    killing the command.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding='utf-8', errors='replace')
+        except (OSError, ValueError, LookupError):
+            try:
+                reconfigure(errors='replace')
+            except (OSError, ValueError):
+                pass
 
 
 def cmd_status(args):
@@ -111,7 +133,6 @@ def cmd_info(args):
         print(f"Available plugins: {', '.join(sorted(get_all_plugin_names()))}")
         return 1
     
-    info = get_plugin_info(plugin_name)
     metadata = PLUGIN_METADATA[plugin_name]
     
     print(f"Plugin Information: {plugin_name}")
@@ -131,21 +152,16 @@ def cmd_info(args):
     
     # Runtime availability
     print(f"\nRuntime Status:")
-    if 'error' in info:
-        print(f"❌ Error: {info['error']}")
-    else:
-        print(f"Available: {'✓ Yes' if info['available'] else '✗ No'}")
-        
-        if info.get('validation'):
-            validation = info['validation']
-            print(f"Validation: {'✓ Valid' if validation['valid'] else '✗ Invalid'}")
-            if not validation['valid']:
-                print(f"  Reason: {validation['reason']}")
-            
-            if validation['missing_dependencies']:
-                print(f"  Missing dependencies: {', '.join(validation['missing_dependencies'])}")
-    
-    
+    registry = get_plugin_registry()
+    available = registry.is_plugin_available(plugin_name)
+    print(f"Available: {'✓ Yes' if available else '✗ No'}")
+
+    if not available:
+        missing = registry.get_missing_plugins(list(metadata.plugin_dependencies or []))
+        if missing:
+            print(f"  Missing plugin dependencies: {', '.join(missing)}")
+        print(f"  Rebuild with: build_scripts/build_helios --plugins {plugin_name}")
+
     return 0
 
 
@@ -208,6 +224,8 @@ def cmd_validate(args):
 
 def main():
     """Main entry point for plugin command-line interface."""
+    _make_output_encoding_safe()
+
     parser = argparse.ArgumentParser(
         description="PyHelios plugin status and discovery tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,

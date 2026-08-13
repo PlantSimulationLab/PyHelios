@@ -13,11 +13,17 @@ The file I/O methods enable:
 - Exporting plant geometry for external tools
 - Creating plant libraries and reusable structures
 - Integrating with biomechanical modeling software
+
+All files written by this example go to docs/examples/output/plantarch_file_io/.
 """
 
 from pathlib import Path
+from example_output import display_path, get_output_dir
 from pyhelios import Context, PlantArchitecture
 from pyhelios.types import vec3, vec2, int2
+
+OUTPUT_DIR = get_output_dir("plantarch_file_io")
+
 
 def example_save_and_load_xml():
     """
@@ -47,9 +53,9 @@ def example_save_and_load_xml():
             print(f"Plant has {len(original_uuids)} primitives")
 
             # Save plant structure to XML
-            output_file = "bean_day45.xml"
-            print(f"Saving plant structure to {output_file}...")
-            plantarch.writePlantStructureXML(plant_id, output_file)
+            output_file = OUTPUT_DIR / "bean_day45.xml"
+            print(f"Saving plant structure to {display_path(output_file)}...")
+            plantarch.writePlantStructureXML(plant_id, str(output_file))
             print(f"✓ Plant saved successfully")
 
     # Create new context to demonstrate loading
@@ -61,7 +67,7 @@ def example_save_and_load_xml():
             plantarch2.loadPlantModelFromLibrary("bean")
 
             # Load the saved plant
-            loaded_plant_ids = plantarch2.readPlantStructureXML(output_file)
+            loaded_plant_ids = plantarch2.readPlantStructureXML(str(output_file))
             print(f"✓ Loaded {len(loaded_plant_ids)} plant(s)")
 
             # Verify loaded plant
@@ -99,9 +105,9 @@ def example_export_mesh_vertices():
             )
 
             # Export vertices
-            output_file = "tomato_vertices.txt"
-            print(f"Exporting mesh vertices to {output_file}...")
-            plantarch.writePlantMeshVertices(plant_id, output_file)
+            output_file = OUTPUT_DIR / "tomato_vertices.txt"
+            print(f"Exporting mesh vertices to {display_path(output_file)}...")
+            plantarch.writePlantMeshVertices(plant_id, str(output_file))
 
             # Read and analyze the exported vertices
             with open(output_file, 'r') as f:
@@ -146,17 +152,20 @@ def example_export_qsm_format():
             )
 
             # Export to TreeQSM format
-            output_file = "almond_qsm.txt"
-            print(f"Exporting to TreeQSM format: {output_file}...")
-            plantarch.writeQSMCylinderFile(plant_id, output_file)
+            output_file = OUTPUT_DIR / "almond_qsm.txt"
+            print(f"Exporting to TreeQSM format: {display_path(output_file)}...")
+            plantarch.writeQSMCylinderFile(plant_id, str(output_file))
 
             # Analyze the QSM export
             with open(output_file, 'r') as f:
                 lines = f.readlines()
-                print(f"✓ Exported {len(lines)} cylinders")
+                # The QSM file starts with a column-header line, so the cylinder
+                # count is one less than the line count.
+                cylinder_lines = lines[1:]
+                print(f"✓ Exported {len(cylinder_lines)} cylinders")
 
                 # Parse first cylinder to show data structure
-                if len(lines) > 0:
+                if len(cylinder_lines) > 0:
                     print("\nTreeQSM format includes:")
                     print("  - Cylinder dimensions (radius, length)")
                     print("  - Spatial position and orientation")
@@ -182,9 +191,9 @@ def example_plant_library_workflow():
     print("\n=== Example 4: Plant Library Workflow ===")
 
     # Create output directory
-    library_dir = Path("plant_library")
+    library_dir = OUTPUT_DIR / "plant_library"
     library_dir.mkdir(exist_ok=True)
-    print(f"Creating plant library in {library_dir}/")
+    print(f"Creating plant library in {display_path(library_dir)}/")
 
     with Context() as context:
         with PlantArchitecture(context) as plantarch:
@@ -214,7 +223,7 @@ def example_plant_library_workflow():
                 # (In PyHelios, we'd recreate the context or use deletePlant if available)
 
     print(f"\n✓ Created library with {len(growth_stages)} growth stages")
-    print(f"Library location: {library_dir.absolute()}")
+    print(f"Library location: {display_path(library_dir)}")
 
     # Demonstrate loading from library
     print("\nLoading day 30 plant from library...")
@@ -264,10 +273,10 @@ def example_multi_plant_canopy_persistence():
             plantarch.advanceTime(15.0)
 
             # Save each plant in the canopy
-            canopy_dir = Path("bean_canopy")
+            canopy_dir = OUTPUT_DIR / "bean_canopy"
             canopy_dir.mkdir(exist_ok=True)
 
-            print(f"Saving canopy to {canopy_dir}/...")
+            print(f"Saving canopy to {display_path(canopy_dir)}/...")
             for i, plant_id in enumerate(plant_ids):
                 filename = canopy_dir / f"plant_{i}.xml"
                 plantarch.writePlantStructureXML(plant_id, str(filename))
@@ -327,22 +336,23 @@ def example_path_handling():
             plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=20.0)
 
             # Test with pathlib.Path
-            output_dir = Path("output")
+            output_dir = OUTPUT_DIR / "path_handling"
             output_dir.mkdir(exist_ok=True)
 
             print("Testing pathlib.Path objects...")
             xml_path = output_dir / "test_plant.xml"
             plantarch.writePlantStructureXML(plant_id, xml_path)
-            print(f"✓ Saved to Path object: {xml_path}")
+            print(f"✓ Saved to Path object: {display_path(xml_path)}")
 
             vertices_path = output_dir / "test_vertices.txt"
             plantarch.writePlantMeshVertices(plant_id, vertices_path)
-            print(f"✓ Saved to Path object: {vertices_path}")
+            print(f"✓ Saved to Path object: {display_path(vertices_path)}")
 
-            # Test with string (relative path)
+            # Test with a plain string path
             print("\nTesting string paths...")
-            plantarch.writeQSMCylinderFile(plant_id, "test_qsm.txt")
-            print("✓ Saved to relative string path: test_qsm.txt")
+            qsm_path = str(output_dir / "test_qsm.txt")
+            plantarch.writeQSMCylinderFile(plant_id, qsm_path)
+            print(f"✓ Saved to string path: {display_path(qsm_path)}")
 
             # Load using Path object
             loaded_ids = plantarch.readPlantStructureXML(xml_path)
@@ -351,8 +361,7 @@ def example_path_handling():
             print("\nPath handling features:")
             print("  ✓ Works with pathlib.Path objects")
             print("  ✓ Works with string paths")
-            print("  ✓ Handles relative paths correctly")
-            print("  ✓ Preserves user working directory")
+            print("  ✓ Relative paths resolve against the working directory")
 
 
 if __name__ == "__main__":
@@ -370,6 +379,7 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 70)
     print("All examples completed successfully!")
+    print(f"Output written to: {display_path(OUTPUT_DIR)}")
     print("=" * 70)
 
     print("\nKey Takeaways:")

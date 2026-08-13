@@ -6,6 +6,7 @@
 #include "Context.h"
 #include <string>
 #include <exception>
+#include <vector>
 
 #ifdef VISUALIZER_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_visualizer.h"
@@ -386,6 +387,36 @@ extern "C" {
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getWindowPixelsRGB): Unknown error");
         }
+    }
+
+    PYHELIOS_API unsigned int* getWindowPixelsRGB_sized(Visualizer* visualizer, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* size) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!width_pixels || !height_pixels || !size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Width, height and size output pointers cannot be null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+
+            static thread_local std::vector<uint> buf;
+            uint w = 0, h = 0;
+            visualizer->getWindowPixelsRGB(buf, w, h);
+            *width_pixels = w;
+            *height_pixels = h;
+            *size = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getWindowPixelsRGB_sized): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getWindowPixelsRGB_sized): Unknown error");
+        }
+        if (size) *size = 0;
+        return nullptr;
     }
 
     PYHELIOS_API void getDepthMap(Visualizer* visualizer, float** depth_pixels, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* buffer_size) {

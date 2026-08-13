@@ -154,6 +154,34 @@ surfaces the full `phytomer_parameters` sub-structure (internode, petiole, leaf,
 peduncle, inflorescence, and the leaf prototype). `defineShootType()` accepts
 either a nested `dict` or a `ShootParameters`.
 
+Shoot type labels are species-specific — bean defines `unifoliate`/`trifoliate`,
+almond defines `trunk`/`scaffold`/`proleptic`/`sylleptic`. There is no generic
+`"stem"` type.
+
+**A custom shoot type only affects plants you assemble yourself.**
+`buildPlantInstanceFromLibrary()` calls a hard-coded builder for the species that
+uses that species' own shoot types, so it ignores `defineShootType()` entirely —
+including a redefinition of an existing label such as `"trunk"`. To build geometry
+that actually uses your parameters, use `addPlantInstance()` followed by
+`addBaseStemShoot()` with your shoot type label:
+
+```python
+plant.defineShootType("custom_stem", sp)
+
+plant_id = plant.addPlantInstance(vec3(0, 0, 0), 0.0)
+plant.addBaseStemShoot(
+    plant_id=plant_id,
+    current_node_number=5,
+    base_rotation=AxisRotation(0, 0, 0),
+    internode_radius=0.005,
+    internode_length_max=0.05,
+    internode_length_scale_factor_fraction=1.0,
+    leaf_scale_factor_fraction=1.0,
+    radius_taper=0.9,
+    shoot_type_label="custom_stem",
+)
+```
+
 ### Phenological thresholds
 
 `setPlantPhenologicalThresholds()` controls the timing of the developmental
@@ -173,6 +201,30 @@ plant.setPlantPhenologicalThresholds(
     is_evergreen=False,
 )
 ```
+
+Note that `max_leaf_lifespan` is the eighth parameter and `is_evergreen` the ninth; passing a
+boolean positionally in the eighth slot silently sets the leaf lifespan instead.
+
+A plant that never has `setPlantPhenologicalThresholds()` called on it — one built through the
+manual API, or restored from a plant structure XML file written before phenology was recorded —
+schedules no phenology at all. It grows without entering dormancy and without flower or fruit
+stages, rather than being defoliated. `disablePlantPhenology(plant_id)` puts a plant back into
+that state explicitly, which is useful for a plant that had thresholds set earlier:
+
+```python
+plant.disablePlantPhenology(plant_id)
+```
+
+Avoid calling it on a plant that already has fruiting buds: helios-core sets `dd_to_fruit_maturity`
+to `-1` here rather than to the `1e6` used for the no-phenology default, and that field is a
+divisor in the fruit-growth branch of `advanceTime()`, so a later time step can compute a negative
+fruit scale factor. A plant that never had thresholds set is already in the no-phenology state and
+does not need this call.
+
+Phenological thresholds are written to and read back from plant structure XML by
+`writePlantStructureXML()` and `readPlantStructureXML()`, so a restored plant keeps the timing it
+was built with. The tags are optional on read, so files written before they existed still load and
+fall back to scheduling no phenology.
 
 ### Carbohydrate and nitrogen model parameters
 

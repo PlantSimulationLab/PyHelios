@@ -78,6 +78,26 @@ def skip_without_radiation_backend() -> None:
         skip_or_fail_without_gpu("no constructible ray-tracing backend")
 
 
+def radiation_model_or_skip(context) -> RadiationModel:
+    """Build a RadiationModel, skipping the calling test if no backend exists.
+
+    `is_plugin_available('radiation')` is not enough on its own: the plugin can
+    be compiled into the library and still have no device to run on, which is
+    the situation in the cibuildwheel test environment. Constructing the model
+    there raises rather than skipping, so a test guarded only by plugin
+    availability fails the wheel build instead of being skipped out of it.
+    """
+    skip_without_radiation_backend()
+    try:
+        return RadiationModel(context)
+    except RadiationModelError as e:
+        msg = str(e)
+        if ("No compatible GPU backend found" in msg
+                or "Failed to initialize RadiationModel" in msg):
+            pytest.skip(f"No ray-tracing backend available: {e}")
+        raise
+
+
 @pytest.mark.native_only
 @pytest.mark.requires_gpu
 class TestRadiationModel:
@@ -3020,17 +3040,7 @@ class TestBandSpecificAbsorbedFlux:
     which needs no GPU. Environments with no constructible backend skip.
     """
 
-    @staticmethod
-    def _radiation_or_skip(context):
-        skip_without_radiation_backend()
-        try:
-            return RadiationModel(context)
-        except RadiationModelError as e:
-            msg = str(e)
-            if ("No compatible GPU backend found" in msg
-                    or "Failed to initialize RadiationModel" in msg):
-                pytest.skip(f"No ray-tracing backend available: {e}")
-            raise
+    _radiation_or_skip = staticmethod(radiation_model_or_skip)
 
     @staticmethod
     def _shaded_scene(context):
@@ -3220,3 +3230,218 @@ class TestBandSpecificAbsorbedFlux:
                     f"{primitive_count} primitives - retrieval is rescanning "
                     f"the UUID list per primitive"
                 )
+
+
+class TestBoundedBandCameraResponseWarning:
+    """Explicit band wavelength bounds + a camera spectral response render wrong colors.
+
+    Helios integrates camera pixels against the camera's spectral response, but
+    integrates SCATTERED flux over the band's wavelength bounds. Without bounds it
+    falls back to the camera-weighted average so both agree; with bounds they
+    diverge. Since scattering supplies most camera-visible light, colors come out
+    skewed -- a soil spectrum with a true red/green ratio of 1.2 renders at 2.6.
+
+    Nothing raises and saturated colors still look plausible, so PyHelios warns
+    when it sees the combination.
+    """
+
+    @pytest.mark.native_only
+    def test_warns_when_bounded_band_gets_camera_response(self, caplog):
+        """setCameraSpectralResponse on a bounded band must warn."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('radiation'):
+            pytest.skip("radiation plugin not available")
+
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("red", 600.0, 700.0)
+                radiation.addRadiationCamera(
+                    "cam", ["red"], DataTypes.vec3(0, -2, 1), DataTypes.vec3(0, 0, 1),
+                    antialiasing_samples=1)
+
+                caplog.clear()
+                with caplog.at_level("WARNING", logger="pyhelios.RadiationModel"):
+                    radiation.setCameraSpectralResponse("cam", "red", "iPhone12ProMAX_red")
+
+        text = caplog.text
+        assert "wavelength bounds" in text, f"expected a bounded-band warning, got: {text!r}"
+        assert "red" in text
+
+    @pytest.mark.native_only
+    def test_no_warning_without_wavelength_bounds(self, caplog):
+        """The recommended setup (no bounds) must stay silent."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('radiation'):
+            pytest.skip("radiation plugin not available")
+
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("red")
+                radiation.addRadiationCamera(
+                    "cam", ["red"], DataTypes.vec3(0, -2, 1), DataTypes.vec3(0, 0, 1),
+                    antialiasing_samples=1)
+
+                caplog.clear()
+                with caplog.at_level("WARNING", logger="pyhelios.RadiationModel"):
+                    radiation.setCameraSpectralResponse("cam", "red", "iPhone12ProMAX_red")
+
+        assert "wavelength bounds" not in caplog.text
+
+    @pytest.mark.native_only
+    def test_copied_band_inherits_bounded_state(self, caplog):
+        """copyRadiationBand with no bounds inherits them, so the copy must warn too."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('radiation'):
+            pytest.skip("radiation plugin not available")
+
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("red", 600.0, 700.0)
+                radiation.copyRadiationBand("red", "green")
+                radiation.addRadiationCamera(
+                    "cam", ["green"], DataTypes.vec3(0, -2, 1), DataTypes.vec3(0, 0, 1),
+                    antialiasing_samples=1)
+
+                caplog.clear()
+                with caplog.at_level("WARNING", logger="pyhelios.RadiationModel"):
+                    radiation.setCameraSpectralResponse("cam", "green", "iPhone12ProMAX_green")
+
+        assert "wavelength bounds" in caplog.text
+        assert "green" in caplog.text
+
+    @pytest.mark.native_only
+    def test_rebinding_band_without_bounds_clears_warning(self, caplog):
+        """Re-adding a band without bounds must clear the stale bounded state."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('radiation'):
+            pytest.skip("radiation plugin not available")
+
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("red", 600.0, 700.0)
+                radiation.addRadiationBand("red")  # redefined without bounds
+                radiation.addRadiationCamera(
+                    "cam", ["red"], DataTypes.vec3(0, -2, 1), DataTypes.vec3(0, 0, 1),
+                    antialiasing_samples=1)
+
+                caplog.clear()
+                with caplog.at_level("WARNING", logger="pyhelios.RadiationModel"):
+                    radiation.setCameraSpectralResponse("cam", "red", "iPhone12ProMAX_red")
+
+        assert "wavelength bounds" not in caplog.text
+
+
+class TestCameraStringPropertiesArePlumbed:
+    """CameraProperties' string fields must reach the C++ camera.
+
+    These are std::string on the C++ side, so they cannot ride in the numeric
+    camera-properties array. They previously stopped at the C boundary, which
+    hardcoded "auto"/"generic" -- so white_balance="off" and exposure="manual"
+    silently did nothing and there was no way to disable Helios' automatic
+    colour handling from Python.
+    """
+
+    @pytest.mark.native_only
+    def test_white_balance_off_changes_rendered_colour(self):
+        """white_balance='off' must actually reach the camera and alter pixels."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('radiation'):
+            pytest.skip("radiation plugin not available")
+
+        from pyhelios import CameraProperties
+
+        from pyhelios.assets import get_asset_manager
+        spectral_dir = (get_asset_manager()._get_helios_build_path()
+                        / "plugins" / "radiation" / "spectral_data")
+        camera_library = spectral_dir / "camera_spectral_library.xml"
+        if not camera_library.is_file():
+            pytest.skip("camera spectral library not present in build")
+
+        def render(white_balance):
+            with Context() as context:
+                context.loadXML(str(camera_library), True)
+                context.loadXML(str(spectral_dir / "soil_surface_spectral_library.xml"), True)
+                patch = context.addPatch(
+                    center=DataTypes.vec3(0, 0, 0),
+                    size=DataTypes.vec2(20, 20))
+                context.setPrimitiveDataString(
+                    patch, "reflectivity_spectrum", "soil_reflectivity_0000")
+                with radiation_model_or_skip(context) as radiation:
+                    for band in ("red", "green", "blue"):
+                        radiation.addRadiationBand(band)
+                        radiation.disableEmission(band)
+                        radiation.setScatteringDepth(band, 1)
+                    source = radiation.addCollimatedRadiationSource(DataTypes.vec3(0, 0, 1))
+                    for band in ("red", "green", "blue"):
+                        radiation.setSourceFlux(source, band, 500.0)
+                    props = CameraProperties(camera_resolution=(64, 64), HFOV=60.0,
+                                             white_balance=white_balance)
+                    radiation.addRadiationCamera(
+                        "cam", ["red", "green", "blue"],
+                        DataTypes.vec3(0, 0, 5), DataTypes.vec3(0, 0, 0),
+                        props, antialiasing_samples=1)
+                    radiation.setCameraSpectralResponse("cam", "red", "iPhone12ProMAX_red")
+                    radiation.setCameraSpectralResponse("cam", "green", "iPhone12ProMAX_green")
+                    radiation.setCameraSpectralResponse("cam", "blue", "iPhone12ProMAX_blue")
+                    radiation.updateGeometry()
+                    radiation.runBand(["red", "green", "blue"])
+                    return {b: radiation.getCameraPixelData("cam", b)
+                            for b in ("red", "green", "blue")}
+
+        auto = render("auto")
+        off = render("off")
+
+        def ratio(px):
+            lit = [i for i, v in enumerate(px["green"]) if v > 1e-9]
+            assert lit, "camera produced no lit pixels"
+            i = lit[len(lit) // 2]
+            return px["red"][i] / px["green"][i]
+
+        auto_ratio = ratio(auto)
+        off_ratio = ratio(off)
+
+        # Spectral white balance divides each channel by its integrated response,
+        # which boosts red ~2.1x relative to green. Turning it off must remove
+        # that boost, so the two ratios cannot match.
+        assert abs(auto_ratio - off_ratio) > 0.1 * max(auto_ratio, off_ratio), (
+            f"white_balance had no effect: auto R/G={auto_ratio:.3f}, "
+            f"off R/G={off_ratio:.3f} -- the setting is not reaching the camera")
+        assert off_ratio < auto_ratio, (
+            f"disabling white balance should reduce the red boost, got "
+            f"auto={auto_ratio:.3f} off={off_ratio:.3f}")
+
+    @pytest.mark.native_only
+    def test_camera_metadata_reports_requested_model(self, tmp_path):
+        """model/manufacturer must reach the camera and appear in its metadata."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('radiation'):
+            pytest.skip("radiation plugin not available")
+
+        import json
+        from pyhelios import CameraProperties
+
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0.5),
+                             size=DataTypes.vec2(3, 3),
+                             rotation=DataTypes.SphericalCoord(1.0, 1.5708, 0.0))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("red")
+                radiation.disableEmission("red")
+                radiation.setScatteringDepth("red", 1)
+                source = radiation.addCollimatedRadiationSource(DataTypes.vec3(0, 0, 1))
+                radiation.setSourceFlux(source, "red", 500.0)
+                props = CameraProperties(camera_resolution=(32, 32), HFOV=60.0,
+                                         manufacturer="PyHeliosTest",
+                                         model="TestCam9000")
+                radiation.addRadiationCamera(
+                    "cam", ["red"], DataTypes.vec3(0, -2, 0.5),
+                    DataTypes.vec3(0, 0, 0.5), props, antialiasing_samples=1)
+                radiation.enableCameraMetadata("cam")
+                radiation.updateGeometry()
+                radiation.runBand(["red"])
+                radiation.writeCameraImage("cam", ["red"], "meta", str(tmp_path))
+
+        blobs = list(tmp_path.glob("*.json"))
+        assert blobs, "no camera metadata file was written"
+        text = json.dumps(json.loads(blobs[0].read_text()))
+        assert "TestCam9000" in text, f"model not plumbed through: {text[:400]}"

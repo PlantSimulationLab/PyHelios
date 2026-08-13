@@ -379,7 +379,8 @@ try:
                                                   ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                                   ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                                   ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
-                                                  ctypes.c_char_p]
+                                                  ctypes.c_char_p,
+                                                  ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
     helios_lib.addRadiationCameraVec3.restype = None
 
     helios_lib.addRadiationCameraSpherical.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
@@ -387,7 +388,8 @@ try:
                                                        ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                                        ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                                        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
-                                                       ctypes.c_char_p]
+                                                       ctypes.c_char_p,
+                                                       ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
     helios_lib.addRadiationCameraSpherical.restype = None
 
     # Camera management functions
@@ -454,7 +456,8 @@ try:
     helios_lib.addRadiationCameraFromLibraryWithBands.restype = None
 
     helios_lib.updateCameraParameters.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
-                                                  ctypes.POINTER(ctypes.c_float), ctypes.c_char_p]
+                                                  ctypes.POINTER(ctypes.c_float), ctypes.c_char_p,
+                                                  ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t]
     helios_lib.updateCameraParameters.restype = None
 
     helios_lib.enableCameraMetadata.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
@@ -691,6 +694,7 @@ try:
         ctypes.POINTER(ctypes.c_float),
         ctypes.c_float, ctypes.c_uint,
         ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
     ]
     helios_lib.addSIFCameraVec3.restype = None
     helios_lib.addSIFCameraVec3.errcheck = _check_error
@@ -703,6 +707,7 @@ try:
         ctypes.POINTER(ctypes.c_float),
         ctypes.c_float, ctypes.c_uint,
         ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
     ]
     helios_lib.addSIFCameraSpherical.restype = None
     helios_lib.addSIFCameraSpherical.errcheck = _check_error
@@ -1791,7 +1796,8 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
 
     props_c = (ctypes.c_float * 10)(*props_array)
     helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c,
-                                      (exposure or "auto").encode('utf-8'))
+                                      (exposure or "auto").encode('utf-8'),
+                                      *_build_camera_string_array(camera_properties))
 
 def enableCameraMetadata(radiation_model, camera_labels):
     """
@@ -2140,13 +2146,62 @@ def autoCalibrateCameraImage(radiation_model, camera_label: str, red_band_label:
                                                algorithm, ccm_encoded)
     return result.decode('utf-8') if result else ""
 
+# Order must match CameraStringProperty in native/src/pyhelios_wrapper_radiation.cpp.
+_CAMERA_STRING_FIELDS = (
+    "exposure",
+    "white_balance",
+    "manufacturer",
+    "model",
+    "lens_make",
+    "lens_model",
+    "lens_specification",
+)
+
+
+def _build_camera_string_array(camera_properties):
+    """Build the parallel C string array carrying CameraProperties' string fields.
+
+    These are std::string on the C++ side so they cannot ride along in the
+    numeric camera_properties array. Fields the object does not define are left
+    NULL, which tells the native layer to keep the CameraProperties default.
+
+    Returns (array, count) suitable for passing straight to the native call;
+    (None, 0) when camera_properties carries no string fields at all.
+    """
+    if camera_properties is None:
+        return None, 0
+
+    values = []
+    found_any = False
+    for field in _CAMERA_STRING_FIELDS:
+        value = getattr(camera_properties, field, None)
+        if isinstance(value, str) and value:
+            values.append(value.encode('utf-8'))
+            found_any = True
+        else:
+            values.append(None)
+
+    if not found_any:
+        return None, 0
+
+    array = (ctypes.c_char_p * len(values))()
+    for i, value in enumerate(values):
+        array[i] = value
+    return array, len(values)
+
+
 # Camera creation functions
 def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
                           position_x: float, position_y: float, position_z: float,
                           lookat_x: float, lookat_y: float, lookat_z: float,
                           camera_properties: List[float], antialiasing_samples: int,
-                          exposure: str = "auto"):
-    """Add radiation camera with position and lookat vectors"""
+                          exposure: str = "auto", camera_properties_obj=None):
+    """Add radiation camera with position and lookat vectors.
+
+    camera_properties_obj is the CameraProperties instance the float array came
+    from. It carries the string-valued fields (white_balance, model, lens_*)
+    that cannot travel in the numeric array.
+    """
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
     if radiation_model is None:
@@ -2172,14 +2227,18 @@ def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List
                                      ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
                                      ctypes.c_float(lookat_x), ctypes.c_float(lookat_y), ctypes.c_float(lookat_z),
                                      props_array, ctypes.c_uint(antialiasing_samples),
-                                     (exposure or "auto").encode('utf-8'))
+                                     (exposure or "auto").encode('utf-8'),
+                                     *_build_camera_string_array(camera_properties_obj))
 
 def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels: List[str],
                                position_x: float, position_y: float, position_z: float,
                                radius: float, elevation: float, azimuth: float,
                                camera_properties: List[float], antialiasing_samples: int,
-                               exposure: str = "auto"):
-    """Add radiation camera with position and spherical viewing direction"""
+                               exposure: str = "auto", camera_properties_obj=None):
+    """Add radiation camera with position and spherical viewing direction.
+
+    See addRadiationCameraVec3 for camera_properties_obj.
+    """
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
     if radiation_model is None:
@@ -2205,7 +2264,8 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
                                           ctypes.c_float(position_x), ctypes.c_float(position_y), ctypes.c_float(position_z),
                                           ctypes.c_float(radius), ctypes.c_float(elevation), ctypes.c_float(azimuth),
                                           props_array, ctypes.c_uint(antialiasing_samples),
-                                          (exposure or "auto").encode('utf-8'))
+                                          (exposure or "auto").encode('utf-8'),
+                                          *_build_camera_string_array(camera_properties_obj))
 
 
 def _require_sif_camera_available():
@@ -2223,7 +2283,7 @@ def addSIFCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
                      lookat_x: float, lookat_y: float, lookat_z: float,
                      camera_properties: List[float],
                      excitation_bin_width_nm: float, excitation_scattering_depth: int,
-                     antialiasing_samples: int):
+                     antialiasing_samples: int, camera_properties_obj=None):
     """Add a SIF camera with position and lookat vectors.
 
     ``camera_properties`` uses the same 10-float layout as ``addRadiationCameraVec3``.
@@ -2258,6 +2318,7 @@ def addSIFCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
         props_array,
         ctypes.c_float(excitation_bin_width_nm), ctypes.c_uint(excitation_scattering_depth),
         ctypes.c_uint(antialiasing_samples),
+        *_build_camera_string_array(camera_properties_obj),
     )
 
 
@@ -2266,7 +2327,7 @@ def addSIFCameraSpherical(radiation_model, camera_label: str, band_labels: List[
                           radius: float, elevation: float, azimuth: float,
                           camera_properties: List[float],
                           excitation_bin_width_nm: float, excitation_scattering_depth: int,
-                          antialiasing_samples: int):
+                          antialiasing_samples: int, camera_properties_obj=None):
     """Add a SIF camera with position and spherical viewing direction."""
     _require_sif_camera_available()
     if radiation_model is None:
@@ -2297,6 +2358,7 @@ def addSIFCameraSpherical(radiation_model, camera_label: str, band_labels: List[
         props_array,
         ctypes.c_float(excitation_bin_width_nm), ctypes.c_uint(excitation_scattering_depth),
         ctypes.c_uint(antialiasing_samples),
+        *_build_camera_string_array(camera_properties_obj),
     )
 
 

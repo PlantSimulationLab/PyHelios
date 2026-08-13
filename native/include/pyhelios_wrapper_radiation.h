@@ -787,14 +787,21 @@ PYHELIOS_API const char* autoCalibrateCameraImage(RadiationModel* radiation_mode
  * @param lookat_z Lookat point Z coordinate
  * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
  * @param antialiasing_samples Number of antialiasing samples
- * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
+ * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto".
+ *        Superseded by camera_strings[0] when that entry is non-NULL.
+ * @param camera_strings Optional array of camera string properties, indexed as
+ *        [0]=exposure, [1]=white_balance, [2]=manufacturer, [3]=model, [4]=lens_make,
+ *        [5]=lens_model, [6]=lens_specification. NULL, a short array, or a NULL entry
+ *        leaves the corresponding field at its CameraProperties default.
+ * @param string_count Number of valid entries in camera_strings (0 when NULL)
  */
 PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const char* camera_label,
                                          const char** band_labels, size_t band_count,
                                          float position_x, float position_y, float position_z,
                                          float lookat_x, float lookat_y, float lookat_z,
                                          const float* camera_properties, unsigned int antialiasing_samples,
-                                         const char* exposure);
+                                         const char* exposure,
+                                         const char** camera_strings, size_t string_count);
 
 /**
  * @brief Add radiation camera with position and spherical viewing direction
@@ -817,7 +824,8 @@ PYHELIOS_API void addRadiationCameraSpherical(RadiationModel* radiation_model, c
                                               float position_x, float position_y, float position_z,
                                               float radius, float elevation, float azimuth,
                                               const float* camera_properties, unsigned int antialiasing_samples,
-                                              const char* exposure);
+                                              const char* exposure,
+                                              const char** camera_strings, size_t string_count);
 
 /**
  * @brief Add a solar-induced chlorophyll fluorescence (SIF) camera with vec3 lookat
@@ -848,7 +856,8 @@ PYHELIOS_API void addSIFCameraVec3(RadiationModel* radiation_model, const char* 
                                    float lookat_x, float lookat_y, float lookat_z,
                                    const float* camera_properties,
                                    float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
-                                   unsigned int antialiasing_samples);
+                                   unsigned int antialiasing_samples,
+                                   const char** camera_strings, size_t string_count);
 
 /**
  * @brief Add a solar-induced chlorophyll fluorescence (SIF) camera with spherical viewing direction
@@ -873,7 +882,8 @@ PYHELIOS_API void addSIFCameraSpherical(RadiationModel* radiation_model, const c
                                         float radius, float elevation, float azimuth,
                                         const float* camera_properties,
                                         float excitation_bin_width_nm, unsigned int excitation_scattering_depth,
-                                        unsigned int antialiasing_samples);
+                                        unsigned int antialiasing_samples,
+                                        const char** camera_strings, size_t string_count);
 
 /**
  * @brief Check whether a camera was added via addSIFCamera (vs. addRadiationCamera)
@@ -1070,7 +1080,8 @@ PYHELIOS_API void addRadiationCameraFromLibraryWithBands(RadiationModel* radiati
 PYHELIOS_API void updateCameraParameters(RadiationModel* radiation_model,
                                          const char* camera_label,
                                          const float* camera_properties,
-                                         const char* exposure);
+                                         const char* exposure,
+                                         const char** camera_strings, size_t string_count);
 
 /**
  * @brief Enable automatic JSON metadata file writing for a camera

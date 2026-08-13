@@ -4,7 +4,7 @@ PlantArchitecture Plugin Sample
 
 This example demonstrates the PyHelios PlantArchitecture plugin for procedural
 plant modeling and plant library functionality. The PlantArchitecture plugin
-provides access to 25+ plant models with time-based growth simulation.
+provides access to 30 plant models with time-based growth simulation.
 
 Requirements:
 - PyHelios built with PlantArchitecture support:
@@ -80,19 +80,21 @@ def main():
                     demonstrate_plant_canopy(plantarch, plant_model, context)
 
                     # Demonstrate time-based growth
-                    demonstrate_plant_growth(plantarch, plant_model, context)
+                    grown_plant_id = demonstrate_plant_growth(plantarch, plant_model, context)
 
                     # Analyze plant geometry
-                    analyze_plant_geometry(plantarch, context)
+                    analyze_plant_geometry(plantarch, context, grown_plant_id)
 
                 print("\n✅ PlantArchitecture demonstration completed successfully")
 
     except PlantArchitectureError as e:
         print(f"❌ PlantArchitecture error: {e}")
-        return
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        return
+        return 1
+    # Any other exception is a genuine bug: let it propagate with its traceback
+    # rather than reporting success. Catching it here would make a broken example
+    # exit 0 and look like it worked.
+
+    return 0
 
 
 def discover_plant_models(plantarch):
@@ -119,7 +121,7 @@ def discover_plant_models(plantarch):
 
         return models
 
-    except Exception as e:
+    except PlantArchitectureError as e:
         print(f"❌ Error discovering plant models: {e}")
         return []
 
@@ -148,7 +150,7 @@ def select_plant_model(plantarch):
         print(f"🌱 Selected model: {selected_model}")
         return selected_model
 
-    except Exception as e:
+    except PlantArchitectureError as e:
         print(f"❌ Error selecting plant model: {e}")
         return None
 
@@ -179,7 +181,7 @@ def demonstrate_individual_plant(plantarch, plant_model, context):
         print(f"✅ Created {len(plant_ids)} individual plants")
         return plant_ids
 
-    except Exception as e:
+    except PlantArchitectureError as e:
         print(f"❌ Error creating individual plants: {e}")
         return []
 
@@ -206,7 +208,7 @@ def demonstrate_plant_canopy(plantarch, plant_model, context):
 
         return plant_ids
 
-    except Exception as e:
+    except PlantArchitectureError as e:
         print(f"❌ Error creating plant canopy: {e}")
         return []
 
@@ -222,8 +224,10 @@ def demonstrate_plant_growth(plantarch, plant_model, context):
         plant_id = plantarch.buildPlantInstanceFromLibrary(position, initial_age)
         print(f"✅ Created plant ID {plant_id} at age {initial_age} days")
 
-        # Get initial primitive count
-        initial_primitives = context.getPrimitiveCount()
+        # Count only this plant's primitives. context.getPrimitiveCount() covers
+        # the whole scene, so it would also fold in growth of the other plants
+        # created earlier in this example.
+        previous_primitives = len(plantarch.getAllPlantUUIDs(plant_id))
 
         # Simulate growth over time
         growth_steps = [5, 10, 15, 20]  # Days to advance
@@ -231,12 +235,13 @@ def demonstrate_plant_growth(plantarch, plant_model, context):
             plantarch.advanceTime(time_step)
             current_age = initial_age + sum(growth_steps[:i+1])
 
-            # Check if geometry changed
-            current_primitives = context.getPrimitiveCount()
-            primitive_change = current_primitives - initial_primitives
+            # Delta since the previous step, not since the start.
+            current_primitives = len(plantarch.getAllPlantUUIDs(plant_id))
+            primitive_change = current_primitives - previous_primitives
+            previous_primitives = current_primitives
 
             print(f"   Step {i+1}: Advanced {time_step} days (age: {current_age} days)")
-            print(f"            Primitives: {current_primitives} (Δ{primitive_change:+d})")
+            print(f"            Plant primitives: {current_primitives} (Δ{primitive_change:+d} this step)")
 
         total_growth = sum(growth_steps)
         final_age = initial_age + total_growth
@@ -244,12 +249,12 @@ def demonstrate_plant_growth(plantarch, plant_model, context):
 
         return plant_id
 
-    except Exception as e:
+    except PlantArchitectureError as e:
         print(f"❌ Error in growth simulation: {e}")
         return None
 
 
-def analyze_plant_geometry(plantarch, context):
+def analyze_plant_geometry(plantarch, context, plant_id):
     """Analyze plant geometry and structure"""
     print(f"\n8. Analyzing plant geometry...")
     try:
@@ -257,9 +262,10 @@ def analyze_plant_geometry(plantarch, context):
         total_primitives = context.getPrimitiveCount()
         print(f"✅ Total scene primitives: {total_primitives}")
 
-        # Try to analyze a specific plant if possible
-        # (Note: In a real application, you'd track plant IDs)
-        test_plant_id = 1  # Assume first plant has ID 1
+        # Analyze the plant we actually grew. Plant IDs are assigned in
+        # creation order starting at 0, so guessing an ID silently analyses a
+        # different plant than intended.
+        test_plant_id = plant_id
 
         try:
             # Get object IDs for the plant
@@ -275,7 +281,7 @@ def analyze_plant_geometry(plantarch, context):
             if uuids:
                 print(f"   First few UUIDs: {uuids[:5]}")
 
-        except Exception as e:
+        except PlantArchitectureError as e:
             print(f"   ⚠️  Could not analyze plant {test_plant_id}: {e}")
 
         # Scene summary
@@ -283,7 +289,7 @@ def analyze_plant_geometry(plantarch, context):
         print(f"   Total primitives in context: {total_primitives}")
         print(f"   Plant models demonstrated: procedural generation with growth")
 
-    except Exception as e:
+    except PlantArchitectureError as e:
         print(f"❌ Error analyzing geometry: {e}")
 
 
@@ -303,10 +309,11 @@ def print_usage_tips():
 
 if __name__ == "__main__":
     try:
-        main()
+        exit_code = main()
         print_usage_tips()
     except KeyboardInterrupt:
         print("\n⚠️  Interrupted by user")
-    except Exception as e:
-        print(f"\n❌ Fatal error: {e}")
-        sys.exit(1)
+        sys.exit(130)
+    # Other exceptions propagate so the traceback is visible and the exit code
+    # is non-zero.
+    sys.exit(exit_code)

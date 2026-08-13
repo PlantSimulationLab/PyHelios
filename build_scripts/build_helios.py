@@ -49,7 +49,8 @@ INTEGRATED_PLUGINS = [
     "photosynthesis",
     "plantarchitecture",
     "leafoptics",
-    "lidar"
+    "lidar",
+    "parameteroptimization"
 ]
 
 # Execute dependency_resolver.py to get PluginDependencyResolver
@@ -651,6 +652,18 @@ class HeliosBuilder:
             plugin_upper = plugin.upper()
             config_content.append(f"add_compile_definitions({plugin_upper}_PLUGIN_AVAILABLE)")
         
+        # Add special handling for parameteroptimization plugin
+        if "parameteroptimization" in plugins:
+            config_content.extend([
+                "",
+                "# ParameterOptimization plugin configuration",
+                "# NLopt's L-BFGS comes from the LGPL-2.1 Luksan sources; disabling them keeps",
+                "# the distributed library entirely MIT-licensed. L-BFGS is then unavailable and",
+                "# the plugin says so explicitly -- Adam (gradient-based) and BOBYQA",
+                "# (derivative-free) remain as local-optimization alternatives.",
+                "set(HELIOS_NLOPT_LUKSAN OFF CACHE BOOL \"\" FORCE)"
+            ])
+
         # Add special handling for radiation plugin
         if "radiation" in plugins:
             config_content.extend([

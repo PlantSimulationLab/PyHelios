@@ -477,37 +477,14 @@ class PhotosynthesisModel:
             if needed. To modify all primitives, use setFarquharModelCoefficients()
             with complete coefficient objects.
         """
-        from .types import FarquharModelCoefficients
-        
-        # For each UUID, get existing coefficients, modify Vcmax, then set back
-        for uuid in uuids:
-            # Get existing coefficients as raw array
-            existing_array = self.getFarquharModelCoefficients(uuid)
-            
-            # Create new coefficient object from existing values
-            existing_coeffs = FarquharModelCoefficients.from_array(existing_array)
-            
-            # Modify only Vcmax parameter using the temperature response
-            if dha is None:
-                existing_coeffs.Vcmax = vcmax
-            else:
-                # Create temperature response object and set it
-                from .types import PhotosyntheticTemperatureResponseParameters
-                if dhd is None and topt is None:
-                    temp_response = PhotosyntheticTemperatureResponseParameters(vcmax, dha)
-                elif dhd is None:
-                    temp_response = PhotosyntheticTemperatureResponseParameters(vcmax, dha, topt)
-                else:
-                    temp_response = PhotosyntheticTemperatureResponseParameters(vcmax, dha, topt, dhd)
-                
-                # Set the temperature response values
-                existing_coeffs.Vcmax = temp_response.value_at_25C
-                # Note: Temperature response parameters would need to be stored separately
-                # For now, just set the basic value
-                existing_coeffs.Vcmax = vcmax
-            
-            # Set the modified coefficients back for this UUID
-            self.setFarquharModelCoefficients(existing_coeffs, [uuid])
+        self._check_context_alive()
+        photosynthesis_wrapper.setFarquharVcmax(
+            self._native_ptr, vcmax,
+            -1.0 if dha is None else dha,
+            -1.0 if topt is None else topt,
+            -1.0 if dhd is None else dhd,
+            uuids,
+        )
 
     def setJmax(self, jmax: float, uuids: List[int], dha: Optional[float] = None,
                topt: Optional[float] = None, dhd: Optional[float] = None):
@@ -530,21 +507,14 @@ class PhotosynthesisModel:
             if needed. To modify all primitives, use setFarquharModelCoefficients()
             with complete coefficient objects.
         """
-        from .types import FarquharModelCoefficients
-        
-        # For each UUID, get existing coefficients, modify Jmax, then set back
-        for uuid in uuids:
-            # Get existing coefficients as raw array
-            existing_array = self.getFarquharModelCoefficients(uuid)
-            
-            # Create new coefficient object from existing values
-            existing_coeffs = FarquharModelCoefficients.from_array(existing_array)
-            
-            # Modify only Jmax parameter
-            existing_coeffs.Jmax = jmax
-            
-            # Set the modified coefficients back for this UUID
-            self.setFarquharModelCoefficients(existing_coeffs, [uuid])
+        self._check_context_alive()
+        photosynthesis_wrapper.setFarquharJmax(
+            self._native_ptr, jmax,
+            -1.0 if dha is None else dha,
+            -1.0 if topt is None else topt,
+            -1.0 if dhd is None else dhd,
+            uuids,
+        )
 
     def setDarkRespiration(self, respiration: float, uuids: List[int], dha: Optional[float] = None,
                           topt: Optional[float] = None, dhd: Optional[float] = None):
@@ -567,21 +537,14 @@ class PhotosynthesisModel:
             if needed. To modify all primitives, use setFarquharModelCoefficients()
             with complete coefficient objects.
         """
-        from .types import FarquharModelCoefficients
-        
-        # For each UUID, get existing coefficients, modify Rd, then set back
-        for uuid in uuids:
-            # Get existing coefficients as raw array
-            existing_array = self.getFarquharModelCoefficients(uuid)
-            
-            # Create new coefficient object from existing values
-            existing_coeffs = FarquharModelCoefficients.from_array(existing_array)
-            
-            # Modify only Rd parameter
-            existing_coeffs.Rd = respiration
-            
-            # Set the modified coefficients back for this UUID
-            self.setFarquharModelCoefficients(existing_coeffs, [uuid])
+        self._check_context_alive()
+        photosynthesis_wrapper.setFarquharRd(
+            self._native_ptr, respiration,
+            -1.0 if dha is None else dha,
+            -1.0 if topt is None else topt,
+            -1.0 if dhd is None else dhd,
+            uuids,
+        )
 
     def setQuantumEfficiency(self, efficiency: float, uuids: List[int], dha: Optional[float] = None,
                             topt: Optional[float] = None, dhd: Optional[float] = None):
@@ -604,21 +567,14 @@ class PhotosynthesisModel:
             if needed. To modify all primitives, use setFarquharModelCoefficients()
             with complete coefficient objects.
         """
-        from .types import FarquharModelCoefficients
-        
-        # For each UUID, get existing coefficients, modify alpha, then set back
-        for uuid in uuids:
-            # Get existing coefficients as raw array
-            existing_array = self.getFarquharModelCoefficients(uuid)
-            
-            # Create new coefficient object from existing values
-            existing_coeffs = FarquharModelCoefficients.from_array(existing_array)
-            
-            # Modify only alpha parameter
-            existing_coeffs.alpha = efficiency
-            
-            # Set the modified coefficients back for this UUID
-            self.setFarquharModelCoefficients(existing_coeffs, [uuid])
+        self._check_context_alive()
+        photosynthesis_wrapper.setFarquharQuantumEfficiency(
+            self._native_ptr, efficiency,
+            -1.0 if dha is None else dha,
+            -1.0 if topt is None else topt,
+            -1.0 if dhd is None else dhd,
+            uuids,
+        )
 
     def setLightResponseCurvature(self, curvature: float, uuids: List[int], dha: Optional[float] = None,
                                  topt: Optional[float] = None, dhd: Optional[float] = None):

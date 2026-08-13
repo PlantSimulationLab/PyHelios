@@ -126,6 +126,116 @@ inline void packC4Coefficients(const C4ModelCoefficients &c, float *out) {
     out[42] = c.H_Jcyc;
 }
 
+// =============================================================================
+// Farquhar flat-array layout
+// =============================================================================
+//
+// Slots 0..17  : legacy layout (rate values, O, TPU_flag, and the 12 c_*/dH_* constants)
+// Slots 18..21 : mesophyll conductance gm temperature response (helios-core 1.3.72+)
+// Slots 22..37 : full temperature responses for Vcmax, Jmax, Rd and alpha (1.3.80+)
+//
+// Slots 0..3 hold only the rate value at 25 C, which cannot express a peaked Arrhenius
+// response. As of helios-core 1.3.80 the C++ setters stamp the deprecated scalar fields
+// (FarquharModelCoefficients::Vcmax etc.) to -1 so the temperature-response object is
+// unambiguously authoritative, and every entry in the species library is populated through
+// those setters. Reading slots 0..3 from the deprecated fields therefore returns -1 for
+// every library species, and writing them back selects the legacy non-peaked Arrhenius
+// branch. Slots 0..3 are now packed from the temperature-response objects' value_at_25C and
+// unpacked through the setters, with slots 22..37 carrying the (dHa, Topt_C, dHd) that the
+// legacy slots cannot represent.
+constexpr unsigned int FARQUHAR_COEFF_COUNT = 38;
+
+// Pack a FarquharModelCoefficients into the flat array. `count` is the caller's buffer size;
+// trailing blocks are written only when the buffer is large enough, so older callers passing
+// an 18- or 22-float buffer keep working.
+// Taken by value: the FarquharModelCoefficients temperature-response getters are not
+// const-qualified upstream, so a const reference cannot call them.
+inline void packFarquharCoefficients(FarquharModelCoefficients c, float *out, unsigned int count) {
+    const auto vcmax = c.getVcmaxTempResponse();
+    const auto jmax = c.getJmaxTempResponse();
+    const auto rd = c.getRdTempResponse();
+    const auto alpha = c.getQuantumEfficiencyTempResponse();
+
+    // Legacy slots 0..3 report the rate at 25 C from the authoritative temperature response
+    // rather than from the deprecated scalar fields, which hold -1 whenever a setter was used.
+    out[0] = vcmax.value_at_25C;
+    out[1] = jmax.value_at_25C;
+    out[2] = alpha.value_at_25C;
+    out[3] = rd.value_at_25C;
+    out[4] = c.O;
+    out[5] = static_cast<float>(c.TPU_flag);
+
+    out[6] = c.c_Vcmax;
+    out[7] = c.dH_Vcmax;
+    out[8] = c.c_Jmax;
+    out[9] = c.dH_Jmax;
+    out[10] = c.c_Rd;
+    out[11] = c.dH_Rd;
+    out[12] = c.c_Kc;
+    out[13] = c.dH_Kc;
+    out[14] = c.c_Ko;
+    out[15] = c.dH_Ko;
+    out[16] = c.c_Gamma;
+    out[17] = c.dH_Gamma;
+
+    if (count >= 22) {
+        packTempResponse(c.getMesophyllConductance_gmTempResponse(), &out[18]);
+    }
+
+    if (count >= FARQUHAR_COEFF_COUNT) {
+        packTempResponse(vcmax, &out[22]);
+        packTempResponse(jmax, &out[26]);
+        packTempResponse(rd, &out[30]);
+        packTempResponse(alpha, &out[34]);
+    }
+
+    for (unsigned int i = (count >= FARQUHAR_COEFF_COUNT ? FARQUHAR_COEFF_COUNT : (count >= 22 ? 22u : 18u)); i < count; ++i) {
+        out[i] = 0.0f;
+    }
+}
+
+// Unpack a flat coefficient array into a FarquharModelCoefficients. `count` is the caller's
+// element count; blocks absent from a short buffer are simply not applied.
+inline FarquharModelCoefficients unpackFarquharCoefficients(const float *coefficients, unsigned int count) {
+    FarquharModelCoefficients c;
+
+    c.O = coefficients[4];
+    c.TPU_flag = static_cast<int>(coefficients[5]);
+
+    c.c_Vcmax = coefficients[6];
+    c.dH_Vcmax = coefficients[7];
+    c.c_Jmax = coefficients[8];
+    c.dH_Jmax = coefficients[9];
+    c.c_Rd = coefficients[10];
+    c.dH_Rd = coefficients[11];
+    c.c_Kc = coefficients[12];
+    c.dH_Kc = coefficients[13];
+    c.c_Ko = coefficients[14];
+    c.dH_Ko = coefficients[15];
+    c.c_Gamma = coefficients[16];
+    c.dH_Gamma = coefficients[17];
+
+    if (count >= 22) {
+        applyTempResponse([&](auto... a) { c.setMesophyllConductance_gm(a...); },
+                          coefficients[18], coefficients[19], coefficients[20], coefficients[21]);
+    }
+
+    // Apply the rate temperature responses through the setters so the C++ side stays
+    // authoritative. When the extended block is absent, fall back to the slot 0..3 value with
+    // no temperature response (dHa = -1), reproducing the legacy constant-rate behaviour.
+    const bool extended = (count >= FARQUHAR_COEFF_COUNT);
+    applyTempResponse([&](auto... a) { c.setVcmax(a...); }, coefficients[0],
+                      extended ? coefficients[23] : -1.f, extended ? coefficients[24] : -1.f, extended ? coefficients[25] : -1.f);
+    applyTempResponse([&](auto... a) { c.setJmax(a...); }, coefficients[1],
+                      extended ? coefficients[27] : -1.f, extended ? coefficients[28] : -1.f, extended ? coefficients[29] : -1.f);
+    applyTempResponse([&](auto... a) { c.setQuantumEfficiency_alpha(a...); }, coefficients[2],
+                      extended ? coefficients[35] : -1.f, extended ? coefficients[36] : -1.f, extended ? coefficients[37] : -1.f);
+    applyTempResponse([&](auto... a) { c.setRd(a...); }, coefficients[3],
+                      extended ? coefficients[31] : -1.f, extended ? coefficients[32] : -1.f, extended ? coefficients[33] : -1.f);
+
+    return c;
+}
+
 } // namespace pyhelios_photosynthesis_internal
 
 extern "C" {
@@ -346,33 +456,8 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
             // Get coefficients from library
             FarquharModelCoefficients farquhar_coeffs = photosynthesis_model->getFarquharCoefficientsFromLibrary(species);
             
-            // Pack into float array: [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
-            coefficients[0] = farquhar_coeffs.Vcmax;
-            coefficients[1] = farquhar_coeffs.Jmax;
-            coefficients[2] = farquhar_coeffs.alpha;
-            coefficients[3] = farquhar_coeffs.Rd;
-            coefficients[4] = farquhar_coeffs.O;
-            coefficients[5] = static_cast<float>(farquhar_coeffs.TPU_flag);
-            
-            // Temperature parameters (simplified - just the main ones)
-            coefficients[6] = farquhar_coeffs.c_Vcmax;
-            coefficients[7] = farquhar_coeffs.dH_Vcmax;
-            coefficients[8] = farquhar_coeffs.c_Jmax;
-            coefficients[9] = farquhar_coeffs.dH_Jmax;
-            coefficients[10] = farquhar_coeffs.c_Rd;
-            coefficients[11] = farquhar_coeffs.dH_Rd;
-            coefficients[12] = farquhar_coeffs.c_Kc;
-            coefficients[13] = farquhar_coeffs.dH_Kc;
-            coefficients[14] = farquhar_coeffs.c_Ko;
-            coefficients[15] = farquhar_coeffs.dH_Ko;
-            coefficients[16] = farquhar_coeffs.c_Gamma;
-            coefficients[17] = farquhar_coeffs.dH_Gamma;
-            
-            // Fill remaining with zeros if array is larger
-            for (unsigned int i = 18; i < coeff_size; ++i) {
-                coefficients[i] = 0.0f;
-            }
-            
+            pyhelios_photosynthesis_internal::packFarquharCoefficients(farquhar_coeffs, coefficients, coeff_size);
+
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::getFarquharCoefficientsFromLibrary): ") + e.what());
         } catch (...) {
@@ -489,38 +574,8 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 return;
             }
             
-            // Create Farquhar coefficients from array [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
-            FarquharModelCoefficients farquhar_coeffs;
-            farquhar_coeffs.Vcmax = coefficients[0];
-            farquhar_coeffs.Jmax = coefficients[1];
-            farquhar_coeffs.alpha = coefficients[2];
-            farquhar_coeffs.Rd = coefficients[3];
-            farquhar_coeffs.O = coefficients[4];
-            farquhar_coeffs.TPU_flag = static_cast<int>(coefficients[5]);
-            
-            // Basic temperature parameters (using simplified interface)
-            if (coeff_count >= 18) {
-                farquhar_coeffs.c_Vcmax = coefficients[6];
-                farquhar_coeffs.dH_Vcmax = coefficients[7];
-                farquhar_coeffs.c_Jmax = coefficients[8];
-                farquhar_coeffs.dH_Jmax = coefficients[9];
-                farquhar_coeffs.c_Rd = coefficients[10];
-                farquhar_coeffs.dH_Rd = coefficients[11];
-                farquhar_coeffs.c_Kc = coefficients[12];
-                farquhar_coeffs.dH_Kc = coefficients[13];
-                farquhar_coeffs.c_Ko = coefficients[14];
-                farquhar_coeffs.dH_Ko = coefficients[15];
-                farquhar_coeffs.c_Gamma = coefficients[16];
-                farquhar_coeffs.dH_Gamma = coefficients[17];
-            }
-
-            // Mesophyll conductance gm temperature response (helios-core 1.3.72+).
-            // Slots 18..21 only consumed when present so legacy 18-float callers keep working.
-            if (coeff_count >= 22) {
-                pyhelios_photosynthesis_internal::applyTempResponse(
-                    [&](auto... a) { farquhar_coeffs.setMesophyllConductance_gm(a...); },
-                    coefficients[18], coefficients[19], coefficients[20], coefficients[21]);
-            }
+            FarquharModelCoefficients farquhar_coeffs =
+                pyhelios_photosynthesis_internal::unpackFarquharCoefficients(coefficients, coeff_count);
 
             photosynthesis_model->setModelCoefficients(farquhar_coeffs);
 
@@ -555,37 +610,8 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 return;
             }
             
-            // Create Farquhar coefficients from array
-            FarquharModelCoefficients farquhar_coeffs;
-            farquhar_coeffs.Vcmax = coefficients[0];
-            farquhar_coeffs.Jmax = coefficients[1];
-            farquhar_coeffs.alpha = coefficients[2];
-            farquhar_coeffs.Rd = coefficients[3];
-            farquhar_coeffs.O = coefficients[4];
-            farquhar_coeffs.TPU_flag = static_cast<int>(coefficients[5]);
-            
-            // Basic temperature parameters
-            if (coeff_count >= 18) {
-                farquhar_coeffs.c_Vcmax = coefficients[6];
-                farquhar_coeffs.dH_Vcmax = coefficients[7];
-                farquhar_coeffs.c_Jmax = coefficients[8];
-                farquhar_coeffs.dH_Jmax = coefficients[9];
-                farquhar_coeffs.c_Rd = coefficients[10];
-                farquhar_coeffs.dH_Rd = coefficients[11];
-                farquhar_coeffs.c_Kc = coefficients[12];
-                farquhar_coeffs.dH_Kc = coefficients[13];
-                farquhar_coeffs.c_Ko = coefficients[14];
-                farquhar_coeffs.dH_Ko = coefficients[15];
-                farquhar_coeffs.c_Gamma = coefficients[16];
-                farquhar_coeffs.dH_Gamma = coefficients[17];
-            }
-
-            // Mesophyll conductance gm temperature response (helios-core 1.3.72+).
-            if (coeff_count >= 22) {
-                pyhelios_photosynthesis_internal::applyTempResponse(
-                    [&](auto... a) { farquhar_coeffs.setMesophyllConductance_gm(a...); },
-                    coefficients[18], coefficients[19], coefficients[20], coefficients[21]);
-            }
+            FarquharModelCoefficients farquhar_coeffs =
+                pyhelios_photosynthesis_internal::unpackFarquharCoefficients(coefficients, coeff_count);
 
             std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
             photosynthesis_model->setModelCoefficients(farquhar_coeffs, uuid_vector);
@@ -911,41 +937,7 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
 
             FarquharModelCoefficients farquhar_coeffs = photosynthesis_model->getFarquharModelCoefficients(uuid);
 
-            // Pack into float array [Vcmax, Jmax, alpha, Rd, O, TPU_flag, ...temp_params]
-            coefficients[0] = farquhar_coeffs.Vcmax;
-            coefficients[1] = farquhar_coeffs.Jmax;
-            coefficients[2] = farquhar_coeffs.alpha;
-            coefficients[3] = farquhar_coeffs.Rd;
-            coefficients[4] = farquhar_coeffs.O;
-            coefficients[5] = static_cast<float>(farquhar_coeffs.TPU_flag);
-
-            // Temperature parameters
-            coefficients[6] = farquhar_coeffs.c_Vcmax;
-            coefficients[7] = farquhar_coeffs.dH_Vcmax;
-            coefficients[8] = farquhar_coeffs.c_Jmax;
-            coefficients[9] = farquhar_coeffs.dH_Jmax;
-            coefficients[10] = farquhar_coeffs.c_Rd;
-            coefficients[11] = farquhar_coeffs.dH_Rd;
-            coefficients[12] = farquhar_coeffs.c_Kc;
-            coefficients[13] = farquhar_coeffs.dH_Kc;
-            coefficients[14] = farquhar_coeffs.c_Ko;
-            coefficients[15] = farquhar_coeffs.dH_Ko;
-            coefficients[16] = farquhar_coeffs.c_Gamma;
-            coefficients[17] = farquhar_coeffs.dH_Gamma;
-
-            // Mesophyll conductance gm temperature response (helios-core 1.3.72+).
-            // Slots 18..21 only populated if the buffer is large enough; older 18-float
-            // callers continue to work without seeing gm.
-            if (coeff_size >= 22) {
-                pyhelios_photosynthesis_internal::packTempResponse(
-                    farquhar_coeffs.getMesophyllConductance_gmTempResponse(),
-                    &coefficients[18]);
-            }
-
-            // Fill remaining with zeros if array is even larger
-            for (unsigned int i = (coeff_size >= 22 ? 22u : 18u); i < coeff_size; ++i) {
-                coefficients[i] = 0.0f;
-            }
+            pyhelios_photosynthesis_internal::packFarquharCoefficients(farquhar_coeffs, coefficients, coeff_size);
 
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhotosynthesisModel::getFarquharModelCoefficients): ") + e.what());

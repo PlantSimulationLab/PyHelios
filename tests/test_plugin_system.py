@@ -7,6 +7,7 @@ configuration management, and runtime plugin detection.
 
 import pytest
 import os
+import sys
 import tempfile
 import platform
 from pathlib import Path
@@ -441,6 +442,79 @@ class TestPerformance:
         # Should resolve all plugins in under 5 seconds
         assert (end_time - start_time) < 5.0
         assert isinstance(result.final_plugins, list)
+
+
+@pytest.mark.cross_platform
+class TestPluginCLI:
+    """Tests for the `python -m pyhelios.plugins` command-line interface."""
+
+    def _run_cli(self, *args, extra_env=None):
+        """Run the plugin CLI in a subprocess and return (returncode, output)."""
+        import subprocess
+        repo_root = Path(__file__).parent.parent
+        env = {**os.environ, 'PYTHONPATH': str(repo_root)}
+        if extra_env:
+            env.update(extra_env)
+        proc = subprocess.run(
+            [sys.executable, '-m', 'pyhelios.plugins', *args],
+            capture_output=True, text=True, cwd=str(repo_root),
+            env=env, errors='replace',
+        )
+        return proc.returncode, proc.stdout + proc.stderr
+
+    def test_info_reports_runtime_availability(self):
+        """`plugins info <name>` must report availability, not an internal error.
+
+        Regression: cmd_info called the no-argument get_plugin_info() from
+        pyhelios.plugins with a plugin name, raising TypeError. The broad
+        except in main() turned that into "Error: get_plugin_info() takes 0
+        positional arguments but 1 was given" under a "Runtime Status" heading,
+        which reads like the plugin is broken rather than the CLI.
+        """
+        returncode, output = self._run_cli('info', 'radiation')
+
+        assert 'takes 0 positional arguments' not in output, (
+            f"cmd_info called get_plugin_info() with an argument:\n{output}"
+        )
+        assert returncode == 0, f"`plugins info radiation` failed:\n{output}"
+        # It must actually state availability.
+        assert 'Available:' in output, f"No availability reported:\n{output}"
+
+    def test_info_rejects_unknown_plugin(self):
+        """An unknown plugin name is reported clearly and exits non-zero."""
+        returncode, output = self._run_cli('info', 'not_a_real_plugin')
+
+        assert returncode == 1
+        assert 'Unknown plugin' in output
+
+    @pytest.mark.parametrize('command', [
+        ('status',),
+        ('discover',),
+        ('info', 'radiation'),
+        ('info', 'not_a_real_plugin'),
+    ])
+    def test_cli_survives_legacy_console_encoding(self, command):
+        """The CLI must not crash on consoles that cannot encode its symbols.
+
+        Regression: the status glyphs are non-ASCII, and a Windows console
+        running a legacy codepage encodes stdout as cp1252, whose codec has no
+        mapping for them. Every affected command died with UnicodeEncodeError
+        instead of printing its report, and the broad except in main() then
+        died the same way trying to print an error marker. cp1252 is forced
+        here so the failure reproduces on any platform.
+        """
+        expected_returncode = 1 if command[-1] == 'not_a_real_plugin' else 0
+        returncode, output = self._run_cli(
+            *command, extra_env={'PYTHONIOENCODING': 'cp1252'}
+        )
+
+        assert 'UnicodeEncodeError' not in output, (
+            f"`plugins {' '.join(command)}` crashed on a cp1252 console:\n{output}"
+        )
+        assert returncode == expected_returncode, (
+            f"`plugins {' '.join(command)}` exited {returncode} on a cp1252 "
+            f"console:\n{output}"
+        )
 
 
 if __name__ == '__main__':

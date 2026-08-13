@@ -22,6 +22,9 @@ pyhelios/_stub.cpython-*.pyd
 # Auto-generated documentation
 docs/generated/
 
+# Output written by the example scripts (safe to delete)
+docs/examples/output/
+
 # IDEs and editors
 .vscode/
 .idea/

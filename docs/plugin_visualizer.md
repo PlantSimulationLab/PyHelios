@@ -97,11 +97,11 @@ with Visualizer(width=1200, height=800) as vis:
 
 ## Known Issues {#VisIssues}
 
-- **macOS OpenGL Warning in Headless Mode**: When using headless rendering on macOS, you may see a warning like:
+- **macOS OpenGL Warning**: On macOS you may see a warning like:
   ```
   UNSUPPORTED (log once): POSSIBLE ISSUE: unit 6 GLD_TEXTURE_INDEX_2D is unloadable and bound to sampler type (Float) - using zero texture because texture unloadable
   ```
-  This is a harmless driver warning from the macOS OpenGL implementation and does not affect rendering functionality. It appears once per run and can be safely ignored.
+  This appears once per run when a sampler is bound to a texture unit that holds no texture. It is benign for lighting models that do not sample the shadow map. Note that prior to helios-core 1.3.80, this same warning was also emitted in headless mode with `LIGHTING_PHONG_SHADOWED`, where it was *not* benign: it indicated that the shadow map had never been created, and shadows were silently missing from the rendered output.
 
 - Large point clouds are supported with automatic culling optimization.
 
@@ -165,10 +165,14 @@ with Context() as context:
 
 **Key Features:**
 - Full OpenGL rendering using offscreen framebuffers
-- All geometry types and visual effects supported
+- All geometry types and visual effects supported, including shadows (`LIGHTING_PHONG_SHADOWED`)
 - Image export via \ref pyhelios.Visualizer.Visualizer::printWindow "printWindow()"
 - No display or window manager required
 - Identical visual output to windowed mode
+
+> **Note:** Shadowed lighting in headless mode requires helios-core 1.3.80 or later. Earlier versions created the shadow-map framebuffer only in windowed mode, so a headless render using `LIGHTING_PHONG_SHADOWED` came out with the *entire* scene rendered at the fully-shadowed brightness — not merely missing its shadows.
+
+> **Note:** As of helios-core 1.3.80, a headless render that never calls \ref pyhelios.Visualizer.Visualizer::setLightDirection "setLightDirection()" uses the same default (1,1,1) light direction as windowed mode. In earlier versions the default light direction was never sent to the shader in headless mode, so headless and windowed renders shaded the same scene differently.
 
 **Important Notes:**
 - When in headless mode, \ref pyhelios.Visualizer.Visualizer::plotInteractive "plotInteractive()" is not available
@@ -439,6 +443,18 @@ with Context() as context:
         vis.closeWindow()
 ```
 
+#### Reading Pixels Back {#WindowPixels}
+
+Rendered pixels can be read into Python rather than written to file with \ref pyhelios.Visualizer.Visualizer::getWindowPixelsRGB "getWindowPixelsRGB()". Called with no argument, it allocates the buffer itself and returns it along with the image dimensions:
+
+```python
+pixels, width, height = vis.getWindowPixelsRGB()
+```
+
+Data is stored as r-g-b per column per row, so `pixels[0:3]` is the RGB value of row 0 column 0 and `len(pixels) == 3 * width * height`.
+
+A pre-allocated list may be passed instead, in which case it is filled in place. It must hold exactly `3 * width * height` elements, where the dimensions come from \ref pyhelios.Visualizer.Visualizer::getFramebufferSize "getFramebufferSize()" — **not** \ref pyhelios.Visualizer.Visualizer::getWindowSize "getWindowSize()" and not the dimensions passed to the `Visualizer` constructor. On a high-DPI (Retina) display the framebuffer is larger than the window, typically by a factor of two per axis, so a buffer sized from the window dimensions is four times too small. PyHelios rejects a wrongly-sized buffer with a `ValueError`; the no-argument form avoids the question entirely and is preferred.
+
 ### Colors and Shading {#ColorShade}
 
 #### Coloring by r-g-b Code {#ColoringRGB}
@@ -536,11 +552,11 @@ The colorbar is the legend showing how values are mapped to the color table. The
   </tr>
   <tr>
      <td>setColorbarRange(cmin, cmax)</td>
-     <td>Set the range of data values for the colorbar/colormap.</td>
+     <td>Set the range of data values for the colorbar/colormap. Setting a range explicitly stops the colorbar from auto-ranging over the data, including for a degenerate range such as (0, 0). An inverted range is rejected.</td>
   </tr>
   <tr>
      <td>setColorbarTicks(ticks)</td>
-     <td>Set locations of data tick along colorbar.</td>
+     <td>Set locations of data tick along colorbar. If a tick lies outside the colorbar range, the range is expanded to fit it, which moves the colormap limits as well as the labels; call setColorbarRange() afterwards to restore an explicit range.</td>
   </tr>
   <tr>
      <td>setColorbarTitle(title)</td>
