@@ -54,3 +54,6 @@ docs/examples/output/
 # MCP memory server files (local development only)
 .aim/
 .mcp.json
+# Runtime plugin assets staged by build_helios.py (compiled shaders, CMake scratch).
+# Generated output belongs under pyhelios_build/build/; this path is a staging copy.
+/pyhelios_build/plugins/

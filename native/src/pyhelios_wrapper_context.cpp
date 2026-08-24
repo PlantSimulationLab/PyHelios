@@ -11483,6 +11483,192 @@ extern "C" {
     #undef PERELEM_EPILOGUE
 
     // ======================================================================
+    // Per-element bulk data getters
+    // The read counterpart of the per-element setters above. Without these,
+    // Python must call the single-element accessor once per UUID, which costs
+    // one ctypes crossing per primitive and dominates at canopy scale.
+    //
+    // Each returns a pointer to a static thread_local buffer that stays valid
+    // until the next call on the same thread, so callers must copy before
+    // invoking another getter.
+    // ======================================================================
+
+    #define PERELEM_GET_PROLOGUE(fname, CTYPE) \
+        clearError(); \
+        static thread_local std::vector<CTYPE> result_buffer; \
+        if (out_count) *out_count = 0; \
+        if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): Context pointer is null."); return nullptr; } \
+        if (!uuids || num_uuids == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): UUID array is null or empty."); return nullptr; } \
+        if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): Label is null."); return nullptr; } \
+        if (!out_count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" fname "): Output count pointer is null."); return nullptr; } \
+        size_t index = 0; \
+        try { \
+            result_buffer.clear();
+
+    // Name the primitive that failed; otherwise the caller only learns that one
+    // of N reads went wrong, with no way to tell which. Mirrors the message
+    // format of getPrimitiveDataFloatArray.
+    #define PERELEM_GET_EPILOGUE(fname) \
+            *out_count = result_buffer.size(); \
+            return result_buffer.data(); \
+        } catch (const std::exception& e) { \
+            setError(PYHELIOS_ERROR_RUNTIME, \
+                     std::string("ERROR (" fname "): reading '") + label + "' for UUID " \
+                     + std::to_string(uuids[index]) + " (index " + std::to_string(index) + " of " \
+                     + std::to_string(num_uuids) + "): " + e.what()); \
+            *out_count = 0; \
+            return nullptr; \
+        } catch (...) { \
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (" fname "): Unknown error reading primitive data."); \
+            *out_count = 0; \
+            return nullptr; \
+        }
+
+    // Scalar (int / unsigned int / double): one value per UUID.
+    #define PERELEM_GET_SCALAR(NAME, CTYPE, METHOD) \
+        PYHELIOS_API CTYPE* NAME(helios::Context* context, const unsigned int* uuids, \
+                                 size_t num_uuids, const char* label, size_t* out_count) { \
+            PERELEM_GET_PROLOGUE(#NAME, CTYPE) \
+            result_buffer.reserve(num_uuids); \
+            for (index = 0; index < num_uuids; index++) { \
+                CTYPE value; \
+                context->METHOD(uuids[index], label, value); \
+                result_buffer.push_back(value); \
+            } \
+            PERELEM_GET_EPILOGUE(#NAME) \
+        }
+
+    // 2/3/4-component vector types flattened into num_uuids*N values.
+    #define PERELEM_GET_N2(NAME, HTYPE, CTYPE, METHOD) \
+        PYHELIOS_API CTYPE* NAME(helios::Context* context, const unsigned int* uuids, \
+                                 size_t num_uuids, const char* label, size_t* out_count) { \
+            PERELEM_GET_PROLOGUE(#NAME, CTYPE) \
+            result_buffer.reserve(num_uuids * 2); \
+            for (index = 0; index < num_uuids; index++) { \
+                helios::HTYPE value; \
+                context->METHOD(uuids[index], label, value); \
+                result_buffer.push_back(value.x); \
+                result_buffer.push_back(value.y); \
+            } \
+            PERELEM_GET_EPILOGUE(#NAME) \
+        }
+
+    #define PERELEM_GET_N3(NAME, HTYPE, CTYPE, METHOD) \
+        PYHELIOS_API CTYPE* NAME(helios::Context* context, const unsigned int* uuids, \
+                                 size_t num_uuids, const char* label, size_t* out_count) { \
+            PERELEM_GET_PROLOGUE(#NAME, CTYPE) \
+            result_buffer.reserve(num_uuids * 3); \
+            for (index = 0; index < num_uuids; index++) { \
+                helios::HTYPE value; \
+                context->METHOD(uuids[index], label, value); \
+                result_buffer.push_back(value.x); \
+                result_buffer.push_back(value.y); \
+                result_buffer.push_back(value.z); \
+            } \
+            PERELEM_GET_EPILOGUE(#NAME) \
+        }
+
+    #define PERELEM_GET_N4(NAME, HTYPE, CTYPE, METHOD) \
+        PYHELIOS_API CTYPE* NAME(helios::Context* context, const unsigned int* uuids, \
+                                 size_t num_uuids, const char* label, size_t* out_count) { \
+            PERELEM_GET_PROLOGUE(#NAME, CTYPE) \
+            result_buffer.reserve(num_uuids * 4); \
+            for (index = 0; index < num_uuids; index++) { \
+                helios::HTYPE value; \
+                context->METHOD(uuids[index], label, value); \
+                result_buffer.push_back(value.x); \
+                result_buffer.push_back(value.y); \
+                result_buffer.push_back(value.z); \
+                result_buffer.push_back(value.w); \
+            } \
+            PERELEM_GET_EPILOGUE(#NAME) \
+        }
+
+    // ---- Per-element primitive data ----
+    // (float is served by the pre-existing getPrimitiveDataFloatArray above.)
+    PERELEM_GET_SCALAR(getPrimitiveDataIntArray, int, getPrimitiveData)
+    PERELEM_GET_SCALAR(getPrimitiveDataUIntArray, unsigned int, getPrimitiveData)
+    PERELEM_GET_SCALAR(getPrimitiveDataDoubleArray, double, getPrimitiveData)
+    PERELEM_GET_N2(getPrimitiveDataVec2Array, vec2, float, getPrimitiveData)
+    PERELEM_GET_N3(getPrimitiveDataVec3Array, vec3, float, getPrimitiveData)
+    PERELEM_GET_N4(getPrimitiveDataVec4Array, vec4, float, getPrimitiveData)
+    PERELEM_GET_N2(getPrimitiveDataInt2Array, int2, int, getPrimitiveData)
+    PERELEM_GET_N3(getPrimitiveDataInt3Array, int3, int, getPrimitiveData)
+    PERELEM_GET_N4(getPrimitiveDataInt4Array, int4, int, getPrimitiveData)
+
+    // ---- Per-element object data ----
+    PERELEM_GET_SCALAR(getObjectDataIntArray, int, getObjectData)
+    PERELEM_GET_SCALAR(getObjectDataUIntArray, unsigned int, getObjectData)
+    PERELEM_GET_SCALAR(getObjectDataFloatArray, float, getObjectData)
+    PERELEM_GET_SCALAR(getObjectDataDoubleArray, double, getObjectData)
+    PERELEM_GET_N2(getObjectDataVec2Array, vec2, float, getObjectData)
+    PERELEM_GET_N3(getObjectDataVec3Array, vec3, float, getObjectData)
+    PERELEM_GET_N4(getObjectDataVec4Array, vec4, float, getObjectData)
+    PERELEM_GET_N2(getObjectDataInt2Array, int2, int, getObjectData)
+    PERELEM_GET_N3(getObjectDataInt3Array, int3, int, getObjectData)
+    PERELEM_GET_N4(getObjectDataInt4Array, int4, int, getObjectData)
+
+    #undef PERELEM_GET_SCALAR
+    #undef PERELEM_GET_N2
+    #undef PERELEM_GET_N3
+    #undef PERELEM_GET_N4
+    #undef PERELEM_GET_PROLOGUE
+    #undef PERELEM_GET_EPILOGUE
+
+    // ======================================================================
+    // Per-element bulk string data getters
+    // Strings are variable length, so they cannot use the fixed-stride macros
+    // above. They follow the offset-array convention of getBatchPrimitive*:
+    // every value is concatenated into one buffer and offsets_out[i]..[i+1]
+    // delimits element i, with offsets_out[num_uuids] holding the total.
+    // The caller must supply an offsets array of num_uuids+1 entries.
+    // ======================================================================
+
+    #define BULK_GET_STRING(NAME, METHOD, KIND) \
+        PYHELIOS_API const char* NAME(helios::Context* context, const unsigned int* uuids, \
+                                      size_t num_uuids, const char* label, \
+                                      unsigned int* offsets_out, size_t* total_chars) { \
+            clearError(); \
+            static thread_local std::string buffer; \
+            if (total_chars) *total_chars = 0; \
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): Context pointer is null."); return nullptr; } \
+            if (!uuids || num_uuids == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): " KIND " array is null or empty."); return nullptr; } \
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): Label is null."); return nullptr; } \
+            if (!offsets_out) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): Offsets array is null."); return nullptr; } \
+            if (!total_chars) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" #NAME "): Output count pointer is null."); return nullptr; } \
+            size_t index = 0; \
+            try { \
+                buffer.clear(); \
+                for (index = 0; index < num_uuids; index++) { \
+                    offsets_out[index] = static_cast<unsigned int>(buffer.size()); \
+                    std::string value; \
+                    context->METHOD(uuids[index], label, value); \
+                    buffer.append(value); \
+                } \
+                offsets_out[num_uuids] = static_cast<unsigned int>(buffer.size()); \
+                *total_chars = buffer.size(); \
+                /* c_str() stays valid until the next call on this thread. */ \
+                return buffer.c_str(); \
+            } catch (const std::exception& e) { \
+                setError(PYHELIOS_ERROR_RUNTIME, \
+                         std::string("ERROR (" #NAME "): reading '") + label + "' for " KIND " " \
+                         + std::to_string(uuids[index]) + " (index " + std::to_string(index) + " of " \
+                         + std::to_string(num_uuids) + "): " + e.what()); \
+                *total_chars = 0; \
+                return nullptr; \
+            } catch (...) { \
+                setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (" #NAME "): Unknown error reading string data."); \
+                *total_chars = 0; \
+                return nullptr; \
+            } \
+        }
+
+    BULK_GET_STRING(getPrimitiveDataStringArray, getPrimitiveData, "primitive")
+    BULK_GET_STRING(getObjectDataStringArray, getObjectData, "object")
+
+    #undef BULK_GET_STRING
+
+    // ======================================================================
     // Bulk texture-color override for primitives (mirrors object-level batch)
     // ======================================================================
 

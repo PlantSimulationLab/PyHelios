@@ -115,9 +115,10 @@ class TestVisualizerCrossPlatform:
         with pytest.raises(ValueError, match="Width and height must be positive"):
             Visualizer(800, -1)
         
-        # Test invalid antialiasing
-        with pytest.raises(ValueError, match="Antialiasing samples must be at least 1"):
-            Visualizer(800, 600, antialiasing_samples=0)
+        # 0 is valid and means antialiasing off, which exact color mode requires.
+        # Only a negative sample count is rejected.
+        with pytest.raises(ValueError, match="non-negative"):
+            Visualizer(800, 600, antialiasing_samples=-1)
     
     def test_visualizer_lighting_constants(self):
         """Test lighting model constants"""
@@ -140,7 +141,9 @@ class TestVisualizerNative:
             assert visualizer is not None
             assert visualizer.width == 800
             assert visualizer.height == 600
-            assert visualizer.antialiasing_samples == 1
+            # 4 is the real default: the C++ createVisualizer() entry point always
+            # used 4 samples, so the previous Python default of 1 never reached it.
+            assert visualizer.antialiasing_samples == 4
             assert visualizer.headless == True
     
     def test_visualizer_creation_with_parameters(self):
@@ -1263,6 +1266,179 @@ class TestVisualizerV1381Native:
             f"(-11/139 indicates SIGSEGV).\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "SURVIVED" in result.stdout
+
+
+@pytest.mark.cross_platform
+class TestVisualizerV1382API:
+    """Signature-level checks for helios-core 1.3.82 visualizer additions."""
+
+    def test_annotation_overlay_methods_exist(self):
+        for name in ("displayImageWithBoundingBoxes", "displayImageWithSegmentationMasks"):
+            assert hasattr(Visualizer, name), f"{name}() is missing"
+
+    def test_exact_color_mode_methods_exist(self):
+        for name in ("enableExactColorMode", "disableExactColorMode"):
+            assert hasattr(Visualizer, name), f"{name}() is missing"
+
+    def test_get_textbox_size_exists(self):
+        assert hasattr(Visualizer, "getTextboxSize")
+
+    def test_bounding_box_overlay_defaults_match_native(self):
+        import inspect
+        sig = inspect.signature(Visualizer.displayImageWithBoundingBoxes)
+        assert sig.parameters["classes_file"].default == ""
+        assert sig.parameters["line_width"].default == 2.0
+        assert sig.parameters["fontsize"].default == 12
+
+    def test_segmentation_mask_overlay_defaults_match_native(self):
+        import inspect
+        sig = inspect.signature(Visualizer.displayImageWithSegmentationMasks)
+        assert sig.parameters["fill_opacity"].default == 0.4
+        assert sig.parameters["line_width"].default == 2.0
+        assert sig.parameters["fontsize"].default == 12
+        assert sig.parameters["show_labels"].default is True
+
+    def test_antialiasing_samples_can_be_disabled(self):
+        """0 must be accepted, since exact color mode requires antialiasing off.
+
+        The previous validation floor of 1 made it impossible to ask for no
+        antialiasing, and a request for 1 was silently rendered at 4.
+        """
+        import inspect
+        sig = inspect.signature(Visualizer.__init__)
+        assert sig.parameters["antialiasing_samples"].default == 4, (
+            "the default must state the sample count actually used; the C++ "
+            "createVisualizer() entry point hardcodes 4"
+        )
+
+    def test_exact_color_mode_documents_antialiasing_requirement(self):
+        doc = Visualizer.enableExactColorMode.__doc__ or ""
+        assert "antialiasing_samples=0" in doc, (
+            "exact color reproduction requires antialiasing off; this must be documented "
+            "because antialiased edge pixels decode to meaningless object IDs"
+        )
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(is_headless_environment(), reason="Skipping visualizer tests in headless environment")
+class TestVisualizerV1382Native:
+    """helios-core 1.3.82 visualizer behavior."""
+
+    def test_exact_color_mode_round_trips(self):
+        """Enabling and disabling exact color mode both succeed on a live visualizer."""
+        with Visualizer(200, 150, antialiasing_samples=0, headless=True) as visualizer:
+            visualizer.enableExactColorMode()
+            visualizer.disableExactColorMode()
+
+    def test_exact_color_mode_reproduces_primitive_color(self):
+        """With antialiasing off and no lighting, a rendered pixel matches the set color.
+
+        This is the property the mode exists for: the default 1.5x brightening makes a
+        framebuffer round trip lossy, which breaks ID-encoded renders.
+        """
+        context = Context()
+        context.addPatch(center=vec3(0, 0, 0), size=vec2(10, 10),
+                         color=RGBcolor(0.4, 0.2, 0.6))
+
+        with Visualizer(200, 150, antialiasing_samples=0, headless=True) as visualizer:
+            visualizer.enableExactColorMode()
+            visualizer.buildContextGeometry(context)
+            visualizer.plotUpdate()
+
+            pixels, width, height = visualizer.getWindowPixelsRGB()
+            # Sample the center pixel, which the patch covers.
+            index = 3 * ((height // 2) * width + (width // 2))
+            r, g, b = pixels[index], pixels[index + 1], pixels[index + 2]
+
+            # 0.4/0.2/0.6 brightened by 1.5 would saturate red and green well above these.
+            assert abs(r - 102) <= 4, f"red {r} is not the 0.4 that was set"
+            assert abs(g - 51) <= 4, f"green {g} is not the 0.2 that was set"
+            assert abs(b - 153) <= 4, f"blue {b} is not the 0.6 that was set"
+
+    def test_default_mode_brightens_relative_to_exact_mode(self):
+        """The default render is brighter than the exact-color render of the same scene."""
+        def render_center(exact):
+            context = Context()
+            context.addPatch(center=vec3(0, 0, 0), size=vec2(10, 10),
+                             color=RGBcolor(0.4, 0.2, 0.3))
+            with Visualizer(200, 150, antialiasing_samples=0, headless=True) as visualizer:
+                if exact:
+                    visualizer.enableExactColorMode()
+                visualizer.buildContextGeometry(context)
+                visualizer.plotUpdate()
+                pixels, width, height = visualizer.getWindowPixelsRGB()
+                index = 3 * ((height // 2) * width + (width // 2))
+                return pixels[index]
+
+        assert render_center(exact=False) > render_center(exact=True)
+
+    def test_get_textbox_size_grows_with_string_length(self):
+        """A longer string measures wider, and every measurement is positive."""
+        with Visualizer(400, 300, headless=True) as visualizer:
+            short = visualizer.getTextboxSize("Leaf", 14, "OpenSans-Regular")
+            longer = visualizer.getTextboxSize("Leaf area index", 14, "OpenSans-Regular")
+
+            assert short.x > 0 and short.y > 0
+            assert longer.x > short.x, "a longer string must measure wider"
+
+    def test_get_textbox_size_grows_with_font_size(self):
+        with Visualizer(400, 300, headless=True) as visualizer:
+            small = visualizer.getTextboxSize("Canopy", 10, "OpenSans-Regular")
+            large = visualizer.getTextboxSize("Canopy", 24, "OpenSans-Regular")
+
+            assert large.x > small.x
+            assert large.y > small.y
+
+    def test_antialiasing_samples_zero_constructs(self):
+        """Antialiasing can actually be turned off, which exact color mode depends on."""
+        with Visualizer(200, 150, antialiasing_samples=0, headless=True) as visualizer:
+            assert visualizer.antialiasing_samples == 0
+
+
+@pytest.mark.cross_platform
+class TestVisualizerV1382Validation:
+    """Argument validation for the 1.3.82 additions, checked before any native call."""
+
+    @pytest.fixture
+    def visualizer(self):
+        """A Visualizer whose validation runs before it touches the native pointer."""
+        instance = Visualizer.__new__(Visualizer)
+        instance.visualizer = object()  # non-None so the init guard passes
+        return instance
+
+    def test_bounding_box_overlay_rejects_empty_paths(self, visualizer):
+        with pytest.raises(ValueError, match="Image file"):
+            visualizer.displayImageWithBoundingBoxes("", "boxes.txt")
+        with pytest.raises(ValueError, match="Bounding box file"):
+            visualizer.displayImageWithBoundingBoxes("scene.jpeg", "")
+
+    def test_bounding_box_overlay_rejects_bad_numbers(self, visualizer):
+        with pytest.raises(ValueError, match="Line width"):
+            visualizer.displayImageWithBoundingBoxes("s.jpeg", "b.txt", line_width=0)
+        with pytest.raises(ValueError, match="Font size"):
+            visualizer.displayImageWithBoundingBoxes("s.jpeg", "b.txt", fontsize=0)
+
+    def test_segmentation_overlay_rejects_empty_paths(self, visualizer):
+        with pytest.raises(ValueError, match="Image file"):
+            visualizer.displayImageWithSegmentationMasks("", "masks.json")
+        with pytest.raises(ValueError, match="Mask file"):
+            visualizer.displayImageWithSegmentationMasks("scene.jpeg", "")
+
+    @pytest.mark.parametrize("opacity", [-0.1, 1.1])
+    def test_segmentation_overlay_rejects_opacity_out_of_range(self, visualizer, opacity):
+        with pytest.raises(ValueError, match="Fill opacity"):
+            visualizer.displayImageWithSegmentationMasks("s.jpeg", "m.json",
+                                                         fill_opacity=opacity)
+
+    def test_get_textbox_size_rejects_bad_arguments(self, visualizer):
+        with pytest.raises(ValueError, match="Font size"):
+            visualizer.getTextboxSize("text", 0, "OpenSans-Regular")
+        with pytest.raises(ValueError, match="Font name"):
+            visualizer.getTextboxSize("text", 12, "")
+
+    def test_constructor_rejects_negative_antialiasing(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            Visualizer(100, 100, antialiasing_samples=-1)
 
 
 if __name__ == "__main__":

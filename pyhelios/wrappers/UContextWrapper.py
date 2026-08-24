@@ -276,6 +276,58 @@ try:
 except AttributeError:
     _PRIMITIVE_DATA_FLOAT_ARRAY_AVAILABLE = False
 
+# Bulk getters for the remaining data types. Declared as one block: they ship
+# together, so a library predating them lacks all of them. Kept separate from the
+# float block above, which shipped earlier.
+_BULK_DATA_GETTER_ARGTYPES = [
+    ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,
+    ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)
+]
+try:
+    for _name, _restype in (
+        ('getPrimitiveDataIntArray', ctypes.c_int),
+        ('getPrimitiveDataUIntArray', ctypes.c_uint),
+        ('getPrimitiveDataDoubleArray', ctypes.c_double),
+        ('getPrimitiveDataVec2Array', ctypes.c_float),
+        ('getPrimitiveDataVec3Array', ctypes.c_float),
+        ('getPrimitiveDataVec4Array', ctypes.c_float),
+        ('getPrimitiveDataInt2Array', ctypes.c_int),
+        ('getPrimitiveDataInt3Array', ctypes.c_int),
+        ('getPrimitiveDataInt4Array', ctypes.c_int),
+        ('getObjectDataIntArray', ctypes.c_int),
+        ('getObjectDataUIntArray', ctypes.c_uint),
+        ('getObjectDataFloatArray', ctypes.c_float),
+        ('getObjectDataDoubleArray', ctypes.c_double),
+        ('getObjectDataVec2Array', ctypes.c_float),
+        ('getObjectDataVec3Array', ctypes.c_float),
+        ('getObjectDataVec4Array', ctypes.c_float),
+        ('getObjectDataInt2Array', ctypes.c_int),
+        ('getObjectDataInt3Array', ctypes.c_int),
+        ('getObjectDataInt4Array', ctypes.c_int),
+    ):
+        _fn = getattr(helios_lib, _name)
+        _fn.argtypes = _BULK_DATA_GETTER_ARGTYPES
+        _fn.restype = ctypes.POINTER(_restype)
+        _fn.errcheck = _check_error
+    _BULK_DATA_GETTERS_AVAILABLE = True
+except AttributeError:
+    _BULK_DATA_GETTERS_AVAILABLE = False
+
+# Bulk string getters use the offset-array convention rather than a fixed stride,
+# so their prototypes differ from the block above.
+try:
+    for _name in ('getPrimitiveDataStringArray', 'getObjectDataStringArray'):
+        _fn = getattr(helios_lib, _name)
+        _fn.argtypes = [
+            ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,
+            ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_size_t)
+        ]
+        _fn.restype = ctypes.c_void_p  # not c_char_p: keep the raw pointer for slicing
+        _fn.errcheck = _check_error
+    _BULK_STRING_GETTERS_AVAILABLE = True
+except AttributeError:
+    _BULK_STRING_GETTERS_AVAILABLE = False
+
 # Try to set up broadcast primitive data function prototypes
 _BROADCAST_PRIMITIVE_DATA_AVAILABLE = False
 try:
@@ -3239,13 +3291,155 @@ def getPrimitiveDataFloat(context, uuid:int, label:str) -> float:
     label_encoded = label.encode('utf-8')
     return helios_lib.getPrimitiveDataFloat(context, uuid, label_encoded)
 
-def getPrimitiveDataFloatArray(context, uuids, label:str) -> List[float]:
+def getPrimitiveDataFloatArray(context, uuids, label:str):
     """Read one float primitive-data label across many primitives in a single call.
 
-    Returns values in the order the UUIDs were given, so callers control the
-    alignment. Reading N primitives one at a time costs N ctypes round-trips,
-    which dominates at canopy scale; this collapses them into one.
+    Returns a float32 numpy array in the order the UUIDs were given, so callers
+    control the alignment. Reading N primitives one at a time costs N ctypes
+    round-trips, which dominates at canopy scale; this collapses them into one.
     """
+    import numpy as np
+
+    ptr, count = _getPrimitiveDataFloatArrayRaw(context, uuids, label)
+    # as_array wraps the native buffer without copying; the copy is required
+    # because the buffer is a static thread_local reused by the next call.
+    return np.ctypeslib.as_array(ptr, shape=(count,)).copy()
+
+
+# Maps a Helios data type to its bulk getter and component count. The names match
+# the HeliosDataType enum ordering used by Context.getPrimitiveDataArray.
+_BULK_PRIMITIVE_GETTERS = {
+    0: ('getPrimitiveDataIntArray', 'int32', 1),
+    1: ('getPrimitiveDataUIntArray', 'uint32', 1),
+    3: ('getPrimitiveDataDoubleArray', 'float64', 1),
+    4: ('getPrimitiveDataVec2Array', 'float32', 2),
+    5: ('getPrimitiveDataVec3Array', 'float32', 3),
+    6: ('getPrimitiveDataVec4Array', 'float32', 4),
+    7: ('getPrimitiveDataInt2Array', 'int32', 2),
+    8: ('getPrimitiveDataInt3Array', 'int32', 3),
+    9: ('getPrimitiveDataInt4Array', 'int32', 4),
+}
+
+_BULK_OBJECT_GETTERS = {
+    0: ('getObjectDataIntArray', 'int32', 1),
+    1: ('getObjectDataUIntArray', 'uint32', 1),
+    2: ('getObjectDataFloatArray', 'float32', 1),
+    3: ('getObjectDataDoubleArray', 'float64', 1),
+    4: ('getObjectDataVec2Array', 'float32', 2),
+    5: ('getObjectDataVec3Array', 'float32', 3),
+    6: ('getObjectDataVec4Array', 'float32', 4),
+    7: ('getObjectDataInt2Array', 'int32', 2),
+    8: ('getObjectDataInt3Array', 'int32', 3),
+    9: ('getObjectDataInt4Array', 'int32', 4),
+}
+
+
+def _bulkDataArray(context, ids, label:str, table, data_type:int, kind:str):
+    """Read one data label across many IDs in a single native call.
+
+    Returns a numpy array shaped (N,) for scalars or (N, components) for the
+    vector types. Raises NotImplementedError if the native library predates the
+    bulk getters, so the caller can fall back to the per-element path.
+    """
+    import numpy as np
+
+    if not _BULK_DATA_GETTERS_AVAILABLE:
+        raise NotImplementedError(
+            "Bulk data getters are not available in the current Helios library. "
+            "Rebuild the native library to enable them: build_scripts/build_helios --clean"
+        )
+    if data_type not in table:
+        raise NotImplementedError(
+            f"No bulk getter for {kind} data type {data_type}"
+        )
+
+    id_list = list(ids)
+    if not id_list:
+        raise ValueError("ID list cannot be empty")
+
+    fn_name, dtype, components = table[data_type]
+    id_array = (ctypes.c_uint * len(id_list))(*id_list)
+    count = ctypes.c_size_t()
+    ptr = getattr(helios_lib, fn_name)(
+        context, id_array, ctypes.c_size_t(len(id_list)),
+        label.encode('utf-8'), ctypes.byref(count)
+    )
+    if not ptr or count.value == 0:
+        # _check_error raises on a native failure, so reaching here with no data
+        # means the library returned an empty result for a non-empty request.
+        raise RuntimeError(
+            f"{fn_name} returned no data for label '{label}' over {len(id_list)} {kind}s"
+        )
+    # The buffer is a static thread_local reused by the next call, so copy it.
+    values = np.ctypeslib.as_array(ptr, shape=(count.value,)).copy()
+    return values.reshape(-1, components) if components > 1 else values
+
+
+def _bulkStringArray(context, ids, label:str, fn_name:str, kind:str):
+    """Read one string data label across many IDs in a single native call.
+
+    The native side concatenates every value into one buffer and fills an
+    offsets array, so element i is buffer[offsets[i]:offsets[i+1]]. Offsets are
+    byte positions, so the slicing happens on bytes and each value is decoded
+    afterwards -- slicing the decoded text would corrupt multi-byte characters.
+    """
+    import numpy as np
+
+    if not _BULK_STRING_GETTERS_AVAILABLE:
+        raise NotImplementedError(
+            "Bulk string data getters are not available in the current Helios "
+            "library. Rebuild the native library to enable them: "
+            "build_scripts/build_helios --clean"
+        )
+    id_list = list(ids)
+    if not id_list:
+        raise ValueError("ID list cannot be empty")
+
+    n = len(id_list)
+    id_array = (ctypes.c_uint * n)(*id_list)
+    offsets = (ctypes.c_uint * (n + 1))()
+    total = ctypes.c_size_t()
+    ptr = getattr(helios_lib, fn_name)(
+        context, id_array, ctypes.c_size_t(n), label.encode('utf-8'),
+        offsets, ctypes.byref(total)
+    )
+    if ptr is None:
+        raise RuntimeError(
+            f"{fn_name} returned no data for label '{label}' over {n} {kind}s")
+
+    # Every value may legitimately be empty, so a zero-length buffer is valid.
+    raw = ctypes.string_at(ptr, total.value) if total.value else b""
+    off = np.ctypeslib.as_array(offsets).astype(np.int64, copy=False)
+    return np.array(
+        [raw[off[i]:off[i + 1]].decode('utf-8') for i in range(n)], dtype=object)
+
+
+def getPrimitiveDataStringArrayBulk(context, uuids, label:str):
+    """Bulk-read a primitive string data label as an object array."""
+    return _bulkStringArray(context, uuids, label,
+                            'getPrimitiveDataStringArray', 'primitive')
+
+
+def getObjectDataStringArrayBulk(context, objids, label:str):
+    """Bulk-read an object string data label as an object array."""
+    return _bulkStringArray(context, objids, label,
+                            'getObjectDataStringArray', 'object')
+
+
+def getPrimitiveDataArrayBulk(context, uuids, label:str, data_type:int):
+    """Bulk-read a primitive data label. See _bulkDataArray for the contract."""
+    return _bulkDataArray(context, uuids, label, _BULK_PRIMITIVE_GETTERS,
+                          data_type, 'primitive')
+
+
+def getObjectDataArrayBulk(context, objids, label:str, data_type:int):
+    """Bulk-read an object data label. See _bulkDataArray for the contract."""
+    return _bulkDataArray(context, objids, label, _BULK_OBJECT_GETTERS,
+                          data_type, 'object')
+
+
+def _getPrimitiveDataFloatArrayRaw(context, uuids, label:str):
+    """Make the bulk float read and return (pointer, element count)."""
     if not _PRIMITIVE_DATA_FLOAT_ARRAY_AVAILABLE:
         raise NotImplementedError(
             "getPrimitiveDataFloatArray is not available in the current Helios library. "
@@ -3268,7 +3462,7 @@ def getPrimitiveDataFloatArray(context, uuids, label:str) -> List[float]:
             f"getPrimitiveDataFloatArray returned no data for label '{label}' "
             f"over {len(uuid_list)} primitives"
         )
-    return [float(ptr[i]) for i in range(count.value)]
+    return ptr, count.value
 
 def getPrimitiveDataString(context, uuid:int, label:str) -> str:
     if not _PRIMITIVE_DATA_FUNCTIONS_AVAILABLE:
@@ -4565,6 +4759,16 @@ except AttributeError:
     _BATCH_FUNCTIONS_AVAILABLE = False
 
 
+def _offsets_to_numpy(offsets):
+    """Convert a ctypes offset array to uint32 numpy without boxing each element.
+
+    Callers immediately need array semantics, so returning a Python list here
+    costs one boxed int per primitive and is then discarded.
+    """
+    import numpy as np
+    return np.ctypeslib.as_array(offsets).astype(np.uint32, copy=True)
+
+
 def _make_uuid_array(uuids: List[int]):
     """Create a ctypes uint array from a list of UUIDs."""
     return (ctypes.c_uint * len(uuids))(*uuids)
@@ -4623,7 +4827,7 @@ def getBatchPrimitiveVertices(context, uuids: List[int]):
     offsets = (ctypes.c_uint * (count + 1))()
     total_floats = ctypes.c_uint()
     ptr = helios_lib.getBatchPrimitiveVertices(context, uuids_array, count, offsets, ctypes.byref(total_floats))
-    return (ptr, list(offsets), total_floats.value)
+    return (ptr, _offsets_to_numpy(offsets), total_floats.value)
 
 def getBatchPrimitiveTextureUV(context, uuids: List[int]):
     """Get texture UVs for multiple primitives. Returns (float_ptr, offsets_array, total_floats)."""
@@ -4634,7 +4838,7 @@ def getBatchPrimitiveTextureUV(context, uuids: List[int]):
     offsets = (ctypes.c_uint * (count + 1))()
     total_floats = ctypes.c_uint()
     ptr = helios_lib.getBatchPrimitiveTextureUV(context, uuids_array, count, offsets, ctypes.byref(total_floats))
-    return (ptr, list(offsets), total_floats.value)
+    return (ptr, _offsets_to_numpy(offsets), total_floats.value)
 
 def getBatchPrimitiveTextureFiles(context, uuids: List[int]):
     """Get texture files for multiple primitives. Returns (char_ptr, offsets_array, total_chars)."""
@@ -4645,7 +4849,7 @@ def getBatchPrimitiveTextureFiles(context, uuids: List[int]):
     offsets = (ctypes.c_uint * (count + 1))()
     total_chars = ctypes.c_uint()
     ptr = helios_lib.getBatchPrimitiveTextureFiles(context, uuids_array, count, offsets, ctypes.byref(total_chars))
-    return (ptr, list(offsets), total_chars.value)
+    return (ptr, _offsets_to_numpy(offsets), total_chars.value)
 
 def getBatchPrimitiveMaterialLabels(context, uuids: List[int]):
     """Get material labels for multiple primitives. Returns (char_ptr, offsets_array, total_chars)."""
@@ -4656,7 +4860,7 @@ def getBatchPrimitiveMaterialLabels(context, uuids: List[int]):
     offsets = (ctypes.c_uint * (count + 1))()
     total_chars = ctypes.c_uint()
     ptr = helios_lib.getBatchPrimitiveMaterialLabels(context, uuids_array, count, offsets, ctypes.byref(total_chars))
-    return (ptr, list(offsets), total_chars.value)
+    return (ptr, _offsets_to_numpy(offsets), total_chars.value)
 
 
 def resolveMaterialTextures(context, uuids: List[int], colors_np):
@@ -5298,10 +5502,17 @@ _PERELEM_VEC_SPEC = {
 }
 
 def _perelem_components(value, ncomp: int):
-    """Extract ncomp scalar components from a vecN/intN object or a raw sequence."""
+    """Extract ncomp scalar components from a vecN/intN object or a raw sequence.
+
+    Rows of a numpy array count as sequences: the bulk getters return vec/int
+    data as an (N, components) array, so read-modify-write hands those rows
+    straight back here.
+    """
+    import numpy as np
+
     if hasattr(value, 'to_list'):
         comps = list(value.to_list())
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, (list, tuple, np.ndarray)):
         comps = list(value)
     else:
         raise TypeError(f"Per-element vector value must be a vecN/intN object or sequence, got {type(value).__name__}")

@@ -16,6 +16,10 @@ from .validation.geometry import (
     validate_tube_params, validate_box_params
 )
 
+# HeliosDataType values served by a single-call bulk getter. Float (2) has its own
+# reader; string (10) has no bulk variant and still reads one primitive at a time.
+_BULK_PRIMITIVE_DATA_TYPES = frozenset({0, 1, 3, 4, 5, 6, 7, 8, 9})
+
 
 @dataclass
 class PrimitiveInfo:
@@ -598,7 +602,7 @@ class Context:
             if not uuid:
                 return (np.empty((0,), dtype=np.float32), np.zeros((1,), dtype=np.uint32))
             ptr, offsets, total = context_wrapper.getBatchPrimitiveVertices(self.context, uuid)
-            offsets_arr = np.array(offsets, dtype=np.uint32)
+            offsets_arr = np.asarray(offsets, dtype=np.uint32)
             if total == 0 or not ptr:
                 return (np.empty((0,), dtype=np.float32), offsets_arr)
             data = np.ctypeslib.as_array(ptr, shape=(total,)).copy()
@@ -3197,29 +3201,15 @@ class Context:
 
         data_type = self.getPrimitiveDataType(first_uuid, label)
 
-        # Every path other than float still reads one primitive at a time, so it
-        # keeps the up-front existence check that produces the message below.
-        if data_type != 2:  # not HELIOS_TYPE_FLOAT
-            self._check_primitive_data_exists(uuids, label)
-
         # Map Helios data types to NumPy array creation
         # Based on HeliosDataType enum from Helios core
-        if data_type == 0:  # HELIOS_TYPE_INT
-            result = np.empty(len(uuids), dtype=np.int32)
-            for i, uuid in enumerate(uuids):
-                result[i] = self.getPrimitiveData(uuid, label, int)
-                
-        elif data_type == 1:  # HELIOS_TYPE_UINT
-            result = np.empty(len(uuids), dtype=np.uint32)
-            for i, uuid in enumerate(uuids):
-                result[i] = self.getPrimitiveData(uuid, label, "uint")
-                
-        elif data_type == 2:  # HELIOS_TYPE_FLOAT
+        if data_type == 2:  # HELIOS_TYPE_FLOAT
             # Single native call for the whole list. Float is the hot type here
             # (radiation flux, temperature), where a per-UUID round-trip dominates
             # the cost on canopy-sized scenes.
             try:
-                values = context_wrapper.getPrimitiveDataFloatArray(self.context, uuids, label)
+                result = context_wrapper.getPrimitiveDataFloatArray(
+                    self.context, uuids, label)
             except HeliosError:
                 # A missing label is the likely cause; name the primitive so the
                 # message matches what the other data types report. HeliosError
@@ -3227,54 +3217,28 @@ class Context:
                 # explicitly here.
                 self._check_primitive_data_exists(uuids, label)
                 raise
-            result = np.asarray(values, dtype=np.float32)
 
-        elif data_type == 3:  # HELIOS_TYPE_DOUBLE
-            result = np.empty(len(uuids), dtype=np.float64)
-            for i, uuid in enumerate(uuids):
-                result[i] = self.getPrimitiveData(uuid, label, "double")
-                
-        elif data_type == 4:  # HELIOS_TYPE_VEC2
-            result = np.empty((len(uuids), 2), dtype=np.float32)
-            for i, uuid in enumerate(uuids):
-                vec_data = self.getPrimitiveData(uuid, label, vec2)
-                result[i] = [vec_data.x, vec_data.y]
-                
-        elif data_type == 5:  # HELIOS_TYPE_VEC3
-            result = np.empty((len(uuids), 3), dtype=np.float32)
-            for i, uuid in enumerate(uuids):
-                vec_data = self.getPrimitiveData(uuid, label, vec3)
-                result[i] = [vec_data.x, vec_data.y, vec_data.z]
-                
-        elif data_type == 6:  # HELIOS_TYPE_VEC4
-            result = np.empty((len(uuids), 4), dtype=np.float32)
-            for i, uuid in enumerate(uuids):
-                vec_data = self.getPrimitiveData(uuid, label, vec4)
-                result[i] = [vec_data.x, vec_data.y, vec_data.z, vec_data.w]
-                
-        elif data_type == 7:  # HELIOS_TYPE_INT2
-            result = np.empty((len(uuids), 2), dtype=np.int32)
-            for i, uuid in enumerate(uuids):
-                int_data = self.getPrimitiveData(uuid, label, int2)
-                result[i] = [int_data.x, int_data.y]
-                
-        elif data_type == 8:  # HELIOS_TYPE_INT3
-            result = np.empty((len(uuids), 3), dtype=np.int32)
-            for i, uuid in enumerate(uuids):
-                int_data = self.getPrimitiveData(uuid, label, int3)
-                result[i] = [int_data.x, int_data.y, int_data.z]
-                
-        elif data_type == 9:  # HELIOS_TYPE_INT4
-            result = np.empty((len(uuids), 4), dtype=np.int32)
-            for i, uuid in enumerate(uuids):
-                int_data = self.getPrimitiveData(uuid, label, int4)
-                result[i] = [int_data.x, int_data.y, int_data.z, int_data.w]
-                
+        elif data_type in _BULK_PRIMITIVE_DATA_TYPES:
+            # int, uint, double and the vec/int 2-4 types all read in one native
+            # call. Reading them one primitive at a time cost a ctypes crossing
+            # each, plus a second pass to check existence.
+            try:
+                result = context_wrapper.getPrimitiveDataArrayBulk(
+                    self.context, uuids, label, data_type)
+            except HeliosError:
+                self._check_primitive_data_exists(uuids, label)
+                raise
+
         elif data_type == 10:  # HELIOS_TYPE_STRING
-            result = np.empty(len(uuids), dtype=object)
-            for i, uuid in enumerate(uuids):
-                result[i] = self.getPrimitiveData(uuid, label, str)
-                
+            # Variable-length values, so this uses the offset-array form rather
+            # than the fixed-stride bulk getters, but it is still one call.
+            try:
+                result = context_wrapper.getPrimitiveDataStringArrayBulk(
+                    self.context, uuids, label)
+            except HeliosError:
+                self._check_primitive_data_exists(uuids, label)
+                raise
+
         else:
             raise ValueError(f"Unsupported primitive data type: {data_type}")
         
@@ -4262,7 +4226,7 @@ class Context:
             if not uuid:
                 return (np.empty((0,), dtype=np.float32), np.zeros((1,), dtype=np.uint32))
             ptr, offsets, total = context_wrapper.getBatchPrimitiveTextureUV(self.context, uuid)
-            offsets_arr = np.array(offsets, dtype=np.uint32)
+            offsets_arr = np.asarray(offsets, dtype=np.uint32)
             if total == 0 or not ptr:
                 return (np.empty((0,), dtype=np.float32), offsets_arr)
             data = np.ctypeslib.as_array(ptr, shape=(total,)).copy()
@@ -4637,6 +4601,45 @@ class Context:
     def doesObjectDataExist(self, objID: int, label: str) -> bool:
         """Check if object data exists."""
         return context_wrapper.doesObjectDataExistWrapper(self.context, objID, label)
+
+    def getObjectDataArray(self, objids: List[int], label: str) -> np.ndarray:
+        """Get object data values for multiple objects as a NumPy array.
+
+        Reads one label across every object in a single native call, in the
+        order the IDs were given. Reading them one at a time costs a ctypes
+        round-trip per object.
+
+        Args:
+            objids: Object IDs to read, controlling the result order
+            label: Object data label to retrieve
+
+        Returns:
+            NumPy array with one entry per object: int32, uint32, float32 or
+            float64 for the scalar types, and shape (N, components) for the
+            vec2/3/4 and int2/3/4 types.
+
+        Raises:
+            ValueError: If the ID list is empty or the label does not exist
+            NotImplementedError: If the data type has no bulk getter
+        """
+        self._check_context_available()
+        if not isinstance(objids, (list, tuple)):
+            raise ValueError(
+                f"objids must be a list of object IDs, got {type(objids).__name__}")
+        if not objids:
+            raise ValueError("Object ID list cannot be empty")
+
+        first = objids[0]
+        if not self.doesObjectDataExist(first, label):
+            raise ValueError(
+                f"Object data '{label}' does not exist for object {first}")
+
+        data_type = self.getObjectDataType(first, label)
+        if data_type == 10:  # HELIOS_TYPE_STRING
+            return context_wrapper.getObjectDataStringArrayBulk(
+                self.context, objids, label)
+        return context_wrapper.getObjectDataArrayBulk(
+            self.context, objids, label, data_type)
 
     def clearObjectData(self, objids_or_objid, label: str) -> None:
         """Clear object data. Accepts single ID or list."""

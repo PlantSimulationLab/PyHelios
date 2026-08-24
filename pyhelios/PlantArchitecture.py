@@ -587,6 +587,10 @@ class PlantArchitecture:
         template) or a typed
         :class:`pyhelios.plant_architecture_params.ShootParameters` object.
 
+        Redefining an existing library shoot type preserves that species' built-in
+        phytomer creation and callback functions, so species-specific organ behavior
+        (such as maize forming ears rather than a tassel at every node) is retained.
+
         Args:
             shoot_type_label: Unique name for this shoot type
             parameters: A nested dict matching the ShootParameters structure, or a
@@ -1050,6 +1054,182 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to get child shoots of shoot {shoot_id}, plant {plant_id}: {e}")
 
+    def getParentShootID(self, plant_id: int, shoot_id: int) -> int:
+        """
+        Get the ID of the shoot a shoot grew from.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+
+        Returns:
+            ID of the parent shoot, or -1 if this is the base stem shoot.
+
+        Note:
+            A pruned shoot still reports the parent it grew from, even though it is no
+            longer listed among that parent's children.
+
+        Example:
+            >>> parent = plantarch.getParentShootID(plant_id, shoot_id=3)
+        """
+        return self._shootScalarQuery("getParentShootID", plant_id, shoot_id, "parent shoot ID")
+
+    def getShootRank(self, plant_id: int, shoot_id: int) -> int:
+        """
+        Get the branching rank of a shoot.
+
+        Rank is the botanical branching order: the base stem is rank 0, a branch off it
+        is rank 1, and so on. A shoot created by :meth:`appendShoot` continues its
+        parent's axis rather than branching from it, so it keeps the parent's rank.
+        Rank is therefore not the same as :meth:`getShootDepth`.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+
+        Returns:
+            Branching rank of the shoot.
+
+        Example:
+            >>> rank = plantarch.getShootRank(plant_id, shoot_id=3)
+        """
+        return self._shootScalarQuery("getShootRank", plant_id, shoot_id, "shoot rank")
+
+    def getShootDepth(self, plant_id: int, shoot_id: int) -> int:
+        """
+        Get the number of shoots between a shoot and the base stem shoot.
+
+        The base stem has depth 0, its children depth 1, and so on. Unlike
+        :meth:`getShootRank` this counts every step in the shoot tree, including axis
+        continuations created by :meth:`appendShoot`.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+
+        Returns:
+            Number of steps from this shoot to the base stem shoot.
+        """
+        return self._shootScalarQuery("getShootDepth", plant_id, shoot_id, "shoot depth")
+
+    def isShootPruned(self, plant_id: int, shoot_id: int) -> bool:
+        """
+        Report whether a shoot has been pruned away entirely.
+
+        :meth:`pruneBranch` called with ``node_index=0`` removes all of a shoot's
+        phytomers and geometry but keeps the shoot in the plant's tree so that shoot IDs
+        stay stable. Such a shoot is still returned by :meth:`getAllShootIDs` but is
+        inert: it has zero nodes, contributes no leaf area, and cannot be queried for
+        geometry. Use this to skip those shoots when walking :meth:`getAllShootIDs`.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+
+        Returns:
+            True if the shoot was pruned away and no longer forms part of the plant.
+
+        Example:
+            >>> live = [s for s in plantarch.getAllShootIDs(plant_id)
+            ...         if not plantarch.isShootPruned(plant_id, s)]
+        """
+        return self._shootScalarQuery("isShootPruned", plant_id, shoot_id, "pruned state")
+
+    def getPathToRoot(self, plant_id: int, shoot_id: int) -> List[int]:
+        """
+        Get the chain of shoots connecting a shoot to the base stem shoot.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+
+        Returns:
+            Shoot IDs ordered from the given shoot to the base stem shoot, including
+            both. For the base stem shoot this is a single element.
+
+        Example:
+            >>> path = plantarch.getPathToRoot(plant_id, shoot_id=5)
+        """
+        return self._shootScalarQuery("getPathToRoot", plant_id, shoot_id, "path to root")
+
+    def getChildShootIDs(self, plant_id: int, shoot_id: int) -> List[int]:
+        """
+        Get the shoots that grew directly out of a shoot.
+
+        Ordered by the node they attach to. This includes shoots created by
+        :meth:`appendShoot`, which continue the parent's axis rather than branching from
+        it; compare their :meth:`getShootRank` with the parent's to tell the two apart.
+        Pruned shoots are not included.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+
+        Returns:
+            IDs of the direct children of the shoot, empty if it has none.
+        """
+        return self._shootScalarQuery("getChildShootIDs", plant_id, shoot_id, "child shoot IDs")
+
+    def getAllDescendantShootIDs(self, plant_id: int, shoot_id: int) -> List[int]:
+        """
+        Get every shoot descending from a shoot.
+
+        Collected depth-first, so a shoot is always listed before its own descendants.
+        The shoot itself is not included, and pruned shoots are omitted.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot whose descendants to collect
+
+        Returns:
+            IDs of all descendants of the shoot, empty if it has none.
+
+        Example:
+            >>> descendants = plantarch.getAllDescendantShootIDs(plant_id, shoot_id=1)
+            >>> print(f"Branch carries {len(descendants)} sub-shoots")
+        """
+        return self._shootScalarQuery("getAllDescendantShootIDs", plant_id, shoot_id,
+                                      "descendant shoot IDs")
+
+    def getShootHierarchyMap(self, plant_id: int) -> Dict[int, List[int]]:
+        """
+        Get the parent-to-children structure of a plant.
+
+        Only shoots that actually have children appear as keys. Pruned shoots appear
+        neither as keys nor among the children.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Dict mapping shoot ID to the IDs of its direct children.
+
+        Example:
+            >>> hierarchy = plantarch.getShootHierarchyMap(plant_id)
+            >>> print(f"{len(hierarchy)} shoots carry branches")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getShootHierarchyMap(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get shoot hierarchy of plant {plant_id}: {e}")
+
+    def _shootScalarQuery(self, wrapper_fn_name: str, plant_id: int, shoot_id: int,
+                          description: str):
+        """Shared body for the per-shoot hierarchy accessors."""
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+        self._check_context_alive()
+        try:
+            return getattr(plantarch_wrapper, wrapper_fn_name)(
+                self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get {description} of shoot {shoot_id}, plant {plant_id}: {e}")
+
     def getShootInternodeVertices(self, plant_id: int, shoot_id: int) -> List[tuple]:
         """Get the woody internode polyline vertices of a shoot as a list of (x, y, z) tuples."""
         if plant_id < 0 or shoot_id < 0:
@@ -1099,6 +1279,67 @@ class PlantArchitecture:
                 return plantarch_wrapper.getPlantAge(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get age for plant {plant_id}: {e}")
+
+    def getPlantMaxAge(self, plant_id: int) -> float:
+        """
+        Get the maximum age of a plant, beyond which it stops growing.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Maximum plant age in days. See :meth:`setPlantMaxAge`.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> max_age = plantarch.getPlantMaxAge(plant_id)
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantMaxAge(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get maximum age of plant {plant_id}: {e}")
+
+    def setPlantMaxAge(self, plant_id: int, max_age: float) -> None:
+        """
+        Set the maximum age of a plant, beyond which it stops growing.
+
+        Once a plant's age reaches this value, :meth:`advanceTime` stops advancing it and
+        its geometry becomes static. The default is 999 days. Every plant model in the
+        library sets its own value as part of its builder (an apple tree, for example,
+        uses 1460 days), but a plant assembled manually with :meth:`addPlantInstance`
+        keeps the default and so silently stops growing after 999 days.
+
+        Setting a maximum age below the plant's current age is permitted, and freezes the
+        plant at its current form.
+
+        Args:
+            plant_id: ID of the plant instance
+            max_age: Maximum age of the plant in days. Must be non-negative.
+
+        Raises:
+            ValueError: If plant_id is negative or max_age is negative
+            PlantArchitectureError: If the plant does not exist
+
+        Example:
+            >>> plantarch.setPlantMaxAge(plant_id, 1460.0)
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        if max_age < 0:
+            raise ValueError(f"Maximum age must be non-negative, got {max_age}")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPlantMaxAge(self._plantarch_ptr, plant_id, max_age)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set maximum age of plant {plant_id}: {e}")
 
     def getPlantHeight(self, plant_id: int) -> float:
         """
@@ -1305,6 +1546,502 @@ class PlantArchitecture:
                 plantarch_wrapper.disablePlantPhenology(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to disable phenology for plant {plant_id}: {e}")
+
+    # Dormancy control methods
+    def makePlantDormant(self, plant_id: int) -> None:
+        """
+        Force a plant into a dormant state immediately.
+
+        This is the direct equivalent of ``makePlantDormant()`` in helios-core, as called by the
+        library builders such as ``buildAppleTree()``. It is the counterpart to scheduling dormancy
+        through :meth:`setPlantPhenologicalThresholds`: this forces the state now, rather than
+        waiting for a degree-day threshold to be crossed.
+
+        Dormancy strips the plant's leaves and marks its non-dormant buds dormant, so a
+        custom-built plant can be put into the same over-winter state that a library-built
+        perennial reaches through phenology.
+
+        Args:
+            plant_id: Identifier of the plant to make dormant
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist or the call fails
+
+        Example:
+            >>> plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
+            >>> plantarch.addBaseStemShoot(plant_id, 3, AxisRotation(0, 0, 0),
+            ...                            0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate")
+            >>> plantarch.makePlantDormant(plant_id)
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.makePlantDormant(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to make plant {plant_id} dormant: {e}")
+
+    def breakPlantDormancy(self, plant_id: int) -> None:
+        """
+        Break dormancy for all shoots on a plant, returning it to an active state.
+
+        This is the counterpart to :meth:`makePlantDormant`. Note that it only revives buds that
+        are not dead, so a plant that was repeatedly made dormant may not recover every bud.
+
+        Args:
+            plant_id: Identifier of the plant whose dormancy should be broken
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist or the call fails
+
+        Example:
+            >>> plantarch.makePlantDormant(plant_id)
+            >>> plantarch.breakPlantDormancy(plant_id)  # resume growth in spring
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.breakPlantDormancy(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to break dormancy for plant {plant_id}: {e}")
+
+    def isPlantDormant(self, plant_id: int) -> bool:
+        """
+        Check whether a plant is dormant.
+
+        Args:
+            plant_id: Identifier of the plant to check
+
+        Returns:
+            True if all shoots on the plant are dormant, False otherwise
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist or the query fails
+
+        Example:
+            >>> plantarch.makePlantDormant(plant_id)
+            >>> plantarch.isPlantDormant(plant_id)
+            True
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.isPlantDormant(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to query dormancy state for plant {plant_id}: {e}")
+
+    # Pruning and organ removal methods
+    def pruneBranch(self, plant_id: int, shoot_id: int, node_index: int) -> None:
+        """
+        Prune a shoot at a node, removing that node and everything distal to it.
+
+        The phytomer at ``node_index`` is deleted along with every phytomer above it
+        on the same shoot, and the cut recurses into every child shoot attached at or
+        above that node. The shoot's woody internode tube is trimmed back to the cut
+        and its apical bud is terminated, so the pruned axis will not resume growing.
+        Pruning at ``node_index=0`` therefore removes the entire shoot and its whole
+        branch system.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+            node_index: Node on the shoot to cut at, in ``[0, node_count)``
+
+        Raises:
+            ValueError: If any identifier is negative
+            PlantArchitectureError: If the plant or shoot does not exist, if
+                ``node_index`` is beyond the shoot's current node count, or if the
+                native call fails
+
+        Note:
+            A pruned shoot currently keeps its ID in :meth:`getAllShootIDs` with a
+            ``node_count`` of 0 rather than disappearing. Do not rely on either
+            behavior; traverse with :meth:`getShoot` and treat ``node_count == 0``
+            as "nothing left here".
+
+        Example:
+            >>> # Remove a whole branch and everything growing off it
+            >>> plantarch.pruneBranch(plant_id, shoot_id=3, node_index=0)
+            >>> # Head back a leader, keeping its lowest 5 nodes
+            >>> plantarch.pruneBranch(plant_id, shoot_id=0, node_index=5)
+        """
+        if plant_id < 0 or shoot_id < 0 or node_index < 0:
+            raise ValueError("Plant ID, shoot ID and node index must be non-negative")
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.pruneBranch(self._plantarch_ptr, plant_id, shoot_id, node_index)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to prune shoot {shoot_id} of plant {plant_id} at node {node_index}: {e}")
+
+    def harvestPlant(self, plant_id: int) -> None:
+        """
+        Harvest a plant by removing its flowers and fruit.
+
+        Every non-dormant floral bud on the plant is killed, which deletes the
+        associated flower, fruit and peduncle geometry from the Context. Vegetative
+        structure is untouched and the plant continues to grow afterwards.
+
+        Args:
+            plant_id: ID of the plant instance to harvest
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist or the call fails
+
+        Note:
+            Leaves are **not** removed, despite what the upstream Helios
+            documentation for ``harvestPlant`` states. Use :meth:`removePlantLeaves`
+            to defoliate.
+
+        Example:
+            >>> before = len(plantarch.getPlantFruitObjectIDs(plant_id))
+            >>> plantarch.harvestPlant(plant_id)
+            >>> len(plantarch.getPlantFruitObjectIDs(plant_id)) < before
+            True
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.harvestPlant(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to harvest plant {plant_id}: {e}")
+
+    def removePlantLeaves(self, plant_id: int) -> None:
+        """
+        Remove all leaves from every shoot on a plant.
+
+        Leaf and petiole geometry is deleted from the Context. Buds are left alive,
+        so the plant can produce new leaves as it continues to grow.
+
+        Args:
+            plant_id: ID of the plant instance to defoliate
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist or the call fails
+
+        Example:
+            >>> plantarch.removePlantLeaves(plant_id)
+            >>> plantarch.getPlantLeafObjectIDs(plant_id)
+            []
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.removePlantLeaves(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to remove leaves from plant {plant_id}: {e}")
+
+    def removeShootLeaves(self, plant_id: int, shoot_id: int) -> None:
+        """
+        Remove all leaves from a single shoot.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+
+        Raises:
+            ValueError: If either identifier is negative
+            PlantArchitectureError: If the plant or shoot does not exist
+
+        Example:
+            >>> # Strip the leaves off a grapevine trunk, as in a trained architecture
+            >>> plantarch.removeShootLeaves(plant_id, shoot_id=0)
+        """
+        self._removeShootOrgans("removeShootLeaves", plant_id, shoot_id, "leaves")
+
+    def removeShootVegetativeBuds(self, plant_id: int, shoot_id: int) -> None:
+        """
+        Kill all vegetative buds on a single shoot.
+
+        The shoot keeps its existing structure but can no longer produce new lateral
+        shoots from those buds -- the standard way to stop a trained axis from
+        throwing new canes.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+
+        Raises:
+            ValueError: If either identifier is negative
+            PlantArchitectureError: If the plant or shoot does not exist
+
+        Example:
+            >>> plantarch.removeShootVegetativeBuds(plant_id, shoot_id=1)
+        """
+        self._removeShootOrgans("removeShootVegetativeBuds", plant_id, shoot_id,
+                                "vegetative buds")
+
+    def removeShootFloralBuds(self, plant_id: int, shoot_id: int) -> None:
+        """
+        Kill all floral buds on a single shoot.
+
+        Existing flower, fruit and peduncle geometry on the shoot is deleted and no
+        new flowers will form there.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+
+        Raises:
+            ValueError: If either identifier is negative
+            PlantArchitectureError: If the plant or shoot does not exist
+
+        Example:
+            >>> plantarch.removeShootFloralBuds(plant_id, shoot_id=1)
+        """
+        self._removeShootOrgans("removeShootFloralBuds", plant_id, shoot_id, "floral buds")
+
+    def _removeShootOrgans(self, wrapper_fn_name: str, plant_id: int, shoot_id: int,
+                           organ_description: str) -> None:
+        """Shared body for the three shoot-level organ removal methods."""
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            getattr(plantarch_wrapper, wrapper_fn_name)(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to remove {organ_description} from shoot {shoot_id} "
+                f"of plant {plant_id}: {e}")
+
+    # Shoot hierarchy traversal
+    def getShootIDsByRank(self, plant_id: int) -> Dict[int, List[int]]:
+        """
+        Group a plant's shoot IDs by branching rank.
+
+        Rank 0 is the base stem, rank 1 its direct branches, and so on. Shoots that have
+        been pruned away are not included.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Dict mapping rank to the list of shoot IDs at that rank. Ranks with no live
+            shoots are omitted from the dict.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist
+
+        Example:
+            >>> by_rank = plantarch.getShootIDsByRank(plant_id)
+            >>> print(f"{len(by_rank.get(1, []))} primary branches")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        self._check_context_alive()
+        try:
+            groups = plantarch_wrapper.getShootIDsByRank(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get shoot IDs by rank for plant {plant_id}: {e}")
+
+        # Native returns one group per rank, indexed by rank, with empty groups for ranks
+        # that have no live shoots. The dict form drops those empties.
+        return {rank: shoot_ids for rank, shoot_ids in enumerate(groups) if shoot_ids}
+
+    def getTerminalShootIDs(self, plant_id: int) -> List[int]:
+        """
+        Get the plant's terminal shoots -- those carrying no child shoots.
+
+        These are the tips of the shoot tree. Note that this is a topological test rather
+        than a botanical one: a shoot whose axis is continued by :meth:`appendShoot` has
+        that continuation as a child and so is not terminal. Pruned shoots are omitted.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of terminal shoot IDs.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist
+
+        Example:
+            >>> tips = plantarch.getTerminalShootIDs(plant_id)
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getTerminalShootIDs(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get terminal shoots for plant {plant_id}: {e}")
+
+    # Bulk pruning built on the traversal helpers
+    def pruneShootsByRank(self, plant_id: int, min_rank: int) -> List[int]:
+        """
+        Prune every shoot at or above a given branching rank.
+
+        This is the "remove higher-order branches" thinning operation: passing
+        ``min_rank=3`` leaves the base stem and its first two orders of branching
+        intact and cuts everything finer. Because :meth:`pruneBranch` already
+        recurses into child shoots, only the shallowest shoot on each pruned axis is
+        cut and the rest follow.
+
+        Args:
+            plant_id: ID of the plant instance
+            min_rank: Lowest rank to prune. Must be at least 1 -- rank 0 is the base
+                stem, and pruning it would destroy the plant.
+
+        Returns:
+            Ascending list of the shoot IDs actually cut. Shoots removed as a side
+            effect of a shallower cut are not listed.
+
+        Raises:
+            ValueError: If plant_id is negative or min_rank is less than 1
+            PlantArchitectureError: If the plant does not exist
+
+        Note:
+            To remove a whole plant use :meth:`deletePlantInstance`; to cut the base
+            stem itself call :meth:`pruneBranch` directly.
+
+        Example:
+            >>> pruned = plantarch.pruneShootsByRank(plant_id, min_rank=3)
+            >>> print(f"Cut {len(pruned)} higher-order branches")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        if min_rank < 1:
+            raise ValueError(
+                f"min_rank must be at least 1, got {min_rank}. Rank 0 is the base stem; "
+                "use deletePlantInstance() to remove the whole plant, or pruneBranch() "
+                "to cut the base stem explicitly.")
+
+        by_rank = self.getShootIDsByRank(plant_id)
+        targets = {shoot_id
+                   for rank, shoot_ids in by_rank.items() if rank >= min_rank
+                   for shoot_id in shoot_ids}
+        return self._pruneShallowest(plant_id, targets)
+
+    def pruneShootSubtree(self, plant_id: int, shoot_id: int,
+                          include_self: bool = True) -> List[int]:
+        """
+        Prune a shoot and everything growing off it.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Root of the branch system to remove
+            include_self: If True (default) the shoot itself is cut at node 0. If
+                False the shoot is kept and only its child shoots are cut.
+
+        Returns:
+            Ascending list of the shoot IDs actually cut. Shoots removed as a side
+            effect of a shallower cut are not listed.
+
+        Raises:
+            ValueError: If either identifier is negative
+            PlantArchitectureError: If the plant or shoot does not exist
+
+        Example:
+            >>> # Remove a whole branch system
+            >>> plantarch.pruneShootSubtree(plant_id, shoot_id=2)
+            >>> # Keep the cane but strip everything growing off it
+            >>> plantarch.pruneShootSubtree(plant_id, shoot_id=2, include_self=False)
+        """
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+
+        if include_self:
+            return self._pruneShallowest(plant_id, {shoot_id})
+        return self._pruneShallowest(plant_id, set(self._liveChildShootIDs(plant_id, shoot_id)))
+
+    def pruneTerminalShoots(self, plant_id: int, stride: int = 2) -> List[int]:
+        """
+        Thin a plant by pruning every *stride*-th terminal shoot.
+
+        Terminal shoots are taken in ascending ID order and every ``stride``-th one
+        starting from the first is cut, so ``stride=2`` removes about half the tips
+        and ``stride=3`` about a third. The base stem is never cut.
+
+        Args:
+            plant_id: ID of the plant instance
+            stride: Spacing between pruned tips. Must be at least 1; ``stride=1``
+                prunes every terminal shoot.
+
+        Returns:
+            Ascending list of the shoot IDs actually cut.
+
+        Raises:
+            ValueError: If plant_id is negative or stride is less than 1
+            PlantArchitectureError: If the plant does not exist
+
+        Example:
+            >>> pruned = plantarch.pruneTerminalShoots(plant_id, stride=2)
+            >>> print(f"Thinned {len(pruned)} tips")
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        if stride < 1:
+            raise ValueError(f"stride must be at least 1, got {stride}")
+
+        targets = set()
+        for index, shoot_id in enumerate(self.getTerminalShootIDs(plant_id)):
+            if index % stride != 0:
+                continue
+            if self.getShootRank(plant_id, shoot_id) == 0:
+                continue  # never cut the base stem
+            targets.add(shoot_id)
+        return self._pruneShallowest(plant_id, targets)
+
+    def _childShootIDsOrEmpty(self, plant_id: int, shoot_id: int) -> List[int]:
+        """Return a shoot's child IDs, or an empty list if it no longer resolves."""
+        try:
+            return self.getShootChildIDs(plant_id, shoot_id)
+        except PlantArchitectureError:
+            return []
+
+    def _liveChildShootIDs(self, plant_id: int, shoot_id: int) -> List[int]:
+        """Child shoot IDs that have not been pruned away, ascending."""
+        # getChildShootIDs already excludes pruned shoots, so no second filter is needed.
+        return sorted(set(self._childShootIDsOrEmpty(plant_id, shoot_id)))
+
+    def _pruneShallowest(self, plant_id: int, target_shoot_ids) -> List[int]:
+        """Prune every target that something shallower has not already removed.
+
+        pruneBranch() recurses into child shoots, so cutting a shoot also empties
+        every shoot descended from it. Targets are therefore visited in ascending
+        shoot ID order -- a child shoot is always created after its parent and so
+        always has the higher ID -- which puts each shoot after its ancestors. By
+        the time a descendant of an already-cut shoot comes up it has nothing left
+        on it and is skipped, so no shoot is cut twice and the returned list holds
+        only the cuts that actually did something.
+        """
+        pruned = []
+        for shoot_id in sorted(set(target_shoot_ids)):
+            if self._isPrunedOrGone(plant_id, shoot_id):
+                continue  # gone already, either pruned above or pruned earlier
+            self.pruneBranch(plant_id, shoot_id, 0)
+            pruned.append(shoot_id)
+        return pruned
+
+    def _isPrunedOrGone(self, plant_id: int, shoot_id: int) -> bool:
+        """Whether a shoot has been pruned away or no longer resolves at all."""
+        try:
+            return self.isShootPruned(plant_id, shoot_id)
+        except PlantArchitectureError:
+            return True
 
     # Collision detection methods
     def enableSoftCollisionAvoidance(self,

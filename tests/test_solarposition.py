@@ -817,3 +817,146 @@ class TestPragueSkyModelAssetPaths:
                 solar.updatePragueSkyModel(ground_albedo=0.25)
 
         assert os.getcwd() == expected
+
+
+@pytest.mark.native_only
+class TestSetSunDirection:
+    """Test prescribed sun direction override (SolarPosition::setSunDirection)"""
+
+    def _skip_if_unavailable(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('solarposition'):
+            pytest.skip("solarposition plugin not available")
+
+    def test_set_sun_direction_overrides_computed_position(self):
+        """setSunDirection must override the time-based solar position."""
+        self._skip_if_unavailable()
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+            with SolarPosition(context, 8, 38.55, -121.76) as solar:
+                computed_elevation = solar.getSunElevation()
+
+                # Prescribe a sun position clearly different from the computed one.
+                prescribed_elevation = 0.25
+                prescribed_azimuth = 1.5
+                solar.setSunDirection(
+                    SphericalCoord(1.0, prescribed_elevation, prescribed_azimuth)
+                )
+
+                assert solar.getSunElevation() == pytest.approx(prescribed_elevation, abs=1e-4)
+                assert solar.getSunAzimuth() == pytest.approx(prescribed_azimuth, abs=1e-4)
+                assert solar.getSunElevation() != pytest.approx(computed_elevation, abs=1e-3)
+
+    def test_set_sun_direction_propagates_to_zenith_and_vector(self):
+        """The override must be reflected by every downstream sun getter."""
+        self._skip_if_unavailable()
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(12, 0)
+            with SolarPosition(context, 8, 38.55, -121.76) as solar:
+                elevation = 0.4
+                azimuth = 0.9
+                solar.setSunDirection(SphericalCoord(1.0, elevation, azimuth))
+
+                # zenith is the complement of elevation
+                assert solar.getSunZenith() == pytest.approx(math.pi / 2 - elevation, abs=1e-4)
+
+                # Unit direction vector must match the prescribed spherical angles.
+                direction = solar.getSunDirectionVector()
+                assert math.sqrt(
+                    direction.x ** 2 + direction.y ** 2 + direction.z ** 2
+                ) == pytest.approx(1.0, abs=1e-4)
+                assert direction.z == pytest.approx(math.sin(elevation), abs=1e-4)
+
+                spherical = solar.getSunDirectionSpherical()
+                assert spherical.elevation == pytest.approx(elevation, abs=1e-4)
+                assert spherical.azimuth == pytest.approx(azimuth, abs=1e-4)
+
+    def test_set_sun_direction_rejects_wrong_type(self):
+        """Wrong argument types must raise ValueError, positionally and by keyword."""
+        self._skip_if_unavailable()
+
+        with Context() as context:
+            with SolarPosition(context) as solar:
+                with pytest.raises(ValueError, match="SphericalCoord"):
+                    solar.setSunDirection(vec3(1, 0, 0))
+                with pytest.raises(ValueError, match="SphericalCoord"):
+                    solar.setSunDirection(sundirection=vec3(1, 0, 0))
+                with pytest.raises(ValueError, match="SphericalCoord"):
+                    solar.setSunDirection([1.0, 0.0, 0.0])
+
+
+@pytest.mark.native_only
+class TestCalibrateTurbidityReturnValue:
+    """calibrateTurbidityFromTimeseries must return the calibrated turbidity"""
+
+    def _skip_if_unavailable(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('solarposition'):
+            pytest.skip("solarposition plugin not available")
+
+    def test_calibrate_turbidity_returns_float(self):
+        """The C++ method returns the calibrated value; it must not be discarded.
+
+        The method is const in C++ and does not store its result, so the return
+        value is the only way for a caller to obtain the calibrated turbidity.
+        """
+        self._skip_if_unavailable()
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+
+            # Build a clear-sky-like timeseries of global horizontal shortwave flux.
+            label = "shortwave_flux"
+            for hour in range(5, 20):
+                context.addTimeseriesData(
+                    label,
+                    _clear_sky_flux_Wm2(hour),
+                    Date(2023, 6, 21),
+                    Time(hour, 0, 0),
+                )
+
+            with SolarPosition(context, 8, 38.55, -121.76) as solar:
+                result = solar.calibrateTurbidityFromTimeseries(label)
+
+                assert result is not None, (
+                    "calibrateTurbidityFromTimeseries discarded the native return value"
+                )
+                assert isinstance(result, float)
+                assert result >= 0.0
+
+    def test_wrapper_layer_returns_turbidity(self):
+        """The ctypes wrapper layer must also propagate the value."""
+        self._skip_if_unavailable()
+
+        from pyhelios.wrappers import USolarPositionWrapper as solar_wrapper
+
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            label = "shortwave_flux"
+            for hour in range(5, 20):
+                context.addTimeseriesData(
+                    label,
+                    _clear_sky_flux_Wm2(hour),
+                    Date(2023, 6, 21),
+                    Time(hour, 0, 0),
+                )
+
+            with SolarPosition(context, 8, 38.55, -121.76) as solar:
+                value = solar_wrapper.calibrateTurbidityFromTimeseries(
+                    solar._solar_pos, label
+                )
+                assert value is not None
+                assert isinstance(value, float)
+
+
+def _clear_sky_flux_Wm2(hour):
+    """Approximate clear-sky global horizontal flux for a summer day."""
+    # Simple sinusoid peaking at solar noon; zero outside daylight.
+    fraction = (hour - 5.0) / 14.0
+    if fraction <= 0.0 or fraction >= 1.0:
+        return 0.0
+    return 950.0 * math.sin(math.pi * fraction)

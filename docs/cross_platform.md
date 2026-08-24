@@ -190,6 +190,11 @@ if os.name != 'nt':
 os.environ['PYHELIOS_DEV_MODE'] = '1'  # Enable mock mode
 ```
 
+Set `PYHELIOS_DEV_MODE` **before importing pyhelios** — the library is resolved at import
+time, so setting it afterwards has no effect. In this mode no native library is needed at
+all: objects construct against a mock, and calling a function that requires native code
+raises `RuntimeError` with rebuild instructions rather than returning a fake result.
+
 ## Performance Considerations
 
 ### Memory Usage

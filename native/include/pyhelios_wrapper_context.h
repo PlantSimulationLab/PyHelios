@@ -2605,6 +2605,39 @@ PYHELIOS_API void setPrimitiveDataInt2Array(helios::Context* context, unsigned i
 PYHELIOS_API void setPrimitiveDataInt3Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
 PYHELIOS_API void setPrimitiveDataInt4Array(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
 
+// Per-element bulk data getters: read one label across many IDs in a single call.
+// Scalar variants return num_ids values; VecN/IntN variants return a flat array of
+// length num_ids*N. Each returns a pointer to a static thread_local buffer valid
+// until the next call on the same thread, or nullptr on failure with out_count 0.
+// (Primitive float reads are served by getPrimitiveDataFloatArray, declared above.)
+PYHELIOS_API int* getPrimitiveDataIntArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API unsigned int* getPrimitiveDataUIntArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API double* getPrimitiveDataDoubleArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getPrimitiveDataVec2Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getPrimitiveDataVec3Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getPrimitiveDataVec4Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API int* getPrimitiveDataInt2Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API int* getPrimitiveDataInt3Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API int* getPrimitiveDataInt4Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+
+PYHELIOS_API int* getObjectDataIntArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API unsigned int* getObjectDataUIntArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getObjectDataFloatArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API double* getObjectDataDoubleArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getObjectDataVec2Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getObjectDataVec3Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API float* getObjectDataVec4Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API int* getObjectDataInt2Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API int* getObjectDataInt3Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+PYHELIOS_API int* getObjectDataInt4Array(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, size_t* out_count);
+
+// Bulk string data getters. Strings are variable length, so values are concatenated
+// into one buffer and offsets_out[i]..[i+1] delimits element i; offsets_out must have
+// num_uuids+1 entries and offsets_out[num_uuids] receives the total length. Returns a
+// pointer to a static thread_local buffer valid until the next call on the same thread.
+PYHELIOS_API const char* getPrimitiveDataStringArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, unsigned int* offsets_out, size_t* total_chars);
+PYHELIOS_API const char* getObjectDataStringArray(helios::Context* context, const unsigned int* uuids, size_t num_uuids, const char* label, unsigned int* offsets_out, size_t* total_chars);
+
 PYHELIOS_API void setObjectDataIntArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, int* values, size_t num_values);
 PYHELIOS_API void setObjectDataUIntArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, unsigned int* values, size_t num_values);
 PYHELIOS_API void setObjectDataFloatArray(helios::Context* context, unsigned int* ids, size_t num_ids, const char* label, float* values, size_t num_values);

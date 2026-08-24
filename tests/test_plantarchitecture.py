@@ -354,16 +354,18 @@ class TestPlantArchitectureNative:
         place would still satisfy the per-getter subset check above. Comparing
         all five against each other is what makes that detectable.
 
-        Uses maize at age 40, the cheapest model/age combination in the library
+        Uses maize at age 60, the cheapest model/age combination in the library
         that bears fruit -- the age of 15 used elsewhere in this file produces
         none, which would leave the fruit set empty and its comparisons vacuous.
+        helios-core 1.3.82 corrected maize grain fill from 10 days to 58 (R1
+        silking to R6 maturity), so age 40 no longer reaches fruit set.
         """
         models = plantarch.getAvailablePlantModels()
         if "maize" not in models:
             pytest.skip("maize model not available")
 
         plantarch.loadPlantModelFromLibrary("maize")
-        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 40.0)
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 60.0)
 
         organs = {
             name: set(getattr(plantarch, name)(plant_id))
@@ -376,7 +378,7 @@ class TestPlantArchitectureNative:
         for name in ("getPlantLeafObjectIDs", "getPlantPetioleObjectIDs",
                      "getPlantFruitObjectIDs"):
             assert organs[name], (
-                f"expected maize at age 40 to have {name} results; an empty set "
+                f"expected maize at age 60 to have {name} results; an empty set "
                 f"makes the disjointness assertions vacuous"
             )
 
@@ -3224,3 +3226,677 @@ class TestPlantArchitectureGroundClipping:
             plantarch.enableGroundClipping("0.0")
         with pytest.raises(ValueError, match="Ground height must be a number"):
             plantarch.enableGroundClipping(ground_height=vec3(0, 0, 0))
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureDormancy:
+    """Test dormancy control for plants (issue #14)"""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        """Create a Context for testing with proper cleanup"""
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        """Create PlantArchitecture instance with proper cleanup"""
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        plantarch_instance = PlantArchitecture(context)
+        yield plantarch_instance
+        plantarch_instance.__exit__(None, None, None)
+
+    @pytest.fixture
+    def bean_plant(self, plantarch):
+        """A custom-built plant, matching the addBaseStemShoot workflow from issue #14"""
+        models = plantarch.getAvailablePlantModels()
+        if 'bean' not in models:
+            pytest.skip("Bean model not available for testing")
+
+        plantarch.loadPlantModelFromLibrary('bean')
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
+        plantarch.addBaseStemShoot(
+            plant_id, 3, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate"
+        )
+        return plantarch, plant_id
+
+    def test_make_plant_dormant(self, bean_plant):
+        """A custom-built plant can be made dormant from Python"""
+        plantarch, plant_id = bean_plant
+
+        # Shoot::Shoot() sets isdormant = true, so a newly built shoot starts dormant.
+        # Break dormancy first to get an unambiguous active -> dormant transition.
+        plantarch.breakPlantDormancy(plant_id)
+        assert plantarch.isPlantDormant(plant_id) is False
+
+        plantarch.makePlantDormant(plant_id)
+
+        assert plantarch.isPlantDormant(plant_id) is True
+
+    def test_break_plant_dormancy(self, bean_plant):
+        """Dormancy can be broken again, returning the plant to an active state"""
+        plantarch, plant_id = bean_plant
+
+        plantarch.makePlantDormant(plant_id)
+        assert plantarch.isPlantDormant(plant_id) is True
+
+        plantarch.breakPlantDormancy(plant_id)
+
+        assert plantarch.isPlantDormant(plant_id) is False
+
+    def test_dormancy_removes_leaves(self, bean_plant):
+        """makePlantDormant strips leaves, matching the C++ makeDormant() behavior"""
+        plantarch, plant_id = bean_plant
+
+        leaves_before = plantarch.getPlantLeafObjectIDs(plant_id)
+        if len(leaves_before) == 0:
+            pytest.skip("Plant has no leaves to strip")
+
+        plantarch.makePlantDormant(plant_id)
+
+        leaves_after = plantarch.getPlantLeafObjectIDs(plant_id)
+        assert len(leaves_after) < len(leaves_before)
+
+    def test_is_plant_dormant_returns_bool(self, bean_plant):
+        """isPlantDormant returns a real bool, not an int sentinel"""
+        plantarch, plant_id = bean_plant
+
+        result = plantarch.isPlantDormant(plant_id)
+        assert isinstance(result, bool)
+
+    def test_dormancy_nonexistent_plant(self, plantarch):
+        """Dormancy calls on a non-existent plant raise rather than silently passing"""
+        with pytest.raises(PlantArchitectureError):
+            plantarch.makePlantDormant(99999)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.breakPlantDormancy(99999)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.isPlantDormant(99999)
+
+    def test_dormancy_negative_plant_id(self, plantarch):
+        """Negative plant IDs are rejected before reaching the native layer"""
+        with pytest.raises(ValueError):
+            plantarch.makePlantDormant(-1)
+
+        with pytest.raises(ValueError):
+            plantarch.breakPlantDormancy(-1)
+
+        with pytest.raises(ValueError):
+            plantarch.isPlantDormant(-1)
+
+
+@pytest.mark.native_only
+class TestPlantArchitecturePruning:
+    """Tests for the pruning and organ-removal API: pruneBranch, harvestPlant,
+    removeShootLeaves / removeShootVegetativeBuds / removeShootFloralBuds,
+    removePlantLeaves, and the Python-side hierarchy and bulk-pruning helpers."""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        plantarch_instance = PlantArchitecture(context)
+        yield plantarch_instance
+        plantarch_instance.__exit__(None, None, None)
+
+    def _build_plant(self, plantarch):
+        """apple at age 365 -- the fixture plant for every pruning test.
+
+        It builds in well under a second and is the cheapest library combination
+        that has all three properties the assertions below depend on: leaves to
+        strip, several shoots so shoot-scoped removal is observable, and branching
+        to rank 2 so redundant-descendant-cut skipping is actually exercised. The
+        first library model at age 15 used elsewhere in this file has none of them.
+        """
+        models = plantarch.getAvailablePlantModels()
+        if "apple" not in models:
+            pytest.skip("apple model not available")
+        plantarch.loadPlantModelFromLibrary("apple")
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365.0)
+
+    def _build_fruiting_plant(self, plantarch):
+        """maize at age 60 is the cheapest library combination that bears fruit.
+
+        helios-core 1.3.82 corrected maize grain fill from 10 days to 58 (R1 silking to
+        R6 maturity), so the age 40 used previously no longer reaches fruit set.
+        """
+        models = plantarch.getAvailablePlantModels()
+        if "maize" not in models:
+            pytest.skip("maize model not available")
+        plantarch.loadPlantModelFromLibrary("maize")
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 60.0)
+
+    def _branch_shoot_id(self, plantarch, plant_id):
+        """A non-base shoot that still has nodes on it, or skip."""
+        for shoot_id in plantarch.getAllShootIDs(plant_id):
+            shoot = plantarch.getShoot(plant_id, shoot_id)
+            if shoot["rank"] > 0 and shoot["node_count"] > 0:
+                return shoot_id
+        pytest.skip("plant has no branch shoots to prune")
+
+    def test_prune_branch_removes_geometry(self, plantarch):
+        """Pruning a branch reduces the plant's object count."""
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._branch_shoot_id(plantarch, plant_id)
+
+        before = len(plantarch.getAllPlantObjectIDs(plant_id))
+        assert before > 0, "plant built with no geometry makes this test vacuous"
+
+        plantarch.pruneBranch(plant_id, shoot_id, 0)
+
+        after = len(plantarch.getAllPlantObjectIDs(plant_id))
+        assert after < before, f"pruning shoot {shoot_id} did not remove any objects"
+
+    def test_prune_branch_leaves_no_dangling_object_ids(self, plantarch, context):
+        """Every object ID reported after pruning still exists in the Context.
+
+        A freed object ID handed back to callers is the failure mode the C++
+        self-test pins for pruneBranch; this is its PyHelios-side guard.
+        """
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._branch_shoot_id(plantarch, plant_id)
+        plantarch.pruneBranch(plant_id, shoot_id, 0)
+
+        getters = ["getAllPlantObjectIDs"] + ORGAN_GETTERS
+        for getter_name in getters:
+            for obj_id in getattr(plantarch, getter_name)(plant_id):
+                assert context.doesObjectExist(obj_id), (
+                    f"{getter_name} returned object {obj_id}, which no longer "
+                    f"exists in the Context after pruning")
+
+    def test_advance_time_after_prune_branch(self, plantarch):
+        """A pruned plant keeps growing instead of crashing the growth loop."""
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._branch_shoot_id(plantarch, plant_id)
+        plantarch.pruneBranch(plant_id, shoot_id, 0)
+
+        plantarch.advanceTime(30.0)
+
+        assert plantarch.getPlantAge(plant_id) > 0
+
+    def test_remove_plant_leaves_defoliates(self, plantarch):
+        """removePlantLeaves empties the leaf set."""
+        plant_id = self._build_plant(plantarch)
+        assert plantarch.getPlantLeafObjectIDs(plant_id), (
+            "plant built with no leaves makes this test vacuous")
+
+        plantarch.removePlantLeaves(plant_id)
+
+        assert plantarch.getPlantLeafObjectIDs(plant_id) == []
+
+    def test_remove_shoot_leaves_is_scoped_to_one_shoot(self, plantarch):
+        """removeShootLeaves strips one shoot without defoliating the whole plant."""
+        plant_id = self._build_plant(plantarch)
+        shoot_ids = plantarch.getAllShootIDs(plant_id)
+        if len(shoot_ids) < 2:
+            pytest.skip("plant has only one shoot; scoping is not observable")
+
+        before = set(plantarch.getPlantLeafObjectIDs(plant_id))
+        assert before, "plant built with no leaves makes this test vacuous"
+
+        # Strip whichever shoot actually carries leaves.
+        for shoot_id in shoot_ids:
+            plantarch.removeShootLeaves(plant_id, shoot_id)
+            after = set(plantarch.getPlantLeafObjectIDs(plant_id))
+            if after != before:
+                assert after < before
+                return
+        pytest.skip("no single shoot carried removable leaves")
+
+    def test_harvest_plant_removes_fruit_but_not_leaves(self, plantarch):
+        """harvestPlant clears flowers and fruit and leaves foliage in place.
+
+        The upstream C++ doxygen claims harvestPlant removes leaves as well; it
+        does not, and this pins the behavior PyHelios documents.
+        """
+        plant_id = self._build_fruiting_plant(plantarch)
+
+        fruit_before = set(plantarch.getPlantFruitObjectIDs(plant_id))
+        leaves_before = set(plantarch.getPlantLeafObjectIDs(plant_id))
+        assert fruit_before, "maize at age 60 produced no fruit; assertion would be vacuous"
+        assert leaves_before, "maize at age 60 produced no leaves; assertion would be vacuous"
+
+        plantarch.harvestPlant(plant_id)
+
+        assert set(plantarch.getPlantFruitObjectIDs(plant_id)) < fruit_before
+        assert set(plantarch.getPlantLeafObjectIDs(plant_id)) == leaves_before
+
+    def test_remove_shoot_buds_does_not_raise(self, plantarch):
+        """Bud removal succeeds on a live shoot and leaves the plant growable."""
+        plant_id = self._build_plant(plantarch)
+
+        plantarch.removeShootVegetativeBuds(plant_id, 0)
+        plantarch.removeShootFloralBuds(plant_id, 0)
+
+        plantarch.advanceTime(10.0)
+
+    def test_get_shoot_ids_by_rank(self, plantarch):
+        """Ranks group every live shoot exactly once, with the base stem at rank 0."""
+        plant_id = self._build_plant(plantarch)
+        by_rank = plantarch.getShootIDsByRank(plant_id)
+
+        assert 0 in by_rank
+        assert by_rank[0] == [0], "the base stem should be the only rank-0 shoot"
+
+        flattened = [s for ids in by_rank.values() for s in ids]
+        assert len(flattened) == len(set(flattened)), "a shoot appeared under two ranks"
+        assert set(flattened) <= set(plantarch.getAllShootIDs(plant_id))
+
+    def test_get_all_descendant_shoot_ids(self, plantarch):
+        """Descendants of the base stem cover every other live shoot and exclude itself."""
+        plant_id = self._build_plant(plantarch)
+        if len(plantarch.getAllShootIDs(plant_id)) < 2:
+            pytest.skip("plant has only one shoot")
+
+        descendants = plantarch.getAllDescendantShootIDs(plant_id, 0)
+        assert descendants, "base stem reported no descendants on a branched plant"
+        assert 0 not in descendants
+        assert len(descendants) == len(set(descendants))
+
+    def test_get_terminal_shoot_ids(self, plantarch):
+        """Terminal shoots carry no live children."""
+        plant_id = self._build_plant(plantarch)
+        terminal = plantarch.getTerminalShootIDs(plant_id)
+        assert terminal, "plant reported no terminal shoots"
+
+        for shoot_id in terminal:
+            assert plantarch._liveChildShootIDs(plant_id, shoot_id) == []
+
+    # Native shoot hierarchy accessors (helios-core 1.3.82)
+
+    def test_get_parent_shoot_id_base_stem_is_orphan(self, plantarch):
+        """The base stem reports no parent; every other shoot reports a real one."""
+        plant_id = self._build_plant(plantarch)
+
+        assert plantarch.getParentShootID(plant_id, 0) == -1
+
+        shoot_ids = set(plantarch.getAllShootIDs(plant_id))
+        for shoot_id in shoot_ids - {0}:
+            parent = plantarch.getParentShootID(plant_id, shoot_id)
+            assert parent in shoot_ids, f"shoot {shoot_id} reported parent {parent}"
+
+    def test_get_shoot_rank_matches_grouping(self, plantarch):
+        """getShootRank agrees with the rank grouping returned by getShootIDsByRank."""
+        plant_id = self._build_plant(plantarch)
+
+        for rank, shoot_ids in plantarch.getShootIDsByRank(plant_id).items():
+            for shoot_id in shoot_ids:
+                assert plantarch.getShootRank(plant_id, shoot_id) == rank
+
+    def test_get_shoot_depth_base_stem_is_zero(self, plantarch):
+        """Depth is 0 at the base stem and never decreases toward a descendant."""
+        plant_id = self._build_plant(plantarch)
+
+        assert plantarch.getShootDepth(plant_id, 0) == 0
+
+        for shoot_id in plantarch.getAllShootIDs(plant_id):
+            if plantarch.isShootPruned(plant_id, shoot_id):
+                continue
+            parent = plantarch.getParentShootID(plant_id, shoot_id)
+            if parent < 0:
+                continue
+            assert (plantarch.getShootDepth(plant_id, shoot_id)
+                    == plantarch.getShootDepth(plant_id, parent) + 1)
+
+    def test_get_path_to_root_ends_at_base_stem(self, plantarch):
+        """Every path starts at the queried shoot and terminates at the base stem."""
+        plant_id = self._build_plant(plantarch)
+
+        assert plantarch.getPathToRoot(plant_id, 0) == [0]
+
+        for shoot_id in plantarch.getAllShootIDs(plant_id):
+            path = plantarch.getPathToRoot(plant_id, shoot_id)
+            assert path[0] == shoot_id
+            assert path[-1] == 0
+            # The path length is the depth plus the shoot itself.
+            assert len(path) == plantarch.getShootDepth(plant_id, shoot_id) + 1
+
+    def test_get_child_shoot_ids_matches_hierarchy_map(self, plantarch):
+        """The per-shoot child query and the whole-plant map report the same edges."""
+        plant_id = self._build_plant(plantarch)
+        hierarchy = plantarch.getShootHierarchyMap(plant_id)
+
+        for shoot_id in plantarch.getAllShootIDs(plant_id):
+            children = plantarch.getChildShootIDs(plant_id, shoot_id)
+            assert children == hierarchy.get(shoot_id, [])
+
+    def test_get_all_descendant_shoot_ids_is_transitive_closure(self, plantarch):
+        """Descendants equal the transitive closure of the direct-child relation."""
+        plant_id = self._build_plant(plantarch)
+
+        # Mirrors the native traversal: the pending stack is seeded with the children in
+        # forward order and popped from the back, and each expansion pushes its own
+        # children reversed, so a shoot is always listed before its own descendants.
+        expected = []
+        pending = list(plantarch.getChildShootIDs(plant_id, 0))
+        while pending:
+            current = pending.pop()
+            expected.append(current)
+            pending.extend(reversed(plantarch.getChildShootIDs(plant_id, current)))
+
+        result = plantarch.getAllDescendantShootIDs(plant_id, 0)
+        assert result == expected
+
+        # Independently of ordering, a shoot must never precede an ancestor of its own.
+        position = {shoot_id: index for index, shoot_id in enumerate(result)}
+        for shoot_id in result:
+            parent = plantarch.getParentShootID(plant_id, shoot_id)
+            if parent in position:
+                assert position[parent] < position[shoot_id]
+
+    def test_get_shoot_hierarchy_map_only_lists_parents(self, plantarch):
+        """Only shoots that actually have children appear as keys."""
+        plant_id = self._build_plant(plantarch)
+
+        for parent, children in plantarch.getShootHierarchyMap(plant_id).items():
+            assert children, f"shoot {parent} is a key but has no children"
+
+    def test_is_shoot_pruned_tracks_prune_branch(self, plantarch):
+        """A shoot reads as live before a node-0 prune and pruned afterwards."""
+        plant_id = self._build_plant(plantarch)
+        terminal = [s for s in plantarch.getTerminalShootIDs(plant_id) if s != 0]
+        if not terminal:
+            pytest.skip("plant has no non-base terminal shoot to prune")
+
+        target = terminal[0]
+        assert not plantarch.isShootPruned(plant_id, target)
+
+        plantarch.pruneBranch(plant_id, target, 0)
+        assert plantarch.isShootPruned(plant_id, target)
+
+        # The ID stays addressable and keeps reporting the parent it grew from.
+        assert target in plantarch.getAllShootIDs(plant_id)
+        assert plantarch.getParentShootID(plant_id, target) >= 0
+
+    def test_pruned_shoots_excluded_from_traversals(self, plantarch):
+        """A pruned shoot drops out of the child, descendant and terminal listings."""
+        plant_id = self._build_plant(plantarch)
+        terminal = [s for s in plantarch.getTerminalShootIDs(plant_id) if s != 0]
+        if not terminal:
+            pytest.skip("plant has no non-base terminal shoot to prune")
+
+        target = terminal[0]
+        parent = plantarch.getParentShootID(plant_id, target)
+        plantarch.pruneBranch(plant_id, target, 0)
+
+        assert target not in plantarch.getChildShootIDs(plant_id, parent)
+        assert target not in plantarch.getAllDescendantShootIDs(plant_id, 0)
+        assert target not in plantarch.getTerminalShootIDs(plant_id)
+        assert target not in plantarch.getShootHierarchyMap(plant_id).get(parent, [])
+
+    def test_get_shoot_ids_by_rank_omits_empty_ranks(self, plantarch):
+        """The dict form drops ranks that have no live shoots rather than mapping them to []."""
+        plant_id = self._build_plant(plantarch)
+
+        for rank, shoot_ids in plantarch.getShootIDsByRank(plant_id).items():
+            assert shoot_ids, f"rank {rank} present but empty"
+
+
+    def test_prune_shoots_by_rank(self, plantarch):
+        """Pruning by rank removes the targeted branch orders and leaves the plant growable."""
+        plant_id = self._build_plant(plantarch)
+        by_rank = plantarch.getShootIDsByRank(plant_id)
+        if not any(rank >= 1 for rank in by_rank):
+            pytest.skip("plant has no shoots above rank 0")
+
+        before = len(plantarch.getAllPlantObjectIDs(plant_id))
+        pruned = plantarch.pruneShootsByRank(plant_id, min_rank=1)
+
+        assert pruned, "pruneShootsByRank cut nothing on a branched plant"
+        assert len(plantarch.getAllPlantObjectIDs(plant_id)) < before
+        assert 0 not in pruned, "the base stem must never be cut by rank pruning"
+        plantarch.advanceTime(10.0)
+
+    def test_prune_shoots_by_rank_skips_redundant_descendant_cuts(self, plantarch):
+        """A shoot whose ancestor is also being pruned is not cut separately.
+
+        pruneBranch() already recurses into child shoots, so a rank-2 shoot hanging
+        off a pruned rank-1 shoot is gone before its own turn comes up. Only the
+        rank-1 cuts should be reported.
+        """
+        plant_id = self._build_plant(plantarch)
+        by_rank = plantarch.getShootIDsByRank(plant_id)
+        assert by_rank.get(2), (
+            "fixture plant has no rank-2 shoots; redundant-cut skipping would not "
+            "be exercised and this test would pass vacuously")
+
+        pruned = plantarch.pruneShootsByRank(plant_id, min_rank=1)
+
+        assert pruned, "pruneShootsByRank cut nothing"
+        assert set(pruned) <= set(by_rank[1]), (
+            f"pruneShootsByRank cut descendants redundantly: "
+            f"{sorted(set(pruned) - set(by_rank[1]))}")
+
+    def test_child_shoots_always_have_higher_ids_than_their_parents(self, plantarch):
+        """Shoot IDs increase from parent to child.
+
+        pruneShootsByRank and friends visit targets in ascending ID order and rely
+        on that putting every shoot after its ancestors, so that a descendant of an
+        already-cut shoot is seen as empty rather than being cut a second time.
+        """
+        plant_id = self._build_plant(plantarch)
+        checked = 0
+        for shoot_id in plantarch.getAllShootIDs(plant_id):
+            parent = plantarch.getShoot(plant_id, shoot_id)["parent_shoot_id"]
+            if parent < 0:
+                continue  # base stem
+            assert parent < shoot_id, (
+                f"shoot {shoot_id} has parent {parent} with a higher ID, which "
+                f"breaks the ordering _pruneShallowest depends on")
+            checked += 1
+        assert checked > 0, "plant had no child shoots; the ordering was not tested"
+
+    def test_prune_shoot_subtree(self, plantarch):
+        """include_self=True cuts the shoot itself; False keeps it and cuts its children."""
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._branch_shoot_id(plantarch, plant_id)
+
+        assert plantarch.pruneShootSubtree(plant_id, shoot_id) == [shoot_id]
+
+        plant_id2 = self._build_plant(plantarch)
+        children = plantarch._liveChildShootIDs(plant_id2, 0)
+        if not children:
+            pytest.skip("base stem has no child shoots")
+        pruned = plantarch.pruneShootSubtree(plant_id2, 0, include_self=False)
+        assert pruned == children
+        assert plantarch.getShoot(plant_id2, 0)["node_count"] > 0, (
+            "include_self=False must leave the shoot itself intact")
+
+    def test_prune_terminal_shoots(self, plantarch):
+        """Thinning cuts a subset of the tips and never the base stem."""
+        plant_id = self._build_plant(plantarch)
+        terminal = [s for s in plantarch.getTerminalShootIDs(plant_id)
+                    if plantarch.getShoot(plant_id, s)["rank"] > 0]
+        if not terminal:
+            pytest.skip("plant has no non-base terminal shoots")
+
+        pruned = plantarch.pruneTerminalShoots(plant_id, stride=2)
+
+        assert pruned, "pruneTerminalShoots cut nothing"
+        assert set(pruned) <= set(terminal)
+        assert len(pruned) <= len(terminal)
+        plantarch.advanceTime(10.0)
+
+    def test_pruning_invalid_plant_raises(self, plantarch):
+        """Pruning calls on a non-existent plant raise rather than silently passing."""
+        with pytest.raises(PlantArchitectureError):
+            plantarch.pruneBranch(99999, 0, 0)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.harvestPlant(99999)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.removePlantLeaves(99999)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.removeShootLeaves(99999, 0)
+
+    def test_pruning_invalid_shoot_raises(self, plantarch):
+        """A shoot ID beyond the plant's shoot tree raises."""
+        plant_id = self._build_plant(plantarch)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.pruneBranch(plant_id, 99999, 0)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.removeShootLeaves(plant_id, 99999)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.removeShootVegetativeBuds(plant_id, 99999)
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.removeShootFloralBuds(plant_id, 99999)
+
+    def test_prune_branch_invalid_node_index_raises(self, plantarch):
+        """A node index past the shoot's node count raises rather than being clamped."""
+        plant_id = self._build_plant(plantarch)
+        node_count = plantarch.getShoot(plant_id, 0)["node_count"]
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.pruneBranch(plant_id, 0, node_count + 100)
+
+
+
+@pytest.mark.native_only
+class TestPlantArchitectureMaxAge:
+    """Tests for setPlantMaxAge / getPlantMaxAge (helios-core 1.3.82)."""
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        plantarch_instance = PlantArchitecture(context)
+        yield plantarch_instance
+        plantarch_instance.__exit__(None, None, None)
+
+    def _build_plant(self, plantarch):
+        models = plantarch.getAvailablePlantModels()
+        model = "apple" if "apple" in models else models[0]
+        plantarch.loadPlantModelFromLibrary(model)
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365.0)
+
+    def test_round_trip(self, plantarch):
+        """A maximum age that is set is the maximum age that is read back."""
+        plant_id = self._build_plant(plantarch)
+
+        plantarch.setPlantMaxAge(plant_id, 1200.0)
+        assert plantarch.getPlantMaxAge(plant_id) == pytest.approx(1200.0)
+
+    def test_library_model_sets_its_own_max_age(self, plantarch):
+        """A library plant carries a real maximum age, not a failure sentinel."""
+        plant_id = self._build_plant(plantarch)
+
+        max_age = plantarch.getPlantMaxAge(plant_id)
+        assert max_age > 0, "library model reported a non-positive maximum age"
+
+    def test_max_age_below_current_age_freezes_growth(self, plantarch):
+        """Setting a maximum age below the current age stops advanceTime growing the plant."""
+        plant_id = self._build_plant(plantarch)
+        plantarch.setPlantMaxAge(plant_id, 1.0)
+
+        before = len(plantarch.getAllPlantObjectIDs(plant_id))
+        plantarch.advanceTime(30.0)
+        after = len(plantarch.getAllPlantObjectIDs(plant_id))
+
+        assert after == before, "plant grew past its maximum age"
+
+    def test_rejects_negative_max_age(self, plantarch):
+        plant_id = self._build_plant(plantarch)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.setPlantMaxAge(plant_id, -1.0)
+
+    def test_rejects_negative_plant_id(self, plantarch):
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.setPlantMaxAge(-1, 100.0)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.getPlantMaxAge(-1)
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitecturePruningValidation:
+    """Argument validation for the pruning API, which runs without a native library."""
+
+    @pytest.fixture
+    def plantarch(self):
+        """A PlantArchitecture whose validation runs before any native call."""
+        instance = PlantArchitecture.__new__(PlantArchitecture)
+        instance.context = None
+        instance._plantarch_ptr = None
+        return instance
+
+    @pytest.mark.parametrize("method_name", [
+        "harvestPlant",
+        "removePlantLeaves",
+        "getShootIDsByRank",
+        "getTerminalShootIDs",
+        "getShootHierarchyMap",
+        "getPlantMaxAge",
+    ])
+    def test_plant_only_methods_reject_negative_plant_id(self, plantarch, method_name):
+        with pytest.raises(ValueError, match="non-negative"):
+            getattr(plantarch, method_name)(-1)
+
+        with pytest.raises(ValueError, match="non-negative"):
+            getattr(plantarch, method_name)(plant_id=-1)
+
+    @pytest.mark.parametrize("method_name", [
+        "removeShootLeaves",
+        "removeShootVegetativeBuds",
+        "removeShootFloralBuds",
+        "getAllDescendantShootIDs",
+        "getParentShootID",
+        "getShootRank",
+        "getShootDepth",
+        "isShootPruned",
+        "getPathToRoot",
+        "getChildShootIDs",
+        "pruneShootSubtree",
+    ])
+    def test_shoot_methods_reject_negative_ids(self, plantarch, method_name):
+        method = getattr(plantarch, method_name)
+
+        with pytest.raises(ValueError, match="non-negative"):
+            method(-1, 0)
+        with pytest.raises(ValueError, match="non-negative"):
+            method(0, -1)
+        with pytest.raises(ValueError, match="non-negative"):
+            method(plant_id=0, shoot_id=-1)
+
+    def test_prune_branch_rejects_negative_ids(self, plantarch):
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.pruneBranch(-1, 0, 0)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.pruneBranch(0, -1, 0)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.pruneBranch(0, 0, -1)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.pruneBranch(plant_id=0, shoot_id=0, node_index=-1)
+
+    def test_prune_shoots_by_rank_rejects_base_stem_rank(self, plantarch):
+        """min_rank=0 would destroy the whole plant, so it is rejected outright."""
+        with pytest.raises(ValueError, match="min_rank must be at least 1"):
+            plantarch.pruneShootsByRank(0, min_rank=0)
+
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.pruneShootsByRank(-1, min_rank=1)
+
+    def test_prune_terminal_shoots_rejects_bad_stride(self, plantarch):
+        with pytest.raises(ValueError, match="stride must be at least 1"):
+            plantarch.pruneTerminalShoots(0, stride=0)

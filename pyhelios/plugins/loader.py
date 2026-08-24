@@ -332,6 +332,10 @@ class CrossPlatformLibraryLoader:
 # Global loader instance
 _loader_instance: Optional[CrossPlatformLibraryLoader] = None
 
+# Stand-in plugin directory used when the loader is built for mock mode. It is never
+# read: load_library() returns a MockLibrary before any path is resolved.
+_MOCK_PLUGIN_DIR = "<mock-mode: no native library directory>"
+
 
 def get_loader(plugin_dir: str = None) -> CrossPlatformLibraryLoader:
     """Get the global library loader instance."""
@@ -418,8 +422,16 @@ def load_helios_library(force_mock: bool = False) -> ctypes.CDLL:
     dev_mode_enabled = os.getenv('PYHELIOS_DEV_MODE', '').lower() in ('1', 'true', 'yes', 'on')
     if dev_mode_enabled:
         force_mock = True
-    
-    loader = get_loader()
+
+    # In mock mode there is no library directory to find, and requiring one would make
+    # PYHELIOS_DEV_MODE=1 impossible to use on the machines that need it most -- those
+    # with no native library at all, which is exactly what the "not found" error tells
+    # the user to do. Pass a placeholder so the loader is constructed without searching;
+    # load_library() returns the mock before it ever reads plugin_dir.
+    if force_mock:
+        loader = get_loader(plugin_dir=_MOCK_PLUGIN_DIR)
+    else:
+        loader = get_loader()
     return loader.load_library(force_mock=force_mock)
 
 

@@ -7,7 +7,7 @@ the native Helios Visualizer plugin via the C++ wrapper layer.
 
 import ctypes
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
@@ -121,6 +121,31 @@ try:
 
     helios_lib.displayImageFromFile.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_char_p]
     helios_lib.displayImageFromFile.restype = None
+
+    # Annotation overlay viewers and exact-color mode (helios-core 1.3.82)
+    helios_lib.displayImageWithBoundingBoxes.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.c_float, ctypes.c_uint,
+    ]
+    helios_lib.displayImageWithBoundingBoxes.restype = None
+
+    helios_lib.displayImageWithSegmentationMasks.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.c_float, ctypes.c_float, ctypes.c_uint, ctypes.c_bool,
+    ]
+    helios_lib.displayImageWithSegmentationMasks.restype = None
+
+    helios_lib.enableExactColorMode.argtypes = [ctypes.POINTER(UVisualizer)]
+    helios_lib.enableExactColorMode.restype = None
+
+    helios_lib.disableExactColorMode.argtypes = [ctypes.POINTER(UVisualizer)]
+    helios_lib.disableExactColorMode.restype = None
+
+    helios_lib.getTextboxSize.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),
+    ]
+    helios_lib.getTextboxSize.restype = None
 
     # Window Data Access Functions
     helios_lib.getWindowPixelsRGB.argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_uint)]
@@ -943,6 +968,123 @@ def show_navigation_gizmo(visualizer: ctypes.POINTER(UVisualizer)) -> None:
     helios_lib.showNavigationGizmo(visualizer)
     _check_for_helios_error()
 
+def display_image_with_bounding_boxes(visualizer: ctypes.POINTER(UVisualizer),
+                                      image_file: str, bbox_file: str,
+                                      classes_file: str = "", line_width: float = 2.0,
+                                      fontsize: int = 12) -> None:
+    """
+    Display an image with YOLO bounding boxes overlaid.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+        image_file: Path to the image file (JPEG or PNG)
+        bbox_file: Path to the YOLO-format bounding box annotation file
+        classes_file: Path to the class name file. Empty looks for "classes.txt"
+            beside bbox_file, falling back to numeric class IDs.
+        line_width: Width of the box outlines in screen pixels
+        fontsize: Size of the class label font in points
+
+    Note:
+        Blocks until the window is closed, and clears any existing geometry.
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+    helios_lib.displayImageWithBoundingBoxes(
+        visualizer, image_file.encode('utf-8'), bbox_file.encode('utf-8'),
+        (classes_file or "").encode('utf-8'), ctypes.c_float(line_width), ctypes.c_uint(fontsize))
+    _check_for_helios_error()
+
+
+def display_image_with_segmentation_masks(visualizer: ctypes.POINTER(UVisualizer),
+                                          image_file: str, mask_file: str,
+                                          fill_opacity: float = 0.4, line_width: float = 2.0,
+                                          fontsize: int = 12, show_labels: bool = True) -> None:
+    """
+    Display an image with COCO segmentation masks overlaid.
+
+    Args:
+        visualizer: Pointer to UVisualizer
+        image_file: Path to the image file (JPEG or PNG)
+        mask_file: Path to the COCO JSON segmentation mask file
+        fill_opacity: Opacity of the translucent fill, 0 to 1 (0 draws outlines only)
+        line_width: Width of the mask outlines in screen pixels
+        fontsize: Size of the class label font in points
+        show_labels: Whether to draw the class name chip on each mask
+
+    Note:
+        Blocks until the window is closed, and clears any existing geometry.
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+    helios_lib.displayImageWithSegmentationMasks(
+        visualizer, image_file.encode('utf-8'), mask_file.encode('utf-8'),
+        ctypes.c_float(fill_opacity), ctypes.c_float(line_width),
+        ctypes.c_uint(fontsize), ctypes.c_bool(show_labels))
+    _check_for_helios_error()
+
+
+def enable_exact_color_mode(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Render primitive colors exactly as set in the Context, without brightening."""
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    helios_lib.enableExactColorMode(visualizer)
+    _check_for_helios_error()
+
+
+def disable_exact_color_mode(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Restore the default brightening of primitive colors."""
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+    helios_lib.disableExactColorMode(visualizer)
+    _check_for_helios_error()
+
+
+def get_textbox_size(visualizer: ctypes.POINTER(UVisualizer), textstring: str,
+                     fontsize: int, fontname: str) -> Tuple[float, float]:
+    """
+    Measure the rendered size of a text string without adding it to the visualizer.
+
+    Returns:
+        (width, height) in window-normalized units.
+    """
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+    width = ctypes.c_float()
+    height = ctypes.c_float()
+    helios_lib.getTextboxSize(visualizer, textstring.encode('utf-8'), ctypes.c_uint(fontsize),
+                              fontname.encode('utf-8'), ctypes.byref(width), ctypes.byref(height))
+    _check_for_helios_error()
+    return (width.value, height.value)
+
+
 def get_geometry_vertices(visualizer: ctypes.POINTER(UVisualizer), geometry_id: int) -> List[List[float]]:
     """
     Get vertices of a geometry primitive.
@@ -1241,6 +1383,11 @@ if not _VISUALIZER_FUNCTIONS_AVAILABLE:
     # Replace all wrapper functions with mock
     create_visualizer = _mock_function
     create_visualizer_with_antialiasing = _mock_function
+    display_image_with_bounding_boxes = _mock_function
+    display_image_with_segmentation_masks = _mock_function
+    enable_exact_color_mode = _mock_function
+    disable_exact_color_mode = _mock_function
+    get_textbox_size = _mock_function
     build_context_geometry = _mock_function
     build_context_geometry_uuids = _mock_function
     plot_interactive = _mock_function

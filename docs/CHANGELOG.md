@@ -1,5 +1,48 @@
 # Changelog
 
+# [v0.1.29] 2026-08-24
+
+- Updated helios-core to v1.3.82
+
+## Solar Position
+- Added `SolarPosition.setSunDirection(SphericalCoord)`, which overrides the date/time-based solar position calculation with a prescribed sun direction
+- Fixed `calibrateTurbidityFromTimeseries()` discarding the calibrated turbidity computed by the native library and returning `None`
+
+## Plant Architecture
+- Added `PlantArchitecture.makePlantDormant(plant_id)`, which forces a plant into dormancy immediately rather than waiting on a phenological threshold
+- Added `PlantArchitecture.breakPlantDormancy(plant_id)`, which returns a dormant plant to an active state
+- Added `PlantArchitecture.isPlantDormant(plant_id)`, returning whether all shoots on a plant are dormant
+- Added `PlantArchitecture.pruneBranch(plant_id, shoot_id, node_index)`, which cuts a shoot at a node and removes everything distal to it, including every child shoot attached at or above that node
+- Added `PlantArchitecture.harvestPlant(plant_id)`, which removes a plant's flowers and fruit; leaves are left in place
+- Added `PlantArchitecture.removePlantLeaves(plant_id)` and `removeShootLeaves(plant_id, shoot_id)`, which defoliate a whole plant or a single shoot
+- Added `PlantArchitecture.removeShootVegetativeBuds()` and `removeShootFloralBuds()`, which kill a shoot's buds so it produces no further laterals or flowers
+- Added `PlantArchitecture.getShootIDsByRank()`, `getAllDescendantShootIDs()`, `getTerminalShootIDs()`, `getShootHierarchyMap()`, `getChildShootIDs()`, `getParentShootID()`, `getShootRank()`, `getShootDepth()`, `getPathToRoot()` and `isShootPruned()` for walking a plant's branching hierarchy
+- Added `PlantArchitecture.pruneShootsByRank()`, `pruneShootSubtree()` and `pruneTerminalShoots()`, which apply `pruneBranch()` across a branch system and return the shoot IDs cut
+- Added `PlantArchitecture.setPlantMaxAge()` and `getPlantMaxAge()`, controlling the age in days beyond which `advanceTime()` stops growing a plant
+- Fixed `defineShootType()` discarding a species' built-in phytomer creation, callback, and leaf, flower and fruit prototype functions when redefining an existing library shoot type, which for maize replaced the ears with a tassel on nearly every node
+
+## Visualizer
+- Added `Visualizer.enableExactColorMode()` and `disableExactColorMode()`, which disable the default 1.5x color brightening so a primitive's color survives a render round trip unchanged
+- Added `Visualizer.getTextboxSize()`, returning the window-normalized extent a text string would occupy without adding it to the scene
+- Added `Visualizer.displayImageWithBoundingBoxes()` and `displayImageWithSegmentationMasks()`, which display an image with YOLO bounding boxes or COCO segmentation masks drawn over it
+- Fixed `Visualizer(width, height)` rendering at 4 antialiasing samples regardless of the `antialiasing_samples` argument, which also made it impossible to disable antialiasing; the default is now stated as 4 and 0 disables it
+
+## Photosynthesis
+- Corrected the documented units of the empirical model's `theta` coefficient from W/m² to µmol/m²·s PPFD
+
+## Performance
+- Sped up `addPatch()`, `addTriangle()`, `addSphere()`, `addTube()` and `addBox()` by about 3x by resolving the argument signature once when the validation decorator is applied instead of rebuilding it on every call
+- Sped up bulk float primitive-data reads by converting the native result buffer with NumPy rather than one Python float per primitive
+- Changed `RadiationModel.getAbsorbedFlux()` to return a `float32` NumPy array (or a dict of them) instead of `List[float]`, so per-primitive arithmetic vectorizes instead of looping in Python
+- Sped up `Context.getPrimitiveDataArray()` for every data type, which previously read one primitive per native call and swept every UUID a second time to check the label existed; measured 3x for int and double, 14x for the vec/int 2-4 types and 1.6x for strings
+- Added `Context.getObjectDataArray(objids, label)`, reading one object-data label across many objects in a single native call (about 6x faster than reading them one at a time)
+- Added bulk string data reads for primitives and objects, the last type that still required one native call per element
+- Fixed `setPrimitiveDataVec2/3/4` and `setPrimitiveDataInt2/3/4` rejecting NumPy array rows, which broke reading vector data with `getPrimitiveDataArray()` and writing it back
+
+## Build System
+- Fixed the build failing after the helios-core 1.3.82 merge, which moved `json.hpp` from the radiation plug-in to core
+- Fixed `PYHELIOS_DEV_MODE=1` failing to enable mock mode when no native library was present, which made the fix suggested by the "library not found" error impossible to follow
+
 # [v0.1.28] 2026-08-13
 
 🚨++ New Plug-in Integrated ++ 🚨

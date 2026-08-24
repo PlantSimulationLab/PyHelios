@@ -11,6 +11,7 @@
 #include <exception>
 #include <thread>
 #include <cstring>
+#include <cmath>
 
 extern "C" {
 
@@ -216,6 +217,34 @@ float* getSunDirectionSpherical(HeliosSolarPosition* solar_pos) {
     } catch (...) {
         setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getSunDirectionSpherical): Unknown error");
         return nullptr;
+    }
+}
+
+void setSunDirection(HeliosSolarPosition* solar_pos, float radius, float elevation_rad, float azimuth_rad) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return;
+        }
+        if (!std::isfinite(radius) || !std::isfinite(elevation_rad) || !std::isfinite(azimuth_rad)) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Sun direction components must be finite");
+            return;
+        }
+        if (radius <= 0.0f) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Sun direction radius must be positive");
+            return;
+        }
+
+        SolarPosition* sp = reinterpret_cast<SolarPosition*>(solar_pos);
+        sp->setSunDirection(helios::SphericalCoord(radius, elevation_rad, azimuth_rad));
+
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setSunDirection): ") + e.what());
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setSunDirection): Unknown error");
     }
 }
 

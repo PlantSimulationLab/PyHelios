@@ -230,6 +230,55 @@ PYHELIOS_API void displayImageFromPixels(Visualizer* visualizer, unsigned char* 
  */
 PYHELIOS_API void displayImageFromFile(Visualizer* visualizer, const char* file_name);
 
+/**
+ * @brief Display an image with YOLO bounding boxes overlaid (helios-core 1.3.82)
+ * @param visualizer Pointer to the Visualizer
+ * @param image_file Path to the image file (JPEG or PNG)
+ * @param bbox_file Path to the YOLO-format bounding box annotation file
+ * @param classes_file Path to the class name file, or NULL/empty to look for "classes.txt" beside bbox_file
+ * @param line_width Width of the box outlines in screen pixels
+ * @param fontsize Size of the class label font in points
+ * @note Blocks until the window is closed, and clears any existing geometry.
+ */
+PYHELIOS_API void displayImageWithBoundingBoxes(Visualizer* visualizer, const char* image_file, const char* bbox_file, const char* classes_file, float line_width, unsigned int fontsize);
+
+/**
+ * @brief Display an image with COCO segmentation masks overlaid (helios-core 1.3.82)
+ * @param visualizer Pointer to the Visualizer
+ * @param image_file Path to the image file (JPEG or PNG)
+ * @param mask_file Path to the COCO JSON segmentation mask file
+ * @param fill_opacity Opacity of the translucent polygon fill, between 0 and 1 (0 draws outlines only)
+ * @param line_width Width of the mask outlines in screen pixels
+ * @param fontsize Size of the class label font in points
+ * @param show_labels Whether to draw the class name chip on each mask
+ * @note Blocks until the window is closed, and clears any existing geometry.
+ */
+PYHELIOS_API void displayImageWithSegmentationMasks(Visualizer* visualizer, const char* image_file, const char* mask_file, float fill_opacity, float line_width, unsigned int fontsize, bool show_labels);
+
+/**
+ * @brief Render primitive colors exactly as set in the Context, disabling the 1.5x brightening (helios-core 1.3.82)
+ * @param visualizer Pointer to the Visualizer
+ * @note Exact reproduction also requires LIGHTING_NONE and antialiasing disabled.
+ */
+PYHELIOS_API void enableExactColorMode(Visualizer* visualizer);
+
+/**
+ * @brief Restore the default 1.5x brightening of primitive colors (helios-core 1.3.82)
+ * @param visualizer Pointer to the Visualizer
+ */
+PYHELIOS_API void disableExactColorMode(Visualizer* visualizer);
+
+/**
+ * @brief Measure the rendered size of a text string without adding it (helios-core 1.3.82)
+ * @param visualizer Pointer to the Visualizer
+ * @param textstring Text to be measured
+ * @param fontsize Size of the text font in points
+ * @param fontname Name of a font in the visualizer fonts directory, e.g. "OpenSans-Regular"
+ * @param width Receives the text width in window-normalized units
+ * @param height Receives the text height in window-normalized units
+ */
+PYHELIOS_API void getTextboxSize(Visualizer* visualizer, const char* textstring, unsigned int fontsize, const char* fontname, float* width, float* height);
+
 //=============================================================================
 // Window Data Access Functions
 //=============================================================================

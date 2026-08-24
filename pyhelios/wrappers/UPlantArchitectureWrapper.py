@@ -6,7 +6,7 @@ enabling procedural plant modeling and plant library functionality.
 """
 
 import ctypes
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
@@ -187,6 +187,54 @@ try:
     ]
     helios_lib.getPlantShootChildIDs.restype = ctypes.POINTER(ctypes.c_int)
 
+    # Shoot hierarchy accessors (helios-core 1.3.82)
+    for _scalar_fn, _restype in (("getParentShootID", ctypes.c_int),
+                                 ("getShootRank", ctypes.c_uint),
+                                 ("getShootDepth", ctypes.c_uint),
+                                 ("isShootPruned", ctypes.c_int)):
+        getattr(helios_lib, _scalar_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
+        ]
+        getattr(helios_lib, _scalar_fn).restype = _restype
+
+    for _list_fn in ("getPathToRoot", "getChildShootIDs", "getAllDescendantShootIDs"):
+        getattr(helios_lib, _list_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        getattr(helios_lib, _list_fn).restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.getTerminalShootIDs.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getTerminalShootIDs.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.getShootIDsByRank.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),  # group_sizes
+        ctypes.POINTER(ctypes.c_int),                  # group_count
+        ctypes.POINTER(ctypes.c_int),                  # total_count
+    ]
+    helios_lib.getShootIDsByRank.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.getShootHierarchyMap.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)),  # parent_ids
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),   # group_sizes
+        ctypes.POINTER(ctypes.c_int),                   # parent_count
+        ctypes.POINTER(ctypes.c_int),                   # total_children
+    ]
+    helios_lib.getShootHierarchyMap.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.getPlantMaxAge.argtypes = [ctypes.POINTER(UPlantArchitecture), ctypes.c_uint]
+    helios_lib.getPlantMaxAge.restype = ctypes.c_float
+
+    helios_lib.setPlantMaxAge.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_float,
+    ]
+    helios_lib.setPlantMaxAge.restype = ctypes.c_int
+
     helios_lib.getPlantShootInternodeVertices.argtypes = [
         ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
         ctypes.POINTER(ctypes.c_int),
@@ -364,6 +412,27 @@ try:
     ]
     helios_lib.plantarch_setCancelFlag.restype = None
 
+    # Pruning and organ removal functions
+    helios_lib.pruneBranch.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,    # plantID
+        ctypes.c_uint,    # shootID
+        ctypes.c_uint     # node_index
+    ]
+    helios_lib.pruneBranch.restype = ctypes.c_int
+
+    for _shoot_prune_fn in ("removeShootLeaves", "removeShootVegetativeBuds", "removeShootFloralBuds"):
+        getattr(helios_lib, _shoot_prune_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint
+        ]
+        getattr(helios_lib, _shoot_prune_fn).restype = ctypes.c_int
+
+    for _plant_prune_fn in ("harvestPlant", "removePlantLeaves"):
+        getattr(helios_lib, _plant_prune_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_uint
+        ]
+        getattr(helios_lib, _plant_prune_fn).restype = ctypes.c_int
+
     _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE = True
 
 except AttributeError:
@@ -424,6 +493,25 @@ try:
         ctypes.c_uint     # plantID
     ]
     helios_lib.disablePlantPhenology.restype = ctypes.c_int
+
+    # Dormancy control functions
+    helios_lib.makePlantDormant.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint     # plantID
+    ]
+    helios_lib.makePlantDormant.restype = ctypes.c_int
+
+    helios_lib.breakPlantDormancy.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint     # plantID
+    ]
+    helios_lib.breakPlantDormancy.restype = ctypes.c_int
+
+    helios_lib.isPlantDormant.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint     # plantID
+    ]
+    helios_lib.isPlantDormant.restype = ctypes.c_int
 
     # Carbohydrate / nitrogen model parameter functions
     helios_lib.getDefaultCarbohydrateParametersJSON.argtypes = []
@@ -489,11 +577,18 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.getAllPlantShootIDs.errcheck = _check_error
     helios_lib.getPlantShootTopology.errcheck = _check_error
     helios_lib.getPlantShootChildIDs.errcheck = _check_error
+    for _hierarchy_fn in ("getParentShootID", "getShootRank", "getShootDepth",
+                          "isShootPruned", "getPathToRoot", "getChildShootIDs",
+                          "getAllDescendantShootIDs", "getTerminalShootIDs",
+                          "getShootIDsByRank", "getShootHierarchyMap"):
+        getattr(helios_lib, _hierarchy_fn).errcheck = _check_error
     helios_lib.getPlantShootInternodeVertices.errcheck = _check_error
     helios_lib.getPlantShootInternodeRadii.errcheck = _check_error
     # Plant state queries: these return -1.0f as a failure sentinel, which is
     # indistinguishable from a real measurement without checking the error code.
     helios_lib.getPlantAge.errcheck = _check_error
+    helios_lib.getPlantMaxAge.errcheck = _check_error
+    helios_lib.setPlantMaxAge.errcheck = _check_error
     helios_lib.getPlantHeight.errcheck = _check_error
     helios_lib.sumPlantLeafArea.errcheck = _check_error
     helios_lib.plantArchitectureEnableMessages.errcheck = _check_error
@@ -520,12 +615,20 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     # Progress callback error checking
     helios_lib.plantarch_setProgressCallback.errcheck = _check_error
     helios_lib.plantarch_setCancelFlag.errcheck = _check_error
+    for _prune_fn in ("pruneBranch", "harvestPlant", "removeShootLeaves",
+                      "removeShootVegetativeBuds", "removeShootFloralBuds", "removePlantLeaves"):
+        getattr(helios_lib, _prune_fn).errcheck = _check_error
 
 # Set up error checking for parameter functions
 if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
     helios_lib.defineShootTypeFromJSON.errcheck = _check_error
     helios_lib.setPlantPhenologicalThresholds.errcheck = _check_error
     helios_lib.disablePlantPhenology.errcheck = _check_error
+    helios_lib.makePlantDormant.errcheck = _check_error
+    helios_lib.breakPlantDormancy.errcheck = _check_error
+    # isPlantDormant returns -1 as a failure sentinel, which is otherwise
+    # indistinguishable from a valid 0/1 result without checking the error code.
+    helios_lib.isPlantDormant.errcheck = _check_error
     helios_lib.getDefaultCarbohydrateParametersJSON.errcheck = _check_error
     helios_lib.setPlantCarbohydrateParametersFromJSON.errcheck = _check_error
     helios_lib.getDefaultNitrogenParametersJSON.errcheck = _check_error
@@ -1081,6 +1184,161 @@ def getPlantShootChildIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
     return []
 
 
+_HIERARCHY_UNAVAILABLE = (
+    "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+)
+
+
+def _requireHierarchyAvailable() -> None:
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_HIERARCHY_UNAVAILABLE)
+
+
+def _shootIDList(fn, plantarch_ptr, *ids) -> List[int]:
+    """Call a wrapper returning a thread-local uint buffer and copy it into a list.
+
+    The buffer is owned by the native side and must not be freed, so it is copied
+    before the next call can overwrite it.
+    """
+    count = ctypes.c_int()
+    ptr = fn(plantarch_ptr, *ids, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [int(ptr[i]) for i in range(count.value)]
+    return []
+
+
+def getParentShootID(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                     plant_id: int, shoot_id: int) -> int:
+    """Get the ID of the shoot a shoot grew from, or -1 for the base stem shoot."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return int(helios_lib.getParentShootID(plantarch_ptr, plant_id, shoot_id))
+
+
+def getShootRank(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                 plant_id: int, shoot_id: int) -> int:
+    """Get the branching rank of a shoot (base stem is 0)."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return int(helios_lib.getShootRank(plantarch_ptr, plant_id, shoot_id))
+
+
+def getShootDepth(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                  plant_id: int, shoot_id: int) -> int:
+    """Get the number of steps from a shoot to the base stem shoot."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return int(helios_lib.getShootDepth(plantarch_ptr, plant_id, shoot_id))
+
+
+def isShootPruned(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                  plant_id: int, shoot_id: int) -> bool:
+    """Report whether a shoot was pruned away entirely."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return int(helios_lib.isShootPruned(plantarch_ptr, plant_id, shoot_id)) == 1
+
+
+def getPathToRoot(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                  plant_id: int, shoot_id: int) -> List[int]:
+    """Get the shoot IDs from a shoot to the base stem shoot, inclusive."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return _shootIDList(helios_lib.getPathToRoot, plantarch_ptr, plant_id, shoot_id)
+
+
+def getChildShootIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                     plant_id: int, shoot_id: int) -> List[int]:
+    """Get the direct children of a shoot, ordered by the node they attach to."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return _shootIDList(helios_lib.getChildShootIDs, plantarch_ptr, plant_id, shoot_id)
+
+
+def getAllDescendantShootIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                             plant_id: int, shoot_id: int) -> List[int]:
+    """Get every shoot descending from a shoot, depth-first, excluding the shoot itself."""
+    _requireHierarchyAvailable()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return _shootIDList(helios_lib.getAllDescendantShootIDs, plantarch_ptr, plant_id, shoot_id)
+
+
+def getTerminalShootIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                        plant_id: int) -> List[int]:
+    """Get the shoots of a plant that have no children."""
+    _requireHierarchyAvailable()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    return _shootIDList(helios_lib.getTerminalShootIDs, plantarch_ptr, plant_id)
+
+
+def getShootIDsByRank(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                      plant_id: int) -> List[List[int]]:
+    """Get a plant's shoot IDs grouped by branching rank, indexed by rank.
+
+    A rank with no live shoots is an empty group, so the list index always equals
+    the rank.
+    """
+    _requireHierarchyAvailable()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    group_sizes = ctypes.POINTER(ctypes.c_int)()
+    group_count = ctypes.c_int()
+    total_count = ctypes.c_int()
+    ptr = helios_lib.getShootIDsByRank(
+        plantarch_ptr, plant_id,
+        ctypes.byref(group_sizes), ctypes.byref(group_count), ctypes.byref(total_count))
+
+    if not group_sizes or group_count.value <= 0:
+        return []
+
+    groups: List[List[int]] = []
+    offset = 0
+    for rank in range(group_count.value):
+        size = int(group_sizes[rank])
+        # A rank may legitimately be empty, in which case the flat buffer is not
+        # advanced and ptr may itself be null when every rank is empty.
+        groups.append([int(ptr[offset + i]) for i in range(size)] if size > 0 else [])
+        offset += size
+    return groups
+
+
+def getShootHierarchyMap(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                         plant_id: int) -> Dict[int, List[int]]:
+    """Get the parent-to-children map of a plant. Only shoots with children appear."""
+    _requireHierarchyAvailable()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    parent_ids = ctypes.POINTER(ctypes.c_uint)()
+    group_sizes = ctypes.POINTER(ctypes.c_int)()
+    parent_count = ctypes.c_int()
+    total_children = ctypes.c_int()
+    ptr = helios_lib.getShootHierarchyMap(
+        plantarch_ptr, plant_id,
+        ctypes.byref(parent_ids), ctypes.byref(group_sizes),
+        ctypes.byref(parent_count), ctypes.byref(total_children))
+
+    if not parent_ids or not ptr or parent_count.value <= 0:
+        return {}
+
+    hierarchy: Dict[int, List[int]] = {}
+    offset = 0
+    for index in range(parent_count.value):
+        size = int(group_sizes[index])
+        hierarchy[int(parent_ids[index])] = [int(ptr[offset + i]) for i in range(size)]
+        offset += size
+    return hierarchy
+
+
 def getPlantShootInternodeVertices(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
                                    plant_id: int, shoot_id: int) -> List[Tuple[float, float, float]]:
     """Get the woody internode polyline vertices of a shoot as a list of (x, y, z) tuples."""
@@ -1610,6 +1868,27 @@ def getPlantAge(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int
     
     return helios_lib.getPlantAge(plantarch_ptr, plant_id)
 
+
+def getPlantMaxAge(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> float:
+    """Get the maximum age in days beyond which a plant stops growing."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_HIERARCHY_UNAVAILABLE)
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    return helios_lib.getPlantMaxAge(plantarch_ptr, plant_id)
+
+
+def setPlantMaxAge(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                   plant_id: int, max_age: float) -> None:
+    """Set the maximum age in days beyond which a plant stops growing."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_HIERARCHY_UNAVAILABLE)
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if max_age < 0:
+        raise ValueError(f"Maximum age must be non-negative, got {max_age}")
+    helios_lib.setPlantMaxAge(plantarch_ptr, plant_id, ctypes.c_float(max_age))
+
 def getPlantHeight(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> float:
     """Get plant height in meters"""
     if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
@@ -1681,6 +1960,155 @@ def disablePlantPhenology(
 
     if result != 0:
         raise RuntimeError(f"Failed to disable phenology for plant {plant_id}")
+
+
+# Dormancy control wrapper functions
+def makePlantDormant(
+    plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+    plant_id: int
+) -> None:
+    """Force a plant into a dormant state"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Dormancy control functions not available. Rebuild with latest plantarchitecture support.")
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.makePlantDormant(plantarch_ptr, plant_id)
+
+    if result != 0:
+        raise RuntimeError(f"Failed to make plant {plant_id} dormant")
+
+
+def breakPlantDormancy(
+    plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+    plant_id: int
+) -> None:
+    """Break dormancy for all shoots on a plant"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Dormancy control functions not available. Rebuild with latest plantarchitecture support.")
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.breakPlantDormancy(plantarch_ptr, plant_id)
+
+    if result != 0:
+        raise RuntimeError(f"Failed to break dormancy for plant {plant_id}")
+
+
+def isPlantDormant(
+    plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+    plant_id: int
+) -> bool:
+    """Check whether all shoots on a plant are dormant"""
+    if not _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("Dormancy control functions not available. Rebuild with latest plantarchitecture support.")
+
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.isPlantDormant(plantarch_ptr, plant_id)
+
+    if result < 0:
+        raise RuntimeError(f"Failed to query dormancy state for plant {plant_id}")
+
+    return bool(result)
+
+
+# Pruning and organ removal wrapper functions
+def pruneBranch(
+    plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+    plant_id: int,
+    shoot_id: int,
+    node_index: int
+) -> None:
+    """Prune a shoot at a node, removing that node and everything distal to it"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0 or shoot_id < 0 or node_index < 0:
+        raise ValueError("Plant ID, shoot ID and node index must be non-negative")
+
+    result = helios_lib.pruneBranch(plantarch_ptr, plant_id, shoot_id, node_index)
+
+    if result != 0:
+        raise RuntimeError(
+            f"Failed to prune shoot {shoot_id} of plant {plant_id} at node {node_index}")
+
+
+def harvestPlant(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> None:
+    """Harvest a plant by removing its flowers and fruit"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.harvestPlant(plantarch_ptr, plant_id)
+
+    if result != 0:
+        raise RuntimeError(f"Failed to harvest plant {plant_id}")
+
+
+def removePlantLeaves(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> None:
+    """Remove all leaves from every shoot on a plant"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = helios_lib.removePlantLeaves(plantarch_ptr, plant_id)
+
+    if result != 0:
+        raise RuntimeError(f"Failed to remove leaves from plant {plant_id}")
+
+
+def _removeShootOrgans(native_fn_name: str,
+                       plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                       plant_id: int,
+                       shoot_id: int) -> None:
+    """Call one of the shoot-level organ removal functions.
+
+    The three shoot removers differ only in the native symbol they call, so they
+    share this body -- keeping the availability guard and the ID checks identical
+    across all of them by construction.
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+
+    result = getattr(helios_lib, native_fn_name)(plantarch_ptr, plant_id, shoot_id)
+
+    if result != 0:
+        raise RuntimeError(
+            f"Failed to call {native_fn_name} on shoot {shoot_id} of plant {plant_id}")
+
+
+def removeShootLeaves(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                      plant_id: int, shoot_id: int) -> None:
+    """Remove all leaves from a single shoot"""
+    _removeShootOrgans("removeShootLeaves", plantarch_ptr, plant_id, shoot_id)
+
+
+def removeShootVegetativeBuds(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                              plant_id: int, shoot_id: int) -> None:
+    """Kill all vegetative buds on a single shoot"""
+    _removeShootOrgans("removeShootVegetativeBuds", plantarch_ptr, plant_id, shoot_id)
+
+
+def removeShootFloralBuds(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                          plant_id: int, shoot_id: int) -> None:
+    """Kill all floral buds on a single shoot"""
+    _removeShootOrgans("removeShootFloralBuds", plantarch_ptr, plant_id, shoot_id)
+
 
 # Carbohydrate / nitrogen model parameter wrapper functions
 def getDefaultCarbohydrateParameters() -> dict:

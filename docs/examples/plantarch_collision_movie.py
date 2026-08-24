@@ -65,6 +65,8 @@ import shutil
 import subprocess
 import sys
 
+import numpy as np
+
 from example_output import display_path, get_output_dir
 from pyhelios import Context, PlantArchitecture, Visualizer
 from pyhelios.types import vec3, vec2, int2, RGBcolor, SphericalCoord
@@ -193,23 +195,28 @@ def measure_penetration(context, environment_uuids):
     half_span = 0.5 * WALL_SIZE.x
     wall_top = WALL_SIZE.y
 
-    beyond = 0
-    total = 0
-    max_x = float("-inf")
-    for uuid in context.getAllUUIDs():
-        if uuid in environment_uuids:
-            continue
-        for v in context.getPrimitiveVertices(uuid):
-            total += 1
-            blocked = abs(v.y) <= half_span and 0.0 <= v.z <= wall_top
-            if blocked and v.x > WALL_X:
-                beyond += 1
-                if v.x > max_x:
-                    max_x = v.x
-    if max_x == float("-inf"):
-        max_x = WALL_X
+    plant_uuids = [u for u in context.getAllUUIDs() if u not in environment_uuids]
+    if not plant_uuids:
+        return 0.0, 0.0
+
+    # One native call for every vertex in the plant, rather than one per
+    # primitive: this runs once per rendered frame over the whole tree. The
+    # flat array is [x, y, z, x, y, z, ...], so each axis is a strided slice
+    # and the whole test below vectorizes.
+    flat, _offsets = context.getPrimitiveVertices(plant_uuids)
+    total = flat.size // 3
     if total == 0:
         return 0.0, 0.0
+
+    x = flat[0::3]
+    y = flat[1::3]
+    z = flat[2::3]
+
+    blocked = (np.abs(y) <= half_span) & (z >= 0.0) & (z <= wall_top)
+    penetrating = blocked & (x > WALL_X)
+
+    beyond = int(np.count_nonzero(penetrating))
+    max_x = float(x[penetrating].max()) if beyond else WALL_X
     return 100.0 * beyond / total, max_x
 
 

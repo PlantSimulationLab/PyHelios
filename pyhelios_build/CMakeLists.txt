@@ -181,7 +181,6 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
     if("radiation" IN_LIST PLUGINS)
         target_include_directories(pyhelios_interface PRIVATE
             ${BASE_DIRECTORY}/plugins/radiation/include
-            ${BASE_DIRECTORY}/plugins/radiation/lib/json
         )
     endif()
 endif()
@@ -344,7 +343,6 @@ endif()
 if("radiation" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/radiation/include
-        ${BASE_DIRECTORY}/plugins/radiation/lib/json
     )
 endif()
 

@@ -226,6 +226,22 @@ Phenological thresholds are written to and read back from plant structure XML by
 was built with. The tags are optional on read, so files written before they existed still load and
 fall back to scheduling no phenology.
 
+### Maximum plant age
+
+`setPlantMaxAge()` sets the age in days beyond which `advanceTime()` stops advancing a plant and
+its geometry becomes static. `getPlantMaxAge()` reads it back.
+
+```python
+plantarch.setPlantMaxAge(plant_id, 1460.0)   # an apple tree's four-year window
+print(plantarch.getPlantMaxAge(plant_id))
+```
+
+The default is 999 days. Every plant model in the library sets its own value as part of its
+builder, but a plant assembled manually with `addPlantInstance()` keeps the default and so
+silently stops growing after 999 days — a long simulation that appears to plateau for no reason
+is usually this. Setting a maximum age below the plant's current age is permitted and freezes the
+plant at its current form.
+
 ### Carbohydrate and nitrogen model parameters
 
 `getDefaultCarbohydrateParameters()` and `getDefaultNitrogenParameters()` return
@@ -448,6 +464,161 @@ Different plant models have unique biological characteristics:
 - **Perennial trees** (almond, olive, walnut): Multi-year growth patterns with seasonal cycles
 - **Determinant growth** (some beans, tomatoes): Defined growth endpoint
 - **Indeterminant growth** (some tomatoes, vines): Continuous growth under favorable conditions
+
+## Pruning and Organ Removal
+
+PlantArchitecture can cut plants after they have been built: removing branches, stripping
+leaves, harvesting fruit, and killing buds so an axis stops producing new growth. These are
+the same operations the Helios plant library uses internally to shape trained architectures
+such as VSP grapevine and espalier apple. Pruned plants keep growing normally when
+`advanceTime()` is called afterwards.
+
+### Method Summary
+
+| Method | Effect |
+|---|---|
+| `pruneBranch(plant_id, shoot_id, node_index)` | Cut a shoot at a node, removing that node, everything distal to it, and every child shoot attached at or above it |
+| `harvestPlant(plant_id)` | Remove all flowers and fruit from a plant. Leaves are **not** removed |
+| `removePlantLeaves(plant_id)` | Remove all leaves from every shoot on a plant |
+| `removeShootLeaves(plant_id, shoot_id)` | Remove all leaves from one shoot |
+| `removeShootVegetativeBuds(plant_id, shoot_id)` | Kill a shoot's vegetative buds, so it can no longer throw new laterals |
+| `removeShootFloralBuds(plant_id, shoot_id)` | Kill a shoot's floral buds, deleting its flower and fruit geometry |
+
+### Cutting a Branch
+
+`pruneBranch()` cuts at a node index within a shoot. Node 0 removes the whole shoot; a higher
+index heads the shoot back and keeps the nodes below the cut.
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.types import vec3
+
+with Context() as context:
+    plantarch = PlantArchitecture(context)
+    plantarch.loadPlantModelFromLibrary('apple')
+    plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365)
+
+    # Remove a branch and everything growing off it
+    plantarch.pruneBranch(plant_id, shoot_id=3, node_index=0)
+
+    # Head back the leader, keeping its lowest 5 nodes
+    plantarch.pruneBranch(plant_id, shoot_id=0, node_index=5)
+
+    # The plant continues to grow from what is left
+    plantarch.advanceTime(plant_id, 60)
+```
+
+The cut is recursive: pruning a shoot also removes every shoot descended from it, so there is
+no need to walk the branch system yourself.
+
+> **Note:** A pruned shoot currently keeps its ID in `getAllShootIDs()` with a `node_count` of
+> 0 rather than disappearing. Traverse with `getShoot()` and treat `node_count == 0` as
+> "nothing left here" rather than relying on either behavior.
+
+### Harvesting and Defoliation
+
+`harvestPlant()` removes reproductive organs only. This matches the C++ implementation; note
+that the upstream Helios documentation for `harvestPlant` incorrectly states that it also
+removes leaves.
+
+```python
+fruit_before = len(plantarch.getPlantFruitObjectIDs(plant_id))
+plantarch.harvestPlant(plant_id)
+print(f"Harvested {fruit_before - len(plantarch.getPlantFruitObjectIDs(plant_id))} fruit")
+
+# Leaves survive a harvest -- defoliate explicitly if you want them gone
+plantarch.removePlantLeaves(plant_id)
+assert plantarch.getPlantLeafObjectIDs(plant_id) == []
+```
+
+### Shaping a Trained Architecture
+
+Stripping leaves and killing buds on a shoot is how the plant library builds trunks, cordons
+and canes that stay bare:
+
+```python
+# Make shoot 0 a clean trunk that will not throw new shoots or fruit
+plantarch.removeShootLeaves(plant_id, 0)
+plantarch.removeShootVegetativeBuds(plant_id, 0)
+plantarch.removeShootFloralBuds(plant_id, 0)
+```
+
+### Shoot Hierarchy Queries
+
+These queries walk a plant's branching structure. All of them omit shoots that have been
+pruned away.
+
+| Method | Returns |
+|---|---|
+| `getParentShootID(plant_id, shoot_id)` | ID of the shoot this one grew from, or `-1` for the base stem |
+| `getShootRank(plant_id, shoot_id)` | Botanical branching order (base stem is 0) |
+| `getShootDepth(plant_id, shoot_id)` | Number of steps through the shoot tree to the base stem |
+| `getPathToRoot(plant_id, shoot_id)` | Shoot IDs from this shoot to the base stem, inclusive |
+| `getChildShootIDs(plant_id, shoot_id)` | Direct children, ordered by the node they attach to |
+| `getAllDescendantShootIDs(plant_id, shoot_id)` | Every shoot descended from a shoot, depth-first, excluding the shoot itself |
+| `getShootIDsByRank(plant_id)` | Dict mapping branching rank to the shoot IDs at that rank |
+| `getShootHierarchyMap(plant_id)` | Dict mapping each shoot with children to those children |
+| `getTerminalShootIDs(plant_id)` | Shoots carrying no child shoots |
+| `isShootPruned(plant_id, shoot_id)` | Whether a shoot was pruned away entirely |
+
+```python
+by_rank = plantarch.getShootIDsByRank(plant_id)
+print(f"{len(by_rank.get(1, []))} primary branches, "
+      f"{len(by_rank.get(2, []))} secondary")
+print(f"{len(plantarch.getTerminalShootIDs(plant_id))} growing tips")
+```
+
+**Rank is not depth.** A shoot created by `appendShoot()` continues its parent's axis rather
+than branching from it, so it keeps the parent's rank while its depth increases. Use
+`getShootRank()` for botanical branching order and `getShootDepth()` for distance through the
+shoot tree.
+
+**Pruned shoots keep their IDs.** `pruneBranch()` with `node_index=0` empties a shoot but
+leaves it in the plant's tree so that shoot IDs stay stable. Such a shoot is still returned by
+`getAllShootIDs()` but has no geometry and cannot be queried for taper, so filter it out when
+iterating:
+
+```python
+live = [s for s in plantarch.getAllShootIDs(plant_id)
+        if not plantarch.isShootPruned(plant_id, s)]
+```
+
+### Bulk Pruning
+
+Three convenience methods apply `pruneBranch()` across a branch system. Each returns the list
+of shoot IDs it actually cut, and each cuts only the shallowest shoot on every pruned axis --
+`pruneBranch()` recursion removes the rest, so no shoot is cut twice.
+
+| Method | Effect |
+|---|---|
+| `pruneShootsByRank(plant_id, min_rank)` | Remove every shoot at or above a branching rank. `min_rank` must be at least 1 |
+| `pruneShootSubtree(plant_id, shoot_id, include_self=True)` | Remove a branch system; with `include_self=False` the shoot is kept and only its children are cut |
+| `pruneTerminalShoots(plant_id, stride=2)` | Thin the canopy by cutting every *stride*-th tip |
+
+```python
+# Remove all third-order and finer branching
+pruned = plantarch.pruneShootsByRank(plant_id, min_rank=3)
+print(f"Cut {len(pruned)} higher-order branches")
+
+# Thin roughly half the growing tips
+plantarch.pruneTerminalShoots(plant_id, stride=2)
+
+# Keep a cane but strip everything growing off it
+plantarch.pruneShootSubtree(plant_id, shoot_id=2, include_self=False)
+
+plantarch.advanceTime(plant_id, 60)
+```
+
+`min_rank=0` is rejected, because cutting rank 0 destroys the plant. To remove a whole plant
+use `deletePlantInstance()`; to cut the base stem deliberately, call `pruneBranch()` directly.
+
+### Automatic Pruning
+
+Pruning also happens on its own during `advanceTime()` when it is configured:
+
+- `enableGroundClipping(ground_height)` removes organs that grow below the ground plane
+- `enableSolidObstacleAvoidance(uuids, ..., enable_obstacle_pruning=True)` removes organs that penetrate solid obstacles
+- The carbohydrate model aborts flowers and fruit, and eventually prunes whole shoots, under prolonged carbon stress
 
 ## Collision Detection
 

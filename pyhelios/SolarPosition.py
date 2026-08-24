@@ -394,7 +394,47 @@ class SolarPosition:
             )
         except Exception as e:
             raise SolarPositionError(f"Failed to get sun direction spherical: {e}")
-    
+
+    def setSunDirection(self, sundirection: SphericalCoord):
+        """
+        Override the computed solar position with a prescribed sun direction.
+
+        By default the sun position is computed from the date, time and location
+        set in the Context. Calling this method overrides that calculation, so
+        all subsequent sun queries (elevation, zenith, azimuth, direction
+        vectors) and flux calculations use the prescribed direction instead.
+
+        Args:
+            sundirection: SphericalCoord giving the direction of the sun.
+                Elevation and azimuth are in radians.
+
+        Raises:
+            ValueError: If sundirection is not a SphericalCoord
+            SolarPositionError: If the override fails
+
+        Example:
+            >>> from pyhelios.types import SphericalCoord
+            >>> import math
+            >>> solar.setSunDirection(SphericalCoord(1.0, math.radians(45), math.radians(180)))
+            >>> math.degrees(solar.getSunElevation())
+            45.0
+        """
+        if not isinstance(sundirection, SphericalCoord):
+            raise ValueError(
+                f"Sun direction must be a SphericalCoord, got {type(sundirection).__name__}"
+            )
+
+        self._check_context_alive()
+        try:
+            solar_wrapper.setSunDirection(
+                self._solar_pos,
+                sundirection.radius,
+                sundirection.elevation,
+                sundirection.azimuth,
+            )
+        except Exception as e:
+            raise SolarPositionError(f"Failed to set sun direction: {e}")
+
     # Solar flux calculations
     def getSolarFlux(self, pressure_Pa: Optional[float] = None, temperature_K: Optional[float] = None,
                      humidity_rel: Optional[float] = None, turbidity: Optional[float] = None) -> float:
@@ -723,26 +763,36 @@ class SolarPosition:
             raise SolarPositionError(f"Failed to calculate sunset time: {e}")
     
     # Calibration functions
-    def calibrateTurbidityFromTimeseries(self, timeseries_label: str):
+    def calibrateTurbidityFromTimeseries(self, timeseries_label: str) -> float:
         """
         Calibrate atmospheric turbidity using timeseries data.
-        
+
         Args:
-            timeseries_label: Label of timeseries data in Context
-            
+            timeseries_label: Label of timeseries data in Context. The data should
+                be global shortwave radiation flux on a horizontal plane in W/m^2,
+                and should contain at least one day of clear-sky conditions.
+
+        Returns:
+            The calibrated turbidity value
+
         Raises:
             ValueError: If timeseries label is invalid
             SolarPositionError: If calibration fails
-            
+
+        Note:
+            This method does not itself apply the calibrated value. Pass the
+            returned turbidity to setAtmosphericConditions() to use it.
+
         Example:
-            >>> solar.calibrateTurbidityFromTimeseries("solar_irradiance")
+            >>> turbidity = solar.calibrateTurbidityFromTimeseries("solar_irradiance")
+            >>> solar.setAtmosphericConditions(101325, 293.15, 0.5, turbidity)
         """
         if not timeseries_label:
             raise ValueError("Timeseries label cannot be empty")
         
         self._check_context_alive()
         try:
-            solar_wrapper.calibrateTurbidityFromTimeseries(self._solar_pos, timeseries_label)
+            return solar_wrapper.calibrateTurbidityFromTimeseries(self._solar_pos, timeseries_label)
         except Exception as e:
             raise SolarPositionError(f"Failed to calibrate turbidity: {e}")
     

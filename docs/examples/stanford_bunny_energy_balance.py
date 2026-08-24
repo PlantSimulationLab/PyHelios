@@ -121,18 +121,19 @@ def main():
         # Without these, Helios falls back to internal defaults and emits
         # "missing_emissivity" / boundary-layer-conductance warnings for every
         # primitive, so the resulting temperatures reflect unstated assumptions.
+        # Each setter takes the whole UUID list and broadcasts one value across
+        # it in a single native call, rather than one call per primitive.
         all_uuids = context.getAllUUIDs()
-        for uuid in all_uuids:
-            context.setPrimitiveDataFloat(uuid, "emissivity_LW", 0.98)
-            context.setPrimitiveDataFloat(uuid, "air_temperature", 300.0)  # K
-            context.setPrimitiveDataFloat(uuid, "air_humidity", 0.5)       # relative
-            context.setPrimitiveDataFloat(uuid, "wind_speed", 1.0)         # m/s
-            # Initial guess for the iterative solve.
-            context.setPrimitiveDataFloat(uuid, "temperature", 300.0)      # K
-            # Characteristic length driving boundary-layer conductance. These
-            # primitives are not members of a compound object, so it must be set
-            # explicitly or Helios falls back to the individual primitive size.
-            context.setPrimitiveDataFloat(uuid, "object_length", 0.05)     # m
+        context.setPrimitiveDataFloat(all_uuids, "emissivity_LW", 0.98)
+        context.setPrimitiveDataFloat(all_uuids, "air_temperature", 300.0)  # K
+        context.setPrimitiveDataFloat(all_uuids, "air_humidity", 0.5)       # relative
+        context.setPrimitiveDataFloat(all_uuids, "wind_speed", 1.0)         # m/s
+        # Initial guess for the iterative solve.
+        context.setPrimitiveDataFloat(all_uuids, "temperature", 300.0)      # K
+        # Characteristic length driving boundary-layer conductance. These
+        # primitives are not members of a compound object, so it must be set
+        # explicitly or Helios falls back to the individual primitive size.
+        context.setPrimitiveDataFloat(all_uuids, "object_length", 0.05)     # m
         print(f"Set environmental boundary conditions on {len(all_uuids)} primitives")
 
         # Set up energy balance model (matching C++ sample)

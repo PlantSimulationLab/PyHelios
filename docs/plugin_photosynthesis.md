@@ -569,7 +569,7 @@ The intercellular CO<sub>2</sub> concentration is estimated as a function of the
 <table>
    <tr><th>Parameter</th><th>Units</th><th>Description</th></tr>
    <tr><td>\f$A_{sat}\f$</td><td>mol CO<sub>2</sub>/m<sup>2</sup>-sec</td><td>Assimilation rate at saturating irradiance and reference temperature and intercellular CO<sub>2</sub> concentration.</td></tr>
-   <tr><td>\f$\theta\f$</td><td>W/m<sup>2</sup></td><td>Shape parameter for response to light.</td></tr>
+   <tr><td>\f$\theta\f$</td><td>µmol/m<sup>2</sup>·s</td><td>Shape parameter for response to light (PPFD; i_PAR is converted from W/m<sup>2</sup> before use).</td></tr>
    <tr><td>\f$T_{min}\f$</td><td>Kelvin</td><td>Minimum temperature at which assimilation occurs.</td></tr>
    <tr><td>\f$T_{opt}\f$</td><td>Kelvin</td><td>Temperature at which maximum assimilation rate occurs.</td></tr>
    <tr><td>\f$q\f$</td><td>unitless</td><td>Temperature response shape function.</td></tr>

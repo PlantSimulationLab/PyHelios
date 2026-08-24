@@ -60,6 +60,34 @@ PYHELIOS_API float* getPlantShootInternodeVertices(PlantArchitecture* plantarch,
 // *count is set to the number of radius values (one per vertex, i.e. equal to the vertex count).
 PYHELIOS_API float* getPlantShootInternodeRadii(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
 
+// Shoot hierarchy accessors (helios-core 1.3.82). Array returns use thread-local static
+// storage; do NOT free. Scalar returns use an out-param and report failure via getLastErrorCode().
+// Returns the ID of the shoot this shoot grew from, or -1 for the base stem shoot.
+PYHELIOS_API int getParentShootID(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+// Branching order: base stem is 0, a branch off it is 1. Axis continuations from appendShoot()
+// keep the parent's rank, so this is not the same as getShootDepth().
+PYHELIOS_API unsigned int getShootRank(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+// Number of steps through the shoot tree to the base stem shoot, counting axis continuations.
+PYHELIOS_API unsigned int getShootDepth(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+// Shoot IDs from the given shoot to the base stem shoot inclusive.
+PYHELIOS_API unsigned int* getPathToRoot(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
+// Direct children of a shoot, ordered by the node they attach to. Excludes pruned shoots.
+PYHELIOS_API unsigned int* getChildShootIDs(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
+// All descendants depth-first, excluding the shoot itself and any pruned shoots.
+PYHELIOS_API unsigned int* getAllDescendantShootIDs(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int* count);
+// Shoot IDs grouped by rank. Returned flat, with *group_count groups whose lengths are written
+// to *group_sizes (also thread-local static, do NOT free). Group i holds the shoots of rank i, and
+// a rank with no live shoots is an empty group, so the group index always equals the rank.
+PYHELIOS_API unsigned int* getShootIDsByRank(PlantArchitecture* plantarch, unsigned int plantID, int** group_sizes, int* group_count, int* total_count);
+// Parent-to-children map. Parent IDs are written to *parent_ids and the child IDs of parent i are
+// the next (*group_sizes)[i] entries of the returned flat child buffer. Only shoots that have
+// children appear. All three buffers are thread-local static; do NOT free.
+PYHELIOS_API unsigned int* getShootHierarchyMap(PlantArchitecture* plantarch, unsigned int plantID, unsigned int** parent_ids, int** group_sizes, int* parent_count, int* total_children);
+// Shoots with no children. Excludes pruned shoots.
+PYHELIOS_API unsigned int* getTerminalShootIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+// 1 if the shoot was pruned away entirely, 0 if it is live, -1 on error.
+PYHELIOS_API int isShootPruned(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+
 // Memory cleanup functions
 PYHELIOS_API void freeStringArray(char** strings, int count);
 PYHELIOS_API void freeIntArray(unsigned int* array);
@@ -112,8 +140,28 @@ PYHELIOS_API int setPlantNitrogenParametersFromJSON(PlantArchitecture* plantarch
 PYHELIOS_API int setPlantPhenologicalThresholds(PlantArchitecture* plantarch, unsigned int plantID, float time_to_dormancy_break, float time_to_flower_initiation, float time_to_flower_opening, float time_to_fruit_set, float time_to_fruit_maturity, float time_to_dormancy, float max_leaf_lifespan, int is_evergreen);
 PYHELIOS_API int disablePlantPhenology(PlantArchitecture* plantarch, unsigned int plantID);
 
+// Dormancy control functions
+PYHELIOS_API int makePlantDormant(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API int breakPlantDormancy(PlantArchitecture* plantarch, unsigned int plantID);
+// Returns 1 if dormant, 0 if not, -1 on error (check the error code to disambiguate).
+PYHELIOS_API int isPlantDormant(PlantArchitecture* plantarch, unsigned int plantID);
+
+// Pruning and organ removal functions
+// pruneBranch removes the phytomer at node_index and everything distal to it,
+// recursing into every child shoot of the pruned nodes.
+PYHELIOS_API int pruneBranch(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index);
+// harvestPlant removes flowers and fruit only; leaves are left in place.
+PYHELIOS_API int harvestPlant(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API int removeShootLeaves(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+PYHELIOS_API int removeShootVegetativeBuds(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+PYHELIOS_API int removeShootFloralBuds(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+PYHELIOS_API int removePlantLeaves(PlantArchitecture* plantarch, unsigned int plantID);
+
 // Plant state query functions
 PYHELIOS_API float getPlantAge(PlantArchitecture* plantarch, unsigned int plantID);
+// Maximum age in days beyond which the plant stops growing (helios-core 1.3.82).
+PYHELIOS_API float getPlantMaxAge(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API int setPlantMaxAge(PlantArchitecture* plantarch, unsigned int plantID, float max_age);
 PYHELIOS_API float getPlantHeight(PlantArchitecture* plantarch, unsigned int plantID);
 PYHELIOS_API float sumPlantLeafArea(PlantArchitecture* plantarch, unsigned int plantID);
 

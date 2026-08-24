@@ -1492,7 +1492,7 @@ class RadiationModel:
 
             uuids = context.getAllUUIDs()
             flux = radiation.getAbsorbedFlux("SW")
-            power = sum(f * context.getPrimitiveArea(u) for f, u in zip(flux, uuids))
+            power = float((flux * context.getPrimitiveArea(uuids)).sum(dtype="float64"))
 
         Returns:
             Absorbed flux density per primitive in W/m^2, summed over all bands.
@@ -1508,7 +1508,7 @@ class RadiationModel:
     @require_plugin('radiation', 'get band-specific simulation results')
     def getAbsorbedFlux(self, band_label: Union[str, List[str]],
                         uuids: Optional[List[int]] = None
-                        ) -> Union[List[float], Dict[str, List[float]]]:
+                        ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
         """Get per-band absorbed radiation flux density, aligned to UUIDs.
 
         ``runBand()`` stores each band's result as ``radiation_flux_<band>``
@@ -1527,8 +1527,9 @@ class RadiationModel:
                 Results follow this list's order.
 
         Returns:
-            For a single band, absorbed flux density per primitive in W/m^2.
-            For a list of bands, a dict mapping each band label to that list.
+            For a single band, a float32 array of absorbed flux density per
+            primitive in W/m^2. For a list of bands, a dict mapping each band
+            label to that array.
 
         Raises:
             RadiationModelError: If a band does not exist, or if ``runBand()`` has
@@ -1538,8 +1539,7 @@ class RadiationModel:
             >>> radiation.runBand(["PAR", "NIR", "SW"])
             >>> uuids = context.getAllUUIDs()
             >>> par = radiation.getAbsorbedFlux("PAR")          # W/m^2, PAR only
-            >>> par_watts = [f * context.getPrimitiveArea(u)
-            ...              for f, u in zip(par, uuids)]
+            >>> par_watts = par * context.getPrimitiveArea(uuids)
             >>> all_bands = radiation.getAbsorbedFlux(["PAR", "NIR", "SW"])
             >>> all_bands["SW"][0]                              # doctest: +SKIP
         """
@@ -1573,7 +1573,7 @@ class RadiationModel:
                 "No primitives to query: the Context contains no geometry."
             )
 
-        results: Dict[str, List[float]] = {}
+        results: Dict[str, "np.ndarray"] = {}
         for label in labels:
             if not radiation_wrapper.doesBandExist(self.radiation_model, label):
                 raise RadiationModelError(
@@ -1596,7 +1596,7 @@ class RadiationModel:
             # One native call for the whole band. Goes straight to the bulk wrapper
             # rather than Context.getPrimitiveDataArray(), which would re-validate
             # every UUID and re-check existence that the probe above already
-            # established, then return float32 needing conversion to List[float].
+            # established.
             results[label] = context_wrapper.getPrimitiveDataFloatArray(
                 self.context.getNativePtr(), uuids, data_label)
 

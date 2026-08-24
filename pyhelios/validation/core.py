@@ -13,24 +13,6 @@ from typing import Any, Callable, Dict, Union
 from .exceptions import ValidationError, create_validation_error
 
 
-def _bind_args_to_params(func, args, kwargs):
-    """Bind positional and keyword arguments to parameter names.
-
-    Returns a dict mapping parameter names to their values for all
-    explicitly provided arguments (excludes defaults for unprovided params).
-    Also returns updated args/kwargs suitable for calling the function
-    with any coerced values applied.
-    """
-    sig = inspect.signature(func)
-    try:
-        bound = sig.bind(*args, **kwargs)
-    except TypeError:
-        # If binding fails, let the actual function call produce the error
-        return {}, args, kwargs
-    # Don't apply defaults - we only want to validate explicitly provided args
-    return dict(bound.arguments), args, kwargs
-
-
 def validate_input(param_validators: Dict[str, Callable] = None,
                   type_coercions: Dict[str, Callable] = None):
     """
@@ -47,18 +29,16 @@ def validate_input(param_validators: Dict[str, Callable] = None,
         type_coercions: Dict mapping parameter names to coercion functions
     """
     def decorator(func):
+        # The signature is fixed once the function is defined, so resolve it
+        # here rather than on every call. inspect.signature() is not cached by
+        # CPython and dominated the cost of the primitive-creation APIs, which
+        # users call in per-primitive loops.
+        param_names = list(inspect.signature(func).parameters.keys())
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # Bind positional args to parameter names so we can validate them
-            bound_params, _, _ = _bind_args_to_params(func, args, kwargs)
-
-            # Build a mutable copy of all named arguments
-            # We need to track which params came as positional vs keyword
-            # so we can pass coerced values back correctly
-            sig = inspect.signature(func)
-            param_names = list(sig.parameters.keys())
-
-            # Map positional args to their parameter names
+            # Map positional args to their parameter names so that positional
+            # and keyword arguments validate identically.
             positional_params = {}
             for i, arg in enumerate(args):
                 if i < len(param_names):

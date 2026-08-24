@@ -164,6 +164,55 @@ class TestLibraryLoaderFunctionality:
             assert "not officially supported" in str(exc_info.value)
             assert "PYHELIOS_DEV_MODE=1" in str(exc_info.value)
 
+    def test_dev_mode_works_without_a_native_library(self, monkeypatch):
+        """PYHELIOS_DEV_MODE=1 must yield a mock library when no library exists.
+
+        The error raised when no library is found tells the user to set
+        PYHELIOS_DEV_MODE=1, so that variable has to actually rescue the situation.
+        It could not: load_helios_library() called get_loader() before acting on the
+        dev-mode flag, and get_loader() resolves a library directory eagerly via
+        _find_library_directory(), which raises when there is nothing to find. The
+        advice in the message was therefore impossible to follow.
+        """
+        monkeypatch.setattr(loader, "_loader_instance", None)
+        monkeypatch.setattr(
+            loader, "_find_library_directory",
+            Mock(side_effect=loader.LibraryLoadError("Native Helios library not found")),
+        )
+        monkeypatch.setenv("PYHELIOS_DEV_MODE", "1")
+
+        library = loader.load_helios_library()
+
+        assert isinstance(library, loader.MockLibrary)
+        assert loader.get_loader().is_mock is True
+
+    def test_force_mock_works_without_a_native_library(self, monkeypatch):
+        """The explicit force_mock argument must not need a library directory either."""
+        monkeypatch.setattr(loader, "_loader_instance", None)
+        monkeypatch.setattr(
+            loader, "_find_library_directory",
+            Mock(side_effect=loader.LibraryLoadError("Native Helios library not found")),
+        )
+        monkeypatch.delenv("PYHELIOS_DEV_MODE", raising=False)
+        monkeypatch.delenv("PYHELIOS_MOCK_MODE", raising=False)
+
+        library = loader.load_helios_library(force_mock=True)
+
+        assert isinstance(library, loader.MockLibrary)
+
+    def test_missing_library_still_raises_without_dev_mode(self, monkeypatch):
+        """Without dev mode, a missing library must still fail fast rather than mock."""
+        monkeypatch.setattr(loader, "_loader_instance", None)
+        monkeypatch.setattr(
+            loader, "_find_library_directory",
+            Mock(side_effect=loader.LibraryLoadError("Native Helios library not found")),
+        )
+        monkeypatch.delenv("PYHELIOS_DEV_MODE", raising=False)
+        monkeypatch.delenv("PYHELIOS_MOCK_MODE", raising=False)
+
+        with pytest.raises(loader.LibraryLoadError):
+            loader.load_helios_library()
+
 
 @pytest.mark.cross_platform
 class TestCrossPlatformDataTypes:

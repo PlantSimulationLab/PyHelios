@@ -45,6 +45,9 @@ try:
     
     helios_lib.getSunDirectionSpherical.argtypes = [ctypes.POINTER(USolarPosition)]
     helios_lib.getSunDirectionSpherical.restype = ctypes.POINTER(ctypes.c_float)
+
+    helios_lib.setSunDirection.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setSunDirection.restype = None
     
     # Solar flux calculations - all take atmospheric parameters
     helios_lib.getSolarFlux.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
@@ -146,6 +149,7 @@ if _SOLARPOSITION_FUNCTIONS_AVAILABLE:
     helios_lib.getSunAzimuth.errcheck = _check_error
     helios_lib.getSunDirectionVector.errcheck = _check_error
     helios_lib.getSunDirectionSpherical.errcheck = _check_error
+    helios_lib.setSunDirection.errcheck = _check_error
     helios_lib.getSolarFlux.errcheck = _check_error
     helios_lib.getSolarFluxPAR.errcheck = _check_error
     helios_lib.getSolarFluxNIR.errcheck = _check_error
@@ -254,6 +258,15 @@ def getSunDirectionSpherical(solar_pos: ctypes.POINTER(USolarPosition)) -> List[
         return [1.0, 0.0, 0.0]
 
 
+def setSunDirection(solar_pos: ctypes.POINTER(USolarPosition), radius: float,
+                    elevation_rad: float, azimuth_rad: float) -> None:
+    """Override the computed solar position with a prescribed sun direction"""
+    if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
+
+    helios_lib.setSunDirection(solar_pos, float(radius), float(elevation_rad), float(azimuth_rad))
+
+
 # Solar flux calculations
 def getSolarFlux(solar_pos: ctypes.POINTER(USolarPosition), pressure_Pa: float, temperature_K: float, humidity_rel: float, turbidity: float) -> float:
     """Get total solar flux with atmospheric parameters"""
@@ -317,13 +330,13 @@ def getSunsetTime(solar_pos: ctypes.POINTER(USolarPosition)) -> Tuple[int, int, 
 
 
 # Calibration functions
-def calibrateTurbidityFromTimeseries(solar_pos: ctypes.POINTER(USolarPosition), timeseries_label: str) -> None:
-    """Calibrate turbidity from timeseries data"""
+def calibrateTurbidityFromTimeseries(solar_pos: ctypes.POINTER(USolarPosition), timeseries_label: str) -> float:
+    """Calibrate turbidity from timeseries data, returning the calibrated turbidity"""
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
     
     label_encoded = timeseries_label.encode('utf-8')
-    helios_lib.calibrateTurbidityFromTimeseries(solar_pos, label_encoded)
+    return float(helios_lib.calibrateTurbidityFromTimeseries(solar_pos, label_encoded))
 
 
 def enableCloudCalibration(solar_pos: ctypes.POINTER(USolarPosition), timeseries_label: str) -> None:

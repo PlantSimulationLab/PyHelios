@@ -29,6 +29,9 @@ PYHELIOS_API float getSunAzimuth(HeliosSolarPosition* solar_pos);
 PYHELIOS_API float* getSunDirectionVector(HeliosSolarPosition* solar_pos);
 PYHELIOS_API float* getSunDirectionSpherical(HeliosSolarPosition* solar_pos);
 
+// Override the computed solar position with a prescribed sun direction
+PYHELIOS_API void setSunDirection(HeliosSolarPosition* solar_pos, float radius, float elevation_rad, float azimuth_rad);
+
 // Solar flux calculations - all take atmospheric parameters (legacy API)
 PYHELIOS_API float getSolarFlux(HeliosSolarPosition* solar_pos, float pressure_Pa, float temperature_K, float humidity_rel, float turbidity);
 PYHELIOS_API float getSolarFluxPAR(HeliosSolarPosition* solar_pos, float pressure_Pa, float temperature_K, float humidity_rel, float turbidity);

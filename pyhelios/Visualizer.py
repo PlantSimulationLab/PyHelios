@@ -15,7 +15,7 @@ from typing import List, Optional, Union, Tuple
 from .plugins.registry import get_plugin_registry
 from .plugins import helios_lib
 from .wrappers import UVisualizerWrapper as visualizer_wrapper
-from .wrappers.DataTypes import vec3, RGBcolor, SphericalCoord
+from .wrappers.DataTypes import vec2, vec3, RGBcolor, SphericalCoord
 from .Context import Context, check_context_alive
 from .validation.plugin_decorators import validate_build_geometry_params, validate_print_window_params
 from .assets import get_asset_manager
@@ -138,14 +138,16 @@ class Visualizer:
     COLORMAP_PARULA = 4
     COLORMAP_GRAY = 5
     
-    def __init__(self, width: int, height: int, antialiasing_samples: int = 1, headless: bool = False):
+    def __init__(self, width: int, height: int, antialiasing_samples: int = 4, headless: bool = False):
         """
         Initialize Visualizer with graceful plugin handling.
 
         Args:
             width: Window width in pixels
             height: Window height in pixels
-            antialiasing_samples: Number of antialiasing samples (default: 1)
+            antialiasing_samples: Number of antialiasing samples (default: 4). Pass 0 to
+                disable antialiasing, which is required for exact color reproduction --
+                see :meth:`enableExactColorMode`.
             headless: Enable headless mode for offscreen rendering (default: False)
 
         Raises:
@@ -165,8 +167,10 @@ class Visualizer:
         # Validate parameter values
         if width <= 0 or height <= 0:
             raise ValueError("Width and height must be positive integers")
-        if antialiasing_samples < 1:
-            raise ValueError("Antialiasing samples must be at least 1")
+        if antialiasing_samples < 0:
+            raise ValueError(
+                f"Antialiasing samples must be non-negative, got {antialiasing_samples}. "
+                "Pass 0 to disable antialiasing.")
         
         self.width = width
         self.height = height
@@ -222,15 +226,15 @@ class Visualizer:
         # Plugin is available - create visualizer with correct working directory
         try:
             with _visualizer_working_directory():
-                if antialiasing_samples > 1:
-                    self.visualizer = visualizer_wrapper.create_visualizer_with_antialiasing(
-                        width, height, antialiasing_samples, headless
-                    )
-                else:
-                    self.visualizer = visualizer_wrapper.create_visualizer(
-                        width, height, headless
-                    )
-                    
+                # Always use the explicit-sample constructor: create_visualizer()
+                # hardcodes 4 samples on the C++ side, so routing through it would
+                # silently ignore the requested count (including a request to disable
+                # antialiasing, which exact color mode depends on).
+                self.visualizer = visualizer_wrapper.create_visualizer_with_antialiasing(
+                    width, height, antialiasing_samples, headless
+                )
+
+                
                 if self.visualizer is None:
                     raise VisualizerError(
                         "Failed to create Visualizer instance. "
@@ -982,6 +986,226 @@ class Visualizer:
             helios_lib.displayImageFromFile(self.visualizer, filename.encode('utf-8'))
         except Exception as e:
             raise VisualizerError(f"Failed to display image from file '{filename}': {e}")
+
+    def displayImageWithBoundingBoxes(self, image_file: str, bbox_file: str,
+                                      classes_file: str = "", line_width: float = 2.0,
+                                      fontsize: int = 12) -> None:
+        """
+        Display an image with YOLO bounding boxes overlaid.
+
+        Each box is drawn as a colored outline with its class name on a filled chip in
+        the box's top-left corner. Boxes are colored by class ID from a fixed palette of
+        seven colors, so classes whose IDs differ by a multiple of seven share a color.
+
+        This reads the annotation format written by
+        :meth:`pyhelios.RadiationModel.writeImageBoundingBoxes`.
+
+        Args:
+            image_file: Path to the image file (JPEG or PNG)
+            bbox_file: Path to the YOLO-format bounding box annotation file
+            classes_file: Path to the class name file. If empty (the default), a file
+                named "classes.txt" beside ``bbox_file`` is used when one exists;
+                otherwise boxes are labeled with their numeric class ID.
+            line_width: Width of the box outlines in screen pixels
+            fontsize: Size of the class label font in points
+
+        Raises:
+            ValueError: If a path is not a non-empty string, or a numeric argument is out of range
+            VisualizerError: If the operation fails
+
+        Note:
+            Like :meth:`displayImageFromFile`, this clears any existing geometry and does
+            not return until the window is closed.
+
+        Example:
+            >>> vis.displayImageWithBoundingBoxes("scene.jpeg", "scene.txt")
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+
+        if not isinstance(image_file, str) or not image_file.strip():
+            raise ValueError("Image file must be a non-empty string")
+        if not isinstance(bbox_file, str) or not bbox_file.strip():
+            raise ValueError("Bounding box file must be a non-empty string")
+        if classes_file and not isinstance(classes_file, str):
+            raise ValueError(
+                f"Classes file must be a string, got {type(classes_file).__name__}")
+        if line_width <= 0:
+            raise ValueError(f"Line width must be positive, got {line_width}")
+        if not isinstance(fontsize, _INT_TYPE) or fontsize <= 0:
+            raise ValueError(f"Font size must be a positive integer, got {fontsize}")
+
+        try:
+            visualizer_wrapper.display_image_with_bounding_boxes(
+                self.visualizer,
+                _resolve_user_path(image_file),
+                _resolve_user_path(bbox_file),
+                _resolve_user_path(classes_file) if classes_file else "",
+                float(line_width), int(fontsize))
+        except Exception as e:
+            raise VisualizerError(
+                f"Failed to display image '{image_file}' with bounding boxes: {e}")
+
+    def displayImageWithSegmentationMasks(self, image_file: str, mask_file: str,
+                                          fill_opacity: float = 0.4, line_width: float = 2.0,
+                                          fontsize: int = 12, show_labels: bool = True) -> None:
+        """
+        Display an image with COCO segmentation masks overlaid.
+
+        Each mask is drawn as a translucent filled polygon with a solid outline and its
+        class name on a filled chip. Masks are colored by their position in the file
+        rather than by class, so two touching objects of the same class stay
+        distinguishable.
+
+        This reads the annotation format written by
+        :meth:`pyhelios.RadiationModel.writeImageSegmentationMasks`.
+
+        Args:
+            image_file: Path to the image file (JPEG or PNG)
+            mask_file: Path to the COCO JSON segmentation mask file
+            fill_opacity: Opacity of the translucent fill, between 0 and 1. A value of 0
+                draws the outline without a fill.
+            line_width: Width of the mask outlines in screen pixels
+            fontsize: Size of the class label font in points
+            show_labels: Whether to draw the class name chip on each mask. Pass False to
+                see the masks alone, which helps when many overlapping chips would cover
+                the image.
+
+        Raises:
+            ValueError: If a path is not a non-empty string, or a numeric argument is out of range
+            VisualizerError: If the operation fails
+
+        Note:
+            Like :meth:`displayImageFromFile`, this clears any existing geometry and does
+            not return until the window is closed.
+
+        Example:
+            >>> vis.displayImageWithSegmentationMasks("scene.jpeg", "annotations.json")
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+
+        if not isinstance(image_file, str) or not image_file.strip():
+            raise ValueError("Image file must be a non-empty string")
+        if not isinstance(mask_file, str) or not mask_file.strip():
+            raise ValueError("Mask file must be a non-empty string")
+        if not 0.0 <= fill_opacity <= 1.0:
+            raise ValueError(f"Fill opacity must be between 0 and 1, got {fill_opacity}")
+        if line_width <= 0:
+            raise ValueError(f"Line width must be positive, got {line_width}")
+        if not isinstance(fontsize, _INT_TYPE) or fontsize <= 0:
+            raise ValueError(f"Font size must be a positive integer, got {fontsize}")
+        if not isinstance(show_labels, bool):
+            raise ValueError(
+                f"Show labels must be a boolean, got {type(show_labels).__name__}")
+
+        try:
+            visualizer_wrapper.display_image_with_segmentation_masks(
+                self.visualizer,
+                _resolve_user_path(image_file),
+                _resolve_user_path(mask_file),
+                float(fill_opacity), float(line_width), int(fontsize), show_labels)
+        except Exception as e:
+            raise VisualizerError(
+                f"Failed to display image '{image_file}' with segmentation masks: {e}")
+
+    def enableExactColorMode(self) -> None:
+        """
+        Render primitive colors exactly as they are set in the Context.
+
+        By default the fragment shader multiplies primitive colors by 1.5, which
+        brightens ordinary renders but means a color read back out of the framebuffer is
+        not the color that was set. This mode disables that multiplier, which is required
+        when the framebuffer carries data rather than an image -- for example when object
+        IDs are encoded as RGB values and decoded from the rendered pixels.
+
+        Exact reproduction additionally requires that no lighting be applied (see
+        :meth:`setLightingModel` with ``LIGHTING_NONE``, the default) and that the
+        Visualizer was constructed with ``antialiasing_samples=0``, since antialiasing
+        blends colors at primitive edges and produces pixels that decode to meaningless
+        IDs.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis = Visualizer(800, 600, antialiasing_samples=0)
+            >>> vis.enableExactColorMode()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.enable_exact_color_mode(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to enable exact color mode: {e}")
+
+    def disableExactColorMode(self) -> None:
+        """
+        Restore the default brightening of primitive colors.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.disableExactColorMode()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.disable_exact_color_mode(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to disable exact color mode: {e}")
+
+    def getTextboxSize(self, textstring: str, fontsize: int, fontname: str) -> vec2:
+        """
+        Measure the rendered size of a text string without adding it to the visualizer.
+
+        Returns the extent that :meth:`addTextboxByCenter` would occupy for the same
+        string, font and font size. The width is the sum of the glyph advances, so it
+        includes the side bearings; the height is that of the tallest glyph in the
+        string, so it depends on which characters the string contains. The ``_`` and
+        ``^`` subscript and superscript markers are handled as
+        :meth:`addTextboxByCenter` handles them: they occupy no width themselves and
+        halve the size of the character that follows.
+
+        Args:
+            textstring: Text to be measured
+            fontsize: Size of the text font in points
+            fontname: Name of a font in the visualizer fonts directory, e.g.
+                "OpenSans-Regular"
+
+        Returns:
+            Width and height of the text in window-normalized units.
+
+        Raises:
+            ValueError: If an argument is invalid
+            VisualizerError: If the operation fails
+
+        Note:
+            The result depends on the current framebuffer dimensions and DPI scale, and
+            therefore changes when the window is resized.
+
+        Example:
+            >>> size = vis.getTextboxSize("Leaf area", 14, "OpenSans-Regular")
+            >>> print(f"{size.x:.3f} x {size.y:.3f}")
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+
+        if not isinstance(textstring, str):
+            raise ValueError(
+                f"Text string must be a string, got {type(textstring).__name__}")
+        if not isinstance(fontsize, _INT_TYPE) or fontsize <= 0:
+            raise ValueError(f"Font size must be a positive integer, got {fontsize}")
+        if not isinstance(fontname, str) or not fontname.strip():
+            raise ValueError("Font name must be a non-empty string")
+
+        try:
+            width, height = visualizer_wrapper.get_textbox_size(
+                self.visualizer, textstring, int(fontsize), fontname)
+            return vec2(width, height)
+        except Exception as e:
+            raise VisualizerError(f"Failed to measure text size: {e}")
 
     # Window Data Access Methods
 

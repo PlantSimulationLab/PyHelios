@@ -226,3 +226,113 @@ class TestNativeParameterRoundTrip:
         npar.target_leaf_N_area = 2.0
         plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0.0, 0.0, 0.0), 1.0)
         plantarch.setPlantNitrogenParameters(plant_id, npar)  # must not raise
+
+
+# --------------------------------------------------------------------------- #
+# Native-only: species phytomer hooks survive redefining an existing shoot type
+# --------------------------------------------------------------------------- #
+@pytest.mark.native_only
+class TestPhytomerFunctionPreservation:
+    """Redefining an existing library shoot type must not discard the species'
+    phytomer_creation_function / phytomer_callback_function.
+
+    These are raw C function pointers that cannot cross the JSON boundary, so
+    jsonToShootParameters rebuilds ShootParameters from values alone and leaves
+    them null. For maize, MaizePhytomerCreationFunction is the only thing that
+    assigns ears (BUD_ACTIVE, MaizeEarPrototype) at nodes 9-11 and kills the
+    floral buds elsewhere; losing it puts a 7-flower tassel on nearly every node.
+
+    Leaf count is identical either way, so it carries no signal here -- peduncle
+    and fruit counts are what distinguish the two states.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        if not plantarch_wrapper._PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture parameter functions not available (rebuild required)")
+        ctx = Context()
+        try:
+            pa = PlantArchitecture(ctx)
+            pa.disableMessages()
+            pa.loadPlantModelFromLibrary("maize")
+            yield pa
+            pa.__exit__(None, None, None)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture init/load failed: {e}")
+        finally:
+            ctx.__exit__(None, None, None)
+
+    # Age 90: maize is phyllochron-limited well past age 45 in helios-core 1.3.82
+    # (phyllochron_min went 2 -> 3 and grain fill 10 -> 58 days), so a shorter run
+    # reaches neither the node cap nor fruit set and cannot distinguish the two states.
+    BUILD_AGE = 90.0
+
+    @staticmethod
+    def _build_counts(pa):
+        plant_id = pa.buildPlantInstanceFromLibrary(vec3(0.0, 0.0, 0.0),
+                                                    TestPhytomerFunctionPreservation.BUILD_AGE)
+        return (
+            len(pa.getPlantLeafObjectIDs(plant_id)),
+            len(pa.getPlantPeduncleObjectIDs(plant_id)),
+            len(pa.getPlantFruitObjectIDs(plant_id)),
+        )
+
+    def test_identity_redefine_preserves_maize_ear_structure(self, plantarch):
+        """An identity round-trip must be a true no-op.
+
+        Reading mainstem parameters and writing them straight back unmodified
+        must not change the plant at all.
+        """
+        baseline_leaves, baseline_peduncles, baseline_fruit = self._build_counts(plantarch)
+
+        params = plantarch.getCurrentShootParameters("mainstem")
+        plantarch.defineShootType("mainstem", params)
+
+        after_leaves, after_peduncles, after_fruit = self._build_counts(plantarch)
+
+        assert after_leaves == baseline_leaves, (
+            f"identity redefine changed leaf count {baseline_leaves} -> {after_leaves}; "
+            "shoot-level parameters were resampled or a prototype function was dropped"
+        )
+        assert after_peduncles == baseline_peduncles, (
+            f"identity redefine changed peduncle count {baseline_peduncles} -> {after_peduncles}; "
+            "species phytomer_creation_function was likely dropped"
+        )
+        assert after_fruit == baseline_fruit, (
+            f"identity redefine changed fruit count {baseline_fruit} -> {after_fruit}; "
+            "tassels replacing ears indicates the phytomer creation hook was lost"
+        )
+
+    def test_edited_redefine_applies_value_and_keeps_ear_structure(self, plantarch):
+        """A real edit must take effect while the ear/tassel logic stays intact."""
+        baseline_leaves, baseline_peduncles, baseline_fruit = self._build_counts(plantarch)
+
+        params = plantarch.getCurrentShootParameters("mainstem")
+        params["max_nodes"] = {"distribution": "constant", "parameters": [25]}
+        plantarch.defineShootType("mainstem", params)
+
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0.0, 0.0, 0.0), self.BUILD_AGE)
+        leaves = len(plantarch.getPlantLeafObjectIDs(plant_id))
+        peduncles = len(plantarch.getPlantPeduncleObjectIDs(plant_id))
+
+        # The edit must actually apply: raising the node cap must grow more leaves than
+        # the same plant built with the library default.
+        assert leaves > baseline_leaves, (
+            f"max_nodes=25 did not take effect (leaves={leaves}, "
+            f"baseline={baseline_leaves})")
+        # ...without regressing into a tassel-per-node plant.
+        assert peduncles <= baseline_peduncles + 1, (
+            f"peduncle count {peduncles} far exceeds baseline {baseline_peduncles}; "
+            "phytomer creation hook lost despite a valid parameter edit"
+        )
+
+    def test_new_shoot_type_from_existing_label_is_unaffected(self, plantarch):
+        """Defining a brand-new label must still work (nothing to preserve)."""
+        params = plantarch.getCurrentShootParameters("mainstem")
+        params["max_nodes"] = {"distribution": "constant", "parameters": [12]}
+        plantarch.defineShootType("custom_mainstem_variant", params)
+
+        out = plantarch.getCurrentShootParameters("custom_mainstem_variant")
+        assert out["max_nodes"] == {"distribution": "constant", "parameters": [12.0]}

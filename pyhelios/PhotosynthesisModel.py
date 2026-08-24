@@ -65,7 +65,7 @@ class PhotosynthesisModel:
         ...         Tref=298.0,      # Reference temperature (K)
         ...         Ci_ref=290.0,    # Reference CO2 concentration (μmol/mol)
         ...         Asat=20.0,       # Light-saturated photosynthesis rate (μmol/m²/s)
-        ...         theta=65.0       # Light response curvature (W/m²)
+        ...         theta=65.0       # Light response curvature (µmol/m²·s PPFD)
         ...     )
         ...     photosynthesis.setEmpiricalModelCoefficients(coeffs)
         ...     photosynthesis.run()

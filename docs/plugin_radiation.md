@@ -95,9 +95,9 @@ with RadiationModel(context) as radiation:
     print(f"Absorbed flux density: {results[0]:.2f} W/m^2")
     
     # To get absorbed POWER in W, weight each primitive by its area.
-    # Do NOT use sum(results) - summing W/m^2 across primitives is not meaningful.
-    power = sum(flux * context.getPrimitiveArea(uuid)
-                for flux, uuid in zip(results, uuids))
+    # Do NOT use results.sum() - summing W/m^2 across primitives is not meaningful.
+    # Both calls return arrays, so this is one vectorized multiply.
+    power = float((results * context.getPrimitiveArea(uuids)).sum(dtype="float64"))
     print(f"Total absorbed power: {power:.2f} W")
 ```
 
@@ -415,11 +415,12 @@ leaf_flux = radiation.getAbsorbedFlux("PAR", uuids=leaf_uuids)
 # Calculate radiation statistics over the per-primitive flux densities (W/m^2)
 radiation_data = radiation.getAbsorbedFlux("PAR")
 
-import statistics
-mean_flux = statistics.mean(radiation_data)
-max_flux = max(radiation_data)
-min_flux = min(radiation_data)
-std_flux = statistics.stdev(radiation_data)
+# getAbsorbedFlux returns a float32 array, so use numpy rather than statistics:
+# each of these is one vectorized pass instead of a Python-level loop.
+mean_flux = radiation_data.mean(dtype="float64")
+max_flux = radiation_data.max()
+min_flux = radiation_data.min()
+std_flux = radiation_data.std(dtype="float64")
 
 print(f"Radiation statistics (flux density):")
 print(f"  Mean: {mean_flux:.2f} W/m²")
@@ -1040,9 +1041,9 @@ dslr_img = radiation.writeCameraImage("dslr_cam", ["red", "green", "blue"], "dsl
 for day in range(100):
     # Update leaf age data
     leaf_patches = context.getAllUUIDs()
-    for patch_id in leaf_patches:
-        current_age = context.getPrimitiveDataFloat(patch_id, "age")
-        context.setPrimitiveDataFloat(patch_id, "age", current_age + 1.0)
+    # One native call each way, rather than two per primitive
+    ages = context.getPrimitiveDataArray(leaf_patches, "age")
+    context.setPrimitiveDataFloat(leaf_patches, "age", ages + 1.0)
 
     # Interpolate spectra based on updated ages
     radiation.interpolateSpectrumFromPrimitiveData(
@@ -1058,8 +1059,9 @@ for day in range(100):
 
     # Analyze results - convert flux density (W/m^2) to absorbed power (W)
     flux = radiation.getAbsorbedFlux("PAR")
-    daily_radiation[day] = sum(f * context.getPrimitiveArea(u)
-                               for f, u in zip(flux, context.getAllUUIDs()))
+    # Both calls return arrays: one vectorized multiply, and float64
+    # accumulation so summing float32 areas does not drift.
+    daily_radiation[day] = float((flux * context.getPrimitiveArea(leaf_patches)).sum(dtype="float64"))
 ```
 
 ### Multi-Source Lighting Scenarios
@@ -1199,12 +1201,13 @@ try:
         # getAbsorbedFlux() reads exactly that, keyed by UUID.
         per_band = radiation.getAbsorbedFlux(["PAR", "NIR", "SW"])
         for band, flux in per_band.items():
-            mean_flux = sum(flux) / len(flux)
+            mean_flux = flux.mean(dtype="float64")
             print(f"Band {band}: mean absorbed flux density {mean_flux:.2f} W/m²")
         
-        # Equivalent, reading the primitive data directly:
+        # Equivalent, reading the primitive data directly in one native call:
         #   context.getPrimitiveDataArray(all_uuids, "radiation_flux_PAR")
-        #   [context.getPrimitiveDataFloat(u, "radiation_flux_PAR") for u in all_uuids]
+        # A per-UUID comprehension over getPrimitiveDataFloat() returns the same
+        # values but costs one native call per primitive -- avoid it on large scenes.
 
 except RadiationModelError as e:
     print(f"Radiation modeling failed: {e}")

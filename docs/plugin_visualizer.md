@@ -52,10 +52,12 @@ with Context() as context:
 
 <table>
 <tr><th>Constructors</th></tr>
-<tr><td>\ref pyhelios.Visualizer.Visualizer "Visualizer(width, height, antialiasing_samples=1, headless=False)"</td></tr>
+<tr><td>\ref pyhelios.Visualizer.Visualizer "Visualizer(width, height, antialiasing_samples=4, headless=False)"</td></tr>
 </table>
 
 The class associated with the visualization is called Visualizer. The class constructor takes width and height arguments that specify the size of the graphics window in pixels. Additional optional parameters control antialiasing quality and headless rendering mode. Below is an example:
+
+`antialiasing_samples` defaults to 4. Pass 0 to disable antialiasing, which is required for exact color reproduction — see [Exact Color Mode](#ExactColor).
 
 ```python
 from pyhelios import Visualizer
@@ -662,6 +664,59 @@ with Visualizer(width=1200, height=800) as vis:
 ```
 
 \image html CameraSchematic.jpeg
+
+### Exact Color Mode {#ExactColor}
+
+By default the fragment shader multiplies primitive colors by 1.5, which brightens ordinary renders but means the color read back out of the framebuffer is not the color that was set on the primitive. `enableExactColorMode()` disables that multiplier so a color set with `Context.setPrimitiveColor()` is reproduced exactly in the rendered image. `disableExactColorMode()` restores the default.
+
+This matters when the framebuffer carries data rather than an image — for example when object IDs are encoded as RGB values and decoded back from the rendered pixels.
+
+```python
+# Exact reproduction needs antialiasing off as well as the mode enabled.
+with Visualizer(800, 600, antialiasing_samples=0, headless=True) as vis:
+    vis.enableExactColorMode()
+    vis.buildContextGeometry(context)
+    vis.plotUpdate()
+    pixels, width, height = vis.getWindowPixelsRGB()
+```
+
+Exact reproduction has three requirements, and missing any one of them silently corrupts the result:
+
+- `enableExactColorMode()` must be called, or colors come back 1.5x too bright.
+- The Visualizer must be constructed with `antialiasing_samples=0`. Antialiasing blends colors at primitive edges, and a blended edge pixel decodes to an object ID that was never in the scene.
+- No lighting may be applied. `LIGHTING_NONE` is the default, so this holds unless `setLightingModel()` changed it.
+
+### Measuring Text {#TextSize}
+
+`getTextboxSize(textstring, fontsize, fontname)` returns the extent that `addTextboxByCenter()` would occupy for the same string, font and size, as a `vec2` in window-normalized units. Nothing is added to the visualizer.
+
+```python
+size = vis.getTextboxSize("Leaf area index", 14, "OpenSans-Regular")
+print(f"{size.x:.3f} x {size.y:.3f}")
+```
+
+The width is the sum of the glyph advances, so it includes the side bearings; the height is that of the tallest glyph in the string and therefore depends on which characters it contains. The `_` and `^` subscript and superscript markers are handled as `addTextboxByCenter()` handles them: they occupy no width themselves and halve the size of the character that follows. The result depends on the current framebuffer dimensions and DPI scale, so it changes when the window is resized.
+
+### Viewing Image Annotations {#AnnotationOverlay}
+
+Two methods display an image with machine-learning annotations drawn over it, reading the formats written by the radiation model's camera annotation output.
+
+<table>
+<tr><th>Method</th><th>Reads</th></tr>
+<tr><td>`displayImageWithBoundingBoxes(image_file, bbox_file, classes_file="", line_width=2.0, fontsize=12)`</td><td>Ultralytics YOLO bounding boxes, as written by `RadiationModel.writeImageBoundingBoxes()`</td></tr>
+<tr><td>`displayImageWithSegmentationMasks(image_file, mask_file, fill_opacity=0.4, line_width=2.0, fontsize=12, show_labels=True)`</td><td>COCO JSON segmentation masks, as written by `RadiationModel.writeImageSegmentationMasks()`</td></tr>
+</table>
+
+```python
+with Visualizer(1200, 800) as vis:
+    vis.displayImageWithBoundingBoxes("scene.jpeg", "scene.txt")
+```
+
+Boxes are drawn as colored outlines with the class name on a filled chip, colored by class ID from a fixed palette of seven colors, so classes whose IDs differ by a multiple of seven share a color. If `classes_file` is empty, a `classes.txt` beside the annotation file is used when one exists; otherwise boxes are labeled with their numeric class ID.
+
+Masks are drawn as translucent filled polygons with solid outlines, colored by position in the file rather than by class, so two touching objects of the same class stay distinguishable. Pass `fill_opacity=0` for outlines only, or `show_labels=False` when many overlapping chips would cover the image.
+
+Like `displayImageFromFile()`, both methods clear any existing geometry and do not return until the window is closed.
 
 ## Acknowledgements {#VisAcklowledgements}
 

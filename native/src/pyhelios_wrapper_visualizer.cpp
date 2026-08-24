@@ -368,6 +368,127 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void displayImageWithBoundingBoxes(Visualizer* visualizer, const char* image_file,
+                                                    const char* bbox_file, const char* classes_file,
+                                                    float line_width, unsigned int fontsize) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!image_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Image file cannot be null");
+                return;
+            }
+            if (!bbox_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Bounding box file cannot be null");
+                return;
+            }
+
+            // A null classes_file selects the native default of looking for "classes.txt" next to
+            // the annotation file, which the native side expresses as an empty string.
+            visualizer->displayImageWithBoundingBoxes(std::string(image_file), std::string(bbox_file),
+                                                      classes_file ? std::string(classes_file) : std::string(),
+                                                      line_width, fontsize);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (displayImageWithBoundingBoxes): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (displayImageWithBoundingBoxes): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void displayImageWithSegmentationMasks(Visualizer* visualizer, const char* image_file,
+                                                        const char* mask_file, float fill_opacity,
+                                                        float line_width, unsigned int fontsize,
+                                                        bool show_labels) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!image_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Image file cannot be null");
+                return;
+            }
+            if (!mask_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Mask file cannot be null");
+                return;
+            }
+
+            visualizer->displayImageWithSegmentationMasks(std::string(image_file), std::string(mask_file),
+                                                          fill_opacity, line_width, fontsize, show_labels);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (displayImageWithSegmentationMasks): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (displayImageWithSegmentationMasks): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void enableExactColorMode(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            visualizer->enableExactColorMode();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (enableExactColorMode): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (enableExactColorMode): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableExactColorMode(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            visualizer->disableExactColorMode();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (disableExactColorMode): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (disableExactColorMode): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getTextboxSize(Visualizer* visualizer, const char* textstring, unsigned int fontsize,
+                                     const char* fontname, float* width, float* height) {
+        try {
+            clearError();
+            if (width) *width = 0.f;
+            if (height) *height = 0.f;
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!textstring) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Text string cannot be null");
+                return;
+            }
+            if (!fontname) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Font name cannot be null");
+                return;
+            }
+            if (!width || !height) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointer is null");
+                return;
+            }
+
+            const helios::vec2 size = visualizer->getTextboxSize(textstring, fontsize, fontname);
+            *width = size.x;
+            *height = size.y;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getTextboxSize): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getTextboxSize): Unknown error");
+        }
+    }
+
     // Window Data Access Functions
     PYHELIOS_API void getWindowPixelsRGB(Visualizer* visualizer, unsigned int* buffer) {
         try {
