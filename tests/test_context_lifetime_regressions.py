@@ -73,8 +73,18 @@ def graphics_context_unavailable(result: subprocess.CompletedProcess) -> bool:
     that a genuine render failure still fails the test. Callers must check for
     SIGSEGV first: the use-after-free this guards reproduces as a crash, and a
     crash is a failure in every environment.
+
+    Both spellings are matched: the Python wrapper raises "Failed to create
+    Visualizer", while the native error that now propagates through it says
+    "Failed to create visualizer: ... Failed to initialize GLFW". Matching only
+    one of them makes a headless runner look like a render regression.
     """
-    return "Failed to create Visualizer" in result.stderr
+    stderr = result.stderr
+    return (
+        "Failed to create Visualizer" in stderr
+        or "Failed to create visualizer" in stderr
+        or "Failed to initialize GLFW" in stderr
+    )
 
 
 def radiation_backend_unavailable(result: subprocess.CompletedProcess) -> bool:

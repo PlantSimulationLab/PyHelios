@@ -960,3 +960,66 @@ def _clear_sky_flux_Wm2(hour):
     if fraction <= 0.0 or fraction >= 1.0:
         return 0.0
     return 950.0 * math.sin(math.pi * fraction)
+
+
+@pytest.mark.native_only
+class TestCloudCalibrationV1383:
+    """helios-core 1.3.83 cloud-calibration fixes to the band partitioning."""
+
+    ATMOSPHERE = (101000.0, 300.0, 0.5, 0.05)
+
+    @staticmethod
+    def _noon_context():
+        context = Context()
+        context.setDate(2023, 6, 21)
+        context.setTime(12, 0)
+        for hour in range(6, 19):
+            context.addTimeseriesData("R_meas", 500.0, Date(2023, 6, 21), Time(hour, 0, 0))
+        return context
+
+    def test_calibrated_par_and_nir_are_not_identical(self):
+        """Each band previously derived attenuation from itself, collapsing both to the same value."""
+        with self._noon_context() as context:
+            with SolarPosition(context, utc_offset=-8, latitude=38.5, longitude=-121.7) as solar:
+                solar.enableCloudCalibration("R_meas")
+                par = solar.getSolarFluxPAR(*self.ATMOSPHERE)
+                nir = solar.getSolarFluxNIR(*self.ATMOSPHERE)
+
+                assert par > 0 and nir > 0
+                assert abs(par - nir) > 1e-3, "PAR and NIR collapsed to the same value"
+
+    def test_calibrated_par_plus_nir_equals_total(self):
+        """They previously each inflated to the broadband flux and summed to twice it."""
+        with self._noon_context() as context:
+            with SolarPosition(context, utc_offset=-8, latitude=38.5, longitude=-121.7) as solar:
+                solar.enableCloudCalibration("R_meas")
+                total = solar.getSolarFlux(*self.ATMOSPHERE)
+                par = solar.getSolarFluxPAR(*self.ATMOSPHERE)
+                nir = solar.getSolarFluxNIR(*self.ATMOSPHERE)
+
+                assert total > 0
+                assert par + nir == pytest.approx(total, rel=1e-3)
+
+    def test_cloud_calibration_preserves_clear_sky_band_ratio(self):
+        """The attenuation factor is computed once from all-wave flux and applied to both bands."""
+        with self._noon_context() as context:
+            with SolarPosition(context, utc_offset=-8, latitude=38.5, longitude=-121.7) as solar:
+                clear_par = solar.getSolarFluxPAR(*self.ATMOSPHERE)
+                clear_nir = solar.getSolarFluxNIR(*self.ATMOSPHERE)
+                clear_ratio = clear_par / (clear_par + clear_nir)
+
+                solar.enableCloudCalibration("R_meas")
+                par = solar.getSolarFluxPAR(*self.ATMOSPHERE)
+                nir = solar.getSolarFluxNIR(*self.ATMOSPHERE)
+
+                assert par / (par + nir) == pytest.approx(clear_ratio, rel=1e-3)
+
+    def test_calibrated_diffuse_fraction_is_not_saturated(self):
+        """The old expression clamped to a fully-diffuse sky for every real cloud condition."""
+        with self._noon_context() as context:
+            with SolarPosition(context, utc_offset=-8, latitude=38.5, longitude=-121.7) as solar:
+                solar.enableCloudCalibration("R_meas")
+                fdiff = solar.getDiffuseFraction(*self.ATMOSPHERE)
+
+                assert 0.0 <= fdiff <= 1.0
+                assert fdiff < 1.0, "diffuse fraction saturated at fully-diffuse"

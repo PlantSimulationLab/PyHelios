@@ -37,6 +37,18 @@ This installs pre-built PyHelios with platform-appropriate plugins:
 - **macOS (Intel)**: Pre-built wheels not available - please [build from source](#build-from-source)
 - **Windows/Linux**: All plugins with GPU acceleration via OptiX backend (NVIDIA GPUs)
 
+**Linux system libraries:** the visualizer links OpenGL and X11, which Linux wheels
+do not bundle (they are loaded from the system at runtime). Desktop distributions
+normally already have them; minimal container images such as `python:3-slim` and
+`nvidia/cuda:*` do not:
+
+```bash
+apt-get update && apt-get install -y \
+  libgl1 libsm6 libice6 libx11-6 libxext6
+```
+
+Without these, `import pyhelios` reports the missing library and falls back to mock mode.
+
 PyHelios automatically selects the best execution mode:
 - **Plugins with GPU backends** (radiation): Require GPU - Vulkan (all platforms) or OptiX (NVIDIA)
 - **Plugins with CPU/GPU modes** (energybalance): Work on all platforms, GPU acceleration optional

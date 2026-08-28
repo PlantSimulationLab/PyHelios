@@ -75,13 +75,13 @@ def example_save_and_load_xml():
                 loaded_uuids = plantarch2.getAllPlantUUIDs(loaded_id)
                 print(f"  Loaded plant {loaded_id} has {len(loaded_uuids)} primitives")
 
-            # NOTE: Calling advanceTime() on a plant restored from XML currently
-            # fails in the native library with
-            #   "ERROR (Tube::setTubeRadii): Number of radii in input vector must
-            #    match number of tube nodes."
-            # Growth of a reloaded plant is therefore not demonstrated here.
-            # Plants built in-process with buildPlantInstanceFromLibrary() can be
-            # grown normally -- see example_grow_and_save() below.
+            # A reloaded plant can be grown further, exactly like one built in
+            # process. The plant model must be loaded before readPlantStructureXML()
+            # so the shoot types the file refers to are defined.
+            plantarch2.advanceTime(20.0)
+            for loaded_id in loaded_plant_ids:
+                grown_uuids = plantarch2.getAllPlantUUIDs(loaded_id)
+                print(f"  After 20 more days: {len(grown_uuids)} primitives")
 
 
 def example_export_mesh_vertices():
@@ -237,11 +237,13 @@ def example_plant_library_workflow():
             loaded_ids = plantarch.readPlantStructureXML(str(library_file))
             print(f"✓ Loaded plant {loaded_ids[0]} from library")
 
-            # NOTE: advanceTime() on a plant restored from XML currently fails in
-            # the native library (Tube::setTubeRadii node/radii mismatch), so
-            # growth from the library state is not demonstrated here.
             loaded_uuids = plantarch.getAllPlantUUIDs(loaded_ids[0])
             print(f"Loaded plant has {len(loaded_uuids)} primitives")
+
+            # Growth continues from the restored state.
+            plantarch.advanceTime(15.0)
+            grown_uuids = plantarch.getAllPlantUUIDs(loaded_ids[0])
+            print(f"After 15 more days: {len(grown_uuids)} primitives")
 
 
 def example_multi_plant_canopy_persistence():

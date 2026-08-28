@@ -687,6 +687,112 @@ PYHELIOS_API void getPointRenderingMetrics(const Visualizer* visualizer,
                                             size_t* rendered_points,
                                             float* culling_time_ms);
 
+/**
+ * @brief Enable the physically-based linear-light rendering pipeline (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @note This is the default. Albedo is decoded from sRGB to linear light before shading, and the
+ *       shaded radiance is tone-mapped through an ACES filmic curve and re-encoded to sRGB.
+ */
+PYHELIOS_API void enableLinearPipeline(Visualizer* visualizer);
+
+/**
+ * @brief Disable the linear-light pipeline, restoring pre-1.3.83 sRGB-space shading (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ */
+PYHELIOS_API void disableLinearPipeline(Visualizer* visualizer);
+
+/**
+ * @brief Query whether the linear-light pipeline is enabled (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @return True if the linear pipeline is enabled
+ */
+PYHELIOS_API bool isLinearPipelineEnabled(const Visualizer* visualizer);
+
+/**
+ * @brief Set the linear exposure multiplier applied before tone mapping (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @param exposure Exposure multiplier; must be positive
+ */
+PYHELIOS_API void setExposure(Visualizer* visualizer, float exposure);
+
+/**
+ * @brief Get the linear exposure multiplier applied before tone mapping (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @return Current exposure multiplier
+ */
+PYHELIOS_API float getExposure(const Visualizer* visualizer);
+
+/**
+ * @brief Set the Phong material parameters used to shade Context primitives (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @param ambient Ambient reflectance weight
+ * @param diffuse Diffuse reflectance weight
+ * @param specular Specular (Blinn-Phong highlight) strength; zero removes the highlight
+ * @param shininess Specular exponent controlling highlight tightness
+ */
+PYHELIOS_API void setPhongMaterial(Visualizer* visualizer, float ambient, float diffuse, float specular, float shininess);
+
+/**
+ * @brief Get the Phong material parameters used to shade Context primitives (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @param ambient Output parameter for the ambient reflectance weight
+ * @param diffuse Output parameter for the diffuse reflectance weight
+ * @param specular Output parameter for the specular strength
+ * @param shininess Output parameter for the specular exponent
+ */
+PYHELIOS_API void getPhongMaterial(const Visualizer* visualizer, float* ambient, float* diffuse, float* specular, float* shininess);
+
+/**
+ * @brief Set the hemispheric ambient sky and ground-bounce colors (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @param sky_color Pointer to 3 floats (r,g,b) for light arriving from above
+ * @param ground_color Pointer to 3 floats (r,g,b) for light bouncing from below
+ */
+PYHELIOS_API void setAmbientColors(Visualizer* visualizer, float* sky_color, float* ground_color);
+
+/**
+ * @brief Get the hemispheric ambient sky color (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @param color Output pointer to 3 floats receiving (r,g,b)
+ */
+PYHELIOS_API void getAmbientSkyColor(const Visualizer* visualizer, float* color);
+
+/**
+ * @brief Get the hemispheric ambient ground-bounce color (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @param color Output pointer to 3 floats receiving (r,g,b)
+ */
+PYHELIOS_API void getAmbientGroundColor(const Visualizer* visualizer, float* color);
+
+/**
+ * @brief Enable smooth per-vertex-normal shading (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @note This is the default. Only geometry supplying distinct vertex normals is affected.
+ */
+PYHELIOS_API void enableSmoothShading(Visualizer* visualizer);
+
+/**
+ * @brief Select flat (per-face) shading (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ */
+PYHELIOS_API void disableSmoothShading(Visualizer* visualizer);
+
+/**
+ * @brief Query whether smooth shading is enabled (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @return True if smooth shading is enabled
+ */
+PYHELIOS_API bool isSmoothShadingEnabled(const Visualizer* visualizer);
+
+/**
+ * @brief Query whether headless rendering obtained multisampled framebuffer attachments (helios-core 1.3.83)
+ * @param visualizer Pointer to the Visualizer
+ * @return True if multisampled attachments were obtained
+ * @note macOS drives OpenGL through a translation layer that accepts the attachments but does not
+ *       rasterize into them, so this can report true while the image is not anti-aliased.
+ */
+PYHELIOS_API bool isHeadlessMultisamplingActive(const Visualizer* visualizer);
+
 #ifdef __cplusplus
 }
 #endif

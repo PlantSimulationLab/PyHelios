@@ -511,8 +511,14 @@ nlohmann::json shootParametersToJSON(const ShootParameters& params) {
     return j;
 }
 
-ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0* generator) {
+// Rebuild a ShootParameters from JSON. When \p base is non-null the result starts as a copy of it,
+// so fields that cannot be represented in JSON -- notably the protected child shoot type vectors --
+// are preserved; JSON values are then overlaid on top and still take precedence.
+ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0* generator, const ShootParameters* base = nullptr) {
     ShootParameters params(generator);
+    if (base != nullptr) {
+        params = *base;
+    }
 
     // Geometric parameters
     if (j.contains("max_nodes")) params.max_nodes = jsonToRandomParameterInt(j["max_nodes"], generator);
@@ -555,8 +561,12 @@ ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0
     // generator into phytomer_parameters (it is default-constructed with a null
     // generator), so rebuild it with the real generator before overlaying JSON values.
     // This guarantees every nested RandomParameter has a valid generator even for
-    // fields absent from the JSON.
-    params.phytomer_parameters = PhytomerParameters(generator);
+    // fields absent from the JSON. When seeding from an existing entry its phytomer
+    // parameters already carry a valid generator, and resetting them here would discard
+    // the very values we copied it for.
+    if (base == nullptr) {
+        params.phytomer_parameters = PhytomerParameters(generator);
+    }
     if (j.contains("phytomer_parameters")) {
         jsonToPhytomerParameters(params.phytomer_parameters, j["phytomer_parameters"], generator);
     }
@@ -694,6 +704,249 @@ extern "C" {
         }
     }
 
+    // Attraction points steer shoot growth toward target locations (trellis wires, training
+    // targets). plantID < 0 selects the global form, which applies to every plant; a
+    // non-negative plantID selects the per-plant form. The two C++ overloads carry different
+    // default view half-angles (45 vs 80 degrees), so the caller always passes one explicitly.
+    PYHELIOS_API int enableAttractionPoints(PlantArchitecture* plantarch, int plantID, float* points, int point_count, float view_half_angle_deg, float look_ahead_distance, float attraction_weight) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!points && point_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Attraction point array is null");
+                return -1;
+            }
+            if (point_count < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Attraction point count cannot be negative");
+                return -1;
+            }
+
+            std::vector<helios::vec3> pts;
+            pts.reserve(point_count);
+            for (int i = 0; i < point_count; i++) {
+                pts.emplace_back(points[3 * i], points[3 * i + 1], points[3 * i + 2]);
+            }
+
+            if (plantID < 0) {
+                plantarch->enableAttractionPoints(pts, view_half_angle_deg, look_ahead_distance, attraction_weight);
+            } else {
+                plantarch->enableAttractionPoints(static_cast<uint>(plantID), pts, view_half_angle_deg, look_ahead_distance, attraction_weight);
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::enableAttractionPoints): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::enableAttractionPoints): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int disableAttractionPoints(PlantArchitecture* plantarch, int plantID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+
+            if (plantID < 0) {
+                plantarch->disableAttractionPoints();
+            } else {
+                plantarch->disableAttractionPoints(static_cast<uint>(plantID));
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::disableAttractionPoints): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::disableAttractionPoints): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int updateAttractionPoints(PlantArchitecture* plantarch, int plantID, float* points, int point_count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!points && point_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Attraction point array is null");
+                return -1;
+            }
+            if (point_count < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Attraction point count cannot be negative");
+                return -1;
+            }
+
+            std::vector<helios::vec3> pts;
+            pts.reserve(point_count);
+            for (int i = 0; i < point_count; i++) {
+                pts.emplace_back(points[3 * i], points[3 * i + 1], points[3 * i + 2]);
+            }
+
+            if (plantID < 0) {
+                plantarch->updateAttractionPoints(pts);
+            } else {
+                plantarch->updateAttractionPoints(static_cast<uint>(plantID), pts);
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::updateAttractionPoints): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::updateAttractionPoints): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int appendAttractionPoints(PlantArchitecture* plantarch, int plantID, float* points, int point_count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!points && point_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Attraction point array is null");
+                return -1;
+            }
+            if (point_count < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Attraction point count cannot be negative");
+                return -1;
+            }
+
+            std::vector<helios::vec3> pts;
+            pts.reserve(point_count);
+            for (int i = 0; i < point_count; i++) {
+                pts.emplace_back(points[3 * i], points[3 * i + 1], points[3 * i + 2]);
+            }
+
+            if (plantID < 0) {
+                plantarch->appendAttractionPoints(pts);
+            } else {
+                plantarch->appendAttractionPoints(static_cast<uint>(plantID), pts);
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::appendAttractionPoints): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::appendAttractionPoints): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setAttractionParameters(PlantArchitecture* plantarch, int plantID, float view_half_angle_deg, float look_ahead_distance, float attraction_weight, float obstacle_reduction_factor) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+
+            if (plantID < 0) {
+                plantarch->setAttractionParameters(view_half_angle_deg, look_ahead_distance, attraction_weight, obstacle_reduction_factor);
+            } else {
+                plantarch->setAttractionParameters(static_cast<uint>(plantID), view_half_angle_deg, look_ahead_distance, attraction_weight, obstacle_reduction_factor);
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setAttractionParameters): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setAttractionParameters): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int advanceTimeForPlant(PlantArchitecture* plantarch, unsigned int plantID, float dt) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (dt < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Time step cannot be negative");
+                return -1;
+            }
+
+            plantarch->advanceTime(plantID, dt);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::advanceTime): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::advanceTime): Unknown error advancing time.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int advanceTimeForPlants(PlantArchitecture* plantarch, unsigned int* plantIDs, int count, float dt) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!plantIDs && count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Plant ID array is null");
+                return -1;
+            }
+            if (count < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Plant ID count cannot be negative");
+                return -1;
+            }
+            if (dt < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Time step cannot be negative");
+                return -1;
+            }
+
+            std::vector<uint> ids(plantIDs, plantIDs + count);
+            plantarch->advanceTime(ids, dt);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::advanceTime): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::advanceTime): Unknown error advancing time.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int advanceTimeYears(PlantArchitecture* plantarch, int time_step_years, float time_step_days) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (time_step_years < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Time step cannot be negative");
+                return -1;
+            }
+            if (time_step_days < 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Time step cannot be negative");
+                return -1;
+            }
+
+            plantarch->advanceTime(time_step_years, time_step_days);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::advanceTime): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::advanceTime): Unknown error advancing time.");
+            return -1;
+        }
+    }
+
     PYHELIOS_API int advanceTime(PlantArchitecture* plantarch, float dt) {
         try {
             clearError();
@@ -718,6 +971,49 @@ extern "C" {
     }
 
     // Plant query functions
+    PYHELIOS_API int listShootTypeLabels(PlantArchitecture* plantarch, const char* plant_model_name, int plantID, char*** labels, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!labels || !count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output parameters are null");
+                return -1;
+            }
+
+            // Three overloads share one entry point: a model name queries that model without
+            // disturbing the loaded one, a non-negative plantID queries a built instance, and
+            // neither queries whatever model is currently loaded.
+            std::vector<std::string> shoot_labels;
+            if (plant_model_name != nullptr) {
+                shoot_labels = plantarch->listShootTypeLabels(std::string(plant_model_name));
+            } else if (plantID >= 0) {
+                shoot_labels = plantarch->listShootTypeLabels(static_cast<uint>(plantID));
+            } else {
+                shoot_labels = plantarch->listShootTypeLabels();
+            }
+
+            *count = shoot_labels.size();
+            *labels = new char*[shoot_labels.size()];
+            for (size_t i = 0; i < shoot_labels.size(); i++) {
+                (*labels)[i] = new char[shoot_labels[i].length() + 1];
+                strcpy((*labels)[i], shoot_labels[i].c_str());
+            }
+
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::listShootTypeLabels): ") + e.what());
+            if (count) *count = 0;
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::listShootTypeLabels): Unknown error.");
+            if (count) *count = 0;
+            return -1;
+        }
+    }
+
     PYHELIOS_API int getAvailablePlantModels(PlantArchitecture* plantarch, char*** model_names, int* count) {
         try {
             clearError();
@@ -905,6 +1201,285 @@ extern "C" {
             return nullptr;
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantFlowerObjectIDs): Unknown error getting flower object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* plantArchitectureGetAllUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllUUIDs): Unknown error getting all plant primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllLeafUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllLeafUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllLeafUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllLeafUUIDs): Unknown error getting all leaf primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllInternodeUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllInternodeUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllInternodeUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllInternodeUUIDs): Unknown error getting all internode primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllPetioleUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllPetioleUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllPetioleUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllPetioleUUIDs): Unknown error getting all petiole primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllPeduncleUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllPeduncleUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllPeduncleUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllPeduncleUUIDs): Unknown error getting all peduncle primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllFlowerUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllFlowerUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllFlowerUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllFlowerUUIDs): Unknown error getting all flower primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllFruitUUIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllFruitUUIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllFruitUUIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllFruitUUIDs): Unknown error getting all fruit primitive UUIDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* plantArchitectureGetAllObjectIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllObjectIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllObjectIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllObjectIDs): Unknown error getting all plant object IDs.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getAllPlantIDs(PlantArchitecture* plantarch, int* count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+
+            std::vector<uint> ids = plantarch->getAllPlantIDs();
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = ids;
+            *count = static_result.size();
+
+            return static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getAllPlantIDs): ") + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getAllPlantIDs): Unknown error getting all plant instance IDs.");
             if (count) *count = 0;
             return nullptr;
         }
@@ -2094,7 +2669,25 @@ extern "C" {
             nlohmann::json j = nlohmann::json::parse(json_params);
             // Use context's random generator
             std::minstd_rand0* generator = context->getRandomGenerator();
-            ShootParameters params = jsonToShootParameters(j, generator);
+
+            // Seed from the entry being replaced, when there is one, rather than from a fresh
+            // ShootParameters. ShootParameters::operator= copies child_shoot_type_labels and
+            // child_shoot_type_probabilities, which are protected with no public getter and so
+            // cannot be represented in the JSON. Building from a default-constructed instance
+            // would leave them empty, and because defineShootType() replaces the stored entry in
+            // its entirety that silently erases the shoot type's branching topology --
+            // Shoot::sampleChildShootType() then falls back to reproducing the parent type. The
+            // JSON values are overlaid on top, so any field the caller did send still wins.
+            bool shoot_type_exists = false;
+            ShootParameters existing(generator);
+            try {
+                existing = plantarch->getCurrentShootParameters(std::string(shoot_type_label));
+                shoot_type_exists = true;
+            } catch (...) {
+                // Label does not exist yet: defining a new shoot type, nothing to carry over.
+            }
+
+            ShootParameters params = shoot_type_exists ? jsonToShootParameters(j, generator, &existing) : jsonToShootParameters(j, generator);
 
             // The five custom hooks (phytomer creation/callback, and the leaf, flower and fruit
             // prototype functions) are raw function pointers that cannot be represented in JSON,
@@ -2102,11 +2695,8 @@ extern "C" {
             // existing library shoot type would therefore silently strip the species behavior they
             // implement (for maize, the hook that places ears rather than a tassel on every node).
             // Carry them over from the entry being replaced.
-            try {
-                ShootParameters existing = plantarch->getCurrentShootParameters(std::string(shoot_type_label));
+            if (shoot_type_exists) {
                 params.inheritCustomFunctionsFrom(existing);
-            } catch (...) {
-                // Label does not exist yet: defining a new shoot type, nothing to carry over.
             }
 
             plantarch->defineShootType(std::string(shoot_type_label), params);

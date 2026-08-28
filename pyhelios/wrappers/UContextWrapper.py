@@ -6900,6 +6900,80 @@ try:
     helios_lib.getPolymeshObjectVolume.restype = ctypes.c_float
     helios_lib.getPolymeshObjectVolume.errcheck = _check_error
 
+    # Polymesh mesh topology (helios-core 1.3.83)
+    helios_lib.setPolymeshObjectTopology.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_int), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+        ctypes.c_int,
+    ]
+    helios_lib.setPolymeshObjectTopology.restype = None
+    helios_lib.setPolymeshObjectTopology.errcheck = _check_error
+
+    for _fn in ("getPolymeshObjectVertices", "getPolymeshObjectVertexNormals",
+                "getPolymeshObjectVertexUV"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    for _fn in ("getPolymeshObjectFaces", "getPolymeshObjectBoundaryEdges"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+        getattr(helios_lib, _fn).restype = ctypes.POINTER(ctypes.c_int)
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    for _fn in ("doesPolymeshObjectHaveVertexNormals", "isPolymeshObjectClosed",
+                "doesObjectHaveAnalyticVertexNormals"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.c_bool
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.getPolymeshObjectVertexNormalSource.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPolymeshObjectVertexNormalSource.restype = ctypes.c_int
+    helios_lib.getPolymeshObjectVertexNormalSource.errcheck = _check_error
+
+    for _fn in ("getPolymeshObjectVertexCount", "getPolymeshObjectFaceCount"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.c_uint
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    for _fn in ("getPolymeshObjectFaceIndexForPrimitive", "getPolymeshObjectPrimitiveUUIDForFace"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
+        getattr(helios_lib, _fn).restype = ctypes.c_uint
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.computePolymeshObjectVertexNormals.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float]
+    helios_lib.computePolymeshObjectVertexNormals.restype = None
+    helios_lib.computePolymeshObjectVertexNormals.errcheck = _check_error
+
+    helios_lib.getPolymeshObjectConnectedComponents.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)),
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.getPolymeshObjectConnectedComponents.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getPolymeshObjectConnectedComponents.errcheck = _check_error
+
+    helios_lib.getPolymeshObjectSurfaceArea.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+    helios_lib.getPolymeshObjectSurfaceArea.restype = ctypes.c_float
+    helios_lib.getPolymeshObjectSurfaceArea.errcheck = _check_error
+
+    helios_lib.getObjectPrimitiveVertexNormals.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.getObjectPrimitiveVertexNormals.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getObjectPrimitiveVertexNormals.errcheck = _check_error
+
+    helios_lib.getObjectPrimitiveVertexNormalsBatch.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.getObjectPrimitiveVertexNormalsBatch.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getObjectPrimitiveVertexNormalsBatch.errcheck = _check_error
+
     helios_lib.getMaterialIDFromLabel.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
     helios_lib.getMaterialIDFromLabel.restype = ctypes.c_uint
     helios_lib.getMaterialIDFromLabel.errcheck = _check_error
@@ -7069,6 +7143,186 @@ def getObjectAreaWrapper(context, objID: int) -> float:
 def getObjectPrimitiveCountWrapper(context, objID: int) -> int:
     _require_ctx_scalar_api()
     return int(helios_lib.getObjectPrimitiveCount(context, int(objID)))
+
+
+def _pull_int_array(ptr, size):
+    if size == 0 or not ptr:
+        return []
+    arr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_int * size)).contents
+    return [int(x) for x in arr]
+
+
+def _pull_uint_array(ptr, size):
+    if size == 0 or not ptr:
+        return []
+    arr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint * size)).contents
+    return [int(x) for x in arr]
+
+
+def setPolymeshObjectTopologyWrapper(context, objID: int, vertices, faces, face_uuids,
+                                     vertex_normals=None, vertex_uv=None,
+                                     normal_source: int = 0) -> None:
+    _require_ctx_scalar_api()
+    vertex_normals = vertex_normals or []
+    vertex_uv = vertex_uv or []
+
+    n_vert = len(vertices)
+    n_face = len(faces)
+    n_norm = len(vertex_normals)
+    n_uv = len(vertex_uv)
+
+    if len(face_uuids) != n_face:
+        raise ValueError(
+            f"face_UUIDs must be parallel to faces: got {len(face_uuids)} UUIDs for {n_face} faces"
+        )
+
+    vert_arr = (ctypes.c_float * (3 * n_vert))(*[c for v in vertices for c in (v[0], v[1], v[2])]) if n_vert else None
+    face_arr = (ctypes.c_int * (3 * n_face))(*[int(c) for f in faces for c in (f[0], f[1], f[2])]) if n_face else None
+    uuid_arr = (ctypes.c_uint * n_face)(*[int(u) for u in face_uuids]) if n_face else None
+    norm_arr = (ctypes.c_float * (3 * n_norm))(*[c for v in vertex_normals for c in (v[0], v[1], v[2])]) if n_norm else None
+    uv_arr = (ctypes.c_float * (2 * n_uv))(*[c for v in vertex_uv for c in (v[0], v[1])]) if n_uv else None
+
+    helios_lib.setPolymeshObjectTopology(
+        context, int(objID), vert_arr, n_vert, face_arr, n_face, uuid_arr,
+        norm_arr, n_norm, uv_arr, n_uv, int(normal_source),
+    )
+
+
+def getPolymeshObjectVerticesWrapper(context, objID: int):
+    _require_ctx_scalar_api()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPolymeshObjectVertices(context, int(objID), ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getPolymeshObjectFacesWrapper(context, objID: int):
+    _require_ctx_scalar_api()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPolymeshObjectFaces(context, int(objID), ctypes.byref(size))
+    vals = _pull_int_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getPolymeshObjectVertexNormalsWrapper(context, objID: int):
+    _require_ctx_scalar_api()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPolymeshObjectVertexNormals(context, int(objID), ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getPolymeshObjectVertexUVWrapper(context, objID: int):
+    _require_ctx_scalar_api()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPolymeshObjectVertexUV(context, int(objID), ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1]) for i in range(0, len(vals), 2)]
+
+
+def doesPolymeshObjectHaveVertexNormalsWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.doesPolymeshObjectHaveVertexNormals(context, int(objID)))
+
+
+def getPolymeshObjectVertexNormalSourceWrapper(context, objID: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPolymeshObjectVertexNormalSource(context, int(objID)))
+
+
+def getPolymeshObjectVertexCountWrapper(context, objID: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPolymeshObjectVertexCount(context, int(objID)))
+
+
+def getPolymeshObjectFaceCountWrapper(context, objID: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPolymeshObjectFaceCount(context, int(objID)))
+
+
+def getPolymeshObjectFaceIndexForPrimitiveWrapper(context, objID: int, uuid: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPolymeshObjectFaceIndexForPrimitive(context, int(objID), int(uuid)))
+
+
+def getPolymeshObjectPrimitiveUUIDForFaceWrapper(context, objID: int, face_index: int) -> int:
+    _require_ctx_scalar_api()
+    return int(helios_lib.getPolymeshObjectPrimitiveUUIDForFace(context, int(objID), int(face_index)))
+
+
+def computePolymeshObjectVertexNormalsWrapper(context, objID: int, crease_angle_degrees: float) -> None:
+    _require_ctx_scalar_api()
+    helios_lib.computePolymeshObjectVertexNormals(context, int(objID), ctypes.c_float(crease_angle_degrees))
+
+
+def isPolymeshObjectClosedWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.isPolymeshObjectClosed(context, int(objID)))
+
+
+def getPolymeshObjectBoundaryEdgesWrapper(context, objID: int):
+    _require_ctx_scalar_api()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPolymeshObjectBoundaryEdges(context, int(objID), ctypes.byref(size))
+    vals = _pull_int_array(ptr, size.value)
+    return [(vals[i], vals[i+1]) for i in range(0, len(vals), 2)]
+
+
+def getPolymeshObjectConnectedComponentsWrapper(context, objID: int):
+    _require_ctx_scalar_api()
+    sizes_ptr = ctypes.POINTER(ctypes.c_uint)()
+    component_count = ctypes.c_uint()
+    total_size = ctypes.c_uint()
+    ptr = helios_lib.getPolymeshObjectConnectedComponents(
+        context, int(objID), ctypes.byref(sizes_ptr),
+        ctypes.byref(component_count), ctypes.byref(total_size),
+    )
+    flat = _pull_uint_array(ptr, total_size.value)
+    sizes = _pull_uint_array(sizes_ptr, component_count.value)
+    components = []
+    offset = 0
+    for n in sizes:
+        components.append(flat[offset:offset + n])
+        offset += n
+    return components
+
+
+def getPolymeshObjectSurfaceAreaWrapper(context, objID: int) -> float:
+    _require_ctx_scalar_api()
+    return float(helios_lib.getPolymeshObjectSurfaceArea(context, int(objID)))
+
+
+def doesObjectHaveAnalyticVertexNormalsWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    return bool(helios_lib.doesObjectHaveAnalyticVertexNormals(context, int(objID)))
+
+
+def getObjectPrimitiveVertexNormalsWrapper(context, objID: int, uuid: int):
+    _require_ctx_scalar_api()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getObjectPrimitiveVertexNormals(context, int(objID), int(uuid), ctypes.byref(size))
+    vals = _pull_float_array(ptr, size.value)
+    return [(vals[i], vals[i+1], vals[i+2]) for i in range(0, len(vals), 3)]
+
+
+def getObjectPrimitiveVertexNormalsBatchWrapper(context, objID: int, uuids: List[int]):
+    _require_ctx_scalar_api()
+    uuid_list = [int(u) for u in uuids]
+    n = len(uuid_list)
+    arr = (ctypes.c_uint * n)(*uuid_list) if n else None
+    counts_ptr = ctypes.POINTER(ctypes.c_uint)()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getObjectPrimitiveVertexNormalsBatch(
+        context, int(objID), arr, n, ctypes.byref(counts_ptr), ctypes.byref(size),
+    )
+    vals = _pull_float_array(ptr, size.value)
+    counts = _pull_uint_array(counts_ptr, n)
+    result = []
+    offset = 0
+    for c in counts:
+        result.append([(vals[offset + 3*i], vals[offset + 3*i + 1], vals[offset + 3*i + 2]) for i in range(c)])
+        offset += 3 * c
+    return result
 
 
 def getPolymeshObjectVolumeWrapper(context, objID: int) -> float:

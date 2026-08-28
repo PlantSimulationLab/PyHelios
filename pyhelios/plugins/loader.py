@@ -6,6 +6,7 @@ Windows, macOS, and Linux platforms with graceful fallback mechanisms.
 """
 
 import os
+import re
 import platform
 import ctypes
 from typing import Optional, Dict, Any, Callable, List
@@ -219,6 +220,11 @@ class CrossPlatformLibraryLoader:
         # Check dependencies
         self.check_dependencies()
         
+        # Track why each present library failed to load, so the error reports the
+        # actual cause (e.g. a missing system dependency) rather than implying
+        # the library file itself is absent.
+        load_failures = []
+
         # Try to load primary library
         primary_path = paths.get('primary')
         if primary_path and os.path.exists(primary_path):
@@ -228,6 +234,7 @@ class CrossPlatformLibraryLoader:
                 return self.library
             except Exception as e:
                 logger.warning(f"Failed to load primary library {primary_path}: {e}")
+                load_failures.append((primary_path, e))
 
         # Try alternative libraries
         for key, alt_path in paths.items():
@@ -238,28 +245,97 @@ class CrossPlatformLibraryLoader:
                     return self.library
                 except Exception as e:
                     logger.warning(f"Failed to load alternative library {alt_path}: {e}")
+                    load_failures.append((alt_path, e))
 
         # No library could be loaded - raise error
         available_files = [f for f in os.listdir(self.plugin_dir) if f.endswith(('.dll', '.dylib', '.so'))] if os.path.exists(self.plugin_dir) else []
-        
+
         error_msg = (
-            f"Failed to load native Helios library for platform '{self.platform_name}'. "
-            f"Expected files: {config['primary']} or {config['alternatives']}. "
+            f"Failed to load native Helios library for platform '{self.platform_name}'.\n"
         )
-        
-        if available_files:
-            error_msg += f"Available library files: {available_files}. "
+
+        if load_failures:
+            # The library file exists but could not be loaded. Report the real
+            # loader error; a rebuild will not fix a missing system dependency.
+            error_msg += "\nThe library file was found but could not be loaded:\n"
+            for lib_path, exc in load_failures:
+                error_msg += f"  {lib_path}\n    {exc}\n"
+
+            missing_libs = self._extract_missing_libraries(load_failures)
+            if missing_libs:
+                error_msg += (
+                    f"\nThis indicates missing system libraries: {', '.join(missing_libs)}\n"
+                    f"{self._missing_library_hint(missing_libs)}"
+                )
+            else:
+                error_msg += (
+                    "\nThis usually means a required system library is missing or "
+                    "incompatible, not that PyHelios is installed incorrectly.\n"
+                )
         else:
-            error_msg += "No library files found in plugin directory. "
-        
-        error_msg += (
-            f"To fix this issue:\n"
-            f"1. Build native libraries: python build_scripts/build_helios.py\n"
-            f"2. Or enable development mode: set PYHELIOS_DEV_MODE=1\n"
-            f"Plugin directory: {self.plugin_dir}"
-        )
-        
+            error_msg += (
+                f"Expected files: {config['primary']} or {config['alternatives']}. "
+            )
+            if available_files:
+                error_msg += f"Available library files: {available_files}. "
+            else:
+                error_msg += "No library files found in plugin directory. "
+            error_msg += (
+                f"\nTo fix this issue:\n"
+                f"1. Build native libraries: python build_scripts/build_helios.py\n"
+                f"2. Or enable development mode: set PYHELIOS_DEV_MODE=1\n"
+            )
+
+        error_msg += f"Plugin directory: {self.plugin_dir}"
+
         raise LibraryLoadError(error_msg)
+
+    @staticmethod
+    def _extract_missing_libraries(load_failures) -> list:
+        """Extract missing shared library names from loader error messages.
+
+        Linux dlopen reports 'libGL.so.1: cannot open shared object file', and
+        macOS dyld reports 'Library not loaded: <path>'. Pulling the name out
+        lets the error name the actual missing dependency.
+        """
+        missing = []
+        for _, exc in load_failures:
+            message = str(exc)
+            match = re.search(r'([\w.+-]+\.so(?:\.\d+)*): cannot open shared object file', message)
+            if not match:
+                match = re.search(r'Library not loaded:\s*(\S+)', message)
+            if match:
+                name = os.path.basename(match.group(1))
+                if name not in missing:
+                    missing.append(name)
+        return missing
+
+    @staticmethod
+    def _missing_library_hint(missing_libs) -> str:
+        """Build an actionable hint for installing missing system libraries."""
+        packages = {
+            'libGL.so.1': ('libgl1', 'mesa-libGL'),
+            'libGLU.so.1': ('libglu1-mesa', 'mesa-libGLU'),
+            'libX11.so.6': ('libx11-6', 'libX11'),
+            'libXext.so.6': ('libxext6', 'libXext'),
+            'libSM.so.6': ('libsm6', 'libSM'),
+            'libICE.so.6': ('libice6', 'libICE'),
+        }
+        debian = sorted({packages[lib][0] for lib in missing_libs if lib in packages})
+        rpm = sorted({packages[lib][1] for lib in missing_libs if lib in packages})
+
+        if not debian:
+            return (
+                "Install the missing system libraries using your platform's package manager.\n"
+            )
+
+        return (
+            f"Install them with:\n"
+            f"  Debian/Ubuntu: apt-get install -y {' '.join(debian)}\n"
+            f"  RHEL/Fedora:   yum install -y {' '.join(rpm)}\n"
+            f"\nIf you installed PyHelios from a wheel, this is a packaging bug - "
+            f"please report it at https://github.com/PlantSimulationLab/PyHelios/issues\n"
+        )
     
     def get_library_info(self) -> Dict[str, Any]:
         """Get information about the loaded library."""

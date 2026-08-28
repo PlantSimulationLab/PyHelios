@@ -147,6 +147,43 @@ try:
     ]
     helios_lib.getTextboxSize.restype = None
 
+    # Rendering pipeline / material controls (helios-core 1.3.83)
+    for _fn in ("enableLinearPipeline", "disableLinearPipeline",
+                "enableSmoothShading", "disableSmoothShading"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UVisualizer)]
+        getattr(helios_lib, _fn).restype = None
+
+    for _fn in ("isLinearPipelineEnabled", "isSmoothShadingEnabled",
+                "isHeadlessMultisamplingActive"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UVisualizer)]
+        getattr(helios_lib, _fn).restype = ctypes.c_bool
+
+    helios_lib.setExposure.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_float]
+    helios_lib.setExposure.restype = None
+
+    helios_lib.getExposure.argtypes = [ctypes.POINTER(UVisualizer)]
+    helios_lib.getExposure.restype = ctypes.c_float
+
+    helios_lib.setPhongMaterial.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float,
+    ]
+    helios_lib.setPhongMaterial.restype = None
+
+    helios_lib.getPhongMaterial.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),
+    ]
+    helios_lib.getPhongMaterial.restype = None
+
+    helios_lib.setAmbientColors.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),
+    ]
+    helios_lib.setAmbientColors.restype = None
+
+    for _fn in ("getAmbientSkyColor", "getAmbientGroundColor"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_float)]
+        getattr(helios_lib, _fn).restype = None
+
     # Window Data Access Functions
     helios_lib.getWindowPixelsRGB.argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_uint)]
     helios_lib.getWindowPixelsRGB.restype = None
@@ -313,7 +350,11 @@ try:
     try:
         helios_lib.getLastErrorCode.restype = ctypes.c_int
         helios_lib.getLastErrorMessage.restype = ctypes.c_char_p
-        helios_lib.clearLastError.restype = None
+        # Must name the symbol the library actually exports and that
+        # _check_for_helios_error() calls below. Probing a name that does not exist
+        # raises AttributeError here and silently disables error checking for every
+        # visualizer call, turning C++ failures into zero-valued results.
+        helios_lib.clearError.restype = None
         _ERROR_MANAGEMENT_AVAILABLE = True
     except AttributeError:
         _ERROR_MANAGEMENT_AVAILABLE = False
@@ -1061,6 +1102,135 @@ def disable_exact_color_mode(visualizer: ctypes.POINTER(UVisualizer)) -> None:
     _check_for_helios_error()
 
 
+def _require_visualizer(visualizer) -> None:
+    """Guard shared by the 1.3.83 rendering-control wrappers."""
+    if not _VISUALIZER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer functions not available in current Helios library. "
+            "Rebuild with visualizer plugin enabled."
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+
+def enable_linear_pipeline(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Enable the physically-based linear-light rendering pipeline."""
+    _require_visualizer(visualizer)
+    helios_lib.enableLinearPipeline(visualizer)
+    _check_for_helios_error()
+
+
+def disable_linear_pipeline(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Disable the linear-light pipeline, restoring sRGB-space shading."""
+    _require_visualizer(visualizer)
+    helios_lib.disableLinearPipeline(visualizer)
+    _check_for_helios_error()
+
+
+def is_linear_pipeline_enabled(visualizer: ctypes.POINTER(UVisualizer)) -> bool:
+    """Return True if the linear-light pipeline is enabled."""
+    _require_visualizer(visualizer)
+    result = helios_lib.isLinearPipelineEnabled(visualizer)
+    _check_for_helios_error()
+    return bool(result)
+
+
+def set_exposure(visualizer: ctypes.POINTER(UVisualizer), exposure: float) -> None:
+    """Set the linear exposure multiplier applied before tone mapping."""
+    _require_visualizer(visualizer)
+    helios_lib.setExposure(visualizer, ctypes.c_float(exposure))
+    _check_for_helios_error()
+
+
+def get_exposure(visualizer: ctypes.POINTER(UVisualizer)) -> float:
+    """Get the linear exposure multiplier applied before tone mapping."""
+    _require_visualizer(visualizer)
+    result = helios_lib.getExposure(visualizer)
+    _check_for_helios_error()
+    return float(result)
+
+
+def set_phong_material(visualizer: ctypes.POINTER(UVisualizer), ambient: float,
+                       diffuse: float, specular: float, shininess: float) -> None:
+    """Set the Phong material parameters used to shade Context primitives."""
+    _require_visualizer(visualizer)
+    helios_lib.setPhongMaterial(visualizer, ctypes.c_float(ambient), ctypes.c_float(diffuse),
+                                ctypes.c_float(specular), ctypes.c_float(shininess))
+    _check_for_helios_error()
+
+
+def get_phong_material(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[float, float, float, float]:
+    """Get the Phong material parameters as (ambient, diffuse, specular, shininess)."""
+    _require_visualizer(visualizer)
+    ambient = ctypes.c_float()
+    diffuse = ctypes.c_float()
+    specular = ctypes.c_float()
+    shininess = ctypes.c_float()
+    helios_lib.getPhongMaterial(visualizer, ctypes.byref(ambient), ctypes.byref(diffuse),
+                                ctypes.byref(specular), ctypes.byref(shininess))
+    _check_for_helios_error()
+    return (ambient.value, diffuse.value, specular.value, shininess.value)
+
+
+def set_ambient_colors(visualizer: ctypes.POINTER(UVisualizer),
+                       sky_color: Tuple[float, float, float],
+                       ground_color: Tuple[float, float, float]) -> None:
+    """Set the hemispheric ambient sky and ground-bounce colors."""
+    _require_visualizer(visualizer)
+    sky = (ctypes.c_float * 3)(*sky_color)
+    ground = (ctypes.c_float * 3)(*ground_color)
+    helios_lib.setAmbientColors(visualizer, sky, ground)
+    _check_for_helios_error()
+
+
+def get_ambient_sky_color(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[float, float, float]:
+    """Get the hemispheric ambient sky color as (r, g, b)."""
+    _require_visualizer(visualizer)
+    color = (ctypes.c_float * 3)()
+    helios_lib.getAmbientSkyColor(visualizer, color)
+    _check_for_helios_error()
+    return (color[0], color[1], color[2])
+
+
+def get_ambient_ground_color(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[float, float, float]:
+    """Get the hemispheric ambient ground-bounce color as (r, g, b)."""
+    _require_visualizer(visualizer)
+    color = (ctypes.c_float * 3)()
+    helios_lib.getAmbientGroundColor(visualizer, color)
+    _check_for_helios_error()
+    return (color[0], color[1], color[2])
+
+
+def enable_smooth_shading(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Enable smooth per-vertex-normal shading."""
+    _require_visualizer(visualizer)
+    helios_lib.enableSmoothShading(visualizer)
+    _check_for_helios_error()
+
+
+def disable_smooth_shading(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Select flat (per-face) shading."""
+    _require_visualizer(visualizer)
+    helios_lib.disableSmoothShading(visualizer)
+    _check_for_helios_error()
+
+
+def is_smooth_shading_enabled(visualizer: ctypes.POINTER(UVisualizer)) -> bool:
+    """Return True if smooth shading is enabled."""
+    _require_visualizer(visualizer)
+    result = helios_lib.isSmoothShadingEnabled(visualizer)
+    _check_for_helios_error()
+    return bool(result)
+
+
+def is_headless_multisampling_active(visualizer: ctypes.POINTER(UVisualizer)) -> bool:
+    """Return True if headless rendering obtained multisampled framebuffer attachments."""
+    _require_visualizer(visualizer)
+    result = helios_lib.isHeadlessMultisamplingActive(visualizer)
+    _check_for_helios_error()
+    return bool(result)
+
+
 def get_textbox_size(visualizer: ctypes.POINTER(UVisualizer), textstring: str,
                      fontsize: int, fontname: str) -> Tuple[float, float]:
     """
@@ -1387,6 +1557,20 @@ if not _VISUALIZER_FUNCTIONS_AVAILABLE:
     display_image_with_segmentation_masks = _mock_function
     enable_exact_color_mode = _mock_function
     disable_exact_color_mode = _mock_function
+    enable_linear_pipeline = _mock_function
+    disable_linear_pipeline = _mock_function
+    is_linear_pipeline_enabled = _mock_function
+    set_exposure = _mock_function
+    get_exposure = _mock_function
+    set_phong_material = _mock_function
+    get_phong_material = _mock_function
+    set_ambient_colors = _mock_function
+    get_ambient_sky_color = _mock_function
+    get_ambient_ground_color = _mock_function
+    enable_smooth_shading = _mock_function
+    disable_smooth_shading = _mock_function
+    is_smooth_shading_enabled = _mock_function
+    is_headless_multisampling_active = _mock_function
     get_textbox_size = _mock_function
     build_context_geometry = _mock_function
     build_context_geometry_uuids = _mock_function

@@ -683,7 +683,23 @@ jobs:
 
           # Repair wheels to bundle dependencies
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
-          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
+          # Do NOT bundle the graphics/windowing libraries. They are on the
+          # manylinux allowlist (PEP 513) because they must come from the host:
+          # libGL and libX11 are dlopen'd by SONAME at runtime (GLFW opens
+          # libX11.so.6, libXxf86vm.so.1, ... directly), so a relocated copy in
+          # the wheel does not replace the system one -- both load, and two Xlib
+          # instances sharing one X connection abort with
+          # "xcb_xlib_unknown_seq_number". Excluding them keeps a single copy.
+          # Users on bare images install them via the package manager; see the
+          # Linux install notes in the README (issue #17).
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
+            auditwheel repair
+            --exclude libGL.so.1
+            --exclude libX11.so.6
+            --exclude libSM.so.6
+            --exclude libICE.so.6
+            --exclude libXext.so.6
+            -w {dest_dir} {wheel}
 
       - name: Debug build failure
         if: failure()
@@ -751,6 +767,73 @@ jobs:
           name: wheels-${{ matrix.os }}-${{ matrix.arch }}
           path: wheelhouse/*.whl
           retention-days: 7
+
+  test_wheels_slim_container:
+    name: Test wheel imports on ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build_wheels
+    strategy:
+      fail-fast: false
+      matrix:
+        # Bare runtime images with no Mesa/X11 packages preinstalled. The
+        # manylinux build image and the GitHub ubuntu runners both provide libGL
+        # and libX11 already, so neither catches an incomplete prerequisite list
+        # in the install docs (issue #17).
+        image:
+          - python:3.12-slim
+          - nvidia/cuda:12.6.3-devel-ubuntu24.04
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-ubuntu*
+          path: wheelhouse
+          merge-multiple: true
+
+      - name: Install Python (CUDA image has no python3 by default)
+        run: |
+          if ! command -v python3 >/dev/null 2>&1; then
+            apt-get update && apt-get install -y --no-install-recommends python3 python3-pip
+          fi
+
+      - name: Install the documented graphics prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The wheel deliberately does NOT bundle libGL/libX11 (they are dlopen'd
+          # by SONAME, so a bundled copy would load alongside the system one and
+          # abort). These are the packages the README tells Linux users to install;
+          # this job exists to prove that documented list is correct and complete
+          # on a bare image (issue #17).
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libgl1 libsm6 libice6 libx11-6 libxext6
+
+      - name: Install wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Python dependencies resolve from PyPI -- --no-index would block numpy,
+          # which is a genuine runtime requirement.
+          python3 -m pip install --break-system-packages \
+            --find-links wheelhouse pyhelios3d
+
+      - name: Import PyHelios
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "
+          from pyhelios import Context
+          from pyhelios.plugins import get_plugin_info
+          info = get_plugin_info()
+          assert not info.get('is_mock', True), (
+              'Wheel fell back to mock mode; native library failed to load'
+          )
+          print('OK: native library loaded with the documented prerequisites')
+          "
 
   test_wheels:
     name: Test wheels on ${{ matrix.os }} Python ${{ matrix.python-version }}
@@ -846,31 +929,55 @@ jobs:
             python -m pytest
           fi
 
-  start-gpu:
-    name: Start GPU instance for wheel testing
-    runs-on: ubuntu-latest
-    needs: build_wheels
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
-          aws-region: us-west-2
-      - run: |
-          aws ec2 start-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
-          aws ec2 wait instance-running --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
-
   test_gpu_wheels:
-    name: Test GPU wheels on self-hosted Linux runner
-    runs-on: [self-hosted]
-    needs: [build_wheels, start-gpu]
+    name: Test GPU wheels on GitHub-hosted GPU runner
+    runs-on: linux-x64-gpu-githubhosted
+    needs: build_wheels
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout PyHelios for tests
         uses: actions/checkout@v4
+
+      # The GitHub-hosted GPU runner uses an NVIDIA Azure partner image that is NOT
+      # built from actions/runner-images, so its package inventory is undocumented and
+      # nothing here may be preinstalled. The previous self-hosted runner happened to
+      # provide these; do not assume this one does. See issue #17 for the class of bug
+      # that assuming causes.
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglu1-mesa libx11-6 libxext6 libsm6 libice6 xvfb
+
+      # The NVIDIA driver is INSTALLED on this image but its kernel modules are not
+      # LOADED at boot, so /dev/nvidia0 does not exist and nvidia-smi fails with
+      # "couldn't communicate with the NVIDIA driver". This is the long-standing
+      # https://github.com/orgs/community/discussions/138813 report; loading the
+      # modules explicitly is the known fix.
+      - name: Load NVIDIA kernel modules
+        run: |
+          set -euo pipefail
+          sudo modprobe nvidia
+          sudo modprobe nvidia_uvm
+          ls -l /dev/nvidia* || true
+
+      - name: Verify GPU is usable
+        run: |
+          set -euo pipefail
+          # Fail loudly rather than let GPU tests silently skip and publish a green release.
+          if ! command -v nvidia-smi >/dev/null 2>&1; then
+            echo "ERROR: nvidia-smi not found on the GPU runner."
+            exit 1
+          fi
+          nvidia-smi
+          # Without the kernel modules the runner still renders - it silently falls back
+          # to llvmpipe software rendering and exits 0. Assert a real device is present so
+          # a GPU-less run fails instead of quietly testing the wrong thing.
+          if ! nvidia-smi -L | grep -q "GPU 0"; then
+            echo "ERROR: nvidia-smi reports no GPU devices."
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -924,6 +1031,25 @@ jobs:
             raise SystemExit('FAIL: import resolved to non-site-packages location')
           print('OK: imported from wheel in site-packages')
           "
+
+      - name: Start virtual display for visualizer tests
+        run: |
+          set -euo pipefail
+          # The visualizer's headless mode still creates a 1x1 hidden GLFW window, so it
+          # needs a display connection on Linux. Without one, every native visualizer
+          # test skips and a rendering regression reports green.
+          Xvfb :99 -screen 0 1280x1024x24 &
+          echo "XVFB_PID=$!" >> "$GITHUB_ENV"
+          sleep 3
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          # PYHELIOS_TEST_VISUALIZER=1 opts the native visualizer tests in; they are
+          # otherwise skipped whenever GITHUB_ACTIONS is set, regardless of hardware.
+          echo "PYHELIOS_TEST_VISUALIZER=1" >> "$GITHUB_ENV"
+          # This runner exists to exercise GPU code, so a run that skips every GPU
+          # test must fail rather than report success, and the radiation model must
+          # actually reach OptiX instead of silently falling back to Vulkan.
+          echo "HELIOS_REQUIRE_GPU=1" >> "$GITHUB_ENV"
+          echo "HELIOS_REQUIRE_OPTIX=1" >> "$GITHUB_ENV"
 
       - name: Test GPU wheel functionality
         run: |
@@ -1324,27 +1450,10 @@ jobs:
             echo "No virtual environment to clean up"
           fi
 
-  stop-gpu:
-    name: Stop GPU instance
-    needs: test_gpu_wheels
-    if: always() && (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
-          aws-region: us-west-2
-      - run: |
-          aws ec2 stop-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
-          aws ec2 wait instance-stopped --instance-ids ${{ secrets.EC2_INSTANCE_ID_LINUX }}
-
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build_wheels, test_wheels, test_gpu_wheels]
+    needs: [build_wheels, test_wheels, test_wheels_slim_container, test_gpu_wheels]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     environment:
       name: pypi

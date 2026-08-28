@@ -11730,4 +11730,297 @@ extern "C" {
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); }
     }
 
+    //=============================================================================
+    // Polymesh mesh topology (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API void setPolymeshObjectTopology(helios::Context* context, unsigned int objID, float* vertices, unsigned int vertex_count, int* faces, unsigned int face_count, unsigned int* face_UUIDs, float* vertex_normals, unsigned int normal_count, float* vertex_uv, unsigned int uv_count, int normal_source) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (vertex_count > 0 && !vertices) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertices pointer is null"); return; }
+            if (face_count > 0 && (!faces || !face_UUIDs)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Faces or face UUIDs pointer is null"); return; }
+            if (normal_count > 0 && !vertex_normals) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertex normals pointer is null"); return; }
+            if (uv_count > 0 && !vertex_uv) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertex UV pointer is null"); return; }
+            if (normal_source < 0 || normal_source > 2) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "normal_source must be 0 (none), 1 (authored) or 2 (computed)"); return; }
+
+            std::vector<helios::vec3> vertices_vec;
+            vertices_vec.reserve(vertex_count);
+            for (unsigned int i = 0; i < vertex_count; i++) {
+                vertices_vec.emplace_back(vertices[3*i], vertices[3*i+1], vertices[3*i+2]);
+            }
+
+            std::vector<helios::int3> faces_vec;
+            faces_vec.reserve(face_count);
+            for (unsigned int i = 0; i < face_count; i++) {
+                faces_vec.emplace_back(faces[3*i], faces[3*i+1], faces[3*i+2]);
+            }
+
+            std::vector<unsigned int> face_UUIDs_vec(face_UUIDs, face_UUIDs + face_count);
+
+            std::vector<helios::vec3> normals_vec;
+            normals_vec.reserve(normal_count);
+            for (unsigned int i = 0; i < normal_count; i++) {
+                normals_vec.emplace_back(vertex_normals[3*i], vertex_normals[3*i+1], vertex_normals[3*i+2]);
+            }
+
+            std::vector<helios::vec2> uv_vec;
+            uv_vec.reserve(uv_count);
+            for (unsigned int i = 0; i < uv_count; i++) {
+                uv_vec.emplace_back(vertex_uv[2*i], vertex_uv[2*i+1]);
+            }
+
+            context->setPolymeshObjectTopology(objID, vertices_vec, faces_vec, face_UUIDs_vec, normals_vec, uv_vec, static_cast<helios::VertexNormalSource>(normal_source));
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPolymeshObjectTopology): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPolymeshObjectTopology): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API float* getPolymeshObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<helios::vec3> v = context->getPolymeshObjectVertices(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(v.size()*3);
+            for (const auto& p : v) { buf.push_back(p.x); buf.push_back(p.y); buf.push_back(p.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectVertices): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectVertices): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API int* getPolymeshObjectFaces(helios::Context* context, unsigned int objID, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<helios::int3> f = context->getPolymeshObjectFaces(objID);
+            static thread_local std::vector<int> buf;
+            buf.clear(); buf.reserve(f.size()*3);
+            for (const auto& t : f) { buf.push_back(t.x); buf.push_back(t.y); buf.push_back(t.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectFaces): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectFaces): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getPolymeshObjectVertexNormals(helios::Context* context, unsigned int objID, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<helios::vec3> n = context->getPolymeshObjectVertexNormals(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(n.size()*3);
+            for (const auto& p : n) { buf.push_back(p.x); buf.push_back(p.y); buf.push_back(p.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectVertexNormals): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectVertexNormals): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getPolymeshObjectVertexUV(helios::Context* context, unsigned int objID, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<helios::vec2> uv = context->getPolymeshObjectVertexUV(objID);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(uv.size()*2);
+            for (const auto& p : uv) { buf.push_back(p.x); buf.push_back(p.y); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectVertexUV): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectVertexUV): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API bool doesPolymeshObjectHaveVertexNormals(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->doesPolymeshObjectHaveVertexNormals(objID);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return false; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::doesPolymeshObjectHaveVertexNormals): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::doesPolymeshObjectHaveVertexNormals): Unknown error."); return false; }
+    }
+
+    PYHELIOS_API int getPolymeshObjectVertexNormalSource(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return static_cast<int>(context->getPolymeshObjectVertexNormalSource(objID));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectVertexNormalSource): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectVertexNormalSource): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API unsigned int getPolymeshObjectVertexCount(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return static_cast<unsigned int>(context->getPolymeshObjectVertexCount(objID));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectVertexCount): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectVertexCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API unsigned int getPolymeshObjectFaceCount(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return static_cast<unsigned int>(context->getPolymeshObjectFaceCount(objID));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectFaceCount): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectFaceCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API unsigned int getPolymeshObjectFaceIndexForPrimitive(helios::Context* context, unsigned int objID, unsigned int uuid) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return static_cast<unsigned int>(context->getPolymeshObjectFaceIndexForPrimitive(objID, uuid));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectFaceIndexForPrimitive): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectFaceIndexForPrimitive): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API unsigned int getPolymeshObjectPrimitiveUUIDForFace(helios::Context* context, unsigned int objID, unsigned int face_index) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return context->getPolymeshObjectPrimitiveUUIDForFace(objID, static_cast<size_t>(face_index));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectPrimitiveUUIDForFace): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectPrimitiveUUIDForFace): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API void computePolymeshObjectVertexNormals(helios::Context* context, unsigned int objID, float crease_angle_degrees) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            context->computePolymeshObjectVertexNormals(objID, crease_angle_degrees);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::computePolymeshObjectVertexNormals): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::computePolymeshObjectVertexNormals): Unknown error."); }
+    }
+
+    PYHELIOS_API bool isPolymeshObjectClosed(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->isPolymeshObjectClosed(objID);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return false; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::isPolymeshObjectClosed): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::isPolymeshObjectClosed): Unknown error."); return false; }
+    }
+
+    PYHELIOS_API int* getPolymeshObjectBoundaryEdges(helios::Context* context, unsigned int objID, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<helios::int2> e = context->getPolymeshObjectBoundaryEdges(objID);
+            static thread_local std::vector<int> buf;
+            buf.clear(); buf.reserve(e.size()*2);
+            for (const auto& p : e) { buf.push_back(p.x); buf.push_back(p.y); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectBoundaryEdges): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectBoundaryEdges): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API unsigned int* getPolymeshObjectConnectedComponents(helios::Context* context, unsigned int objID, unsigned int** component_sizes, unsigned int* component_count, unsigned int* total_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (component_count) *component_count = 0; if (total_size) *total_size = 0; return nullptr; }
+            if (!component_sizes || !component_count || !total_size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointer is null"); return nullptr; }
+            std::vector<std::vector<size_t>> comps = context->getPolymeshObjectConnectedComponents(objID);
+            static thread_local std::vector<unsigned int> flat_buf;
+            static thread_local std::vector<unsigned int> sizes_buf;
+            flat_buf.clear();
+            sizes_buf.clear();
+            sizes_buf.reserve(comps.size());
+            for (const auto& c : comps) {
+                sizes_buf.push_back(static_cast<unsigned int>(c.size()));
+                for (size_t f : c) { flat_buf.push_back(static_cast<unsigned int>(f)); }
+            }
+            *component_count = static_cast<unsigned int>(sizes_buf.size());
+            *total_size = static_cast<unsigned int>(flat_buf.size());
+            *component_sizes = sizes_buf.empty() ? nullptr : sizes_buf.data();
+            return flat_buf.empty() ? nullptr : flat_buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (component_count) *component_count = 0; if (total_size) *total_size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectConnectedComponents): ") + e.what()); if (component_count) *component_count = 0; if (total_size) *total_size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectConnectedComponents): Unknown error."); if (component_count) *component_count = 0; if (total_size) *total_size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float getPolymeshObjectSurfaceArea(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0.0f; }
+            return context->getPolymeshObjectSurfaceArea(objID);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0.0f; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPolymeshObjectSurfaceArea): ") + e.what()); return 0.0f; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectSurfaceArea): Unknown error."); return 0.0f; }
+    }
+
+    //=============================================================================
+    // Analytic vertex normals on curved compound objects (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API bool doesObjectHaveAnalyticVertexNormals(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->doesObjectHaveAnalyticVertexNormals(objID);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return false; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::doesObjectHaveAnalyticVertexNormals): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::doesObjectHaveAnalyticVertexNormals): Unknown error."); return false; }
+    }
+
+    PYHELIOS_API float* getObjectPrimitiveVertexNormals(helios::Context* context, unsigned int objID, unsigned int uuid, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<helios::vec3> n = context->getObjectPrimitiveVertexNormals(objID, uuid);
+            static thread_local std::vector<float> buf;
+            buf.clear(); buf.reserve(n.size()*3);
+            for (const auto& p : n) { buf.push_back(p.x); buf.push_back(p.y); buf.push_back(p.z); }
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getObjectPrimitiveVertexNormals): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveVertexNormals): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    PYHELIOS_API float* getObjectPrimitiveVertexNormalsBatch(helios::Context* context, unsigned int objID, unsigned int* uuids, unsigned int count, unsigned int** normals_per_primitive, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            if (!normals_per_primitive || !size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointer is null"); return nullptr; }
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs pointer is null"); *size = 0; return nullptr; }
+            std::vector<unsigned int> uuids_vec(uuids, uuids + count);
+            std::vector<std::vector<helios::vec3>> n = context->getObjectPrimitiveVertexNormals(objID, uuids_vec);
+            static thread_local std::vector<float> flat_buf;
+            static thread_local std::vector<unsigned int> counts_buf;
+            flat_buf.clear();
+            counts_buf.clear();
+            counts_buf.reserve(n.size());
+            for (const auto& per_prim : n) {
+                counts_buf.push_back(static_cast<unsigned int>(per_prim.size()));
+                for (const auto& p : per_prim) { flat_buf.push_back(p.x); flat_buf.push_back(p.y); flat_buf.push_back(p.z); }
+            }
+            *size = static_cast<unsigned int>(flat_buf.size());
+            *normals_per_primitive = counts_buf.empty() ? nullptr : counts_buf.data();
+            return flat_buf.empty() ? nullptr : flat_buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getObjectPrimitiveVertexNormals): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveVertexNormals): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
 } //extern "C"

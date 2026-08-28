@@ -126,7 +126,7 @@ None.
  2. **OpenMP parallel CPU** - Multi-core CPU parallelization (recommended for systems without GPU)
  3. **Serial CPU** - Single-threaded fallback if neither GPU nor OpenMP available
 
- The execution mode is automatically selected based on available hardware and compiled libraries. GPU acceleration can be explicitly controlled using the GPU acceleration methods (see \ref EBGPUControl).
+ The execution mode is automatically selected based on available hardware and compiled libraries. GPU acceleration can be explicitly controlled using \ref pyhelios.EnergyBalance.EnergyBalanceModel::enableGPUAcceleration "enableGPUAcceleration()" and \ref pyhelios.EnergyBalance.EnergyBalanceModel::disableGPUAcceleration "disableGPUAcceleration()".
 
  The model is solving the steady-state budget between absorbed radiation, emitted radiation, sensible heat exchange, and latent heat exchange, which is written as
 

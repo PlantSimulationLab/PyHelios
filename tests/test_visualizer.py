@@ -44,8 +44,14 @@ def is_headless_environment():
     # broke helios's relative asset paths and surfaced as a generic "failed to create visualizer"
     # error. See _suppress_glfw_cocoa_chdir() in pyhelios/wrappers/UVisualizerWrapper.py.
     if sys.platform == 'darwin':
-        if not os.environ.get('PYHELIOS_TEST_VISUALIZER'):
+        if os.environ.get('PYHELIOS_TEST_VISUALIZER') != '1':
             return True
+
+    # An explicit opt-in runs these tests wherever a usable GL stack has been set up,
+    # including CI under Xvfb. Without it, a CI run skips every native visualizer test
+    # and a rendering regression reports green.
+    if os.environ.get('PYHELIOS_TEST_VISUALIZER') == '1':
+        return False
 
     # Check for display availability (Linux/other)
     display = os.environ.get('DISPLAY')
@@ -59,7 +65,8 @@ def is_headless_environment():
         if not display or display == ':0':
             return True  # SSH without proper X11 forwarding
 
-    # Additional check for CI environments
+    # Additional check for CI environments. A CI runner has no display unless one was
+    # provisioned; PYHELIOS_TEST_VISUALIZER=1 above is how a run declares that it has.
     ci_indicators = ['CI', 'CONTINUOUS_INTEGRATION', 'GITHUB_ACTIONS', 'TRAVIS', 'JENKINS']
     if any(os.environ.get(var) for var in ci_indicators):
         return True  # Running in CI environment
@@ -1439,6 +1446,117 @@ class TestVisualizerV1382Validation:
     def test_constructor_rejects_negative_antialiasing(self):
         with pytest.raises(ValueError, match="non-negative"):
             Visualizer(100, 100, antialiasing_samples=-1)
+
+
+@pytest.mark.cross_platform
+class TestVisualizerV1383API:
+    """Signature-level checks for helios-core 1.3.83 visualizer additions."""
+
+    @pytest.mark.parametrize("name", [
+        "enableLinearPipeline", "disableLinearPipeline", "isLinearPipelineEnabled",
+        "setExposure", "getExposure",
+        "setPhongMaterial", "getPhongMaterial",
+        "setAmbientColors", "getAmbientSkyColor", "getAmbientGroundColor",
+        "enableSmoothShading", "disableSmoothShading", "isSmoothShadingEnabled",
+        "isHeadlessMultisamplingActive",
+    ])
+    def test_rendering_control_methods_exist(self, name):
+        assert hasattr(Visualizer, name), f"{name}() is missing"
+
+    def test_exact_color_mode_documents_linear_pipeline_interaction(self):
+        """enableExactColorMode also disables the linear pipeline; the docstring must say so."""
+        doc = Visualizer.enableExactColorMode.__doc__ or ""
+        assert "linear" in doc.lower(), (
+            "enableExactColorMode() disables the linear-light pipeline as of 1.3.83; "
+            "the docstring must document that side effect"
+        )
+
+    def test_compute_polymesh_vertex_normals_supplies_crease_angle_default(self):
+        """The C++ method has no default crease angle, so PyHelios must choose one."""
+        import inspect
+        sig = inspect.signature(Context.computePolymeshObjectVertexNormals)
+        default = sig.parameters["crease_angle_degrees"].default
+        assert isinstance(default, (int, float)) and default is not inspect.Parameter.empty
+        assert 0 < default < 180
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(is_headless_environment(), reason="Skipping visualizer tests in headless environment")
+class TestVisualizerV1383Native:
+    """helios-core 1.3.83 rendering-control behavior."""
+
+    @pytest.fixture
+    def visualizer(self):
+        with Visualizer(200, 150, headless=True) as vis:
+            yield vis
+
+    def test_linear_pipeline_defaults_on_and_round_trips(self, visualizer):
+        """The linear pipeline is the 1.3.83 default and can be toggled back and forth."""
+        assert visualizer.isLinearPipelineEnabled() is True
+        visualizer.disableLinearPipeline()
+        assert visualizer.isLinearPipelineEnabled() is False
+        visualizer.enableLinearPipeline()
+        assert visualizer.isLinearPipelineEnabled() is True
+
+    def test_smooth_shading_defaults_on_and_round_trips(self, visualizer):
+        """Smooth shading is the 1.3.83 default and can be toggled back and forth."""
+        assert visualizer.isSmoothShadingEnabled() is True
+        visualizer.disableSmoothShading()
+        assert visualizer.isSmoothShadingEnabled() is False
+        visualizer.enableSmoothShading()
+        assert visualizer.isSmoothShadingEnabled() is True
+
+    def test_exposure_round_trips(self, visualizer):
+        assert visualizer.getExposure() == pytest.approx(1.0)
+        visualizer.setExposure(2.5)
+        assert visualizer.getExposure() == pytest.approx(2.5)
+
+    @pytest.mark.parametrize("bad", [0.0, -1.0])
+    def test_exposure_rejects_non_positive(self, visualizer, bad):
+        with pytest.raises(ValueError, match="positive"):
+            visualizer.setExposure(bad)
+
+    def test_phong_material_round_trips(self, visualizer):
+        """Defaults match the native PhongMaterial struct, and values survive a set/get."""
+        ambient, diffuse, specular, shininess = visualizer.getPhongMaterial()
+        assert (ambient, diffuse, specular, shininess) == pytest.approx((1.0, 0.8, 0.2, 32.0))
+
+        visualizer.setPhongMaterial(0.9, 0.7, 0.0, 16.0)
+        assert visualizer.getPhongMaterial() == pytest.approx((0.9, 0.7, 0.0, 16.0))
+
+    def test_ambient_colors_round_trip(self, visualizer):
+        """Defaults match the native hemispheric ambient colors, and values survive a set/get."""
+        sky = visualizer.getAmbientSkyColor()
+        ground = visualizer.getAmbientGroundColor()
+        assert (sky.r, sky.g, sky.b) == pytest.approx((0.5, 0.6, 0.75))
+        assert (ground.r, ground.g, ground.b) == pytest.approx((0.35, 0.3, 0.22))
+
+        visualizer.setAmbientColors(RGBcolor(0.1, 0.2, 0.3), RGBcolor(0.4, 0.5, 0.6))
+        sky = visualizer.getAmbientSkyColor()
+        ground = visualizer.getAmbientGroundColor()
+        assert (sky.r, sky.g, sky.b) == pytest.approx((0.1, 0.2, 0.3))
+        assert (ground.r, ground.g, ground.b) == pytest.approx((0.4, 0.5, 0.6))
+
+    def test_ambient_colors_reject_wrong_type_positionally(self, visualizer):
+        """Positional arguments are validated, not just keywords."""
+        with pytest.raises(ValueError, match="sky_color must be an RGBcolor"):
+            visualizer.setAmbientColors(vec3(0.1, 0.2, 0.3), RGBcolor(0.4, 0.5, 0.6))
+        with pytest.raises(ValueError, match="ground_color must be an RGBcolor"):
+            visualizer.setAmbientColors(RGBcolor(0.1, 0.2, 0.3), vec3(0.4, 0.5, 0.6))
+
+    def test_exact_color_mode_toggles_linear_pipeline(self, visualizer):
+        """Exact color mode and the linear pipeline are mutually exclusive."""
+        assert visualizer.isLinearPipelineEnabled() is True
+        visualizer.enableExactColorMode()
+        assert visualizer.isLinearPipelineEnabled() is False, (
+            "tone mapping would alter values read back out of the framebuffer"
+        )
+        visualizer.disableExactColorMode()
+        assert visualizer.isLinearPipelineEnabled() is True
+
+    def test_headless_multisampling_query_returns_bool(self, visualizer):
+        """The query reports whether multisampled attachments were obtained."""
+        assert isinstance(visualizer.isHeadlessMultisamplingActive(), bool)
 
 
 if __name__ == "__main__":

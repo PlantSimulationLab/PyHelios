@@ -49,6 +49,8 @@ else:
     print("No compatible GPU backend found")
 ```
 
+**Running in Docker?** See \ref DockerGPU "Running PyHelios in Docker with GPU Support". Containers need `NVIDIA_DRIVER_CAPABILITIES` to include `graphics` before the OptiX backend is available; without it the model silently falls back to Vulkan.
+
 **For CUDA/OptiX setup**, see the comprehensive \ref CUDASetup "CUDA Setup Guide", which covers:
 - Choosing the correct CUDA toolkit version: \ref ChoosingCUDA
 - Platform-specific installation steps (Windows, Linux)

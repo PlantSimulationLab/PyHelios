@@ -2,7 +2,7 @@
 
 ## Overview
 
-PlantArchitecture provides advanced plant structure and architecture modeling with a comprehensive library of 28 procedural plant models. This plugin enables time-based plant growth simulation, procedural plant generation, and plant community modeling for scientific applications including agriculture, forestry, and ecological research.
+PlantArchitecture provides advanced plant structure and architecture modeling with a comprehensive library of 30 procedural plant models. This plugin enables time-based plant growth simulation, procedural plant generation, and plant community modeling for scientific applications including agriculture, forestry, and ecological research.
 
 The plugin includes pre-built models for major agricultural crops (bean, cowpea, maize, rice, soybean, wheat), fruit trees (almond, apple, olive, walnut), and other plant species with biologically-accurate growth parameters and morphological characteristics.
 
@@ -88,6 +88,8 @@ PlantArchitecture includes 28 scientifically-validated plant models:
 
 **Trees:**
 - `"almond"` - Almond tree with seasonal growth patterns
+- `"almond_aldrich"` - Almond, Aldrich cultivar
+- `"almond_wood_colony"` - Almond, wood colony training
 - `"apple"` - Apple tree with standard varieties
 - `"apple_fruitingwall"` - Apple fruiting wall (specialized high-density training system)
 - `"easternredbud"` - Ornamental tree
@@ -156,7 +158,15 @@ either a nested `dict` or a `ShootParameters`.
 
 Shoot type labels are species-specific — bean defines `unifoliate`/`trifoliate`,
 almond defines `trunk`/`scaffold`/`proleptic`/`sylleptic`. There is no generic
-`"stem"` type.
+`"stem"` type. Rather than guessing, list them:
+
+```python
+plantarch.listShootTypeLabels()                      # currently loaded model
+plantarch.listShootTypeLabels(plant_model="bean")    # without loading it
+plantarch.listShootTypeLabels(plant_id=plant_id)     # as built into a plant
+```
+
+`getAvailablePlantModels()` lists the species names those take.
 
 **A custom shoot type only affects plants you assemble yourself.**
 `buildPlantInstanceFromLibrary()` calls a hard-coded builder for the species that
@@ -181,6 +191,11 @@ plant.addBaseStemShoot(
     shoot_type_label="custom_stem",
 )
 ```
+
+> **Growing a custom-built plant destroys its geometry.** Calling `advanceTime()` on a
+> plant assembled with `addBaseStemShoot()` deletes its leaves and petioles. Build the
+> plant at the age you want and query it directly, rather than building young and
+> growing it forward.
 
 ### Phenological thresholds
 
@@ -307,6 +322,11 @@ with Context() as context:
         print(f"Created canopy with {len(plant_ids)} maize plants")
         print(f"Plant IDs: {plant_ids}")
 ```
+
+> **Reproductive organs appear later than you may expect.** Maize sets its ears at day 58,
+> so a 45-day canopy like the one above is vegetative and `getPlantFruitObjectIDs()`
+> returns an empty list. Build at 60 days or later to get fruit. Other species have their
+> own thresholds — check `setPlantPhenologicalThresholds()` for the model you are using.
 
 ### Time-Based Growth Simulation
 
@@ -505,7 +525,7 @@ with Context() as context:
     plantarch.pruneBranch(plant_id, shoot_id=0, node_index=5)
 
     # The plant continues to grow from what is left
-    plantarch.advanceTime(plant_id, 60)
+    plantarch.advanceTime(60, plant_id=plant_id)
 ```
 
 The cut is recursive: pruning a shoot also removes every shoot descended from it, so there is
@@ -606,7 +626,7 @@ plantarch.pruneTerminalShoots(plant_id, stride=2)
 # Keep a cane but strip everything growing off it
 plantarch.pruneShootSubtree(plant_id, shoot_id=2, include_self=False)
 
-plantarch.advanceTime(plant_id, 60)
+plantarch.advanceTime(60, plant_id=plant_id)
 ```
 
 `min_rank=0` is rejected, because cutting rank 0 destroys the plant. To remove a whole plant
@@ -621,6 +641,12 @@ Pruning also happens on its own during `advanceTime()` when it is configured:
 - The carbohydrate model aborts flowers and fruit, and eventually prunes whole shoots, under prolonged carbon stress
 
 ## Collision Detection
+
+> **Build the plant first, then enable collision.** Collision hooks run while each
+> phytomer is constructed, so enabling avoidance before `buildPlantInstanceFromLibrary()`
+> changes how the initial geometry is assembled. Only growth that happens after the call
+> is steered.
+
 
 PlantArchitecture integrates advanced collision detection capabilities to enable realistic plant growth that responds to obstacles and other plants. The collision detection system uses cone-based ray tracing to guide plant growth away from obstacles while maintaining natural plant architecture.
 
@@ -908,25 +934,28 @@ with Context() as context:
             include_fruit=False
         )
 
-        # 5. Enable soft collision avoidance
-        plantarch.enableSoftCollisionAvoidance()
-
-        # 6. Mark static obstacles for optimization
-        plantarch.setStaticObstacles(static_uuids)
-
-        # 7. Enable hard obstacle avoidance
-        plantarch.enableSolidObstacleAvoidance(
-            obstacle_UUIDs=[building] + fence_uuids,
-            avoidance_distance=0.4,
-            enable_fruit_adjustment=True
-        )
-
-        # 8. Build plant canopy
+        # 5. Build the canopy BEFORE enabling collision. Collision hooks run while
+        #    each phytomer is constructed, so enabling them first changes how the
+        #    initial plants are assembled and makes otherwise identical runs diverge
+        #    from day zero.
         plant_ids = plantarch.buildPlantCanopyFromLibrary(
             canopy_center=vec3(-1, -1, 0),
             plant_spacing=vec2(0.5, 0.5),
             plant_count=int2(4, 4),
             age=8.0
+        )
+
+        # 6. Enable soft collision avoidance
+        plantarch.enableSoftCollisionAvoidance()
+
+        # 7. Mark static obstacles for optimization (after enabling avoidance)
+        plantarch.setStaticObstacles(static_uuids)
+
+        # 8. Enable hard obstacle avoidance
+        plantarch.enableSolidObstacleAvoidance(
+            obstacle_UUIDs=[building] + fence_uuids,
+            avoidance_distance=0.4,
+            enable_fruit_adjustment=True
         )
 
         # 9. Grow plants with all collision features active
@@ -1135,11 +1164,6 @@ with Context() as context:
         plant_ids = plantarch.readPlantStructureXML("bean_day45.xml")
         print(f"Loaded {len(plant_ids)} plant(s)")
 ```
-
-**Known limitation**: calling `advanceTime()` on a plant restored from XML currently fails in the
-native library with `ERROR (Tube::setTubeRadii): Number of radii in input vector must match number
-of tube nodes.` Reloaded plants can be queried and rendered, but not grown further. Plants built
-in-process with `buildPlantInstanceFromLibrary()` are unaffected.
 
 **Important Notes:**
 - Plant model must be loaded (`loadPlantModelFromLibrary()`) before calling `readPlantStructureXML()`

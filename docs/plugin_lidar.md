@@ -946,7 +946,7 @@ Results of data processing can be easily written to file for external analysis. 
 <table>
 <tr><th>Method</th><th>Description</th></tr>
 <tr><td>exportPointCloud(filename, write_header=True)</td><td>Write the entire point cloud to ASCII file (usually only used for generated synthetic data). A #-prefixed column header is written by default; pass write_header=False to suppress it.</td></tr>
-<tr><td>exportScans(filename)</td><td>Write an XML metadata file describing all scans plus one ASCII point cloud file per scan (auto-named <base>_<scanID>.xyz). The XML can be re-loaded with loadXML().</td></tr>
+<tr><td>exportScans(filename)</td><td>Write an XML metadata file describing all scans plus one ASCII point cloud file per scan (auto-named &lt;base&gt;_&lt;scanID&gt;.xyz). The XML can be re-loaded with loadXML().</td></tr>
 <tr><td>exportTriangleNormals(filename)</td><td>Write the unit normal vectors [nx ny nz] of all triangles formed from triangulation.</td></tr>
 <tr><td>exportTriangleAreas(filename)</td><td>Write the areas of all triangles formed from triangulation.</td></tr>
 <tr><td>exportLeafAreas(filename)</td><td>Write the leaf area contained within each voxel.</td></tr>
@@ -1047,7 +1047,7 @@ with Context() as context:
 
 ## See Also
 
-- [Context](@ref ContextDoc) - 3D primitive management
-- [CollisionDetection](@ref CollisionDetectionDoc) - Ray tracing for synthetic scans
+- \ref pyhelios.Context.Context "Context" - 3D primitive management
+- \ref pyhelios.LiDARCloud.LiDARCloud::initializeCollisionDetection "initializeCollisionDetection()" - Ray tracing for synthetic scans
 - [Visualizer](@ref VisualizerDoc) - 3D visualization of point clouds
 - [Complete Helios C++ LiDAR Documentation](https://baileylab.ucdavis.edu/software/helios/documentation/html/_li_d_a_r_doc.html)

@@ -176,6 +176,12 @@ with Context() as context:
 
 > **Note:** As of helios-core 1.3.80, a headless render that never calls \ref pyhelios.Visualizer.Visualizer::setLightDirection "setLightDirection()" uses the same default (1,1,1) light direction as windowed mode. In earlier versions the default light direction was never sent to the shader in headless mode, so headless and windowed renders shaded the same scene differently.
 
+**Anti-aliasing:**
+
+Headless rendering is anti-aliased: geometry is rendered into a multisampled framebuffer and resolved before readback, using the sample count given to the constructor. The requested count is clamped to the driver maximum, and a driver that refuses the multisampled attachments falls back silently — \ref pyhelios.Visualizer.Visualizer::isHeadlessMultisamplingActive "isHeadlessMultisamplingActive()" is how to detect that.
+
+> **Note:** macOS drives OpenGL through a translation layer that accepts the multisampled attachments but does not rasterize into them, so `isHeadlessMultisamplingActive()` can report `True` there while the saved image is not actually anti-aliased.
+
 **Important Notes:**
 - When in headless mode, \ref pyhelios.Visualizer.Visualizer::plotInteractive "plotInteractive()" is not available
 - Always use \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" for headless workflows
@@ -643,6 +649,48 @@ with Context() as context:
         vis.plotInteractive()
 ```
 
+### Rendering Pipeline {#RenderPipeline}
+
+Rendering uses a physically-based linear-light pipeline by default. Albedo is decoded from sRGB to linear light before shading, and the shaded radiance is tone-mapped through an ACES filmic curve and re-encoded to sRGB. Compared with shading directly on non-linear sRGB values, mid-tones are brighter, shadow terminators are smoother, and bright surfaces roll off rather than clipping flat against the 8-bit framebuffer.
+
+**Rendered images therefore differ from PyHelios versions before this one.** The previous appearance is available with \ref pyhelios.Visualizer.Visualizer::disableLinearPipeline "disableLinearPipeline()", and \ref pyhelios.Visualizer.Visualizer::enableLinearPipeline "enableLinearPipeline()" restores the default. \ref pyhelios.Visualizer.Visualizer::isLinearPipelineEnabled "isLinearPipelineEnabled()" reports the current state.
+
+\ref pyhelios.Visualizer.Visualizer::setExposure "setExposure(exposure)" controls the linear exposure multiplier applied before tone mapping; it must be positive. \ref pyhelios.Visualizer.Visualizer::getExposure "getExposure()" reads it back.
+
+```python
+with Visualizer(width=1200, height=800) as vis:
+    vis.setExposure(1.8)          # brighten before tone mapping
+    vis.disableLinearPipeline()   # or reproduce the old sRGB-space shading
+```
+
+### Phong Material and Ambient Light {#PhongMaterial}
+
+Under a Phong lighting model, surfaces are shaded as `ambient*A + diffuse*max(0, N.L) + specular*max(0, N.H)^shininess`, where `A` is the hemispheric ambient term. The four parameters are set with \ref pyhelios.Visualizer.Visualizer::setPhongMaterial "setPhongMaterial(ambient, diffuse, specular, shininess)" and read back with \ref pyhelios.Visualizer.Visualizer::getPhongMaterial "getPhongMaterial()", which returns them as a tuple. The defaults are `(1.0, 0.8, 0.2, 32.0)`.
+
+The specular highlight is new: it was previously absent entirely despite the model being described as Phong. Setting `specular` to zero recovers surfaces without a highlight.
+
+Individual materials can override any of these parameters by attaching `phong_ambient`, `phong_diffuse`, `phong_specular` or `phong_shininess` material data with `Context.setMaterialDataFloat()`. Each parameter falls back individually to the global value, so a material can override only its specular lobe.
+
+```python
+context.setMaterialDataFloat("leaf", "phong_specular", 0.0)   # matte leaves only
+vis.setPhongMaterial(1.0, 0.8, 0.35, 48.0)                    # glossier everything else
+```
+
+Ambient light is modeled hemispherically, blending a sky color from above with a ground-bounce color from below according to surface orientation, rather than applying one constant term to every surface. The two colors are set with \ref pyhelios.Visualizer.Visualizer::setAmbientColors "setAmbientColors(sky_color, ground_color)" and read with \ref pyhelios.Visualizer.Visualizer::getAmbientSkyColor "getAmbientSkyColor()" and \ref pyhelios.Visualizer.Visualizer::getAmbientGroundColor "getAmbientGroundColor()". The defaults are a sky of `(0.5, 0.6, 0.75)` and a ground of `(0.35, 0.3, 0.22)`; setting both to the same value recovers the old constant ambient term.
+
+### Smooth Shading {#SmoothShading}
+
+Surfaces are shaded with smooth, interpolated per-vertex normals by default, removing the faceted appearance of tessellated curved geometry such as stems, trunks and fruit. \ref pyhelios.Visualizer.Visualizer::disableSmoothShading "disableSmoothShading()" selects flat shading and \ref pyhelios.Visualizer.Visualizer::enableSmoothShading "enableSmoothShading()" restores the default; \ref pyhelios.Visualizer.Visualizer::isSmoothShadingEnabled "isSmoothShadingEnabled()" reports the current state.
+
+Only geometry that supplies distinct vertex normals is affected:
+
+- `Sphere`, `Tube` and `Cone` objects, which use the analytic surface normal of the shape they approximate.
+- `Polymesh` objects loaded from an OBJ or PLY file that carries per-vertex normals, or given them with `Context.computePolymeshObjectVertexNormals()`.
+
+Patches, triangles and voxels added directly to the Context carry the face normal replicated across their vertices and render identically either way.
+
+Flat shading is sometimes preferable for alpha-masked cutout geometry such as leaf textures, where interpolated normals can look worse than a single flat normal per face.
+
 ### View Options {#Options}
 
 The default camera position is at an elevation angle of 20 degrees and to the North, with the camera looking toward the origin. The distance of the camera from the origin is automatically adjusted to fit all primitives in view.
@@ -670,6 +718,8 @@ with Visualizer(width=1200, height=800) as vis:
 By default the fragment shader multiplies primitive colors by 1.5, which brightens ordinary renders but means the color read back out of the framebuffer is not the color that was set on the primitive. `enableExactColorMode()` disables that multiplier so a color set with `Context.setPrimitiveColor()` is reproduced exactly in the rendered image. `disableExactColorMode()` restores the default.
 
 This matters when the framebuffer carries data rather than an image — for example when object IDs are encoded as RGB values and decoded back from the rendered pixels.
+
+Enabling exact color mode also disables the linear-light pipeline (see \ref RenderPipeline), since tone mapping would likewise alter the values read back; disabling it restores the pipeline. The two modes are mutually exclusive.
 
 ```python
 # Exact reproduction needs antialiasing off as well as the mode enabled.

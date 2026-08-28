@@ -8,6 +8,10 @@ Several PyHelios plugins support NVIDIA CUDA for GPU-accelerated computations. T
 
 > **Note**: The radiation plugin now also supports a Vulkan compute backend, enabling GPU ray tracing on AMD, Intel, and Apple Silicon GPUs without CUDA. See the \ref RadiationDoc "Radiation Model documentation" for details.
 
+> **Running in a container?** This guide covers host installation. For Docker-specific
+> setup -- driver capabilities, required system libraries, and the settings needed to reach
+> the OptiX backend -- see \ref DockerGPU "Running PyHelios in Docker with GPU Support".
+
 ## GPU-Accelerated Plugins
 
 The following plugins use GPU acceleration:

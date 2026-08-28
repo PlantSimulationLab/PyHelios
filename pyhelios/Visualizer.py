@@ -558,7 +558,8 @@ class Visualizer:
             raise VisualizerError("Visualizer has been destroyed")
 
         try:
-            visualizer_wrapper.set_background_transparent(self.visualizer)
+            with _visualizer_working_directory():
+                visualizer_wrapper.set_background_transparent(self.visualizer)
             logger.debug("Background set to transparent mode")
         except Exception as e:
             raise VisualizerError(f"Failed to set transparent background: {e}")
@@ -625,11 +626,15 @@ class Visualizer:
             resolved_path = _resolve_user_path(texture_file)
 
         try:
-            visualizer_wrapper.set_background_sky_texture(
-                self.visualizer,
-                resolved_path,
-                divisions
-            )
+            # resolved_path is already absolute when the caller supplied one; the
+            # default sky texture is a packaged asset the native code resolves
+            # relative to the working directory.
+            with _visualizer_working_directory():
+                visualizer_wrapper.set_background_sky_texture(
+                    self.visualizer,
+                    resolved_path,
+                    divisions
+                )
             if resolved_path:
                 logger.debug(f"Sky texture background set: {resolved_path}, divisions={divisions}")
             else:
@@ -1125,6 +1130,9 @@ class Visualizer:
         blends colors at primitive edges and produces pixels that decode to meaningless
         IDs.
 
+        This also disables the linear-light pipeline (see :meth:`disableLinearPipeline`),
+        since tone mapping would likewise alter the values read back.
+
         Raises:
             VisualizerError: If the operation fails
 
@@ -1143,6 +1151,8 @@ class Visualizer:
         """
         Restore the default brightening of primitive colors.
 
+        This also restores the linear-light pipeline (see :meth:`enableLinearPipeline`).
+
         Raises:
             VisualizerError: If the operation fails
 
@@ -1155,6 +1165,347 @@ class Visualizer:
             visualizer_wrapper.disable_exact_color_mode(self.visualizer)
         except Exception as e:
             raise VisualizerError(f"Failed to disable exact color mode: {e}")
+
+    def enableLinearPipeline(self) -> None:
+        """
+        Enable the physically-based linear-light rendering pipeline.
+
+        This is the default. Albedo is decoded from sRGB to linear light before shading,
+        and the shaded radiance is tone-mapped through an ACES filmic curve and
+        re-encoded to sRGB. Compared with shading directly on non-linear sRGB values,
+        mid-tones are brighter, shadow terminators are smoother, and bright surfaces roll
+        off rather than clipping flat against the 8-bit framebuffer.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.enableLinearPipeline()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.enable_linear_pipeline(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to enable linear pipeline: {e}")
+
+    def disableLinearPipeline(self) -> None:
+        """
+        Disable the linear-light pipeline, shading directly in sRGB space.
+
+        This reproduces the rendering behavior of helios-core versions before 1.3.83.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.disableLinearPipeline()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.disable_linear_pipeline(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to disable linear pipeline: {e}")
+
+    def isLinearPipelineEnabled(self) -> bool:
+        """
+        Check whether the linear-light rendering pipeline is enabled.
+
+        Returns:
+            True if the linear pipeline is enabled
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.isLinearPipelineEnabled()
+            True
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            return visualizer_wrapper.is_linear_pipeline_enabled(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to query linear pipeline state: {e}")
+
+    def setExposure(self, exposure: float) -> None:
+        """
+        Set the linear exposure multiplier applied before tone mapping.
+
+        Only has an effect while the linear pipeline is enabled.
+
+        Args:
+            exposure: Exposure multiplier; must be positive
+
+        Raises:
+            ValueError: If exposure is not positive
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.setExposure(1.5)
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(exposure, (int, float)) or isinstance(exposure, bool):
+            raise ValueError(f"Exposure must be a number, got {type(exposure).__name__}")
+        if exposure <= 0:
+            raise ValueError(f"Exposure must be positive, got {exposure}")
+        try:
+            visualizer_wrapper.set_exposure(self.visualizer, float(exposure))
+        except Exception as e:
+            raise VisualizerError(f"Failed to set exposure: {e}")
+
+    def getExposure(self) -> float:
+        """
+        Get the linear exposure multiplier applied before tone mapping.
+
+        Returns:
+            Current exposure multiplier
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.getExposure()
+            1.0
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            return visualizer_wrapper.get_exposure(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to get exposure: {e}")
+
+    def setPhongMaterial(self, ambient: float, diffuse: float, specular: float,
+                         shininess: float) -> None:
+        """
+        Set the Phong material parameters used to shade Context primitives.
+
+        Surfaces are shaded as ``ambient*A + diffuse*max(0, N.L) +
+        specular*max(0, N.H)^shininess``, where ``A`` is the hemispheric ambient term set
+        by :meth:`setAmbientColors`. Setting ``specular`` to zero removes the highlight,
+        recovering the appearance of helios-core versions before 1.3.83. Has no effect
+        under ``LIGHTING_NONE``.
+
+        Individual materials can override any of these parameters by attaching
+        ``phong_ambient``, ``phong_diffuse``, ``phong_specular`` or ``phong_shininess``
+        material data with :meth:`Context.setMaterialDataFloat`; each parameter falls
+        back individually to the value set here.
+
+        Args:
+            ambient: Ambient reflectance weight
+            diffuse: Diffuse reflectance weight
+            specular: Specular highlight strength
+            shininess: Specular exponent controlling highlight tightness
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.setPhongMaterial(1.0, 0.8, 0.0, 32.0)  # no specular highlight
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.set_phong_material(self.visualizer, float(ambient),
+                                                  float(diffuse), float(specular),
+                                                  float(shininess))
+        except Exception as e:
+            raise VisualizerError(f"Failed to set Phong material: {e}")
+
+    def getPhongMaterial(self) -> Tuple[float, float, float, float]:
+        """
+        Get the Phong material parameters used to shade Context primitives.
+
+        Returns:
+            Tuple of (ambient, diffuse, specular, shininess)
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> ambient, diffuse, specular, shininess = vis.getPhongMaterial()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            return visualizer_wrapper.get_phong_material(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to get Phong material: {e}")
+
+    def setAmbientColors(self, sky_color: RGBcolor, ground_color: RGBcolor) -> None:
+        """
+        Set the hemispheric ambient sky and ground-bounce colors.
+
+        Ambient light is blended between the two according to surface orientation:
+        upward-facing surfaces pick up ``sky_color``, downward-facing surfaces
+        ``ground_color``. Setting both to the same value recovers the single constant
+        ambient term used before helios-core 1.3.83.
+
+        Args:
+            sky_color: Color of light arriving from above
+            ground_color: Color of light bouncing from below
+
+        Raises:
+            ValueError: If either argument is not an RGBcolor
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.setAmbientColors(RGBcolor(0.5, 0.6, 0.75), RGBcolor(0.35, 0.3, 0.22))
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(sky_color, RGBcolor):
+            raise ValueError(f"sky_color must be an RGBcolor, got {type(sky_color).__name__}")
+        if not isinstance(ground_color, RGBcolor):
+            raise ValueError(f"ground_color must be an RGBcolor, got {type(ground_color).__name__}")
+        try:
+            visualizer_wrapper.set_ambient_colors(
+                self.visualizer,
+                (sky_color.r, sky_color.g, sky_color.b),
+                (ground_color.r, ground_color.g, ground_color.b),
+            )
+        except Exception as e:
+            raise VisualizerError(f"Failed to set ambient colors: {e}")
+
+    def getAmbientSkyColor(self) -> RGBcolor:
+        """
+        Get the hemispheric ambient sky color.
+
+        Returns:
+            Color of ambient light arriving from above
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.getAmbientSkyColor()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            r, g, b = visualizer_wrapper.get_ambient_sky_color(self.visualizer)
+            return RGBcolor(r, g, b)
+        except Exception as e:
+            raise VisualizerError(f"Failed to get ambient sky color: {e}")
+
+    def getAmbientGroundColor(self) -> RGBcolor:
+        """
+        Get the hemispheric ambient ground-bounce color.
+
+        Returns:
+            Color of ambient light bouncing from below
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.getAmbientGroundColor()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            r, g, b = visualizer_wrapper.get_ambient_ground_color(self.visualizer)
+            return RGBcolor(r, g, b)
+        except Exception as e:
+            raise VisualizerError(f"Failed to get ambient ground color: {e}")
+
+    def enableSmoothShading(self) -> None:
+        """
+        Enable smooth per-vertex-normal shading.
+
+        This is the default. Only geometry that supplies distinct vertex normals is
+        affected: Sphere, Tube and Cone objects, and Polymesh objects loaded from an OBJ
+        or PLY file that carries them. Patches, triangles and voxels added directly to
+        the Context carry the face normal replicated across their vertices and render
+        identically either way.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.enableSmoothShading()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.enable_smooth_shading(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to enable smooth shading: {e}")
+
+    def disableSmoothShading(self) -> None:
+        """
+        Select flat (per-face) shading.
+
+        Useful for alpha-masked cutout geometry such as leaf textures, where interpolated
+        normals can look worse than a single flat normal per face.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.disableSmoothShading()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.disable_smooth_shading(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to disable smooth shading: {e}")
+
+    def isSmoothShadingEnabled(self) -> bool:
+        """
+        Check whether smooth per-vertex-normal shading is enabled.
+
+        Returns:
+            True if smooth shading is enabled
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.isSmoothShadingEnabled()
+            True
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            return visualizer_wrapper.is_smooth_shading_enabled(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to query smooth shading state: {e}")
+
+    def isHeadlessMultisamplingActive(self) -> bool:
+        """
+        Check whether headless rendering obtained multisampled framebuffer attachments.
+
+        Headless rendering draws into a multisampled framebuffer using the sample count
+        given to the constructor and resolves it before readback, so saved images are
+        anti-aliased. The requested count is clamped to the driver maximum, and a driver
+        that refuses the attachments falls back silently -- this query is how to detect
+        that.
+
+        Returns:
+            True if multisampled attachments were obtained
+
+        Note:
+            macOS drives OpenGL through a translation layer that accepts the attachments
+            but does not rasterize into them, so this can report True while the saved
+            image is not actually anti-aliased.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.isHeadlessMultisamplingActive()
+            True
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            return visualizer_wrapper.is_headless_multisampling_active(self.visualizer)
+        except Exception as e:
+            raise VisualizerError(f"Failed to query headless multisampling state: {e}")
 
     def getTextboxSize(self, textstring: str, fontsize: int, fontname: str) -> vec2:
         """
@@ -1201,8 +1552,12 @@ class Visualizer:
             raise ValueError("Font name must be a non-empty string")
 
         try:
-            width, height = visualizer_wrapper.get_textbox_size(
-                self.visualizer, textstring, int(fontsize), fontname)
+            # The font is read from the visualizer asset directory, which the native
+            # code resolves relative to the current working directory. Without this the
+            # lookup fails for any caller not already sitting in that directory.
+            with _visualizer_working_directory():
+                width, height = visualizer_wrapper.get_textbox_size(
+                    self.visualizer, textstring, int(fontsize), fontname)
             return vec2(width, height)
         except Exception as e:
             raise VisualizerError(f"Failed to measure text size: {e}")
@@ -2059,7 +2414,8 @@ class Visualizer:
             raise VisualizerError("Visualizer not initialized")
 
         try:
-            visualizer_wrapper.hide_navigation_gizmo(self.visualizer)
+            with _visualizer_working_directory():
+                visualizer_wrapper.hide_navigation_gizmo(self.visualizer)
             logger.debug("Navigation gizmo hidden")
         except Exception as e:
             raise VisualizerError(f"Failed to hide navigation gizmo: {e}")
@@ -2080,7 +2436,8 @@ class Visualizer:
             raise VisualizerError("Visualizer not initialized")
 
         try:
-            visualizer_wrapper.show_navigation_gizmo(self.visualizer)
+            with _visualizer_working_directory():
+                visualizer_wrapper.show_navigation_gizmo(self.visualizer)
             logger.debug("Navigation gizmo shown")
         except Exception as e:
             raise VisualizerError(f"Failed to show navigation gizmo: {e}")

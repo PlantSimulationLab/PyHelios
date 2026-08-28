@@ -2658,6 +2658,190 @@ PYHELIOS_API void usePrimitiveTextureColorBatch(helios::Context* context, unsign
 PYHELIOS_API void incrementPrimitiveDataUInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, unsigned int increment);
 PYHELIOS_API void incrementPrimitiveDataDouble(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, double increment);
 
+
+// ---- Polymesh mesh topology (helios-core 1.3.83) ----
+// Vertex normal provenance, mirroring helios::VertexNormalSource:
+//   0 = NORMAL_SOURCE_NONE, 1 = NORMAL_SOURCE_AUTHORED, 2 = NORMAL_SOURCE_COMPUTED
+
+/**
+ * @brief Attach an indexed face set to a Polymesh object built programmatically
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param vertices Flattened vertex positions (x,y,z per vertex) in global Cartesian coordinates
+ * @param vertex_count Number of vertices (vertices holds 3*vertex_count floats)
+ * @param faces Flattened vertex index triples (3 ints per face)
+ * @param face_count Number of faces (faces holds 3*face_count ints, face_UUIDs holds face_count uints)
+ * @param face_UUIDs UUID of the primitive corresponding to each face, parallel to faces
+ * @param vertex_normals Flattened per-vertex normals (3 floats per vertex), or null if the mesh has none
+ * @param normal_count Number of vertex normals supplied; zero if none
+ * @param vertex_uv Flattened per-vertex texture coordinates (2 floats per vertex), or null if none
+ * @param uv_count Number of texture coordinates supplied; zero if none
+ * @param normal_source Provenance of the supplied vertex normals (0=none, 1=authored, 2=computed)
+ */
+PYHELIOS_API void setPolymeshObjectTopology(helios::Context* context, unsigned int objID, float* vertices, unsigned int vertex_count, int* faces, unsigned int face_count, unsigned int* face_UUIDs, float* vertex_normals, unsigned int normal_count, float* vertex_uv, unsigned int uv_count, int normal_source);
+
+/**
+ * @brief Get the shared vertex positions of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param size Output parameter receiving the number of floats returned (3 per vertex)
+ * @return Pointer to flattened (x,y,z) vertex positions
+ */
+PYHELIOS_API float* getPolymeshObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size);
+
+/**
+ * @brief Get the vertex index triples defining each face of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param size Output parameter receiving the number of ints returned (3 per face)
+ * @return Pointer to flattened face vertex indices
+ */
+PYHELIOS_API int* getPolymeshObjectFaces(helios::Context* context, unsigned int objID, unsigned int* size);
+
+/**
+ * @brief Get the per-vertex normals of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param size Output parameter receiving the number of floats returned (3 per vertex)
+ * @return Pointer to flattened (x,y,z) vertex normals; empty if the mesh has none
+ */
+PYHELIOS_API float* getPolymeshObjectVertexNormals(helios::Context* context, unsigned int objID, unsigned int* size);
+
+/**
+ * @brief Get the per-vertex texture coordinates of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param size Output parameter receiving the number of floats returned (2 per vertex)
+ * @return Pointer to flattened (u,v) texture coordinates; empty if the mesh has none
+ */
+PYHELIOS_API float* getPolymeshObjectVertexUV(helios::Context* context, unsigned int objID, unsigned int* size);
+
+/**
+ * @brief Query whether a Polymesh object carries per-vertex normals
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @return True if the mesh stores vertex normals
+ */
+PYHELIOS_API bool doesPolymeshObjectHaveVertexNormals(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the provenance of a Polymesh object's vertex normals
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @return 0 = none, 1 = authored in the source file, 2 = computed by Helios
+ */
+PYHELIOS_API int getPolymeshObjectVertexNormalSource(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the number of shared vertices in a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @return Number of vertices; zero if the mesh has no retained topology
+ */
+PYHELIOS_API unsigned int getPolymeshObjectVertexCount(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the number of faces in a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @return Number of faces; zero if the mesh has no retained topology
+ */
+PYHELIOS_API unsigned int getPolymeshObjectFaceCount(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the index of the face corresponding to a member primitive of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param uuid UUID of a primitive belonging to the object
+ * @return Index into the face table returned by getPolymeshObjectFaces()
+ */
+PYHELIOS_API unsigned int getPolymeshObjectFaceIndexForPrimitive(helios::Context* context, unsigned int objID, unsigned int uuid);
+
+/**
+ * @brief Get the UUID of the primitive corresponding to a face of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param face_index Index into the face table returned by getPolymeshObjectFaces()
+ * @return UUID of the primitive making up that face
+ */
+PYHELIOS_API unsigned int getPolymeshObjectPrimitiveUUIDForFace(helios::Context* context, unsigned int objID, unsigned int face_index);
+
+/**
+ * @brief Compute per-vertex normals for a Polymesh object by area-weighted averaging
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param crease_angle_degrees Vertices are split across edges exceeding this angle so hard edges stay hard
+ */
+PYHELIOS_API void computePolymeshObjectVertexNormals(helios::Context* context, unsigned int objID, float crease_angle_degrees);
+
+/**
+ * @brief Query whether a Polymesh object is a closed surface
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @return True if the mesh has no boundary edges
+ */
+PYHELIOS_API bool isPolymeshObjectClosed(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the boundary edges of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param size Output parameter receiving the number of ints returned (2 per edge)
+ * @return Pointer to flattened vertex index pairs, one pair per boundary edge
+ */
+PYHELIOS_API int* getPolymeshObjectBoundaryEdges(helios::Context* context, unsigned int objID, unsigned int* size);
+
+/**
+ * @brief Get the connected components of a Polymesh object as a flattened list of face indices
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @param component_sizes Output parameter receiving a pointer to the face count of each component
+ * @param component_count Output parameter receiving the number of components
+ * @param total_size Output parameter receiving the total number of face indices returned
+ * @return Pointer to face indices, grouped consecutively by component
+ */
+PYHELIOS_API unsigned int* getPolymeshObjectConnectedComponents(helios::Context* context, unsigned int objID, unsigned int** component_sizes, unsigned int* component_count, unsigned int* total_size);
+
+/**
+ * @brief Get the total surface area of a Polymesh object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the Polymesh object
+ * @return Sum of the areas of every face
+ */
+PYHELIOS_API float getPolymeshObjectSurfaceArea(helios::Context* context, unsigned int objID);
+
+// ---- Analytic vertex normals on curved compound objects (helios-core 1.3.83) ----
+
+/**
+ * @brief Query whether a compound object can report analytic vertex normals
+ * @param context Pointer to the Context
+ * @param objID Object ID of the compound object
+ * @return True for Sphere, Tube and Cone objects; false for object types built from flat faces
+ */
+PYHELIOS_API bool doesObjectHaveAnalyticVertexNormals(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the analytic surface normals at each vertex of a member primitive of a compound object
+ * @param context Pointer to the Context
+ * @param objID Object ID of the compound object
+ * @param uuid UUID of a primitive belonging to the object
+ * @param size Output parameter receiving the number of floats returned (3 per vertex)
+ * @return Pointer to flattened (x,y,z) vertex normals; empty if the object has no analytic normals
+ */
+PYHELIOS_API float* getObjectPrimitiveVertexNormals(helios::Context* context, unsigned int objID, unsigned int uuid, unsigned int* size);
+
+/**
+ * @brief Get the analytic vertex normals for many member primitives of a compound object at once
+ * @param context Pointer to the Context
+ * @param objID Object ID of the compound object
+ * @param uuids UUIDs of primitives belonging to the object
+ * @param count Number of UUIDs supplied
+ * @param normals_per_primitive Output parameter receiving a pointer to the normal count of each primitive
+ * @param size Output parameter receiving the total number of floats returned (3 per vertex)
+ * @return Pointer to flattened (x,y,z) vertex normals, grouped consecutively by primitive
+ */
+PYHELIOS_API float* getObjectPrimitiveVertexNormalsBatch(helios::Context* context, unsigned int objID, unsigned int* uuids, unsigned int count, unsigned int** normals_per_primitive, unsigned int* size);
+
 #ifdef __cplusplus
 }
 #endif

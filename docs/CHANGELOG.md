@@ -1,5 +1,70 @@
 # Changelog
 
+# [v0.1.30] 2026-08-28
+
+- Updated helios-core to v1.3.83
+
+## Context
+- Added polymesh mesh topology accessors: `getPolymeshObjectVertices()`, `getPolymeshObjectFaces()`, `getPolymeshObjectVertexNormals()`, `getPolymeshObjectVertexUV()`, `getPolymeshObjectVertexCount()`, `getPolymeshObjectFaceCount()`, `getPolymeshObjectFaceIndexForPrimitive()`, and `getPolymeshObjectPrimitiveUUIDForFace()`
+- Added `setPolymeshObjectTopology()`, attaching an indexed face set to a polymesh built with `addPolymeshObject()`
+- Added `computePolymeshObjectVertexNormals()`, computing per-vertex normals by area-weighted averaging and splitting vertices across edges that exceed a given crease angle
+- Added `doesPolymeshObjectHaveVertexNormals()` and `getPolymeshObjectVertexNormalSource()`, reporting whether a mesh carries vertex normals and whether they were authored in the source file or computed
+- Added the topological queries `isPolymeshObjectClosed()`, `getPolymeshObjectBoundaryEdges()`, `getPolymeshObjectConnectedComponents()`, and `getPolymeshObjectSurfaceArea()`
+- Added `doesObjectHaveAnalyticVertexNormals()` and `getObjectPrimitiveVertexNormals()`, returning the true surface normal of the curved shape a `Sphere`, `Tube`, or `Cone` object approximates
+- Added the `VertexNormalSource` enum (`NONE`, `AUTHORED`, `COMPUTED`)
+- `loadOBJ()` now reads `vn` vertex normal records and all four face vertex reference forms including negative indices; `loadPLY()` now reads `nx`, `ny`, and `nz` vertex properties
+- `loadOBJ()` and `loadPLY()` now group the triangles they create into a polymesh object that retains the connectivity of the source file
+- `getPolymeshObjectVolume()` now raises an error identifying the number of boundary edges for an open mesh carrying a face table, instead of returning a meaningless number
+- `getConeObjectNodeRadii()` and `getConeObjectNodeRadius()` now apply the object's transformation, so a scaled cone reports its scaled radii
+- `copyPrimitive()` now returns a standalone primitive with no parent object; the copy previously claimed a membership the object did not list
+- Individual member primitives of a polymesh object can now be translated, rotated, and scaled, which previously warned and did nothing
+- Fixed `loadXML()` corrupting compound object ownership when object IDs in the file collide with ones already assigned during the same load, which made objects claim each other's primitives and silently dropped the rightful owners (GitHub issues #18 and #19)
+- `loadXML()` now fails fast, naming the ID, when two object blocks claim the same object ID or when a primitive names an object ID no block declares
+- Fixed `writeXML()` recording `Tube` and `Cone` nodes and radii with the object transformation already applied, so a transformed tube or cone reloaded with the transformation applied twice
+- Fixed `writeXML()`/`loadXML()` restoring object member primitive data onto the wrong sub-primitives
+- `writeXML()` and `loadXML()` now round-trip polymesh mesh topology and the object transformation matrix
+- Fixed `uint` primitive, object, and global data values above 2147483647 being written by `writeXML()` but failing to load with a raw `stoi: out of range` error
+- Fixed `renamePrimitiveData()` and `duplicatePrimitiveData()` leaving the new label unregistered, which made `writeXML()` fail with "Primitive data does not exist"
+
+## Visualizer
+- Rendering now uses a physically-based linear-light pipeline with ACES filmic tone mapping by default, so rendered images differ from previous versions; `disableLinearPipeline()` restores the previous appearance and `isLinearPipelineEnabled()` reports the current state
+- Added `setExposure()` and `getExposure()`, controlling the linear exposure multiplier applied before tone mapping
+- Added `setPhongMaterial()` and `getPhongMaterial()`, controlling the ambient, diffuse, and specular weights and the specular exponent; the Blinn-Phong highlight was previously absent entirely
+- Added `setAmbientColors()`, `getAmbientSkyColor()`, and `getAmbientGroundColor()`, replacing the single constant ambient term with a hemispheric sky and ground-bounce blend
+- Added `enableSmoothShading()`, `disableSmoothShading()`, and `isSmoothShadingEnabled()`; smooth per-vertex-normal shading is now the default, removing the faceted appearance of tessellated stems, trunks, and fruit
+- Added `isHeadlessMultisamplingActive()`, reporting whether headless rendering obtained multisampled framebuffer attachments
+- `enableExactColorMode()` and `disableExactColorMode()` now also toggle the linear-light pipeline, since tone mapping would alter values read back out of the framebuffer
+- Phong material parameters can now be overridden per material by attaching `phong_ambient`, `phong_diffuse`, `phong_specular`, or `phong_shininess` material data with `setMaterialDataFloat()`
+- Rendering a scene no longer rebuilds and re-uploads every primitive on every frame, so frame cost is now proportional to what actually changed rather than to scene size
+- Fixed every visualizer call silently discarding native error reports, so failures returned zero-valued or empty results instead of raising
+- Fixed `getTextboxSize()`, `setBackgroundTransparent()`, `setBackgroundSkyTexture()`, `hideNavigationGizmo()`, and `showNavigationGizmo()` failing to find their packaged assets unless the process happened to be running from the asset directory
+- Fixed `setBackgroundSkyTexture()` with no argument failing instead of using the default sky texture
+
+## Solar Position
+- Fixed `getSolarFluxPAR()` and `getSolarFluxNIR()` returning the same value under cloud calibration, which inflated each to the full broadband flux and made them sum to twice `getSolarFlux()`
+- Fixed `getDiffuseFraction()` saturating at 1 for every real cloud condition under cloud calibration; it is now estimated from the clearness index using the correlation of Erbs et al. (1982)
+- `calculateDirectSolarSpectrum()`, `calculateDiffuseSolarSpectrum()`, and `calculateGlobalSolarSpectrum()` now apply cloud calibration, which they previously ignored while silently returning clear-sky spectra
+
+## Radiation
+- Fixed the Vulkan backend delivering zero flux from every radiation source after the first
+- Fixed the Vulkan backend sampling the diffuse sky around the wrong peak direction for every band after the first when a directional sky model is used
+- Fixed the Vulkan backend applying the first radiation source's reflectivity and transmissivity to every source
+- Fixed the Vulkan backend building camera images from band-weighted rather than camera-weighted scattered radiance
+- Fixed the Vulkan backend dropping geometry from the acceleration structure when a BVH leaf held more than 255 primitives
+- The Vulkan backend now raises an error when the scene contains voxel primitives, which it silently ignored; voxel ray tracing remains available on the OptiX backends
+- Non-finite radiation, scatter, and camera pixel results now raise an error naming the buffer, primitive, and band instead of surfacing as a uniformly black image
+
+## Plant Architecture
+- Petioles are now built as a single `Tube` object rather than a chain of `Cone` objects, removing the visible crease at each joint of a multi-segment petiole
+- Added `listShootTypeLabels()`, listing the shoot type labels of the loaded model, a named model, or a plant instance
+- Added the scene-wide queries `getAllUUIDs()`, `getAllLeafUUIDs()`, `getAllInternodeUUIDs()`, `getAllPetioleUUIDs()`, `getAllPeduncleUUIDs()`, `getAllFlowerUUIDs()`, `getAllFruitUUIDs()`, `getAllObjectIDs()` and `getAllPlantIDs()`, which span every plant rather than one
+- Added attraction points, which steer shoot growth toward target locations: `enableAttractionPoints()`, `disableAttractionPoints()`, `updateAttractionPoints()`, `appendAttractionPoints()` and `setAttractionParameters()`, each applying globally or to a single plant
+- `advanceTime()` now accepts `plant_id`, `plant_ids` or `years`, so plants can be grown individually or in subsets instead of all together
+- `buildPlantInstanceFromLibrary()` and `buildPlantCanopyFromLibrary()` now raise `ValueError` for a build parameter the loaded model does not read, which the native library silently ignored
+- `getCurrentShootParameters()` now names the valid shoot types when given an unknown label
+- Fixed `defineShootType()` discarding the child shoot types of the shoot type it replaces, which silently removed the branching topology of a shoot type that was read back and rewritten
+- Added `plantarch_collision_sample.py`, which the collision documentation referenced but was missing
+
 # [v0.1.29] 2026-08-24
 
 - Updated helios-core to v1.3.82
@@ -42,6 +107,7 @@
 ## Build System
 - Fixed the build failing after the helios-core 1.3.82 merge, which moved `json.hpp` from the radiation plug-in to core
 - Fixed `PYHELIOS_DEV_MODE=1` failing to enable mock mode when no native library was present, which made the fix suggested by the "library not found" error impossible to follow
+- Linux wheels now report the OpenGL and X11 libraries as system requirements rather than bundling them; minimal images need `libgl1 libsm6 libice6 libx11-6 libxext6` installed, which the README now documents (GitHub issue #17)
 
 # [v0.1.28] 2026-08-13
 
@@ -154,7 +220,7 @@
 - Vector and color validators now check the concrete type rather than relying on attribute presence. A `vec4` satisfied a `vec3` attribute check and reached C++ as a wrong-length buffer (`to_list()` returns 4 elements), and an `RGBAcolor` satisfied an `RGBcolor` check with its alpha channel silently discarded. Both now raise `ValidationError`.
 - `Context.getPrimitiveInfo()` no longer swallows every exception from the texture and solid-fraction getters. Only `NotImplementedError` (the getter absent from an older library build) leaves those fields as `None`; genuine native errors propagate, and each getter is attempted independently so one failure cannot suppress the others.
 - **Behavior change inherited from helios-core 1.3.78:** `Context.rotateObject(objID, angle, "z")` now rotates in the opposite direction than it did previously. The native `CompoundObject::rotate()` "z" string-axis branch alone negated the rotation angle, disagreeing with `rotatePrimitive()` and with the `vec3`-axis `rotateObject()` overload; the negation is removed so all three rotation paths share one handedness. PyHelios passes the angle through unchanged at every layer, so this lands directly in the Python API. Any code that compensated for the old flipped azimuth by negating its angle is now rotating the wrong way and must drop the compensation.
-- Added coverage for `getObjectBoundingBox()` returning a degenerate box for a single-primitive object. The native implementation seeds the box from the first primitive's first vertex and then `continue`s to the next primitive, so the remaining vertices of that primitive are never compared against the seed. An object made of one primitive — a `1x1` tile, for example — therefore reports `min == max == ` its first vertex, and any object list whose *first* object holds a unique extreme loses that extreme. `getObjectBoundingBox([])` likewise returns a plausible-looking `(0,0,0)`–`(0,0,0)` box rather than failing, because the Python wrapper zero-initializes its output buffers; once fixed, a request covering no primitives raises instead. **The fix belongs to the Helios repository, not to PyHelios** (PyHelios must never patch the vendored `helios-core` submodule); it is applied there in `core/src/Context.cpp` with three accompanying core self-tests, and lands in PyHelios when the submodule pointer advances past v1.3.78. The new PyHelios tests assert the fixed behavior and are marked `xfail` until then. The pre-existing bounding-box tests — in both repos — passed only because they used a box object, whose six faces cover each other's extremes, masking the skipped face.
+- Added coverage for `getObjectBoundingBox()` returning a degenerate box for a single-primitive object. The native implementation seeds the box from the first primitive's first vertex and then `continue`s to the next primitive, so the remaining vertices of that primitive are never compared against the seed. An object made of one primitive — a `1x1` tile, for example — therefore reports `min == max` equal to its first vertex, and any object list whose *first* object holds a unique extreme loses that extreme. `getObjectBoundingBox([])` likewise returns a plausible-looking `(0,0,0)` to `(0,0,0)` box rather than failing, because the Python wrapper zero-initializes its output buffers; once fixed, a request covering no primitives raises instead. **The fix belongs to the Helios repository, not to PyHelios** (PyHelios must never patch the vendored `helios-core` submodule); it is applied there in `core/src/Context.cpp` with three accompanying core self-tests, and lands in PyHelios when the submodule pointer advances past v1.3.78. The new PyHelios tests assert the fixed behavior and are marked `xfail` until then. The pre-existing bounding-box tests — in both repos — passed only because they used a box object, whose six faces cover each other's extremes, masking the skipped face.
 - Added test coverage for `rotatePrimitive()` and `rotateObject()`, which previously had none across their 14 wrapped entry points — the reason the z-axis handedness change above would have passed the suite unnoticed. The new tests pin the rotation convention (a +90° z-rotation maps (x,y) → (y,−x)) and assert that the string-axis, `vec3`-axis, primitive, and object paths all agree, so a future divergence in any one of them fails loudly. Verified by re-introducing the old negation and confirming only the `z` case goes red.
 - Corrected the documented meaning of `about_origin=True` on `rotateObject()` and `scaleObject()`. Both docstrings claimed the operation was about the **global** origin (0,0,0); the native `rotateObjectAboutOrigin()`/`scaleObjectAboutOrigin()` actually use the object's own stored `object_origin`, so an object built away from the world origin spins or scales in place rather than orbiting (0,0,0). Only the documentation was wrong — no behavior changed. To rotate about a specific point, pass it as `origin`.
 - Two latent bugs reachable from the PyHelios API are fixed upstream with no PyHelios change: multi-ring colored `addDisk()`/`addDiskObject()` (`ndivs=int2(nr, ntheta)` with `ntheta >= 2`) no longer leaves the first triangle of each outer ring stranded at the world origin, and `getDomainBoundingBox(uuids=[...])` no longer returns an under-sized upper bound when the same vertex also set a new lower bound on that axis.

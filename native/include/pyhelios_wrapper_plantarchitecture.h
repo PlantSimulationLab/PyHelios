@@ -24,6 +24,18 @@ PYHELIOS_API int loadPlantModelFromLibrary(PlantArchitecture* plantarch, const c
 PYHELIOS_API unsigned int buildPlantInstanceFromLibrary(PlantArchitecture* plantarch, float* base_position, float age, char** param_keys, float* param_values, int param_count);
 PYHELIOS_API int buildPlantCanopyFromLibrary(PlantArchitecture* plantarch, float* canopy_center, float* plant_spacing, int* plant_count, float age, float germination_rate, unsigned int** plant_ids, int* num_plants, char** param_keys, float* param_values, int param_count_params);
 PYHELIOS_API int advanceTime(PlantArchitecture* plantarch, float dt);
+// Advance a single plant, a subset of plants, or all plants by whole years plus days.
+PYHELIOS_API int advanceTimeForPlant(PlantArchitecture* plantarch, unsigned int plantID, float dt);
+PYHELIOS_API int advanceTimeForPlants(PlantArchitecture* plantarch, unsigned int* plantIDs, int count, float dt);
+PYHELIOS_API int advanceTimeYears(PlantArchitecture* plantarch, int time_step_years, float time_step_days);
+
+// Attraction points steer shoot growth toward targets. plantID < 0 selects the global form.
+// Points are a flat array of 3*point_count floats (x,y,z per point).
+PYHELIOS_API int enableAttractionPoints(PlantArchitecture* plantarch, int plantID, float* points, int point_count, float view_half_angle_deg, float look_ahead_distance, float attraction_weight);
+PYHELIOS_API int disableAttractionPoints(PlantArchitecture* plantarch, int plantID);
+PYHELIOS_API int updateAttractionPoints(PlantArchitecture* plantarch, int plantID, float* points, int point_count);
+PYHELIOS_API int appendAttractionPoints(PlantArchitecture* plantarch, int plantID, float* points, int point_count);
+PYHELIOS_API int setAttractionParameters(PlantArchitecture* plantarch, int plantID, float view_half_angle_deg, float look_ahead_distance, float attraction_weight, float obstacle_reduction_factor);
 
 // Custom plant building functions
 PYHELIOS_API unsigned int addPlantInstance(PlantArchitecture* plantarch, float* base_position, float current_age);
@@ -34,6 +46,10 @@ PYHELIOS_API unsigned int addChildShoot(PlantArchitecture* plantarch, unsigned i
 
 // Plant query functions
 PYHELIOS_API int getAvailablePlantModels(PlantArchitecture* plantarch, char*** model_names, int* count);
+// Shoot type labels. Pass plant_model_name = nullptr and plantID = -1 for the currently loaded
+// model, a model name to query one without loading it, or plantID >= 0 for a plant instance.
+// Caller frees the result with freeStringArray().
+PYHELIOS_API int listShootTypeLabels(PlantArchitecture* plantarch, const char* plant_model_name, int plantID, char*** labels, int* count);
 PYHELIOS_API unsigned int* getAllPlantObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 PYHELIOS_API unsigned int* getAllPlantUUIDs(PlantArchitecture* plantarch, unsigned int plantID, bool include_hidden, int* count);
 // Leaf queries. Both return thread-local static storage; do NOT free.
@@ -50,6 +66,17 @@ PYHELIOS_API unsigned int* getPlantPetioleObjectIDs(PlantArchitecture* plantarch
 PYHELIOS_API unsigned int* getPlantPeduncleObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 PYHELIOS_API unsigned int* getPlantFlowerObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 PYHELIOS_API unsigned int* getPlantFruitObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+
+// Scene-wide organ queries across every plant. Thread-local static storage; do NOT free.
+PYHELIOS_API unsigned int* plantArchitectureGetAllUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllLeafUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllInternodeUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllPetioleUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllPeduncleUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllFlowerUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllFruitUUIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* plantArchitectureGetAllObjectIDs(PlantArchitecture* plantarch, int* count);
+PYHELIOS_API unsigned int* getAllPlantIDs(PlantArchitecture* plantarch, int* count);
 
 // Shoot topology inspection (read-only). All return thread-local static storage; do NOT free.
 PYHELIOS_API unsigned int* getAllPlantShootIDs(PlantArchitecture* plantarch, unsigned int plantID, int* count);

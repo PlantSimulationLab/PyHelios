@@ -69,6 +69,54 @@ try:
     ]
     helios_lib.advanceTime.restype = ctypes.c_int
 
+    helios_lib.advanceTimeForPlant.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,
+        ctypes.c_float
+    ]
+    helios_lib.advanceTimeForPlant.restype = ctypes.c_int
+
+    helios_lib.advanceTimeForPlants.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_int,
+        ctypes.c_float
+    ]
+    helios_lib.advanceTimeForPlants.restype = ctypes.c_int
+
+    helios_lib.advanceTimeYears.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_int,
+        ctypes.c_float
+    ]
+    helios_lib.advanceTimeYears.restype = ctypes.c_int
+
+    # Attraction points. plantID < 0 selects the global form.
+    helios_lib.enableAttractionPoints.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_int,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float
+    ]
+    helios_lib.enableAttractionPoints.restype = ctypes.c_int
+
+    helios_lib.disableAttractionPoints.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_int
+    ]
+    helios_lib.disableAttractionPoints.restype = ctypes.c_int
+
+    for _ap_fn in ("updateAttractionPoints", "appendAttractionPoints"):
+        getattr(helios_lib, _ap_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_int,
+            ctypes.POINTER(ctypes.c_float), ctypes.c_int
+        ]
+        getattr(helios_lib, _ap_fn).restype = ctypes.c_int
+
+    helios_lib.setAttractionParameters.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_int,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float
+    ]
+    helios_lib.setAttractionParameters.restype = ctypes.c_int
+
     # Custom plant building functions
     helios_lib.addPlantInstance.argtypes = [
         ctypes.POINTER(UPlantArchitecture),
@@ -137,6 +185,15 @@ try:
     ]
     helios_lib.getAvailablePlantModels.restype = ctypes.c_int
 
+    helios_lib.listShootTypeLabels.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_char_p,                                      # plant_model_name (NULL for current)
+        ctypes.c_int,                                         # plantID (-1 for current/by-name)
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_char_p)),
+        ctypes.POINTER(ctypes.c_int)
+    ]
+    helios_lib.listShootTypeLabels.restype = ctypes.c_int
+
     helios_lib.getAllPlantObjectIDs.argtypes = [
         ctypes.POINTER(UPlantArchitecture),
         ctypes.c_uint,
@@ -174,6 +231,21 @@ try:
             ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_int)
         ]
         getattr(helios_lib, _organ_fn).restype = ctypes.POINTER(ctypes.c_uint)
+
+    # Scene-wide organ queries take no plant ID: they span every plant in the model.
+    for _scene_fn in ("plantArchitectureGetAllUUIDs",
+                      "getAllLeafUUIDs",
+                      "getAllInternodeUUIDs",
+                      "getAllPetioleUUIDs",
+                      "getAllPeduncleUUIDs",
+                      "getAllFlowerUUIDs",
+                      "getAllFruitUUIDs",
+                      "plantArchitectureGetAllObjectIDs",
+                      "getAllPlantIDs"):
+        getattr(helios_lib, _scene_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.POINTER(ctypes.c_int)
+        ]
+        getattr(helios_lib, _scene_fn).restype = ctypes.POINTER(ctypes.c_uint)
 
     helios_lib.getPlantShootTopology.argtypes = [
         ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint,
@@ -559,6 +631,14 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.buildPlantInstanceFromLibrary.errcheck = _check_error
     helios_lib.buildPlantCanopyFromLibrary.errcheck = _check_error
     helios_lib.advanceTime.errcheck = _check_error
+    helios_lib.advanceTimeForPlant.errcheck = _check_error
+    helios_lib.advanceTimeForPlants.errcheck = _check_error
+    helios_lib.advanceTimeYears.errcheck = _check_error
+    helios_lib.enableAttractionPoints.errcheck = _check_error
+    helios_lib.disableAttractionPoints.errcheck = _check_error
+    helios_lib.updateAttractionPoints.errcheck = _check_error
+    helios_lib.appendAttractionPoints.errcheck = _check_error
+    helios_lib.setAttractionParameters.errcheck = _check_error
     # Custom plant building error checking
     helios_lib.addPlantInstance.errcheck = _check_error
     helios_lib.deletePlantInstance.errcheck = _check_error
@@ -566,6 +646,7 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.appendShoot.errcheck = _check_error
     helios_lib.addChildShoot.errcheck = _check_error
     helios_lib.getAvailablePlantModels.errcheck = _check_error
+    helios_lib.listShootTypeLabels.errcheck = _check_error
     helios_lib.getAllPlantObjectIDs.errcheck = _check_error
     helios_lib.getPlantLeafObjectIDs.errcheck = _check_error
     helios_lib.getPlantLeafBases.errcheck = _check_error
@@ -573,6 +654,15 @@ if _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
     helios_lib.getPlantPeduncleObjectIDs.errcheck = _check_error
     helios_lib.getPlantFlowerObjectIDs.errcheck = _check_error
     helios_lib.getPlantFruitObjectIDs.errcheck = _check_error
+    helios_lib.plantArchitectureGetAllUUIDs.errcheck = _check_error
+    helios_lib.getAllLeafUUIDs.errcheck = _check_error
+    helios_lib.getAllInternodeUUIDs.errcheck = _check_error
+    helios_lib.getAllPetioleUUIDs.errcheck = _check_error
+    helios_lib.getAllPeduncleUUIDs.errcheck = _check_error
+    helios_lib.getAllFlowerUUIDs.errcheck = _check_error
+    helios_lib.getAllFruitUUIDs.errcheck = _check_error
+    helios_lib.plantArchitectureGetAllObjectIDs.errcheck = _check_error
+    helios_lib.getAllPlantIDs.errcheck = _check_error
     helios_lib.getAllPlantUUIDs.errcheck = _check_error
     helios_lib.getAllPlantShootIDs.errcheck = _check_error
     helios_lib.getPlantShootTopology.errcheck = _check_error
@@ -781,6 +871,146 @@ def buildPlantCanopyFromLibrary(plantarch_ptr: ctypes.POINTER(UPlantArchitecture
         return [plant_ids_ptr[i] for i in range(num_plants.value)]
     else:
         return []
+
+def _flatten_points(points) -> Tuple[object, int]:
+    """Flatten a sequence of vec3 into the (x,y,z per point) buffer the C layer expects."""
+    count = len(points)
+    if count == 0:
+        return None, 0
+    flat = []
+    for pt in points:
+        flat.extend((pt.x, pt.y, pt.z))
+    return (ctypes.c_float * len(flat))(*flat), count
+
+
+def enableAttractionPoints(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: Optional[int],
+                           points, view_half_angle_deg: float, look_ahead_distance: float,
+                           attraction_weight: float) -> None:
+    """Enable attraction points globally (plant_id None) or for one plant"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    buffer, count = _flatten_points(points)
+    result = helios_lib.enableAttractionPoints(
+        plantarch_ptr, -1 if plant_id is None else plant_id, buffer, count,
+        view_half_angle_deg, look_ahead_distance, attraction_weight
+    )
+    if result != 0:
+        raise RuntimeError("Failed to enable attraction points")
+
+
+def disableAttractionPoints(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                            plant_id: Optional[int] = None) -> None:
+    """Disable attraction points globally (plant_id None) or for one plant"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    result = helios_lib.disableAttractionPoints(plantarch_ptr, -1 if plant_id is None else plant_id)
+    if result != 0:
+        raise RuntimeError("Failed to disable attraction points")
+
+
+def updateAttractionPoints(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                           plant_id: Optional[int], points) -> None:
+    """Replace the attraction point set"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    buffer, count = _flatten_points(points)
+    result = helios_lib.updateAttractionPoints(
+        plantarch_ptr, -1 if plant_id is None else plant_id, buffer, count
+    )
+    if result != 0:
+        raise RuntimeError("Failed to update attraction points")
+
+
+def appendAttractionPoints(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                           plant_id: Optional[int], points) -> None:
+    """Add to the existing attraction point set"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    buffer, count = _flatten_points(points)
+    result = helios_lib.appendAttractionPoints(
+        plantarch_ptr, -1 if plant_id is None else plant_id, buffer, count
+    )
+    if result != 0:
+        raise RuntimeError("Failed to append attraction points")
+
+
+def setAttractionParameters(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                            plant_id: Optional[int], view_half_angle_deg: float,
+                            look_ahead_distance: float, attraction_weight: float,
+                            obstacle_reduction_factor: float) -> None:
+    """Set attraction steering parameters"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    result = helios_lib.setAttractionParameters(
+        plantarch_ptr, -1 if plant_id is None else plant_id,
+        view_half_angle_deg, look_ahead_distance, attraction_weight, obstacle_reduction_factor
+    )
+    if result != 0:
+        raise RuntimeError("Failed to set attraction parameters")
+
+
+def advanceTimeForPlant(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int, dt: float) -> None:
+    """Advance time for a single plant"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if dt < 0:
+        raise ValueError("Time step cannot be negative")
+
+    result = helios_lib.advanceTimeForPlant(plantarch_ptr, plant_id, dt)
+    if result != 0:
+        raise RuntimeError(f"Failed to advance plant {plant_id} by {dt} days")
+
+
+def advanceTimeForPlants(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_ids: List[int], dt: float) -> None:
+    """Advance time for a specific set of plants"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if dt < 0:
+        raise ValueError("Time step cannot be negative")
+
+    count = len(plant_ids)
+    id_array = (ctypes.c_uint * count)(*plant_ids) if count > 0 else None
+
+    result = helios_lib.advanceTimeForPlants(plantarch_ptr, id_array, count, dt)
+    if result != 0:
+        raise RuntimeError(f"Failed to advance {count} plants by {dt} days")
+
+
+def advanceTimeYears(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), years: int, days: float) -> None:
+    """Advance time by whole years plus days"""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    if years < 0 or days < 0:
+        raise ValueError("Time step cannot be negative")
+
+    result = helios_lib.advanceTimeYears(plantarch_ptr, years, days)
+    if result != 0:
+        raise RuntimeError(f"Failed to advance time by {years} years and {days} days")
+
 
 def advanceTime(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), dt: float) -> None:
     """Advance time for plant growth"""
@@ -1025,6 +1255,40 @@ def getAvailablePlantModels(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -
 
     return models
 
+def listShootTypeLabels(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                        plant_model_name: Optional[str] = None,
+                        plant_id: Optional[int] = None) -> List[str]:
+    """Get shoot type labels for the current model, a named model, or a plant instance."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    labels_ptr = ctypes.POINTER(ctypes.c_char_p)()
+    count = ctypes.c_int()
+
+    encoded_model = plant_model_name.encode('utf-8') if plant_model_name is not None else None
+
+    result = helios_lib.listShootTypeLabels(
+        plantarch_ptr,
+        encoded_model,
+        -1 if plant_id is None else plant_id,
+        ctypes.byref(labels_ptr),
+        ctypes.byref(count)
+    )
+
+    if result != 0:
+        raise RuntimeError("Failed to list shoot type labels")
+
+    labels = []
+    if labels_ptr and count.value > 0:
+        for i in range(count.value):
+            labels.append(labels_ptr[i].decode('utf-8'))
+
+        helios_lib.freeStringArray(labels_ptr, count.value)
+
+    return labels
+
 def getAllPlantObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:
     """Get all object IDs for a plant"""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
@@ -1069,6 +1333,79 @@ def _getPlantOrganObjectIDs(native_fn_name: str,
     if ptr and count.value > 0:
         return [ptr[i] for i in range(count.value)]
     return []
+
+
+def _getSceneWideIDs(native_fn_name: str,
+                     plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Call one of the scene-wide ID getters and return the result.
+
+    These span every plant in the model rather than taking a plant ID, so they share a
+    body that differs only in the native symbol.
+    """
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantArchitecture methods not available. Rebuild with plantarchitecture enabled."
+        )
+
+    count = ctypes.c_int()
+    ptr = getattr(helios_lib, native_fn_name)(plantarch_ptr, ctypes.byref(count))
+
+    if ptr and count.value > 0:
+        return [ptr[i] for i in range(count.value)]
+    return []
+
+
+def getAllUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllUUIDs.
+
+    The native symbol carries a plantArchitecture prefix because the Context wrapper
+    already exports getAllUUIDs with C linkage.
+    """
+    return _getSceneWideIDs("plantArchitectureGetAllUUIDs", plantarch_ptr)
+
+
+def getAllLeafUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllLeafUUIDs."""
+    return _getSceneWideIDs("getAllLeafUUIDs", plantarch_ptr)
+
+
+def getAllInternodeUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllInternodeUUIDs."""
+    return _getSceneWideIDs("getAllInternodeUUIDs", plantarch_ptr)
+
+
+def getAllPetioleUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllPetioleUUIDs."""
+    return _getSceneWideIDs("getAllPetioleUUIDs", plantarch_ptr)
+
+
+def getAllPeduncleUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllPeduncleUUIDs."""
+    return _getSceneWideIDs("getAllPeduncleUUIDs", plantarch_ptr)
+
+
+def getAllFlowerUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllFlowerUUIDs."""
+    return _getSceneWideIDs("getAllFlowerUUIDs", plantarch_ptr)
+
+
+def getAllFruitUUIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllFruitUUIDs."""
+    return _getSceneWideIDs("getAllFruitUUIDs", plantarch_ptr)
+
+
+def getAllObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllObjectIDs.
+
+    The native symbol carries a plantArchitecture prefix because the Context wrapper
+    already exports getAllObjectIDs with C linkage.
+    """
+    return _getSceneWideIDs("plantArchitectureGetAllObjectIDs", plantarch_ptr)
+
+
+def getAllPlantIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture)) -> List[int]:
+    """Scene-wide query: getAllPlantIDs."""
+    return _getSceneWideIDs("getAllPlantIDs", plantarch_ptr)
 
 
 def getPlantLeafObjectIDs(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[int]:

@@ -1232,11 +1232,10 @@ extern "C" {
                 return;
             }
 
-            if (texture_file) {
-                visualizer->setBackgroundSkyTexture(texture_file, divisions);
-            } else {
-                visualizer->setBackgroundSkyTexture("", divisions);
-            }
+            // Pass the null pointer through rather than an empty string: the core
+            // selects its default sky texture on `texture_file == nullptr`, and an
+            // empty string instead reaches readJPEG as a filename and fails.
+            visualizer->setBackgroundSkyTexture(texture_file, divisions);
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBackgroundSkyTexture): ") + e.what());
         } catch (...) {
@@ -1482,6 +1481,217 @@ extern "C" {
             if (total_points) *total_points = 0;
             if (rendered_points) *rendered_points = 0;
             if (culling_time_ms) *culling_time_ms = 0.0f;
+        }
+    }
+
+
+    //=============================================================================
+    // Linear-light pipeline / tone mapping (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API void enableLinearPipeline(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->enableLinearPipeline();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (enableLinearPipeline): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (enableLinearPipeline): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableLinearPipeline(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->disableLinearPipeline();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (disableLinearPipeline): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (disableLinearPipeline): Unknown error");
+        }
+    }
+
+    PYHELIOS_API bool isLinearPipelineEnabled(const Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return false; }
+            return visualizer->isLinearPipelineEnabled();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (isLinearPipelineEnabled): ") + e.what()); return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (isLinearPipelineEnabled): Unknown error"); return false;
+        }
+    }
+
+    PYHELIOS_API void setExposure(Visualizer* visualizer, float exposure) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->setExposure(exposure);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setExposure): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setExposure): Unknown error");
+        }
+    }
+
+    PYHELIOS_API float getExposure(const Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return 0.f; }
+            return visualizer->getExposure();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getExposure): ") + e.what()); return 0.f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getExposure): Unknown error"); return 0.f;
+        }
+    }
+
+    //=============================================================================
+    // Phong material (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API void setPhongMaterial(Visualizer* visualizer, float ambient, float diffuse, float specular, float shininess) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            Visualizer::PhongMaterial material;
+            material.ambient = ambient;
+            material.diffuse = diffuse;
+            material.specular = specular;
+            material.shininess = shininess;
+            visualizer->setPhongMaterial(material);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setPhongMaterial): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setPhongMaterial): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getPhongMaterial(const Visualizer* visualizer, float* ambient, float* diffuse, float* specular, float* shininess) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            if (!ambient || !diffuse || !specular || !shininess) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointer is null");
+                return;
+            }
+            const Visualizer::PhongMaterial material = visualizer->getPhongMaterial();
+            *ambient = material.ambient;
+            *diffuse = material.diffuse;
+            *specular = material.specular;
+            *shininess = material.shininess;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getPhongMaterial): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getPhongMaterial): Unknown error");
+        }
+    }
+
+    //=============================================================================
+    // Hemispheric ambient light (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API void setAmbientColors(Visualizer* visualizer, float* sky_color, float* ground_color) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            if (!sky_color || !ground_color) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null");
+                return;
+            }
+            visualizer->setAmbientColors(helios::make_RGBcolor(sky_color[0], sky_color[1], sky_color[2]),
+                                        helios::make_RGBcolor(ground_color[0], ground_color[1], ground_color[2]));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setAmbientColors): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setAmbientColors): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getAmbientSkyColor(const Visualizer* visualizer, float* color) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            if (!color) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null"); return; }
+            const helios::RGBcolor c = visualizer->getAmbientSkyColor();
+            color[0] = c.r; color[1] = c.g; color[2] = c.b;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getAmbientSkyColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getAmbientSkyColor): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getAmbientGroundColor(const Visualizer* visualizer, float* color) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            if (!color) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color pointer is null"); return; }
+            const helios::RGBcolor c = visualizer->getAmbientGroundColor();
+            color[0] = c.r; color[1] = c.g; color[2] = c.b;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getAmbientGroundColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getAmbientGroundColor): Unknown error");
+        }
+    }
+
+    //=============================================================================
+    // Smooth shading (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API void enableSmoothShading(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->enableSmoothShading();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (enableSmoothShading): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (enableSmoothShading): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableSmoothShading(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->disableSmoothShading();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (disableSmoothShading): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (disableSmoothShading): Unknown error");
+        }
+    }
+
+    PYHELIOS_API bool isSmoothShadingEnabled(const Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return false; }
+            return visualizer->isSmoothShadingEnabled();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (isSmoothShadingEnabled): ") + e.what()); return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (isSmoothShadingEnabled): Unknown error"); return false;
+        }
+    }
+
+    //=============================================================================
+    // Headless multisampling (helios-core 1.3.83)
+    //=============================================================================
+
+    PYHELIOS_API bool isHeadlessMultisamplingActive(const Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return false; }
+            return visualizer->isHeadlessMultisamplingActive();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (isHeadlessMultisamplingActive): ") + e.what()); return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (isHeadlessMultisamplingActive): Unknown error"); return false;
         }
     }
 

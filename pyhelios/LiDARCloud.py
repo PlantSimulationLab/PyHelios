@@ -993,9 +993,7 @@ class LiDARCloud:
         Args:
             scanID: Scan ID these hits belong to (the scan must already exist)
             xyz_array: Hit point coordinates, shape (N, 3) [x, y, z]
-            direction_array: Ray directions, shape (N, 3) [radius, elevation, azimuth].
-                             Pass cart2sphere(xyz - origin) to match loadASCIIFile;
-                             the full SphericalCoord (incl. radius) is used.
+            direction_array: Ray directions, shape (N, 3) [radius, elevation, azimuth]. Pass cart2sphere(xyz - origin) to match loadASCIIFile; the full SphericalCoord (incl. radius) is used.
             data_labels: Optional list of data-map key names (length k)
             data_values: Optional (N, k) values for those keys (float64)
             color_array: Optional RGB colors, shape (N, 3) [r, g, b]
@@ -1700,6 +1698,7 @@ class LiDARCloud:
                 rays_per_pulse is set (waveform mode); raises ValueError otherwise. In SINGLE mode
                 up to each scan's getScanMaxReturns() returns per pulse are reported, selected by the
                 scan's single-return selection policy.
+            cancel_flag: Optional ``ctypes.c_int`` polled during the ray trace. Setting it non-zero from another thread aborts the scan mid-pass. It is cleared when the call returns, so a later scan on this cloud is not pre-cancelled.
 
         Example (Discrete-return):
             >>> from pyhelios import Context, LiDARCloud

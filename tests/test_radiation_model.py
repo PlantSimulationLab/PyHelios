@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from pyhelios import Context, RadiationModel, RadiationModelError, DataTypes
 from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.validation.exceptions import ValidationError
-from tests.conftest import skip_or_fail_without_gpu
+from tests.conftest import skip_or_fail_without_gpu, _env_flag_set
 
 # RadiationSourceType may not be available if RadiationModel is None
 try:
@@ -3445,3 +3445,51 @@ class TestCameraStringPropertiesArePlumbed:
         assert blobs, "no camera metadata file was written"
         text = json.dumps(json.loads(blobs[0].read_text()))
         assert "TestCam9000" in text, f"model not plumbed through: {text[:400]}"
+
+@pytest.mark.native_only
+@pytest.mark.requires_gpu
+class TestRayTracingBackendSelection:
+    """Assert WHICH backend is active, not merely that one exists.
+
+    Backend selection falls back silently: OptiX 8 -> OptiX 6 -> Vulkan. Every
+    other radiation test is satisfied by any of them, so a build where OptiX is
+    entirely broken passes on the Vulkan fallback and nothing reports it. On a
+    runner whose purpose is GPU coverage, that is a false green.
+    """
+
+    def test_backend_name_is_reported(self):
+        """getBackendName() returns a non-empty identifier for the live backend."""
+        context = Context()
+        with radiation_model_or_skip(context) as radiation:
+            name = radiation.getBackendName()
+
+        assert isinstance(name, str) and name.strip(), (
+            f"getBackendName() must identify the active backend, got {name!r}"
+        )
+
+    def test_optix_backend_active_when_required(self):
+        """HELIOS_REQUIRE_OPTIX demands the OptiX backend specifically.
+
+        Set this on a runner with an NVIDIA GPU. Without it the test only reports
+        the backend, so developer machines and Vulkan-only CI are unaffected.
+
+        In a container this is usually not a driver problem: libnvoptix.so.1 is
+        injected by the NVIDIA Container Toolkit only when
+        NVIDIA_DRIVER_CAPABILITIES includes 'graphics'.
+        """
+        context = Context()
+        with radiation_model_or_skip(context) as radiation:
+            name = radiation.getBackendName()
+
+        print(f"Active ray-tracing backend: {name}")
+
+        if not _env_flag_set("HELIOS_REQUIRE_OPTIX"):
+            pytest.skip(f"HELIOS_REQUIRE_OPTIX not set; active backend is {name!r}")
+
+        assert "OptiX" in name, (
+            f"HELIOS_REQUIRE_OPTIX is set but the active backend is {name!r}. "
+            f"The radiation model fell back instead of using OptiX. In a container, "
+            f"check that the run has --gpus all and "
+            f"NVIDIA_DRIVER_CAPABILITIES including 'graphics' so libnvoptix.so.1 "
+            f"is injected; on bare metal, check the NVIDIA driver is >= 560 for OptiX 8."
+        )

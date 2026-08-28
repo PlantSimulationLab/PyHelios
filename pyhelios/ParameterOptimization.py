@@ -872,10 +872,7 @@ class ParameterOptimization:
             simulation: Callable receiving ``{name: value}`` and returning a
                         :class:`ConstrainedResult`
             parameters: Parameters to optimize, keyed by name
-            constraint_count: Number of constraints. Required, and fixed for the whole
-                              run: the buffers the simulation writes into are sized
-                              before the first call, so the count cannot be discovered
-                              by calling it.
+            constraint_count: Number of constraints. Required, and fixed for the whole run: the buffers the simulation writes into are sized before the first call, so the count cannot be discovered by calling it.
 
         Returns:
             The optimized parameters and the objective value at the optimum

@@ -882,3 +882,337 @@ class TestCompoundGeometryReturnValues:
             
             box_uuids = context.addBox(subdiv=int3(1, 1, 1))
             assert len(box_uuids) > 0
+
+@pytest.mark.cross_platform
+class TestPolymeshTopologyAPI:
+    """Signature-level checks for the helios-core 1.3.83 mesh topology API."""
+
+    @pytest.mark.parametrize("name", [
+        "setPolymeshObjectTopology",
+        "getPolymeshObjectVertices", "getPolymeshObjectFaces",
+        "getPolymeshObjectVertexNormals", "getPolymeshObjectVertexUV",
+        "doesPolymeshObjectHaveVertexNormals", "getPolymeshObjectVertexNormalSource",
+        "getPolymeshObjectVertexCount", "getPolymeshObjectFaceCount",
+        "getPolymeshObjectFaceIndexForPrimitive", "getPolymeshObjectPrimitiveUUIDForFace",
+        "computePolymeshObjectVertexNormals", "isPolymeshObjectClosed",
+        "getPolymeshObjectBoundaryEdges", "getPolymeshObjectConnectedComponents",
+        "getPolymeshObjectSurfaceArea",
+        "doesObjectHaveAnalyticVertexNormals", "getObjectPrimitiveVertexNormals",
+    ])
+    def test_topology_methods_exist(self, name):
+        assert hasattr(Context, name), f"Context.{name}() is missing"
+
+    def test_topology_wrappers_check_the_flag_that_registers_them(self):
+        """
+        Each wrapper must guard on the availability flag of the try block that actually
+        registered its ctypes prototype.
+
+        The 1.3.83 polymesh prototypes are registered under
+        `_CONTEXT_SCALAR_API_AVAILABLE`. Guarding them with `_require_ctx_ext()` instead
+        checks an unrelated flag, so against a library missing these symbols the guard
+        passes and the call proceeds with no argtypes/restype -- silent stack corruption
+        rather than a clean NotImplementedError.
+        """
+        import inspect
+        from pyhelios.wrappers import UContextWrapper as w
+
+        names = [
+            "setPolymeshObjectTopologyWrapper", "getPolymeshObjectVerticesWrapper",
+            "getPolymeshObjectFacesWrapper", "getPolymeshObjectVertexNormalsWrapper",
+            "getPolymeshObjectVertexUVWrapper",
+            "doesPolymeshObjectHaveVertexNormalsWrapper",
+            "getPolymeshObjectVertexNormalSourceWrapper",
+            "getPolymeshObjectVertexCountWrapper", "getPolymeshObjectFaceCountWrapper",
+            "getPolymeshObjectFaceIndexForPrimitiveWrapper",
+            "getPolymeshObjectPrimitiveUUIDForFaceWrapper",
+            "computePolymeshObjectVertexNormalsWrapper", "isPolymeshObjectClosedWrapper",
+            "getPolymeshObjectBoundaryEdgesWrapper",
+            "getPolymeshObjectConnectedComponentsWrapper",
+            "getPolymeshObjectSurfaceAreaWrapper",
+            "doesObjectHaveAnalyticVertexNormalsWrapper",
+            "getObjectPrimitiveVertexNormalsWrapper",
+            "getObjectPrimitiveVertexNormalsBatchWrapper",
+        ]
+        wrong = []
+        for name in names:
+            src = inspect.getsource(getattr(w, name))
+            if "_require_ctx_scalar_api()" not in src:
+                wrong.append(name)
+        assert not wrong, f"wrong availability guard on: {wrong}"
+
+    def test_vertex_normal_source_is_publicly_exported(self):
+        """The enum is part of the public API, like PrimitiveType."""
+        from pyhelios import VertexNormalSource as top_level
+        from pyhelios.types import VertexNormalSource as types_level
+        from pyhelios.wrappers.DataTypes import VertexNormalSource as wrapper_level
+        assert top_level is types_level is wrapper_level
+
+    def test_vertex_normal_source_enum_matches_native(self):
+        """Values must match helios::VertexNormalSource, which is cast across the C ABI."""
+        from pyhelios.wrappers.DataTypes import VertexNormalSource
+        assert int(VertexNormalSource.NONE) == 0
+        assert int(VertexNormalSource.AUTHORED) == 1
+        assert int(VertexNormalSource.COMPUTED) == 2
+
+
+@pytest.mark.native_only
+class TestPolymeshTopologyNative:
+    """helios-core 1.3.83 polymesh mesh topology behavior."""
+
+    @staticmethod
+    def _tetrahedron(context):
+        """Build a closed unit tetrahedron and attach its topology.
+
+        Returns (objID, vertices, faces, uuids). Volume is exactly 1/6.
+        """
+        verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1)]
+        faces = [(0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3)]
+        uuids = [context.addTriangle(verts[a], verts[b], verts[c]) for a, b, c in faces]
+        objID = context.addPolymeshObject(uuids)
+        context.setPolymeshObjectTopology(objID, verts, [int3(*f) for f in faces], uuids)
+        return objID, verts, faces, uuids
+
+    def test_polymesh_without_topology_reports_no_faces(self):
+        """A mesh built with addPolymeshObject alone is a triangle soup until topology is attached."""
+        with Context() as context:
+            uuids = [context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))]
+            objID = context.addPolymeshObject(uuids)
+            assert context.getPolymeshObjectFaceCount(objID) == 0
+            assert context.getPolymeshObjectVertexCount(objID) == 0
+
+    def test_set_topology_populates_vertex_and_face_counts(self):
+        with Context() as context:
+            objID, verts, faces, _ = self._tetrahedron(context)
+            assert context.getPolymeshObjectVertexCount(objID) == len(verts)
+            assert context.getPolymeshObjectFaceCount(objID) == len(faces)
+            assert len(context.getPolymeshObjectVertices(objID)) == len(verts)
+            assert len(context.getPolymeshObjectFaces(objID)) == len(faces)
+
+    def test_closed_mesh_has_no_boundary_edges(self):
+        with Context() as context:
+            objID, _, _, _ = self._tetrahedron(context)
+            assert context.isPolymeshObjectClosed(objID) is True
+            assert context.getPolymeshObjectBoundaryEdges(objID) == []
+
+    def test_open_mesh_reports_boundary_edges(self):
+        """A single triangle is an open surface: all three of its edges are boundaries."""
+        with Context() as context:
+            verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+            uuid = context.addTriangle(*verts)
+            objID = context.addPolymeshObject([uuid])
+            context.setPolymeshObjectTopology(objID, verts, [int3(0, 1, 2)], [uuid])
+
+            assert context.isPolymeshObjectClosed(objID) is False
+            assert len(context.getPolymeshObjectBoundaryEdges(objID)) == 3
+
+    def test_volume_of_closed_mesh_is_correct(self):
+        """The tetrahedron on (0,0,0),(1,0,0),(0,1,0),(0,0,1) encloses exactly 1/6."""
+        with Context() as context:
+            objID, _, _, _ = self._tetrahedron(context)
+            assert context.getPolymeshObjectVolume(objID) == pytest.approx(1.0 / 6.0, rel=1e-5)
+
+    def test_volume_of_open_mesh_raises(self):
+        """1.3.83 rejects an open surface rather than returning a meaningless number."""
+        with Context() as context:
+            verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+            uuid = context.addTriangle(*verts)
+            objID = context.addPolymeshObject([uuid])
+            context.setPolymeshObjectTopology(objID, verts, [int3(0, 1, 2)], [uuid])
+
+            from pyhelios.exceptions import HeliosRuntimeError
+            with pytest.raises(HeliosRuntimeError, match="not a closed surface"):
+                context.getPolymeshObjectVolume(objID)
+
+    def test_surface_area_sums_face_areas(self):
+        """Three unit right triangles of area 1/2 plus one equilateral face of area sqrt(3)/2."""
+        import math
+        with Context() as context:
+            objID, _, _, _ = self._tetrahedron(context)
+            expected = 3 * 0.5 + math.sqrt(3.0) / 2.0
+            assert context.getPolymeshObjectSurfaceArea(objID) == pytest.approx(expected, rel=1e-5)
+
+    def test_connected_components_of_single_mesh(self):
+        with Context() as context:
+            objID, _, faces, _ = self._tetrahedron(context)
+            components = context.getPolymeshObjectConnectedComponents(objID)
+            assert len(components) == 1
+            assert sorted(components[0]) == list(range(len(faces)))
+
+    def test_face_and_primitive_lookups_are_inverse(self):
+        with Context() as context:
+            objID, _, _, uuids = self._tetrahedron(context)
+            for uuid in uuids:
+                face_index = context.getPolymeshObjectFaceIndexForPrimitive(objID, uuid)
+                assert context.getPolymeshObjectPrimitiveUUIDForFace(objID, face_index) == uuid
+
+    def test_compute_vertex_normals_marks_them_computed(self):
+        """Helios never synthesizes normals implicitly; they appear only after an explicit call."""
+        from pyhelios.wrappers.DataTypes import VertexNormalSource
+        with Context() as context:
+            objID, _, _, _ = self._tetrahedron(context)
+            assert context.doesPolymeshObjectHaveVertexNormals(objID) is False
+            assert context.getPolymeshObjectVertexNormalSource(objID) == VertexNormalSource.NONE
+
+            context.computePolymeshObjectVertexNormals(objID, crease_angle_degrees=30.0)
+
+            assert context.doesPolymeshObjectHaveVertexNormals(objID) is True
+            assert context.getPolymeshObjectVertexNormalSource(objID) == VertexNormalSource.COMPUTED
+            assert len(context.getPolymeshObjectVertexNormals(objID)) > 0
+
+    def test_computed_vertex_normals_are_unit_length(self):
+        import math
+        with Context() as context:
+            objID, _, _, _ = self._tetrahedron(context)
+            context.computePolymeshObjectVertexNormals(objID, crease_angle_degrees=30.0)
+            for n in context.getPolymeshObjectVertexNormals(objID):
+                assert math.sqrt(n.x ** 2 + n.y ** 2 + n.z ** 2) == pytest.approx(1.0, abs=1e-4)
+
+    def test_set_topology_rejects_mismatched_face_uuids(self):
+        with Context() as context:
+            verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+            uuid = context.addTriangle(*verts)
+            objID = context.addPolymeshObject([uuid])
+            with pytest.raises(ValueError, match="parallel to faces"):
+                context.setPolymeshObjectTopology(
+                    objID, verts, [int3(0, 1, 2)], [uuid, uuid]
+                )
+
+    def test_set_topology_rejects_wrong_vertex_type(self):
+        """Passed positionally, a wrong type must raise rather than be silently accepted."""
+        with Context() as context:
+            verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+            uuid = context.addTriangle(*verts)
+            objID = context.addPolymeshObject([uuid])
+            with pytest.raises(ValueError, match="must be a vec3"):
+                context.setPolymeshObjectTopology(
+                    objID, [RGBcolor(0, 0, 0)] * 3, [int3(0, 1, 2)], [uuid]
+                )
+            with pytest.raises(ValueError, match="must be an int3"):
+                context.setPolymeshObjectTopology(
+                    objID, verts, [vec3(0, 1, 2)], [uuid]
+                )
+
+    def test_topology_round_trips_vertex_uv(self):
+        with Context() as context:
+            verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+            uv = [vec2(0, 0), vec2(1, 0), vec2(0, 1)]
+            uuid = context.addTriangle(*verts)
+            objID = context.addPolymeshObject([uuid])
+            context.setPolymeshObjectTopology(objID, verts, [int3(0, 1, 2)], [uuid],
+                                              vertex_uv=uv)
+            got = context.getPolymeshObjectVertexUV(objID)
+            assert len(got) == 3
+            assert [(p.x, p.y) for p in got] == pytest.approx([(0, 0), (1, 0), (0, 1)])
+
+    def test_authored_normals_keep_their_provenance(self):
+        """Normals supplied by the caller are reported as authored, not computed."""
+        from pyhelios.wrappers.DataTypes import VertexNormalSource
+        with Context() as context:
+            verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+            normals = [vec3(0, 0, 1)] * 3
+            uuid = context.addTriangle(*verts)
+            objID = context.addPolymeshObject([uuid])
+            context.setPolymeshObjectTopology(
+                objID, verts, [int3(0, 1, 2)], [uuid],
+                vertex_normals=normals,
+                normal_source=VertexNormalSource.AUTHORED,
+            )
+            assert context.doesPolymeshObjectHaveVertexNormals(objID) is True
+            assert context.getPolymeshObjectVertexNormalSource(objID) == VertexNormalSource.AUTHORED
+
+
+@pytest.mark.native_only
+class TestV1383BehaviorChanges:
+    """Behavioral changes in helios-core 1.3.83 to already-wrapped Context methods."""
+
+    def test_cone_node_radii_follow_object_transform(self):
+        """1.3.83 applies the object transform, so a scaled cone reports scaled radii."""
+        with Context() as context:
+            cone = context.addConeObject(vec3(0, 0, 0), vec3(0, 0, 1), 0.5, 0.25, ndivs=8)
+            assert context.getConeObjectNodeRadii(cone) == pytest.approx([0.5, 0.25])
+
+            context.scaleObject(cone, vec3(2, 2, 2))
+
+            assert context.getConeObjectNodeRadii(cone) == pytest.approx([1.0, 0.5])
+            assert context.getConeObjectNodeRadius(cone, 0) == pytest.approx(1.0)
+
+    def test_copied_primitive_has_no_parent_object(self):
+        """A copy is standalone; it previously claimed a membership the object did not list."""
+        with Context() as context:
+            uuid = context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+            objID = context.addPolymeshObject([uuid])
+            assert context.getPrimitiveParentObjectID(uuid) == objID
+
+            copy = context.copyPrimitive(uuid)
+            assert context.getPrimitiveParentObjectID(copy) == 0
+
+    def test_polymesh_member_primitives_are_deformable(self):
+        """Members of a polymesh can be transformed individually; other object types cannot."""
+        with Context() as context:
+            uuid = context.addTriangle(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0))
+            objID = context.addPolymeshObject([uuid])
+            before = context.getPrimitiveVertices(uuid)
+
+            context.translatePrimitive(uuid, vec3(0, 0, 1))
+
+            after = context.getPrimitiveVertices(uuid)
+            for b, a in zip(before, after):
+                assert a.z == pytest.approx(b.z + 1.0)
+
+
+@pytest.mark.native_only
+class TestAnalyticVertexNormalsNative:
+    """helios-core 1.3.83 analytic vertex normals on curved compound objects."""
+
+    def test_curved_objects_report_analytic_normals(self):
+        with Context() as context:
+            sphere = context.addSphereObject(center=vec3(0, 0, 0), radius=1.0, ndivs=8)
+            tube = context.addTubeObject(8, [vec3(0, 0, 0), vec3(0, 0, 1)], [0.1, 0.1])
+            assert context.doesObjectHaveAnalyticVertexNormals(sphere) is True
+            assert context.doesObjectHaveAnalyticVertexNormals(tube) is True
+
+    def test_flat_faced_objects_report_no_analytic_normals(self):
+        """A tile is genuinely flat, so it has no curved shape to evaluate normals from."""
+        with Context() as context:
+            tile = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                         rotation=SphericalCoord(1, 0, 0),
+                                         subdiv=int2(2, 2))
+            assert context.doesObjectHaveAnalyticVertexNormals(tile) is False
+            uuid = context.getObjectPrimitiveUUIDs(tile)[0]
+            assert context.getObjectPrimitiveVertexNormals(tile, uuid) == []
+
+    def test_sphere_analytic_normals_are_unit_length(self):
+        import math
+        with Context() as context:
+            sphere = context.addSphereObject(center=vec3(0, 0, 0), radius=1.0, ndivs=8)
+            uuid = context.getObjectPrimitiveUUIDs(sphere)[0]
+            normals = context.getObjectPrimitiveVertexNormals(sphere, uuid)
+            assert len(normals) > 0
+            for n in normals:
+                assert math.sqrt(n.x ** 2 + n.y ** 2 + n.z ** 2) == pytest.approx(1.0, abs=1e-4)
+
+    def test_unit_sphere_normal_points_along_vertex_direction(self):
+        """On a unit sphere centered at the origin, the surface normal is the position."""
+        import math
+        with Context() as context:
+            sphere = context.addSphereObject(center=vec3(0, 0, 0), radius=1.0, ndivs=16)
+            uuid = context.getObjectPrimitiveUUIDs(sphere)[0]
+            normals = context.getObjectPrimitiveVertexNormals(sphere, uuid)
+            vertices = context.getPrimitiveVertices(uuid)
+            for v, n in zip(vertices, normals):
+                length = math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2)
+                assert n.x == pytest.approx(v.x / length, abs=1e-3)
+                assert n.y == pytest.approx(v.y / length, abs=1e-3)
+                assert n.z == pytest.approx(v.z / length, abs=1e-3)
+
+    def test_batch_matches_single_primitive_query(self):
+        with Context() as context:
+            sphere = context.addSphereObject(center=vec3(0, 0, 0), radius=1.0, ndivs=8)
+            uuids = context.getObjectPrimitiveUUIDs(sphere)[:4]
+            batch = context.getObjectPrimitiveVertexNormals(sphere, uuids)
+            assert len(batch) == len(uuids)
+            for uuid, group in zip(uuids, batch):
+                single = context.getObjectPrimitiveVertexNormals(sphere, uuid)
+                assert len(group) == len(single)
+                for a, b in zip(group, single):
+                    assert (a.x, a.y, a.z) == pytest.approx((b.x, b.y, b.z))

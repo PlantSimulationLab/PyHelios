@@ -37,7 +37,7 @@ PyHelios uses a sophisticated plugin architecture that enables seamless integrat
 │  ├── Function prototypes and availability detection         │
 │  └── Python-to-C type conversion                            │
 ├─────────────────────────────────────────────────────────────┤
-│  C++ Interface (pyhelios_interface.cpp)                     │
+│  C++ Interface (native/src/pyhelios_wrapper_<plugin>.cpp)   │
 │  ├── C-compatible wrapper functions                         │
 │  └── Exception handling and parameter validation            │
 ├─────────────────────────────────────────────────────────────┤
@@ -196,7 +196,7 @@ build_scripts/build_helios --interactive
 
 **CRITICAL**: Before implementing Python wrappers, add C-compatible functions to the PyHelios interface.
 
-**File**: `pyhelios_build/pyhelios_interface.cpp`
+**Files**: `native/include/pyhelios_wrapper_<plugin>.h` (declarations) and `native/src/pyhelios_wrapper_<plugin>.cpp` (implementations), one pair per plugin
 
 Add functions after existing implementations:
 
@@ -2492,7 +2492,7 @@ The code reviewer should verify completion of all integration phases:
    - Added to default builds if appropriate
 
 ✅ Phase 3: C++ Interface Implementation
-   - All C++ wrapper functions implemented in pyhelios_interface.cpp
+   - All C++ wrapper functions implemented in native/src/pyhelios_wrapper_<plugin>.cpp
    - Proper exception handling with try/catch blocks
    - Parameter validation and type conversion
    - Library rebuilt with new functions available

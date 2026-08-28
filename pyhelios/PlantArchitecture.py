@@ -56,6 +56,86 @@ from .plant_architecture_params import (
 logger = logging.getLogger(__name__)
 
 
+# Build parameters accepted by each library plant model, mirroring the
+# getParameterValue(current_build_parameters, ...) calls in PlantLibrary.cpp. Models absent
+# from this table read no build parameters at all. The native library silently ignores keys
+# it does not recognize, so PyHelios validates against this table to keep a typo or a
+# wrong-species key from producing a plant that quietly used defaults.
+_BUILD_PARAMETERS_BY_MODEL: Dict[str, frozenset] = {
+    "almond": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+    "almond_aldrich": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+    "almond_wood_colony": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+    "apple": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+    "grapevine_VSP": frozenset({"trunk_height", "vine_spacing"}),
+    "grapevine_wye": frozenset(
+        {"trunk_height", "vine_spacing", "cordon_spacing", "catch_wire_height"}
+    ),
+    "pistachio": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+    "walnut": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+}
+
+# Every build parameter name recognized by any model, for error messages when the current
+# model is unknown.
+_ALL_BUILD_PARAMETERS = frozenset().union(*_BUILD_PARAMETERS_BY_MODEL.values())
+
+
+def _validate_build_parameters(build_parameters: Optional[dict], plant_model: Optional[str]) -> None:
+    """Reject build parameter keys the loaded plant model will not read.
+
+    The native library looks each key up in a map and falls back to a default when it is
+    absent, so an unrecognized key is silently discarded. Raising here instead keeps a
+    misspelled or wrong-species parameter from being mistaken for one that took effect.
+
+    Args:
+        build_parameters: Mapping supplied by the caller, or None.
+        plant_model: Label of the currently loaded model, or None if no model has been
+            loaded through this instance.
+
+    Raises:
+        ValueError: If build_parameters is not a dict of str -> number, or contains a key
+            the loaded model does not accept.
+    """
+    if build_parameters is None:
+        return
+
+    if not isinstance(build_parameters, dict):
+        raise ValueError("build_parameters must be a dict or None")
+
+    for key, value in build_parameters.items():
+        if not isinstance(key, str):
+            raise ValueError("build_parameters keys must be strings")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("build_parameters values must be numeric (int or float)")
+
+    if not build_parameters:
+        return
+
+    # An unrecognized model label cannot be checked against a specific list. Fall back to
+    # the union so an outright typo is still caught, rather than skipping validation.
+    if plant_model is not None:
+        accepted = _BUILD_PARAMETERS_BY_MODEL.get(plant_model, frozenset())
+        model_description = f"Plant model '{plant_model}'"
+    else:
+        accepted = _ALL_BUILD_PARAMETERS
+        model_description = "No plant model has been loaded through this instance, so"
+
+    unknown = sorted(set(build_parameters) - accepted)
+    if not unknown:
+        return
+
+    if accepted:
+        accepted_description = f"accepts only: {', '.join(sorted(accepted))}"
+    else:
+        accepted_description = "accepts no build parameters"
+
+    raise ValueError(
+        f"Unknown build parameter(s) {', '.join(repr(k) for k in unknown)}. "
+        f"{model_description} {accepted_description}. "
+        f"Unrecognized parameters are ignored by the native library, so they would "
+        f"otherwise have no effect."
+    )
+
+
 def _resolve_user_path(filepath: Union[str, Path]) -> str:
     """
     Convert relative paths to absolute paths before changing working directory.
@@ -227,6 +307,9 @@ class PlantArchitecture:
 
         self.context = context
         self._plantarch_ptr = None
+        # Label passed to the most recent loadPlantModelFromLibrary(), used to validate
+        # build parameters against the model that actually consumes them.
+        self._current_plant_model = None
 
         # Create PlantArchitecture instance with asset-aware working directory
         with _plantarchitecture_working_directory():
@@ -291,6 +374,8 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to load plant model '{plant_label}': {e}")
 
+        self._current_plant_model = plant_label.strip()
+
     def buildPlantInstanceFromLibrary(self, base_position: vec3, age: float,
                                      build_parameters: Optional[dict] = None) -> int:
         """
@@ -299,11 +384,15 @@ class PlantArchitecture:
         Args:
             base_position: Cartesian (x,y,z) coordinates of plant base as vec3
             age: Age of the plant in days (must be >= 0)
-            build_parameters: Optional dict of parameter overrides for training system parameters.
-                            Examples:
-                            - {'trunk_height': 2.5} - for tomato trellis height
-                            - {'cordon_height': 1.8, 'cordon_radius': 1.2} - for apple training
-                            - {'row_spacing': 0.75} - for grapevine VSP trellis
+            build_parameters: Optional dict of parameter overrides for training system
+                            parameters. Only some models read them, and a key the model does
+                            not accept raises ValueError rather than being ignored:
+                            - almond, almond_aldrich, almond_wood_colony, apple, pistachio,
+                              walnut: trunk_height, num_scaffolds, scaffold_angle
+                            - grapevine_VSP: trunk_height, vine_spacing
+                            - grapevine_wye: trunk_height, vine_spacing, cordon_spacing,
+                              catch_wire_height
+                            All other models read no build parameters.
 
         Returns:
             Plant ID for the created plant instance
@@ -333,15 +422,7 @@ class PlantArchitecture:
         if age < 0:
             raise ValueError(f"Age must be non-negative, got {age}")
 
-        # Validate build_parameters
-        if build_parameters is not None:
-            if not isinstance(build_parameters, dict):
-                raise ValueError("build_parameters must be a dict or None")
-            for key, value in build_parameters.items():
-                if not isinstance(key, str):
-                    raise ValueError("build_parameters keys must be strings")
-                if not isinstance(value, (int, float)):
-                    raise ValueError("build_parameters values must be numeric (int or float)")
+        _validate_build_parameters(build_parameters, self._current_plant_model)
 
         self._check_context_alive()
         try:
@@ -368,11 +449,11 @@ class PlantArchitecture:
             germination_rate: Probability that each plant position will be occupied (0 to 1).
                             A value of 1.0 means all positions are filled; 0.5 means roughly
                             half the positions will have plants. Default is 1.0.
-            build_parameters: Optional dict of parameter overrides for training system parameters.
-                            Parameters are applied to all plants in the canopy.
-                            Examples:
-                            - {'cordon_height': 1.8} - for grapevine trellis height
-                            - {'trunk_height': 2.5} - for tomato trellis systems
+            build_parameters: Optional dict of parameter overrides for training system
+                            parameters, applied to every plant in the canopy. Only some models
+                            read them, and a key the model does not accept raises ValueError
+                            rather than being ignored. See buildPlantInstanceFromLibrary() for
+                            the per-model list.
 
         Returns:
             List of plant IDs for the created plant instances
@@ -397,7 +478,7 @@ class PlantArchitecture:
             ...     plant_count=int2(5, 3),
             ...     age=45.0,
             ...     germination_rate=0.8,
-            ...     build_parameters={'cordon_height': 1.8}
+            ...     build_parameters={'trunk_height': 1.8}
             ... )
         """
         # Parameter type validation
@@ -422,15 +503,7 @@ class PlantArchitecture:
         if plant_count.x <= 0 or plant_count.y <= 0:
             raise ValueError("Plant count values must be positive integers")
 
-        # Validate build_parameters
-        if build_parameters is not None:
-            if not isinstance(build_parameters, dict):
-                raise ValueError("build_parameters must be a dict or None")
-            for key, value in build_parameters.items():
-                if not isinstance(key, str):
-                    raise ValueError("build_parameters keys must be strings")
-                if not isinstance(value, (int, float)):
-                    raise ValueError("build_parameters values must be numeric (int or float)")
+        _validate_build_parameters(build_parameters, self._current_plant_model)
 
         # Convert to lists for C++ interface
         center_list = [canopy_center.x, canopy_center.y, canopy_center.z]
@@ -447,18 +520,27 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant canopy: {e}")
 
-    def advanceTime(self, dt: float) -> None:
+    def advanceTime(self, dt: float, plant_id: Optional[int] = None,
+                    plant_ids: Optional[List[int]] = None,
+                    years: Optional[int] = None) -> None:
         """
         Advance time for plant growth and development.
 
-        This method updates all plants in the simulation, potentially adding new phytomers,
-        growing existing organs, transitioning phenological stages, and updating plant geometry.
+        Updates plants in the simulation, potentially adding new phytomers, growing
+        existing organs, transitioning phenological stages, and updating plant geometry.
+
+        By default every plant advances together. Pass plant_id or plant_ids to advance a
+        subset, which is what staggered planting dates and mixed-age stands require.
 
         Args:
             dt: Time step to advance in days (must be >= 0)
+            plant_id: Advance only this plant. Mutually exclusive with plant_ids.
+            plant_ids: Advance only these plants. Mutually exclusive with plant_id.
+            years: Advance this many whole years in addition to dt days. Applies to all
+                plants and cannot be combined with plant_id or plant_ids.
 
         Raises:
-            ValueError: If dt is negative
+            ValueError: If dt or years is negative, or selectors are combined
             PlantArchitectureError: If time advancement fails
 
         Note:
@@ -467,19 +549,205 @@ class PlantArchitecture:
             in a single call.
 
         Example:
-            >>> plantarch.advanceTime(10.0)  # Advance 10 days
-            >>> plantarch.advanceTime(0.5)   # Advance 12 hours
+            >>> plantarch.advanceTime(10.0)                     # all plants, 10 days
+            >>> plantarch.advanceTime(10.0, plant_id=early)     # one plant only
+            >>> plantarch.advanceTime(10.0, plant_ids=[a, b])   # a subset
+            >>> plantarch.advanceTime(0.0, years=4)             # all plants, 4 years
         """
-        # Validate time step (allow zero)
         if dt < 0:
             raise ValueError(f"Time step must be non-negative, got {dt}")
+
+        selectors = sum(x is not None for x in (plant_id, plant_ids, years))
+        if selectors > 1:
+            raise ValueError("Pass at most one of plant_id, plant_ids, or years")
+
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+        if plant_ids is not None and any(pid < 0 for pid in plant_ids):
+            raise ValueError("plant_ids must all be non-negative")
+        if years is not None and years < 0:
+            raise ValueError(f"years must be non-negative, got {years}")
 
         self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
-                plantarch_wrapper.advanceTime(self._plantarch_ptr, dt)
+                if plant_id is not None:
+                    plantarch_wrapper.advanceTimeForPlant(self._plantarch_ptr, plant_id, dt)
+                elif plant_ids is not None:
+                    if not plant_ids:
+                        return
+                    plantarch_wrapper.advanceTimeForPlants(self._plantarch_ptr, plant_ids, dt)
+                elif years is not None:
+                    plantarch_wrapper.advanceTimeYears(self._plantarch_ptr, years, dt)
+                else:
+                    plantarch_wrapper.advanceTime(self._plantarch_ptr, dt)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to advance time by {dt} days: {e}")
+
+    def enableAttractionPoints(self, points: List[vec3],
+                               plant_id: Optional[int] = None,
+                               view_half_angle_deg: Optional[float] = None,
+                               look_ahead_distance: float = 0.1,
+                               attraction_weight: float = 0.6) -> None:
+        """
+        Steer shoot growth toward a set of target points.
+
+        Attraction points are the counterpart to collision avoidance: collision tells a
+        plant what to grow around, attraction tells it what to grow toward. This is how
+        trellis wires, espalier targets and greenhouse supports are modelled.
+
+        Steering applies to growth that happens after this call, since the direction is
+        chosen as each phytomer is constructed. Enable the points before advanceTime().
+
+        Args:
+            points: Target locations as a list of vec3
+            plant_id: Apply to this plant only. Applies to every plant when None.
+            view_half_angle_deg: Half-angle of the search cone in degrees. Defaults to
+                45 for the global form and 80 for the per-plant form, matching the
+                native defaults, which differ between the two.
+            look_ahead_distance: How far ahead a shoot tip looks, in meters
+            attraction_weight: Strength of the steering, 0 to 1
+
+        Raises:
+            ValueError: If points is empty or contains a non-vec3, or plant_id is negative
+            PlantArchitectureError: If the operation fails
+
+        Example:
+            >>> wires = [vec3(x, 0, 2.1) for x in range(0, 10)]
+            >>> plantarch.enableAttractionPoints(wires)
+        """
+        self._validate_attraction_points(points)
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+
+        if view_half_angle_deg is None:
+            view_half_angle_deg = 45.0 if plant_id is None else 80.0
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.enableAttractionPoints(
+                    self._plantarch_ptr, plant_id, points,
+                    view_half_angle_deg, look_ahead_distance, attraction_weight
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable attraction points: {e}")
+
+    def disableAttractionPoints(self, plant_id: Optional[int] = None) -> None:
+        """
+        Stop steering growth toward attraction points.
+
+        Args:
+            plant_id: Disable for this plant only. Disables globally when None.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the operation fails
+        """
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.disableAttractionPoints(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to disable attraction points: {e}")
+
+    def updateAttractionPoints(self, points: List[vec3],
+                               plant_id: Optional[int] = None) -> None:
+        """
+        Replace the current attraction point set.
+
+        Args:
+            points: Replacement target locations as a list of vec3
+            plant_id: Update this plant only. Updates globally when None.
+
+        Raises:
+            ValueError: If points is empty or contains a non-vec3, or plant_id is negative
+            PlantArchitectureError: If the operation fails
+        """
+        self._validate_attraction_points(points)
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.updateAttractionPoints(self._plantarch_ptr, plant_id, points)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to update attraction points: {e}")
+
+    def appendAttractionPoints(self, points: List[vec3],
+                               plant_id: Optional[int] = None) -> None:
+        """
+        Add to the current attraction point set.
+
+        Args:
+            points: Additional target locations as a list of vec3
+            plant_id: Append for this plant only. Appends globally when None.
+
+        Raises:
+            ValueError: If points is empty or contains a non-vec3, or plant_id is negative
+            PlantArchitectureError: If the operation fails
+        """
+        self._validate_attraction_points(points)
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.appendAttractionPoints(self._plantarch_ptr, plant_id, points)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to append attraction points: {e}")
+
+    def setAttractionParameters(self, view_half_angle_deg: float,
+                                look_ahead_distance: float,
+                                attraction_weight: float,
+                                obstacle_reduction_factor: float = 0.75,
+                                plant_id: Optional[int] = None) -> None:
+        """
+        Tune how strongly attraction points steer growth.
+
+        Args:
+            view_half_angle_deg: Half-angle of the search cone in degrees
+            look_ahead_distance: How far ahead a shoot tip looks, in meters
+            attraction_weight: Strength of the steering, 0 to 1
+            obstacle_reduction_factor: Scales attraction where an obstacle intervenes
+            plant_id: Apply to this plant only. Applies globally when None.
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the operation fails
+        """
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setAttractionParameters(
+                    self._plantarch_ptr, plant_id, view_half_angle_deg,
+                    look_ahead_distance, attraction_weight, obstacle_reduction_factor
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set attraction parameters: {e}")
+
+    @staticmethod
+    def _validate_attraction_points(points) -> None:
+        """Reject point sets the native layer would misread or silently ignore."""
+        if not isinstance(points, (list, tuple)):
+            raise ValueError(
+                f"points must be a list of vec3, got {type(points).__name__}"
+            )
+        if not points:
+            raise ValueError("points cannot be empty")
+        for index, point in enumerate(points):
+            if not isinstance(point, vec3):
+                raise ValueError(
+                    f"points[{index}] must be a vec3, got {type(point).__name__}"
+                )
 
     def setProgressCallback(self, callback):
         """Set a callback to receive progress updates during long-running operations.
@@ -574,7 +842,16 @@ class PlantArchitecture:
                     self._plantarch_ptr, shoot_type_label.strip()
                 )
         except Exception as e:
-            raise PlantArchitectureError(f"Failed to get shoot parameters for '{shoot_type_label}': {e}")
+            # An unknown label is the common case here, and the native error does not say
+            # which labels exist. Name them so the caller does not have to guess.
+            available = ""
+            try:
+                labels = self.listShootTypeLabels()
+                if labels:
+                    available = f" Available shoot types: {', '.join(sorted(labels))}."
+            except Exception:
+                pass
+            raise PlantArchitectureError(f"{e}.{available}")
 
         return ShootParameters.from_dict(params) if return_typed else params
 
@@ -748,6 +1025,273 @@ class PlantArchitecture:
                 return plantarch_wrapper.getAvailablePlantModels(self._plantarch_ptr)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get available plant models: {e}")
+
+    def listShootTypeLabels(self, plant_model: Optional[str] = None,
+                            plant_id: Optional[int] = None) -> List[str]:
+        """
+        Get the shoot type labels defined for a plant model.
+
+        Shoot type labels are species-specific strings such as "trunk" or "scaffold", and
+        every shoot-parameter call takes one. Use this to discover the valid labels rather
+        than guessing them.
+
+        Args:
+            plant_model: Query this library model without changing the currently loaded
+                one. Use getAvailablePlantModels() for valid names. Mutually exclusive
+                with plant_id.
+            plant_id: Query the shoot types captured by this plant instance when it was
+                created. Mutually exclusive with plant_model.
+
+        With neither argument, queries the currently loaded model, which requires a prior
+        call to loadPlantModelFromLibrary().
+
+        Returns:
+            List of shoot type label strings.
+
+        Raises:
+            ValueError: If both plant_model and plant_id are given, or plant_id is negative
+            PlantArchitectureError: If no model is loaded, or the model or plant is unknown
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("almond")
+            >>> plantarch.listShootTypeLabels()
+            ['proleptic', 'scaffold', 'sylleptic', 'trunk']
+            >>> plantarch.listShootTypeLabels(plant_model="bean")
+            ['trifoliate', 'unifoliate']
+        """
+        if plant_model is not None and plant_id is not None:
+            raise ValueError("Pass either plant_model or plant_id, not both")
+        if plant_id is not None and plant_id < 0:
+            raise ValueError(f"plant_id must be non-negative, got {plant_id}")
+        if plant_model is not None and not plant_model.strip():
+            raise ValueError("plant_model cannot be empty or only whitespace")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.listShootTypeLabels(
+                    self._plantarch_ptr,
+                    plant_model.strip() if plant_model is not None else None,
+                    plant_id,
+                )
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to list shoot type labels: {e}")
+
+    def getAllUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every plant primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        Returns:
+            List of primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get primitive UUIDs: {e}")
+
+    def getAllLeafUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every leaf primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        Returns:
+            List of leaf primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllLeafUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllLeafUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get leaf primitive UUIDs: {e}")
+
+    def getAllInternodeUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every internode primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        Returns:
+            List of internode primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllInternodeUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllInternodeUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get internode primitive UUIDs: {e}")
+
+    def getAllPetioleUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every petiole primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        Returns:
+            List of petiole primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllPetioleUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllPetioleUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get petiole primitive UUIDs: {e}")
+
+    def getAllPeduncleUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every peduncle primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        An empty list means no plant has reached the corresponding growth stage,
+        which is a legitimate result rather than a failure.
+
+        Returns:
+            List of peduncle primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllPeduncleUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllPeduncleUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get peduncle primitive UUIDs: {e}")
+
+    def getAllFlowerUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every flower primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        An empty list means no plant has reached the corresponding growth stage,
+        which is a legitimate result rather than a failure.
+
+        Returns:
+            List of flower primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllFlowerUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllFlowerUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get flower primitive UUIDs: {e}")
+
+    def getAllFruitUUIDs(self) -> List[int]:
+        """
+        Get UUIDs of every fruit primitive in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        An empty list means no plant has reached the corresponding growth stage,
+        which is a legitimate result rather than a failure.
+
+        Returns:
+            List of fruit primitive UUIDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllFruitUUIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllFruitUUIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get fruit primitive UUIDs: {e}")
+
+    def getAllObjectIDs(self) -> List[int]:
+        """
+        Get object IDs of every plant compound object in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        Returns:
+            List of object IDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllObjectIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllObjectIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get object IDs: {e}")
+
+    def getAllPlantIDs(self) -> List[int]:
+        """
+        Get IDs of every plant instance in the model.
+
+        Spans every plant, unlike the per-plant getters, which is what canopy-wide work
+        such as assigning optical properties or reading flux by organ type needs.
+
+        Returns:
+            List of plant IDs
+
+        Raises:
+            PlantArchitectureError: If retrieval fails
+
+        Example:
+            >>> ids = plantarch.getAllPlantIDs()
+        """
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getAllPlantIDs(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get plant IDs: {e}")
 
     def getAllPlantObjectIDs(self, plant_id: int) -> List[int]:
         """

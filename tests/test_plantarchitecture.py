@@ -1918,13 +1918,13 @@ class TestBuildParameters:
         """Test building single plant with one parameter override"""
         try:
             with PlantArchitecture(basic_context) as plantarch:
-                plantarch.loadPlantModelFromLibrary("tomato")
-                
+                plantarch.loadPlantModelFromLibrary("apple")
+
                 # Build plant with custom trunk_height
                 plant_id = plantarch.buildPlantInstanceFromLibrary(
                     base_position=vec3(0, 0, 0),
-                    age=30.0,
-                    build_parameters={'trunk_height': 2.5}
+                    age=10.0,
+                    build_parameters={'trunk_height': 0.7}
                 )
                 
                 assert plant_id >= 0
@@ -1942,14 +1942,14 @@ class TestBuildParameters:
         try:
             with PlantArchitecture(basic_context) as plantarch:
                 plantarch.loadPlantModelFromLibrary("grapevine_VSP")
-                
+
                 # Build with multiple custom parameters
                 plant_id = plantarch.buildPlantInstanceFromLibrary(
                     base_position=vec3(0, 0, 0),
                     age=45.0,
                     build_parameters={
-                        'cordon_height': 1.8,
-                        'cordon_radius': 1.2
+                        'trunk_height': 0.5,
+                        'vine_spacing': 2.0
                     }
                 )
                 
@@ -1997,15 +1997,15 @@ class TestBuildParameters:
         """Test building canopy with parameter override"""
         try:
             with PlantArchitecture(basic_context) as plantarch:
-                plantarch.loadPlantModelFromLibrary("tomato")
-                
+                plantarch.loadPlantModelFromLibrary("apple")
+
                 # Build canopy with custom parameter
                 plant_ids = plantarch.buildPlantCanopyFromLibrary(
                     canopy_center=vec3(0, 0, 0),
-                    plant_spacing=vec2(1.0, 1.0),
+                    plant_spacing=vec2(3.0, 3.0),
                     plant_count=int2(3, 2),
-                    age=30.0,
-                    build_parameters={'trunk_height': 2.0}
+                    age=10.0,
+                    build_parameters={'trunk_height': 0.7}
                 )
                 
                 assert isinstance(plant_ids, list)
@@ -2028,8 +2028,8 @@ class TestBuildParameters:
                     plant_count=int2(2, 2),
                     age=45.0,
                     build_parameters={
-                        'cordon_height': 1.8,
-                        'cordon_radius': 1.5
+                        'trunk_height': 0.5,
+                        'vine_spacing': 2.0
                     }
                 )
                 
@@ -2114,13 +2114,13 @@ class TestBuildParameters:
         """Test that integer parameter values are accepted"""
         try:
             with PlantArchitecture(basic_context) as plantarch:
-                plantarch.loadPlantModelFromLibrary("tomato")
-                
+                plantarch.loadPlantModelFromLibrary("apple")
+
                 # Integer values should be accepted
                 plant_id = plantarch.buildPlantInstanceFromLibrary(
                     base_position=vec3(0, 0, 0),
-                    age=30.0,
-                    build_parameters={'trunk_height': 2}  # int instead of float
+                    age=10.0,
+                    build_parameters={'num_scaffolds': 4}  # int instead of float
                 )
                 
                 assert plant_id >= 0
@@ -2132,13 +2132,13 @@ class TestBuildParameters:
         """Test that float parameter values are accepted"""
         try:
             with PlantArchitecture(basic_context) as plantarch:
-                plantarch.loadPlantModelFromLibrary("tomato")
-                
+                plantarch.loadPlantModelFromLibrary("apple")
+
                 # Float values should be accepted
                 plant_id = plantarch.buildPlantInstanceFromLibrary(
                     base_position=vec3(0, 0, 0),
-                    age=30.0,
-                    build_parameters={'trunk_height': 2.5}  # float
+                    age=10.0,
+                    build_parameters={'trunk_height': 0.7}  # float
                 )
                 
                 assert plant_id >= 0
@@ -3900,3 +3900,631 @@ class TestPlantArchitecturePruningValidation:
     def test_prune_terminal_shoots_rejects_bad_stride(self, plantarch):
         with pytest.raises(ValueError, match="stride must be at least 1"):
             plantarch.pruneTerminalShoots(0, stride=0)
+
+
+@pytest.mark.native_only
+class TestShootParameterChildShootRoundTrip:
+    """Redefining a shoot type must not discard values the JSON cannot carry.
+
+    ShootParameters holds child_shoot_type_labels/probabilities, which are protected in
+    C++ with no public getter and so cannot be serialized. Because defineShootType()
+    replaces the stored entry in its entirety, rebuilding the structure from JSON alone
+    leaves them empty and erases the shoot type's branching topology --
+    Shoot::sampleChildShootType() then falls back to reproducing the parent type. The
+    wrapper avoids this by seeding the rebuilt structure from the entry being replaced.
+
+    The tests below cover the marshalling contract. They cannot observe the child shoot
+    vectors directly: there is no getter to expose them, and every downstream geometric
+    signal (primitive, shoot and rank counts) is dominated by the model's own parameter
+    sampling, which varies roughly +/-10% between identical builds. Regression coverage
+    that reads the values back belongs with the core getter -- see the handoff note in
+    docs/CHANGELOG.md for that release.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            instance = PlantArchitecture(context)
+            try:
+                instance.disableMessages()
+                yield instance
+            finally:
+                instance.__exit__(None, None, None)
+
+    def test_explicit_child_shoot_types_reach_the_native_structure(self, plantarch):
+        """A child_shoot_types entry must be marshalled, not dropped.
+
+        Verified through defineChildShootTypes(), which rejects probabilities that do not
+        sum to 1 -- a rejection proves the value arrived in C++.
+        """
+        plantarch.loadPlantModelFromLibrary("almond")
+        params = plantarch.getCurrentShootParameters("trunk")
+
+        params["child_shoot_types"] = {
+            "labels": ["scaffold", "proleptic"],
+            "probabilities": [0.5, 0.9],
+        }
+        with pytest.raises(PlantArchitectureError):
+            plantarch.defineShootType("trunk", params)
+
+        params["child_shoot_types"] = {"labels": ["scaffold"], "probabilities": [1.0]}
+        plantarch.defineShootType("trunk", params)
+
+    def test_child_shoot_types_mismatched_lengths_are_rejected(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("almond")
+        params = plantarch.getCurrentShootParameters("trunk")
+        params["child_shoot_types"] = {
+            "labels": ["scaffold", "proleptic"],
+            "probabilities": [1.0],
+        }
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.defineShootType("trunk", params)
+
+    @pytest.mark.parametrize(
+        "species,shoot_label", [("almond", "trunk"), ("almond", "scaffold"), ("apple", "trunk")]
+    )
+    def test_identity_round_trip_leaves_the_shoot_type_usable(
+        self, plantarch, species, shoot_label
+    ):
+        """Seeding from the existing entry must not produce an invalid definition.
+
+        A half-populated child shoot definition would trip defineChildShootTypes()'
+        validation, so a clean build here exercises the seeding path end to end.
+        """
+        plantarch.loadPlantModelFromLibrary(species)
+        params = plantarch.getCurrentShootParameters(shoot_label)
+
+        plantarch.defineShootType(shoot_label, params)
+
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 20.0)
+        assert len(plantarch.getAllPlantUUIDs(plant_id)) > 0
+
+    def test_round_trip_with_edits_applies_the_edit(self, plantarch):
+        """The workflow from GitHub issue #16: read, change one value, write back."""
+        plantarch.loadPlantModelFromLibrary("almond")
+        params = plantarch.getCurrentShootParameters("trunk")
+        params["max_nodes"] = {"distribution": "constant", "parameters": [18]}
+
+        plantarch.defineShootType("trunk", params)
+
+        after = plantarch.getCurrentShootParameters("trunk")
+        assert after["max_nodes"]["parameters"][0] == 18
+
+    def test_round_trip_preserves_unedited_phytomer_parameters(self, plantarch):
+        """Seeding from the existing entry must not disturb nested phytomer values.
+
+        This one does regress: seeding without suppressing the phytomer_parameters reset
+        would rebuild them from defaults and lose the species' internode geometry.
+        """
+        plantarch.loadPlantModelFromLibrary("almond")
+        before = plantarch.getCurrentShootParameters("trunk")
+        subdivisions = before["phytomer_parameters"]["internode"]["radial_subdivisions"]
+        pitch = before["phytomer_parameters"]["internode"]["pitch"]
+
+        plantarch.defineShootType("trunk", before)
+
+        after = plantarch.getCurrentShootParameters("trunk")
+        assert after["phytomer_parameters"]["internode"]["radial_subdivisions"] == subdivisions
+        assert after["phytomer_parameters"]["internode"]["pitch"] == pitch
+
+    def test_defining_a_brand_new_shoot_type_still_works(self, plantarch):
+        """A label with no existing entry has nothing to inherit and must be accepted."""
+        plantarch.loadPlantModelFromLibrary("almond")
+        params = plantarch.getCurrentShootParameters("trunk")
+
+        plantarch.defineShootType("custom_shoot_type", params)
+
+        after = plantarch.getCurrentShootParameters("custom_shoot_type")
+        assert after["max_nodes"] == params["max_nodes"]
+
+
+@pytest.mark.native_only
+class TestBuildParameterValidation:
+    """Build parameters the loaded model will not read must be rejected, not ignored.
+
+    PlantArchitecture::getParameterValue() looks each key up in a map and returns the
+    default when it is absent, so the native library silently discards anything it does
+    not recognize. A misspelled or wrong-species key therefore produced a plant that
+    quietly used defaults, with no way for the caller to notice.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            instance = PlantArchitecture(context)
+            try:
+                instance.disableMessages()
+                yield instance
+            finally:
+                instance.__exit__(None, None, None)
+
+    def test_misspelled_key_is_rejected(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("apple")
+
+        with pytest.raises(ValueError, match="Unknown build parameter"):
+            plantarch.buildPlantInstanceFromLibrary(
+                vec3(0, 0, 0), 10.0, build_parameters={"trunk_heigth": 2.0}
+            )
+
+    def test_wrong_species_key_is_rejected(self, plantarch):
+        """vine_spacing is a grapevine parameter; apple never reads it."""
+        plantarch.loadPlantModelFromLibrary("apple")
+
+        with pytest.raises(ValueError, match="vine_spacing"):
+            plantarch.buildPlantInstanceFromLibrary(
+                vec3(0, 0, 0), 10.0, build_parameters={"vine_spacing": 2.0}
+            )
+
+    def test_key_for_model_that_reads_none_is_rejected(self, plantarch):
+        """Maize reads no build parameters at all."""
+        plantarch.loadPlantModelFromLibrary("maize")
+
+        with pytest.raises(ValueError, match="accepts no build parameters"):
+            plantarch.buildPlantInstanceFromLibrary(
+                vec3(0, 0, 0), 30.0, build_parameters={"trunk_height": 2.0}
+            )
+
+    def test_error_names_the_accepted_parameters(self, plantarch):
+        """The message must tell the caller what the model does accept."""
+        plantarch.loadPlantModelFromLibrary("grapevine_VSP")
+
+        with pytest.raises(ValueError, match="trunk_height, vine_spacing"):
+            plantarch.buildPlantInstanceFromLibrary(
+                vec3(0, 0, 0), 10.0, build_parameters={"num_scaffolds": 4}
+            )
+
+    def test_valid_key_is_accepted(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("apple")
+
+        plant_id = plantarch.buildPlantInstanceFromLibrary(
+            vec3(0, 0, 0), 10.0, build_parameters={"trunk_height": 0.7}
+        )
+        assert len(plantarch.getAllPlantUUIDs(plant_id)) > 0
+
+    def test_empty_and_none_build_parameters_are_accepted(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("maize")
+
+        assert plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 30.0) >= 0
+        assert plantarch.buildPlantInstanceFromLibrary(
+            vec3(1, 0, 0), 30.0, build_parameters={}
+        ) >= 0
+
+    def test_canopy_build_validates_the_same_way(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("apple")
+
+        with pytest.raises(ValueError, match="Unknown build parameter"):
+            plantarch.buildPlantCanopyFromLibrary(
+                vec3(0, 0, 0), vec2(3, 3), int2(2, 1), 10.0,
+                build_parameters={"not_a_real_parameter": 1.0},
+            )
+
+    def test_non_numeric_and_boolean_values_are_rejected(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("apple")
+
+        with pytest.raises(ValueError, match="numeric"):
+            plantarch.buildPlantInstanceFromLibrary(
+                vec3(0, 0, 0), 10.0, build_parameters={"trunk_height": "tall"}
+            )
+        # bool is an int subclass, so it needs an explicit guard
+        with pytest.raises(ValueError, match="numeric"):
+            plantarch.buildPlantInstanceFromLibrary(
+                vec3(0, 0, 0), 10.0, build_parameters={"trunk_height": True}
+            )
+
+
+@pytest.mark.native_only
+class TestListShootTypeLabels:
+    """Shoot type labels must be discoverable rather than guessed.
+
+    Every shoot-parameter call takes a species-specific label such as "trunk" or
+    "proleptic". Without a way to enumerate them a caller has to guess and read the C++
+    plant library to recover from a miss.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            instance = PlantArchitecture(context)
+            try:
+                instance.disableMessages()
+                yield instance
+            finally:
+                instance.__exit__(None, None, None)
+
+    def test_lists_labels_for_the_loaded_model(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("almond")
+
+        labels = plantarch.listShootTypeLabels()
+
+        assert sorted(labels) == ["proleptic", "scaffold", "sylleptic", "trunk"]
+
+    def test_labels_are_accepted_by_getCurrentShootParameters(self, plantarch):
+        """Every label reported must actually work, or discovery is worthless."""
+        plantarch.loadPlantModelFromLibrary("almond")
+
+        for label in plantarch.listShootTypeLabels():
+            assert plantarch.getCurrentShootParameters(label)["max_nodes"] is not None
+
+    def test_query_by_model_name_does_not_change_the_loaded_model(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("almond")
+        before = sorted(plantarch.listShootTypeLabels())
+
+        bean_labels = plantarch.listShootTypeLabels(plant_model="bean")
+
+        assert sorted(bean_labels) == ["trifoliate", "unifoliate"]
+        assert sorted(plantarch.listShootTypeLabels()) == before
+
+    def test_query_by_plant_id(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("almond")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 10.0)
+
+        labels = plantarch.listShootTypeLabels(plant_id=plant_id)
+
+        assert sorted(labels) == ["proleptic", "scaffold", "sylleptic", "trunk"]
+
+    def test_rejects_both_selectors(self, plantarch):
+        with pytest.raises(ValueError, match="not both"):
+            plantarch.listShootTypeLabels(plant_model="bean", plant_id=0)
+
+    def test_rejects_negative_plant_id(self, plantarch):
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.listShootTypeLabels(plant_id=-1)
+
+    def test_rejects_empty_model_name(self, plantarch):
+        with pytest.raises(ValueError, match="empty"):
+            plantarch.listShootTypeLabels(plant_model="   ")
+
+    def test_unknown_model_name_raises(self, plantarch):
+        with pytest.raises(PlantArchitectureError):
+            plantarch.listShootTypeLabels(plant_model="not_a_real_species")
+
+    def test_without_a_loaded_model_raises(self, plantarch):
+        with pytest.raises(PlantArchitectureError):
+            plantarch.listShootTypeLabels()
+
+    def test_unknown_shoot_label_error_names_the_valid_labels(self, plantarch):
+        """A miss must point at the real labels instead of leaving the caller guessing."""
+        plantarch.loadPlantModelFromLibrary("almond")
+
+        with pytest.raises(PlantArchitectureError, match="Available shoot types"):
+            plantarch.getCurrentShootParameters("proleptic shoot")
+
+
+@pytest.mark.native_only
+class TestAdvanceTimeOverloads:
+    """advanceTime must be able to advance a single plant or a subset, not just everything.
+
+    The native API has four overloads; PyHelios previously wrapped only the global one, so
+    every plant in a scene had to advance in lockstep. Staggered planting dates and
+    mixed-age stands (an orchard row of different-aged trees) were not expressible.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            instance = PlantArchitecture(context)
+            try:
+                instance.disableMessages()
+                yield instance
+            finally:
+                instance.__exit__(None, None, None)
+
+    @pytest.fixture
+    def two_plants(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+        first = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+        second = plantarch.buildPlantInstanceFromLibrary(vec3(1, 0, 0), 5.0)
+        return plantarch, first, second
+
+    def test_advances_a_single_plant_only(self, two_plants):
+        plantarch, first, second = two_plants
+
+        plantarch.advanceTime(20.0, plant_id=first)
+
+        assert plantarch.getPlantAge(first) == pytest.approx(25.0)
+        assert plantarch.getPlantAge(second) == pytest.approx(5.0)
+
+    def test_advances_a_subset_only(self, two_plants):
+        plantarch, first, second = two_plants
+
+        plantarch.advanceTime(10.0, plant_ids=[second])
+
+        assert plantarch.getPlantAge(first) == pytest.approx(5.0)
+        assert plantarch.getPlantAge(second) == pytest.approx(15.0)
+
+    def test_advances_every_plant_by_default(self, two_plants):
+        plantarch, first, second = two_plants
+
+        plantarch.advanceTime(10.0)
+
+        assert plantarch.getPlantAge(first) == pytest.approx(15.0)
+        assert plantarch.getPlantAge(second) == pytest.approx(15.0)
+
+    def test_advances_by_whole_years(self, two_plants):
+        plantarch, first, _ = two_plants
+
+        plantarch.advanceTime(0.0, years=1)
+
+        assert plantarch.getPlantAge(first) > 300.0
+
+    def test_empty_plant_ids_is_a_no_op(self, two_plants):
+        plantarch, first, second = two_plants
+
+        plantarch.advanceTime(10.0, plant_ids=[])
+
+        assert plantarch.getPlantAge(first) == pytest.approx(5.0)
+        assert plantarch.getPlantAge(second) == pytest.approx(5.0)
+
+    def test_rejects_combined_selectors(self, two_plants):
+        plantarch, first, second = two_plants
+
+        with pytest.raises(ValueError, match="at most one"):
+            plantarch.advanceTime(1.0, plant_id=first, plant_ids=[second])
+        with pytest.raises(ValueError, match="at most one"):
+            plantarch.advanceTime(1.0, plant_id=first, years=1)
+
+    def test_rejects_negative_values(self, two_plants):
+        plantarch, first, _ = two_plants
+
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.advanceTime(-1.0)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.advanceTime(1.0, plant_id=-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.advanceTime(1.0, plant_ids=[0, -2])
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.advanceTime(1.0, years=-1)
+
+    def test_unknown_plant_id_raises(self, two_plants):
+        plantarch, _, _ = two_plants
+
+        with pytest.raises(PlantArchitectureError):
+            plantarch.advanceTime(1.0, plant_id=9999)
+
+
+@pytest.mark.native_only
+class TestSceneWideQueries:
+    """Scene-wide organ queries must span every plant, not one at a time.
+
+    Issue #6 added the per-plant organ getters, leaving the whole-model tier unwrapped.
+    Assigning optical properties or reading flux by organ type across a canopy needs the
+    scene-wide form; otherwise the caller has to track every plant ID and concatenate.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            instance = PlantArchitecture(context)
+            try:
+                instance.disableMessages()
+                yield instance
+            finally:
+                instance.__exit__(None, None, None)
+
+    @pytest.fixture
+    def two_almonds(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("almond")
+        first = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 100.0)
+        second = plantarch.buildPlantInstanceFromLibrary(vec3(6, 0, 0), 100.0)
+        return plantarch, first, second
+
+    def test_getAllPlantIDs_reports_every_instance(self, two_almonds):
+        plantarch, first, second = two_almonds
+
+        assert sorted(plantarch.getAllPlantIDs()) == sorted([first, second])
+
+    def test_getAllUUIDs_equals_the_sum_of_the_per_plant_queries(self, two_almonds):
+        plantarch, first, second = two_almonds
+
+        scene_wide = plantarch.getAllUUIDs()
+        per_plant = plantarch.getAllPlantUUIDs(first) + plantarch.getAllPlantUUIDs(second)
+
+        assert sorted(scene_wide) == sorted(per_plant)
+
+    @pytest.mark.parametrize("getter_name", [
+        "getAllLeafUUIDs", "getAllInternodeUUIDs", "getAllPetioleUUIDs",
+        "getAllPeduncleUUIDs", "getAllFlowerUUIDs", "getAllFruitUUIDs",
+    ])
+    def test_organ_queries_are_subsets_of_all_uuids(self, two_almonds, getter_name):
+        plantarch, _, _ = two_almonds
+
+        organ_uuids = getattr(plantarch, getter_name)()
+        assert set(organ_uuids) <= set(plantarch.getAllUUIDs())
+
+    def test_organ_queries_are_mutually_disjoint(self, two_almonds):
+        """The organ tiers partition the plant, so no primitive may appear in two."""
+        plantarch, _, _ = two_almonds
+
+        seen = set()
+        for getter_name in ("getAllLeafUUIDs", "getAllInternodeUUIDs", "getAllPetioleUUIDs",
+                            "getAllPeduncleUUIDs", "getAllFlowerUUIDs", "getAllFruitUUIDs"):
+            uuids = set(getattr(plantarch, getter_name)())
+            assert not (uuids & seen), f"{getter_name} overlaps an earlier organ set"
+            seen |= uuids
+
+    def test_getAllObjectIDs_is_non_empty_and_usable(self, two_almonds):
+        plantarch, _, _ = two_almonds
+
+        object_ids = plantarch.getAllObjectIDs()
+
+        assert len(object_ids) > 0
+        assert all(isinstance(oid, int) for oid in object_ids)
+
+    def test_queries_are_empty_before_any_plant_is_built(self, plantarch):
+        """No plants is a legitimate state, not an error."""
+        plantarch.loadPlantModelFromLibrary("almond")
+
+        assert plantarch.getAllPlantIDs() == []
+        assert plantarch.getAllUUIDs() == []
+        assert plantarch.getAllLeafUUIDs() == []
+
+
+@pytest.mark.native_only
+class TestAttractionPoints:
+    """Attraction points steer shoot growth toward targets.
+
+    Collision avoidance tells a plant what to grow around; attraction points tell it what
+    to grow toward, which is how trellis wires, espalier targets and greenhouse supports
+    are modelled. The whole subsystem was previously unreachable from Python.
+
+    Steering is only visible on growth that happens after the points are enabled, since
+    the direction is chosen while each phytomer is constructed.
+    """
+
+    @pytest.fixture
+    def plantarch(self, check_native_library):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            instance = PlantArchitecture(context)
+            try:
+                instance.disableMessages()
+                yield instance
+            finally:
+                instance.__exit__(None, None, None)
+
+    # Distinct per-run seeds keep the comparison reproducible while still averaging
+    # over several growth realizations, and let each arm be compared against the run
+    # that saw the same randomness.
+    RANDOM_SEED = 20260828
+
+    @staticmethod
+    def _mean_leaf_x(species="bindweed", attract=False, seed=None):
+        """Grow one plant and report the mean x of its leaf bases.
+
+        bindweed is used deliberately: its long trailing shoots have room to turn, so the
+        attracted and unattracted distributions separate cleanly. Species with short
+        internodes produce a shift too small to distinguish from sampling noise.
+        """
+        with Context() as context:
+            if seed is not None:
+                context.seedRandomGenerator(seed)
+            plantarch = PlantArchitecture(context)
+            try:
+                plantarch.disableMessages()
+                plantarch.loadPlantModelFromLibrary(species)
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 1.0)
+                if attract:
+                    points = [vec3(0.5, 0.0, 0.02 * z) for z in range(1, 25)]
+                    plantarch.enableAttractionPoints(
+                        points, plant_id=plant_id, view_half_angle_deg=89.0,
+                        look_ahead_distance=2.0, attraction_weight=1.0,
+                    )
+                plantarch.advanceTime(40.0)
+                bases = plantarch.getPlantLeafBases(plant_id)
+                if not bases:
+                    return None
+                return sum(b.x for b in bases) / len(bases)
+            finally:
+                plantarch.__exit__(None, None, None)
+
+    @pytest.mark.slow
+    def test_attraction_steers_growth_toward_the_targets(self):
+        """Leaves must end up measurably closer to the target than without attraction.
+
+        Growth is stochastic, so this compares medians over several runs rather than
+        individual builds. The effect is large: unattracted runs sit near x = 0 while
+        attracted ones sit an order of magnitude further along +x.
+        """
+        import statistics
+
+        runs = 5
+        # Paired seeds: run i of each arm sees the same growth randomness, so the
+        # difference between the arms reflects attraction rather than sampling luck.
+        seeds = [self.RANDOM_SEED + i for i in range(runs)]
+        unattracted = [self._mean_leaf_x(attract=False, seed=s) for s in seeds]
+        attracted = [self._mean_leaf_x(attract=True, seed=s) for s in seeds]
+
+        if any(v is None for v in unattracted + attracted):
+            pytest.skip("plant produced no leaves at this age")
+
+        baseline = statistics.median(unattracted)
+        steered = statistics.median(attracted)
+
+        # The runs are seed-paired, so each attracted run is compared against the
+        # unattracted run that saw the same growth randomness. Every pair must shift
+        # toward +x: a no-op binding would scatter the sign of the difference.
+        # Comparing per pair rather than against the unattracted range keeps the
+        # threshold independent of how wide that range happens to be -- the original
+        # `median + spread` form failed whenever one unattracted run sat far from the
+        # others, even though the effect itself is an order of magnitude larger.
+        pairs = list(zip(unattracted, attracted))
+        shifted = [a > u for u, a in pairs]
+        assert all(shifted), (
+            "attraction did not steer growth in every paired run: "
+            + ", ".join(f"{u:.4f}->{a:.4f}" for u, a in pairs)
+        )
+
+        # And the aggregate shift must be large, not merely positive.
+        assert steered > baseline + 0.05, (
+            f"attraction shift too small: median x {baseline:.4f} -> {steered:.4f}"
+        )
+
+    def test_enable_and_disable_globally(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+        plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+
+        plantarch.enableAttractionPoints([vec3(1, 0, 1), vec3(1, 0, 2)])
+        plantarch.disableAttractionPoints()
+
+    def test_enable_and_disable_for_one_plant(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+
+        plantarch.enableAttractionPoints([vec3(1, 0, 1)], plant_id=plant_id)
+        plantarch.disableAttractionPoints(plant_id=plant_id)
+
+    def test_update_and_append(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+        plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+        plantarch.enableAttractionPoints([vec3(1, 0, 1)])
+
+        plantarch.updateAttractionPoints([vec3(2, 0, 1), vec3(2, 0, 2)])
+        plantarch.appendAttractionPoints([vec3(3, 0, 1)])
+
+    def test_set_attraction_parameters(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+        plantarch.enableAttractionPoints([vec3(1, 0, 1)])
+
+        plantarch.setAttractionParameters(60.0, 0.2, 0.5)
+        plantarch.setAttractionParameters(60.0, 0.2, 0.5, 0.5, plant_id=plant_id)
+
+    def test_rejects_empty_or_non_vec3_points(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+
+        with pytest.raises(ValueError, match="cannot be empty"):
+            plantarch.enableAttractionPoints([])
+        with pytest.raises(ValueError, match="must be a vec3"):
+            plantarch.enableAttractionPoints([vec3(0, 0, 0), (1, 2, 3)])
+        with pytest.raises(ValueError, match="must be a list of vec3"):
+            plantarch.enableAttractionPoints(vec3(0, 0, 0))
+
+    def test_rejects_negative_plant_id(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.enableAttractionPoints([vec3(1, 0, 1)], plant_id=-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.disableAttractionPoints(plant_id=-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.updateAttractionPoints([vec3(1, 0, 1)], plant_id=-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            plantarch.appendAttractionPoints([vec3(1, 0, 1)], plant_id=-1)

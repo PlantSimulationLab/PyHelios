@@ -16,6 +16,12 @@ class PrimitiveType(IntEnum):
     Cone = 7
     Polymesh = 8
 
+class VertexNormalSource(IntEnum):
+    """Provenance of a polymesh object's per-vertex normals (helios-core 1.3.83)."""
+    NONE = 0
+    AUTHORED = 1
+    COMPUTED = 2
+
 class int2(ctypes.Structure):
     _fields_ = [('x', ctypes.c_int32), ('y', ctypes.c_int32)]
 
@@ -936,14 +942,12 @@ class Location:
 
     Fields are validated against the same ranges as helios::Location::validate():
 
-    ============  ==================  ================================================
-    Field         Range               Note
-    ============  ==================  ================================================
-    latitude      -90 to 90
-    longitude     -180 to 180         Helios counts longitude positive moving West
-    utc_offset    -14 to 12           Asymmetric; see below
-    altitude      any finite value    No non-arbitrary bound exists for a scene
-    ============  ==================  ================================================
+    | Field | Range | Note |
+    | ----- | ----- | ---- |
+    | latitude | -90 to 90 | |
+    | longitude | -180 to 180 | Helios counts longitude positive moving West |
+    | utc_offset | -14 to 12 | Asymmetric; see below |
+    | altitude | any finite value | No non-arbitrary bound exists for a scene |
 
     The UTC offset spans -14 to +12 rather than -12 to +12 because Helios counts the
     offset positive moving West: the real-world span of UTC-12 through UTC+14

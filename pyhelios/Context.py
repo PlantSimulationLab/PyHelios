@@ -7,7 +7,7 @@ from enum import Enum
 import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
-from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location, AdaptiveTileRefinement
+from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location, AdaptiveTileRefinement, VertexNormalSource
 from .exceptions import HeliosError
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
@@ -2307,9 +2307,7 @@ class Context:
         Args:
             filename: Path to the PLY file to load
             origin: Origin point for positioning the geometry (optional)
-            height: Absolute height of the loaded geometry after scaling, in
-                metres -- not a multiplier. The model is uniformly scaled so its
-                vertical extent equals this value (optional)
+            height: Absolute height in metres of the loaded geometry after scaling -- not a multiplier; the model is uniformly scaled so its vertical extent equals this value (optional)
             rotation: Rotation to apply to the geometry (optional)
             color: Default color for geometry without color data (optional)
             upaxis: Up axis orientation ("YUP" or "ZUP")
@@ -2365,8 +2363,7 @@ class Context:
         Args:
             filename: Path to the OBJ file to load
             origin: Origin point for positioning the geometry (optional)
-            height: Absolute height of the loaded geometry after scaling, in
-                metres -- not a multiplier (optional, alternative to scale)
+            height: Absolute height in metres of the loaded geometry after scaling -- not a multiplier (optional, alternative to scale)
             scale: Scale factor for all dimensions (optional, alternative to height)
             rotation: Rotation to apply to the geometry (optional)
             color: Default color for geometry without color data (optional)
@@ -3368,7 +3365,7 @@ class Context:
         Args:
             label: Name of the timeseries variable (e.g., "temperature")
             value: Value of the data point
-            date: Date of the data point
+            date (Date): Date of the data point
             time: Time of the data point
 
         Raises:
@@ -3399,7 +3396,7 @@ class Context:
 
         Args:
             label: Name of the timeseries variable (must already exist)
-            date: Date of the existing point (must match exactly)
+            date (Date): Date of the existing point (must match exactly)
             time: Time of the existing point (must match exactly)
             new_value: Replacement value
 
@@ -3463,7 +3460,7 @@ class Context:
 
         Args:
             label: Name of the timeseries variable
-            date: Date to query at (requires time as well)
+            date (Date): Date to query at (requires time as well)
             time: Time to query at (requires date as well)
             index: Index of the data point (0 = earliest)
 
@@ -3686,7 +3683,7 @@ class Context:
         is omitted (None), the matching point is removed from every timeseries variable.
 
         Args:
-            date: Date of the data point to delete.
+            date (Date): Date of the data point to delete.
             time: Time of the data point to delete.
             label: Optional name of the timeseries variable. None applies to all variables.
 
@@ -5495,6 +5492,227 @@ class Context:
         """Return the enclosed volume of a polymesh object."""
         self._check_context_available()
         return context_wrapper.getPolymeshObjectVolumeWrapper(self.context, objID)
+
+    def getPolymeshObjectSurfaceArea(self, objID: int) -> float:
+        """Return the total surface area of a polymesh object, summed over every face."""
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectSurfaceAreaWrapper(self.context, objID)
+
+    def isPolymeshObjectClosed(self, objID: int) -> bool:
+        """
+        Return True if a polymesh object is a closed surface, i.e. has no boundary edges.
+
+        Only a closed mesh has a well-defined enclosed volume;
+        :meth:`getPolymeshObjectVolume` raises on an open one that carries a face table.
+        """
+        self._check_context_available()
+        return context_wrapper.isPolymeshObjectClosedWrapper(self.context, objID)
+
+    def getPolymeshObjectVertices(self, objID: int) -> List[vec3]:
+        """
+        Return the deduplicated shared vertex positions of a polymesh object.
+
+        Returns an empty list for a mesh with no retained topology, such as one built
+        with :meth:`addPolymeshObject` and not given a face set.
+        """
+        self._check_context_available()
+        triples = context_wrapper.getPolymeshObjectVerticesWrapper(self.context, objID)
+        return [vec3(x, y, z) for x, y, z in triples]
+
+    def getPolymeshObjectFaces(self, objID: int) -> List[int3]:
+        """Return the vertex index triples defining each face of a polymesh object."""
+        self._check_context_available()
+        triples = context_wrapper.getPolymeshObjectFacesWrapper(self.context, objID)
+        return [int3(a, b, c) for a, b, c in triples]
+
+    def getPolymeshObjectVertexNormals(self, objID: int) -> List[vec3]:
+        """
+        Return the per-vertex normals of a polymesh object.
+
+        Returns an empty list if the mesh carries none. Helios never synthesizes normals
+        implicitly; call :meth:`computePolymeshObjectVertexNormals` to generate them.
+        """
+        self._check_context_available()
+        triples = context_wrapper.getPolymeshObjectVertexNormalsWrapper(self.context, objID)
+        return [vec3(x, y, z) for x, y, z in triples]
+
+    def getPolymeshObjectVertexUV(self, objID: int) -> List[vec2]:
+        """Return the per-vertex texture coordinates of a polymesh object, or an empty list if it has none."""
+        self._check_context_available()
+        pairs = context_wrapper.getPolymeshObjectVertexUVWrapper(self.context, objID)
+        return [vec2(u, v) for u, v in pairs]
+
+    def doesPolymeshObjectHaveVertexNormals(self, objID: int) -> bool:
+        """Return True if a polymesh object carries per-vertex normals."""
+        self._check_context_available()
+        return context_wrapper.doesPolymeshObjectHaveVertexNormalsWrapper(self.context, objID)
+
+    def getPolymeshObjectVertexNormalSource(self, objID: int) -> VertexNormalSource:
+        """
+        Return where a polymesh object's vertex normals came from.
+
+        ``AUTHORED`` means they were read from the source file (OBJ ``vn`` records, or
+        PLY ``nx``/``ny``/``nz`` properties); ``COMPUTED`` means
+        :meth:`computePolymeshObjectVertexNormals` generated them; ``NONE`` means the
+        mesh has no vertex normals.
+        """
+        self._check_context_available()
+        return VertexNormalSource(
+            context_wrapper.getPolymeshObjectVertexNormalSourceWrapper(self.context, objID)
+        )
+
+    def getPolymeshObjectVertexCount(self, objID: int) -> int:
+        """Return the number of shared vertices in a polymesh object."""
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectVertexCountWrapper(self.context, objID)
+
+    def getPolymeshObjectFaceCount(self, objID: int) -> int:
+        """Return the number of faces in a polymesh object."""
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectFaceCountWrapper(self.context, objID)
+
+    def getPolymeshObjectFaceIndexForPrimitive(self, objID: int, uuid: int) -> int:
+        """Return the index into :meth:`getPolymeshObjectFaces` of the face made up by a member primitive."""
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectFaceIndexForPrimitiveWrapper(self.context, objID, uuid)
+
+    def getPolymeshObjectPrimitiveUUIDForFace(self, objID: int, face_index: int) -> int:
+        """Return the UUID of the primitive making up a given face of a polymesh object."""
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectPrimitiveUUIDForFaceWrapper(self.context, objID, face_index)
+
+    def computePolymeshObjectVertexNormals(self, objID: int, crease_angle_degrees: float = 30.0) -> None:
+        """
+        Compute per-vertex normals for a polymesh object by area-weighted averaging.
+
+        Vertices are split across edges whose dihedral angle exceeds
+        ``crease_angle_degrees``, so hard edges stay hard rather than being smoothed
+        away. The resulting normals are reported as
+        :attr:`VertexNormalSource.COMPUTED`.
+
+        Args:
+            objID: Object ID of the polymesh object
+            crease_angle_degrees: Dihedral angle above which an edge is kept hard
+        """
+        self._check_context_available()
+        context_wrapper.computePolymeshObjectVertexNormalsWrapper(
+            self.context, objID, float(crease_angle_degrees)
+        )
+
+    def getPolymeshObjectBoundaryEdges(self, objID: int) -> List[int2]:
+        """
+        Return the boundary edges of a polymesh object as vertex index pairs.
+
+        A boundary edge is one referenced by exactly one face. An empty list means the
+        mesh is closed.
+        """
+        self._check_context_available()
+        pairs = context_wrapper.getPolymeshObjectBoundaryEdgesWrapper(self.context, objID)
+        return [int2(a, b) for a, b in pairs]
+
+    def getPolymeshObjectConnectedComponents(self, objID: int) -> List[List[int]]:
+        """
+        Return the connected components of a polymesh object.
+
+        Each component is a list of face indices into :meth:`getPolymeshObjectFaces`.
+        More than one component means the mesh is made of separate disjoint pieces.
+        """
+        self._check_context_available()
+        return context_wrapper.getPolymeshObjectConnectedComponentsWrapper(self.context, objID)
+
+    def setPolymeshObjectTopology(self, objID: int, vertices: List[vec3], faces: List[int3],
+                                  face_UUIDs: List[int],
+                                  vertex_normals: Optional[List[vec3]] = None,
+                                  vertex_uv: Optional[List[vec2]] = None,
+                                  normal_source: VertexNormalSource = VertexNormalSource.NONE) -> None:
+        """
+        Attach an indexed face set to a polymesh object built programmatically.
+
+        Meshes loaded from an OBJ or PLY file retain the connectivity of the source file
+        automatically. This is for a mesh assembled with :meth:`addPolymeshObject`, which
+        otherwise has no topology and behaves as a triangle soup: its face count is zero,
+        it cannot report a volume, and it is written out as independent per-triangle
+        vertices.
+
+        Args:
+            objID: Object ID of the polymesh object
+            vertices: Shared vertex positions in global Cartesian coordinates
+            faces: Vertex index triples defining each face
+            face_UUIDs: UUID of the primitive corresponding to each face, parallel to ``faces``
+            vertex_normals: Per-vertex normals, or None if the mesh has none
+            vertex_uv: Per-vertex texture coordinates, or None if the mesh has none
+            normal_source: Provenance of the supplied vertex normals
+
+        Raises:
+            ValueError: If an argument has the wrong type or ``face_UUIDs`` is not
+                parallel to ``faces``
+        """
+        self._check_context_available()
+        for i, v in enumerate(vertices):
+            if not isinstance(v, vec3):
+                raise ValueError(f"vertices[{i}] must be a vec3, got {type(v).__name__}")
+        for i, f in enumerate(faces):
+            if not isinstance(f, int3):
+                raise ValueError(f"faces[{i}] must be an int3, got {type(f).__name__}")
+        if vertex_normals is not None:
+            for i, v in enumerate(vertex_normals):
+                if not isinstance(v, vec3):
+                    raise ValueError(f"vertex_normals[{i}] must be a vec3, got {type(v).__name__}")
+        if vertex_uv is not None:
+            for i, v in enumerate(vertex_uv):
+                if not isinstance(v, vec2):
+                    raise ValueError(f"vertex_uv[{i}] must be a vec2, got {type(v).__name__}")
+        if len(face_UUIDs) != len(faces):
+            raise ValueError(
+                f"face_UUIDs must be parallel to faces: got {len(face_UUIDs)} UUIDs for {len(faces)} faces"
+            )
+
+        context_wrapper.setPolymeshObjectTopologyWrapper(
+            self.context, objID,
+            [(v.x, v.y, v.z) for v in vertices],
+            [(f.x, f.y, f.z) for f in faces],
+            list(face_UUIDs),
+            [(v.x, v.y, v.z) for v in vertex_normals] if vertex_normals else [],
+            [(v.x, v.y) for v in vertex_uv] if vertex_uv else [],
+            int(normal_source),
+        )
+
+    def doesObjectHaveAnalyticVertexNormals(self, objID: int) -> bool:
+        """
+        Return True if a compound object can report analytic vertex normals.
+
+        True for Sphere, Tube and Cone objects, which approximate a curved shape and can
+        evaluate its true surface normal. False for object types built from genuinely
+        flat faces, such as a tile or box.
+        """
+        self._check_context_available()
+        return context_wrapper.doesObjectHaveAnalyticVertexNormalsWrapper(self.context, objID)
+
+    def getObjectPrimitiveVertexNormals(self, objID: int,
+                                        uuid: Union[int, List[int]]) -> Union[List[vec3], List[List[vec3]]]:
+        """
+        Return the analytic surface normals at each vertex of a member primitive.
+
+        Normals are evaluated from the object's own shape definition rather than stored,
+        so they account for taper and stay correct after the object is transformed or its
+        nodes and radii change. Returns an empty list for an object with no analytic
+        normals (see :meth:`doesObjectHaveAnalyticVertexNormals`).
+
+        Args:
+            objID: Object ID of the compound object
+            uuid: UUID of a member primitive, or a list of them
+
+        Returns:
+            A list of vec3 for a single UUID, or a list of such lists for a list of UUIDs
+        """
+        self._check_context_available()
+        if isinstance(uuid, (list, tuple)):
+            batches = context_wrapper.getObjectPrimitiveVertexNormalsBatchWrapper(
+                self.context, objID, list(uuid)
+            )
+            return [[vec3(x, y, z) for x, y, z in b] for b in batches]
+        triples = context_wrapper.getObjectPrimitiveVertexNormalsWrapper(self.context, objID, uuid)
+        return [vec3(x, y, z) for x, y, z in triples]
 
     def getMaterialIDFromLabel(self, material_label: str) -> int:
         """Look up a material ID from its human-readable label."""
