@@ -907,6 +907,22 @@ PYHELIOS_API unsigned int getLiDARGridCellCount(LiDARcloud* cloud);
 PYHELIOS_API void getLiDARCellCenter(LiDARcloud* cloud, unsigned int index, float* center_out);
 
 /**
+ * @brief Get the UNROTATED (axis-aligned lattice) center position of a grid cell
+ *
+ * Companion to getLiDARCellCenter(): returns the center on the axis-aligned lattice, WITHOUT the
+ * grid's azimuthal rotation applied. For an unrotated grid the two are identical.
+ *
+ * This is the accessor a caller wants when it applies the grid rotation itself (e.g. rotating the
+ * whole voxel group about the grid center for display); using the rotated center there would
+ * rotate the lattice twice.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Grid cell index
+ * @param center_out Output array for center [x, y, z]
+ */
+PYHELIOS_API void getLiDARCellCenterUnrotated(LiDARcloud* cloud, unsigned int index, float* center_out);
+
+/**
  * @brief Get the size of a grid cell
  * @param cloud Pointer to the LiDARcloud instance
  * @param index Grid cell index

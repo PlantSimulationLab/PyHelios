@@ -601,6 +601,14 @@ try:
     helios_lib.getLiDARCellCenter.restype = None
     helios_lib.getLiDARCellCenter.errcheck = _check_error
 
+    helios_lib.getLiDARCellCenterUnrotated.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.getLiDARCellCenterUnrotated.restype = None
+    helios_lib.getLiDARCellCenterUnrotated.errcheck = _check_error
+
     helios_lib.getLiDARCellSize.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.c_uint,
@@ -2051,6 +2059,16 @@ def getLiDARCellCenter(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> Li
 
     center = (ctypes.c_float * 3)()
     helios_lib.getLiDARCellCenter(cloud_ptr, index, center)
+    return list(center)
+
+
+def getLiDARCellCenterUnrotated(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List[float]:
+    """Get the UNROTATED (axis-aligned lattice) center position of a grid cell"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    center = (ctypes.c_float * 3)()
+    helios_lib.getLiDARCellCenterUnrotated(cloud_ptr, index, center)
     return list(center)
 
 

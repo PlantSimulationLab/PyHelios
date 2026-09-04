@@ -2047,6 +2047,39 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void getLiDARCellCenterUnrotated(LiDARcloud* cloud, unsigned int index, float* center_out) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!center_out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output center array is null");
+                return;
+            }
+
+            // LiDARcloud::getCellCenterUnrotated() is private (an internal hot-path helper), so
+            // undo the rotation the public getter applies: getCellCenter() rotates the lattice
+            // center about the cell's global anchor by +azimuthal_rotation about +z, so rotating
+            // the result by -rotation about the same anchor recovers the lattice center exactly.
+            helios::vec3 center = cloud->getCellCenter(index);
+            const float rot_deg = cloud->getCellRotation(index);
+            if (std::fabs(rot_deg) > 1e-6f) {
+                const helios::vec3 anchor = cloud->getCellGlobalAnchor(index);
+                center = helios::rotatePointAboutLine(center, anchor, helios::make_vec3(0, 0, 1), -rot_deg * float(M_PI) / 180.f);
+            }
+            center_out[0] = center.x;
+            center_out[1] = center.y;
+            center_out[2] = center.z;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARCellCenterUnrotated): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARCellCenterUnrotated): Unknown error");
+        }
+    }
+
     PYHELIOS_API void getLiDARCellSize(LiDARcloud* cloud, unsigned int index, float* size_out) {
         try {
             clearError();

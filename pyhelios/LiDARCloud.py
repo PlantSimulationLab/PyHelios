@@ -1560,6 +1560,22 @@ class LiDARCloud:
         center_list = lidar_wrapper.getLiDARCellCenter(self._cloud_ptr, index)
         return vec3(*center_list)
 
+    def getCellCenterUnrotated(self, index: int) -> vec3:
+        """Get the UNROTATED (axis-aligned lattice) center position of a grid cell.
+
+        Companion to :meth:`getCellCenter`, which applies the grid's azimuthal rotation.
+        This returns the center on the axis-aligned lattice instead; for an un-rotated
+        grid the two are identical.
+
+        Use this when the caller applies the grid rotation itself (e.g. rotating a whole
+        voxel group about the grid center for display) — passing the rotated center to
+        such code rotates the lattice twice.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        center_list = lidar_wrapper.getLiDARCellCenterUnrotated(self._cloud_ptr, index)
+        return vec3(*center_list)
+
     def getCellSize(self, index: int) -> vec3:
         """Get size of a grid cell"""
         if index < 0:
