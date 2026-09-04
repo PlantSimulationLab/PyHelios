@@ -769,6 +769,44 @@ class TestLiDARGrid:
             assert abs(c0.y - (-0.5)) < 1e-4, f"y={c0.y}"
             assert abs(c0.z - 0.5) < 1e-4, f"z={c0.z}"
 
+    def test_get_cell_center_unrotated_returns_the_lattice_center(self):
+        """getCellCenterUnrotated undoes the rotation getCellCenter applies.
+
+        A caller that rotates the voxel lattice itself (rotating a whole voxel group
+        about the grid center for display, or binning points by inverse-rotating the
+        POINTS) needs the axis-aligned center; handing it the rotated one rotates the
+        lattice twice. Uses a rotation whose sin/cos are both non-trivial, so a stub
+        that merely echoed getCellCenter (or dropped the rotation on the floor) fails.
+        """
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            lidar.addGrid(
+                center=vec3(0, 0, 0.5),
+                size=vec3(2, 1, 1),
+                ndiv=[2, 1, 1],
+                rotation=37.0
+            )
+
+            rotated = lidar.getCellCenter(0)
+            lattice = lidar.getCellCenterUnrotated(0)
+
+            # Cell 0's lattice center is (-0.5, 0, 0.5); at 37 deg it is genuinely moved.
+            assert abs(lattice.x - (-0.5)) < 1e-4, f"x={lattice.x}"
+            assert abs(lattice.y - 0.0) < 1e-4, f"y={lattice.y}"
+            assert abs(lattice.z - 0.5) < 1e-4, f"z={lattice.z}"
+            assert abs(rotated.x - lattice.x) > 1e-3, "rotation was not applied by getCellCenter"
+
+    def test_get_cell_center_unrotated_matches_for_an_unrotated_grid(self):
+        """With no rotation the two accessors agree exactly (the short-circuit path)."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            lidar.addGrid(center=vec3(0, 0, 0.5), size=vec3(2, 1, 1), ndiv=[2, 1, 1])
+            for i in range(lidar.getGridCellCount()):
+                a, b = lidar.getCellCenter(i), lidar.getCellCenterUnrotated(i)
+                assert abs(a.x - b.x) < 1e-6 and abs(a.y - b.y) < 1e-6 and abs(a.z - b.z) < 1e-6
+
     def test_add_grid_cell(self):
         """Test adding individual grid cells"""
         from pyhelios import LiDARCloud
