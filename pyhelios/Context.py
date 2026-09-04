@@ -7,7 +7,7 @@ from enum import Enum
 import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
-from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location, AdaptiveTileRefinement, VertexNormalSource
+from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location, AdaptiveTileRefinement, VertexNormalSource, VertexWeldMode
 from .exceptions import HeliosError
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
@@ -2622,33 +2622,39 @@ class Context:
         faces_int = faces.astype(np.int32)
         if colors is not None:
             colors_float = colors.astype(np.float32)
-        
+
+        # Gather each face's three corners up front. Indexing the whole face table at once
+        # avoids re-slicing per triangle, and .tolist() on the gathered block converts to
+        # Python floats in one pass rather than one call per vertex.
+        corner0 = vertices_float[faces_int[:, 0]].tolist()
+        corner1 = vertices_float[faces_int[:, 1]].tolist()
+        corner2 = vertices_float[faces_int[:, 2]].tolist()
+
+        # Resolve the per-triangle colour for the whole mesh in one array operation. The
+        # per-vertex case averages the three corner colours; doing that with a np.mean() call
+        # per face dominated the runtime of the trimesh/Open3D import path.
+        if colors is None:
+            face_colors = None
+        elif per_triangle_colors:
+            face_colors = colors_float.tolist()
+        else:  # per_vertex_colors
+            averaged = (colors_float[faces_int[:, 0]]
+                        + colors_float[faces_int[:, 1]]
+                        + colors_float[faces_int[:, 2]]) / 3.0
+            face_colors = averaged.tolist()
+
         # Add triangles
         triangle_uuids = []
-        for i in range(faces.shape[0]):
-            # Get vertex indices for this triangle
-            v0_idx, v1_idx, v2_idx = faces_int[i]
-            
-            # Get vertex coordinates
-            vertex0 = vertices_float[v0_idx].tolist()
-            vertex1 = vertices_float[v1_idx].tolist()
-            vertex2 = vertices_float[v2_idx].tolist()
-            
-            # Add triangle with or without color
-            if colors is None:
-                # No color specified
-                uuid = context_wrapper.addTriangle(self.context, vertex0, vertex1, vertex2)
-            elif per_triangle_colors:
-                # Use per-triangle color
-                color = colors_float[i].tolist()
-                uuid = context_wrapper.addTriangleWithColor(self.context, vertex0, vertex1, vertex2, color)
-            elif per_vertex_colors:
-                # Average the per-vertex colors for the triangle
-                color = np.mean([colors_float[v0_idx], colors_float[v1_idx], colors_float[v2_idx]], axis=0).tolist()
-                uuid = context_wrapper.addTriangleWithColor(self.context, vertex0, vertex1, vertex2, color)
-            
-            triangle_uuids.append(uuid)
-        
+        if face_colors is None:
+            for vertex0, vertex1, vertex2 in zip(corner0, corner1, corner2):
+                triangle_uuids.append(
+                    context_wrapper.addTriangle(self.context, vertex0, vertex1, vertex2))
+        else:
+            for vertex0, vertex1, vertex2, color in zip(corner0, corner1, corner2, face_colors):
+                triangle_uuids.append(
+                    context_wrapper.addTriangleWithColor(
+                        self.context, vertex0, vertex1, vertex2, color))
+
         return triangle_uuids
 
     def addTrianglesFromArraysTextured(self, vertices: np.ndarray, faces: np.ndarray,
@@ -5489,7 +5495,14 @@ class Context:
         return context_wrapper.getObjectPrimitiveCountWrapper(self.context, objID)
 
     def getPolymeshObjectVolume(self, objID: int) -> float:
-        """Return the enclosed volume of a polymesh object."""
+        """Return the enclosed volume of a polymesh object.
+
+        Since helios-core 1.3.84 a mesh carrying a face table is separated into its
+        connected pieces and the volume of those that are closed is summed, so a solid
+        shape modelled with an open stalk reports the shape's volume. An error is raised
+        only when no piece is closed. A mesh carrying no face table has its closure
+        checked by matching facets on coincident corners.
+        """
         self._check_context_available()
         return context_wrapper.getPolymeshObjectVolumeWrapper(self.context, objID)
 
@@ -5502,11 +5515,173 @@ class Context:
         """
         Return True if a polymesh object is a closed surface, i.e. has no boundary edges.
 
-        Only a closed mesh has a well-defined enclosed volume;
-        :meth:`getPolymeshObjectVolume` raises on an open one that carries a face table.
+        Only a closed mesh has a well-defined enclosed volume. Since helios-core 1.3.84
+        :meth:`getPolymeshObjectVolume` splits a mesh into its connected pieces and sums
+        the volume of those that are closed, so it raises only when no piece is closed --
+        a solid fruit modelled with an open stalk reports the fruit's volume.
         """
         self._check_context_available()
         return context_wrapper.isPolymeshObjectClosedWrapper(self.context, objID)
+
+    def setPolymeshObjectVertices(self, objID: int, vertices: List[vec3]) -> None:
+        """
+        Move every shared vertex of a polymesh object, deforming the mesh.
+
+        Writes every shared vertex in one pass and pushes the new positions out to the
+        member primitives, so faces that meet at a vertex stay welded. This is the
+        supported way to deform a mesh: transforming the member primitives individually
+        leaves each shared vertex wherever the last facet processed put it.
+
+        The topology is unchanged, so ``vertices`` must be parallel to and the same length
+        as the list returned by :meth:`getPolymeshObjectVertices`. Texture coordinates are
+        not touched, and neither is the solid fraction of the member primitives -- so
+        deforming a textured mesh does not re-rasterize its alpha mask.
+
+        Args:
+            objID: Object ID of the polymesh object
+            vertices: New vertex positions in global Cartesian coordinates
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+            ValueError: If a vertex is not a vec3
+
+        Note:
+            Vertex normals are NOT recomputed and no longer describe the deformed surface;
+            call :meth:`computePolymeshObjectVertexNormals` again if exact normals matter.
+
+        Example:
+            >>> verts = context.getPolymeshObjectVertices(objID)
+            >>> stretched = [vec3(v.x, v.y, v.z * 2.0) for v in verts]
+            >>> context.setPolymeshObjectVertices(objID, stretched)
+        """
+        self._check_context_available()
+        for i, v in enumerate(vertices):
+            if not isinstance(v, vec3):
+                raise ValueError(f"vertices[{i}] must be a vec3, got {type(v).__name__}")
+        context_wrapper.setPolymeshObjectVerticesWrapper(
+            self.context, objID, [(v.x, v.y, v.z) for v in vertices]
+        )
+
+    def doesObjectHaveSharedVertexTopology(self, objID: int) -> bool:
+        """
+        Return True if a compound object reports which member primitives meet at each vertex.
+
+        True for Tile, AdaptiveTile, Sphere, Tube and Cone objects, and for a Polymesh that
+        carries a face table. False for a Box, a Disk, and for a polymesh assembled from
+        loose primitives by :meth:`addPolymeshObject`, which has no topology.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        self._check_context_available()
+        return context_wrapper.doesObjectHaveSharedVertexTopologyWrapper(self.context, objID)
+
+    def getObjectSharedVertexCount(self, objID: int,
+                                   weld_mode: VertexWeldMode = VertexWeldMode.WELD_FULL) -> int:
+        """
+        Return the number of distinct shared vertices in a compound object's mesh.
+
+        This is one greater than the largest index
+        :meth:`getObjectPrimitiveSharedVertexIndices` can return, and zero if the object
+        exposes no topology.
+
+        Args:
+            objID: Object ID of the compound object
+            weld_mode: Granularity at which coincident vertices are treated as the same
+                shared vertex. See :class:`VertexWeldMode`.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        self._check_context_available()
+        return context_wrapper.getObjectSharedVertexCountWrapper(
+            self.context, objID, int(weld_mode)
+        )
+
+    def getObjectPrimitiveSharedVertexIndices(
+        self, objID: int, uuid: int,
+        weld_mode: VertexWeldMode = VertexWeldMode.WELD_FULL
+    ) -> List[int]:
+        """
+        Return the shared mesh vertex each vertex of a primitive belongs to.
+
+        Indices are in the same order as :meth:`getPrimitiveVertices`, and two primitives
+        meeting at a corner report the same index there. This is what lets a per-face
+        quantity be averaged onto the vertices neighbouring faces have in common.
+
+        Args:
+            objID: Object ID of the compound object the primitive belongs to
+            uuid: UUID of the primitive
+            weld_mode: See :class:`VertexWeldMode`
+
+        Returns:
+            One index per vertex of the primitive; empty if the object exposes no topology.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+
+        Note:
+            When walking a whole object, prefer
+            :meth:`getObjectPrimitiveSharedVertexIndicesMulti` -- this per-primitive form is
+            O(n) per call on Sphere, Tube and Cone objects, so a full walk is O(n^2).
+        """
+        self._check_context_available()
+        return context_wrapper.getObjectPrimitiveSharedVertexIndicesWrapper(
+            self.context, objID, uuid, int(weld_mode)
+        )
+
+    def getObjectPrimitiveSharedVertexIndicesMulti(
+        self, objID: int, uuids: List[int],
+        weld_mode: VertexWeldMode = VertexWeldMode.WELD_FULL
+    ) -> List[List[int]]:
+        """
+        Return shared mesh vertex indices for many primitives of a compound object at once.
+
+        Equivalent to calling :meth:`getObjectPrimitiveSharedVertexIndices` for each UUID,
+        except that any per-object quantity needed to locate the vertices is prepared once
+        for the whole batch. Prefer this overload when walking an entire object.
+
+        Args:
+            objID: Object ID of the compound object the primitives belong to
+            uuids: UUIDs of the primitives
+            weld_mode: See :class:`VertexWeldMode`
+
+        Returns:
+            A list parallel to ``uuids``, each entry holding one shared vertex index per
+            vertex of the corresponding primitive.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        self._check_context_available()
+        return context_wrapper.getObjectPrimitiveSharedVertexIndicesMultiWrapper(
+            self.context, objID, uuids, int(weld_mode)
+        )
+
+    def getPrimitiveSharedVertexIndices(
+        self, uuid: int,
+        weld_mode: VertexWeldMode = VertexWeldMode.WELD_FULL
+    ) -> List[int]:
+        """
+        Return a primitive's shared mesh vertex indices without naming its parent object.
+
+        Resolves the primitive's parent object and forwards to it.
+
+        Args:
+            uuid: UUID of the primitive
+            weld_mode: See :class:`VertexWeldMode`
+
+        Returns:
+            One index per vertex of the primitive. Empty if the primitive belongs to no
+            object, or to one that exposes no topology.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        self._check_context_available()
+        return context_wrapper.getPrimitiveSharedVertexIndicesWrapper(
+            self.context, uuid, int(weld_mode)
+        )
 
     def getPolymeshObjectVertices(self, objID: int) -> List[vec3]:
         """

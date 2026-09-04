@@ -242,6 +242,12 @@ def copy_assets_for_packaging(project_root):
     if Path(plugins_src_dir / 'radiation' / 'spectral_data').exists():
         radiation_assets.append('spectral_data')
 
+    # setCameraSpectralResponseFromLibrary() resolves
+    # "plugins/radiation/camera_library/camera_library.xml" at runtime, so the directory must
+    # ship even though nothing else references it at build time.
+    if Path(plugins_src_dir / 'radiation' / 'camera_library').exists():
+        radiation_assets.append('camera_library')
+
     # Copy generated GPU backend files from build directory
     radiation_build_dir = build_dir / 'plugins' / 'radiation'
     if radiation_build_dir.exists():

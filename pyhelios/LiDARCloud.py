@@ -1669,8 +1669,250 @@ class LiDARCloud:
 
         Important for accurate leaf area calculations with real LiDAR data.
         Should be called before triangulation when processing real data.
+
+        Misses synthesized here are stored in virtualized form -- as a per-cell occupancy
+        bit plus a scan-wide angular model rather than as stored points -- so they cost no
+        per-point storage. They are counted by :meth:`getHitCount` and readable through
+        every accessor regardless. See :meth:`hasVirtualMisses` and
+        :meth:`getVirtualMissCount`.
+
+        Note:
+            Reading the whole cloud back afterwards should go through the bulk accessors
+            (:meth:`getHitsXYZRGB`, :meth:`getHitScanIDArray`, :meth:`getHitDataArray`),
+            which read virtualized misses in one pass. A Python loop over the per-index
+            getters costs O(Nphi) on each such point.
         """
         lidar_wrapper.gapfillLiDARMisses(self._cloud_ptr)
+
+    def gapfillMissesCount(self, scanID: Optional[int] = None,
+                           gapfill_grid_only: bool = False,
+                           add_flags: bool = False) -> int:
+        """
+        Gapfill missing points and return only how many were added.
+
+        Identical to :meth:`gapfillMisses` except that the count is returned instead of the
+        filled positions, which for a fine scan grid is a large allocation most callers
+        discard.
+
+        Args:
+            scanID: Scan to gapfill. ``None`` (the default) gapfills every scan, in which
+                case ``gapfill_grid_only`` and ``add_flags`` are not used.
+            gapfill_grid_only: Fill only within the voxel grid's bounding box
+            add_flags: Add ``gapfillMisses_code`` as hit point data (0=original, 1=gapfilled)
+
+        Returns:
+            Number of missing points added
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        if scanID is None:
+            return lidar_wrapper.gapfillLiDARMissesCount(self._cloud_ptr)
+        return lidar_wrapper.gapfillLiDARMissesCountScan(
+            self._cloud_ptr, scanID, gapfill_grid_only, add_flags
+        )
+
+    def getVirtualMissCount(self) -> int:
+        """
+        Number of gap-filled misses currently held in virtualized form.
+
+        A miss synthesized by :meth:`gapfillMisses` is a pure function of its scan-grid
+        cell, so it is stored implicitly rather than as an element of the hit array. Such
+        points are counted by :meth:`getHitCount` and readable through every accessor, but
+        occupy no per-point storage.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.getLiDARVirtualMissCount(self._cloud_ptr)
+
+    def hasVirtualMisses(self) -> bool:
+        """
+        Whether any gap-filled miss is currently held in virtualized form.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.hasLiDARVirtualMisses(self._cloud_ptr)
+
+    def materializeMisses(self) -> None:
+        """
+        Convert every virtualized gap-filled miss into a stored hit point.
+
+        Every observable is unchanged by this call -- it trades the memory saving for real
+        storage. It happens automatically before any operation that renumbers the hit index
+        space (adding or deleting a hit point, writing hit data or a grid cell), so calling
+        it explicitly is only needed to pay that cost at a chosen moment.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        lidar_wrapper.materializeLiDARMisses(self._cloud_ptr)
+
+    def getScanGridDirection(self, scanID: int, row: int, column: int) -> SphericalCoord:
+        """
+        Beam direction at a scan-grid cell, from the model fitted during gap-filling.
+
+        Available once :meth:`gapfillMisses` has run on the scan through the row/column
+        path. This is the same reconstruction used to place synthesized misses, exposed so
+        a caller can check the fitted geometry against known directions.
+
+        Args:
+            scanID: Scan index
+            row: Scan-grid row (zenith index)
+            column: Scan-grid column (azimuth index)
+
+        Returns:
+            Unit direction of that cell's beam
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        radius, elevation, azimuth = lidar_wrapper.getLiDARScanGridDirection(
+            self._cloud_ptr, scanID, row, column
+        )
+        return SphericalCoord(radius, elevation, azimuth)
+
+    def getHitXYZColumn(self):
+        """
+        Read every hit's position in index order in one pass.
+
+        Costs O(1) per hit even for virtualized gap-filled misses, which the per-index
+        accessors resolve in O(Nphi). Prefer this to a Python loop over
+        :meth:`getHitXYZ` whenever the whole cloud is being read.
+
+        Returns:
+            List of (x, y, z) tuples, one per hit
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.getLiDARHitXYZColumn(self._cloud_ptr, self.getHitCount())
+
+    def getHitScanIDColumn(self):
+        """
+        Read every hit's scan ID in index order in one pass.
+
+        See :meth:`getHitXYZColumn` for why this is preferred over a per-index loop.
+
+        Returns:
+            List of scan indices, one per hit
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.getLiDARHitScanIDColumn(self._cloud_ptr, self.getHitCount())
+
+    def estimateHitPointMemory(self, hit_count: int) -> int:
+        """
+        Estimate the resident memory a cloud of ``hit_count`` points will occupy, in bytes.
+
+        Each stored point costs the size of a hit point plus, for every scalar-data label
+        the cloud carries, one double of value and one byte of presence -- the columnar
+        store is dense, so every label costs on every point. Excludes virtualized misses
+        and the transient of growing the arrays; see :meth:`reserveHitPoints` for that.
+
+        Most accurate once at least one point exists, since it reads the labels created
+        so far.
+
+        Args:
+            hit_count: Number of hit points to estimate for
+
+        Returns:
+            Estimated resident bytes
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.estimateLiDARHitPointMemory(self._cloud_ptr, hit_count)
+
+    def setMaxHitPoints(self, max_hits: int) -> None:
+        """
+        Set the cap on stored hit points before loading fails with a diagnostic.
+
+        Exceeding the cap raises an error naming the projected point count and the limit,
+        rather than throwing from inside the allocator where neither the scan responsible
+        nor the size is visible. The default (:meth:`getDefaultMaxHitPoints`) is
+        deliberately generous: it guards against a mis-specified scan grid exhausting the
+        machine, and is not a statement about machine capacity. Raise it when the machine
+        genuinely has the memory.
+
+        Args:
+            max_hits: Maximum stored hit points, or 0 to disable the check
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        lidar_wrapper.setLiDARMaxHitPoints(self._cloud_ptr, max_hits)
+
+    def getMaxHitPoints(self) -> int:
+        """
+        Current cap on stored hit points, or 0 if the check is disabled.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.getLiDARMaxHitPoints(self._cloud_ptr)
+
+    @staticmethod
+    def getDefaultMaxHitPoints() -> int:
+        """
+        Default cap on the number of stored hit points in a cloud (100 million).
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.getLiDARDefaultMaxHitPoints()
+
+    def reserveHitPoints(self, hit_count: int) -> None:
+        """
+        Reserve capacity for hit points and every scalar-data column at once.
+
+        Growing the hit-point array by repeated insertion reallocates geometrically, and
+        during every reallocation the old and new buffers are both live. For a cloud of
+        tens of millions of returns that transient is gigabytes on top of the steady-state
+        cost, and on Windows it is charged against the system commit limit at allocation
+        time -- so a load that would comfortably fit once settled can still fail while
+        growing. Reserving the final size once removes the transient entirely.
+
+        This only reserves capacity; it does not create hit points, and
+        :meth:`getHitCount` is unchanged. Reserving less than the eventual total is
+        harmless, as is reserving more.
+
+        Args:
+            hit_count: Expected total number of hit points in the cloud
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        lidar_wrapper.reserveLiDARHitPoints(self._cloud_ptr, hit_count)
+
+    def setExactPathLengths(self, exact: bool) -> None:
+        """
+        Keep every beam path length exactly, instead of binning them.
+
+        The leaf-area inversion bins per-beam voxel path lengths once a voxel accumulates
+        many samples, which bounds memory that would otherwise grow without limit with scan
+        size. Binning recovers the extinction coefficient far inside the solver's
+        tolerance, so this is an escape hatch for unusual geometry, or for confirming that
+        binning is not responsible for a difference between two results.
+
+        Args:
+            exact: True to keep every sample; False (the default) to bin above the threshold
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        lidar_wrapper.setLiDARExactPathLengths(self._cloud_ptr, exact)
+
+    def getExactPathLengths(self) -> bool:
+        """
+        Whether path lengths are accumulated exactly.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        return lidar_wrapper.getLiDARExactPathLengths(self._cloud_ptr)
 
     def syntheticScan(self, context: Context,
                      rays_per_pulse: Optional[int] = None,

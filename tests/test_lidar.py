@@ -3158,3 +3158,210 @@ class TestLiDARRisleyReturnFunctionality:
                 for frac, msg in events:
                     assert 0.0 <= frac <= 1.0
                     assert isinstance(msg, str)
+
+
+@pytest.mark.native_only
+class TestLiDARCapacityAndMemory:
+    """helios-core 1.3.84 memory budgeting and capacity control."""
+
+    def test_default_max_hit_points_is_100_million(self):
+        from pyhelios import LiDARCloud
+        assert LiDARCloud.getDefaultMaxHitPoints() == 100_000_000
+
+    def test_new_cloud_starts_at_the_default_cap(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            assert lidar.getMaxHitPoints() == LiDARCloud.getDefaultMaxHitPoints()
+
+    def test_set_and_get_max_hit_points(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            lidar.setMaxHitPoints(5_000_000)
+            assert lidar.getMaxHitPoints() == 5_000_000
+
+    def test_zero_disables_the_cap(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            lidar.setMaxHitPoints(0)
+            assert lidar.getMaxHitPoints() == 0
+
+    def test_reserve_does_not_create_hit_points(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            lidar.reserveHitPoints(10_000)
+            assert lidar.getHitCount() == 0
+
+    def test_reserve_beyond_the_cap_raises(self):
+        """The cap exists so an over-fine scan grid fails with a diagnostic, not bad_alloc."""
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            lidar.setMaxHitPoints(1000)
+            with pytest.raises(HeliosError):
+                lidar.reserveHitPoints(10_000_000)
+
+    def test_memory_estimate_scales_with_point_count(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            one = lidar.estimateHitPointMemory(1_000_000)
+            two = lidar.estimateHitPointMemory(2_000_000)
+            assert one > 0
+            assert two == pytest.approx(2 * one, rel=1e-6)
+
+    def test_memory_estimate_of_zero_points(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            assert lidar.estimateHitPointMemory(0) == 0
+
+
+@pytest.mark.native_only
+class TestLiDARExactPathLengths:
+    """helios-core 1.3.84 leaf-area inversion path-length accumulation mode."""
+
+    def test_binning_is_the_default(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            assert lidar.getExactPathLengths() is False
+
+    def test_enable_exact_path_lengths(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            lidar.setExactPathLengths(True)
+            assert lidar.getExactPathLengths() is True
+
+    def test_toggle_back_to_binning(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            lidar.setExactPathLengths(True)
+            lidar.setExactPathLengths(False)
+            assert lidar.getExactPathLengths() is False
+
+
+@pytest.mark.native_only
+class TestLiDARVirtualMisses:
+    """helios-core 1.3.84 virtualized gap-filled misses and columnar readers."""
+
+    @staticmethod
+    def _scanned_cloud(context, lidar):
+        lidar.addScan(origin=vec3(0, 0, 2), Ntheta=20, theta_range=(0, 1.2),
+                      Nphi=20, phi_range=(0, 6.28), exit_diameter=0, beam_divergence=0)
+        lidar.syntheticScan(context)
+
+    def test_fresh_cloud_has_no_virtual_misses(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            assert lidar.hasVirtualMisses() is False
+            assert lidar.getVirtualMissCount() == 0
+
+    def test_gapfill_misses_count_returns_an_integer(self):
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                added = lidar.gapfillMissesCount()
+                assert isinstance(added, int)
+                assert added >= 0
+
+    def test_gapfill_misses_count_per_scan(self):
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                added = lidar.gapfillMissesCount(scanID=0, gapfill_grid_only=False,
+                                                 add_flags=False)
+                assert isinstance(added, int)
+                assert added >= 0
+
+    def test_xyz_column_matches_per_index_accessor(self):
+        """The columnar reader is the fast path; it must agree with the slow one exactly."""
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                column = lidar.getHitXYZColumn()
+                assert len(column) == lidar.getHitCount()
+                for i in (0, lidar.getHitCount() // 2, lidar.getHitCount() - 1):
+                    p = lidar.getHitXYZ(i)
+                    assert column[i][0] == pytest.approx(p.x, abs=1e-5)
+                    assert column[i][1] == pytest.approx(p.y, abs=1e-5)
+                    assert column[i][2] == pytest.approx(p.z, abs=1e-5)
+
+    def test_scan_id_column_matches_per_index_accessor(self):
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                column = lidar.getHitScanIDColumn()
+                assert len(column) == lidar.getHitCount()
+                for i in (0, lidar.getHitCount() // 2, lidar.getHitCount() - 1):
+                    assert column[i] == lidar.getHitScanID(i)
+
+    def test_columns_are_empty_for_an_empty_cloud(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            assert lidar.getHitXYZColumn() == []
+            assert lidar.getHitScanIDColumn() == []
+
+    def test_materialize_misses_preserves_the_hit_count(self):
+        """Materializing trades memory for storage; nothing observable changes."""
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                lidar.gapfillMissesCount()
+                before_count = lidar.getHitCount()
+                before_xyz = lidar.getHitXYZColumn()
+                lidar.materializeMisses()
+                assert lidar.getHitCount() == before_count
+                assert lidar.getVirtualMissCount() == 0
+                after_xyz = lidar.getHitXYZColumn()
+                for b, a in zip(before_xyz, after_xyz):
+                    assert a[0] == pytest.approx(b[0], abs=1e-5)
+                    assert a[2] == pytest.approx(b[2], abs=1e-5)
+
+    def test_scan_grid_direction_requires_a_fitted_model(self):
+        """Fail-fast: without gapfillMisses() there is no model, and that is said plainly."""
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                with pytest.raises(HeliosError, match="no fitted scan-grid model"):
+                    lidar.getScanGridDirection(0, 5, 5)
+
+    def test_bulk_miss_array_matches_accessor_for_unflagged_hits(self):
+        """A cloud can carry the is_miss column while individual hits lack the flag.
+
+        hit_data_present is per-hit, so a hit added by a path that does not set is_miss
+        leaves the column present-but-absent at that index. isHitMiss() falls back to
+        distance classification for exactly those hits; a bulk reader that decides its
+        strategy from whether the column exists cloud-wide would report them as hits.
+        """
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(2, 2))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                # syntheticScan sets is_miss on every point it makes, so the column exists.
+                # Add one hit at the miss sentinel distance without the flag.
+                lidar.addHitPoint(0, vec3(0, 0, 2 + 20000.0), SphericalCoord(1, 0, 0))
+                idx = lidar.getHitCount() - 1
+
+                misses = lidar.getHitMissArray()
+                assert bool(misses[idx]) == lidar.isHitMiss(idx)
+
+    def test_bulk_miss_array_matches_per_index_accessor(self):
+        """isLiDARHitMiss_all now reads the is_miss column; it must still agree."""
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                self._scanned_cloud(context, lidar)
+                misses = lidar.getHitMissArray()
+                assert len(misses) == lidar.getHitCount()
+                for i in (0, lidar.getHitCount() // 2, lidar.getHitCount() - 1):
+                    assert bool(misses[i]) == lidar.isHitMiss(i)

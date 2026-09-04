@@ -286,9 +286,9 @@ if context.getPolymeshObjectVertexNormalSource(objID) == VertexNormalSource.NONE
 | [getPolymeshObjectBoundaryEdges(objID)](pyhelios.Context.Context.getPolymeshObjectBoundaryEdges) | Vertex index pairs for edges referenced by only one face |
 | [getPolymeshObjectConnectedComponents(objID)](pyhelios.Context.Context.getPolymeshObjectConnectedComponents) | Face indices grouped into disjoint pieces |
 | [getPolymeshObjectSurfaceArea(objID)](pyhelios.Context.Context.getPolymeshObjectSurfaceArea) | Total area of every face |
-| [getPolymeshObjectVolume(objID)](pyhelios.Context.Context.getPolymeshObjectVolume) | Enclosed volume; requires a closed mesh |
+| [getPolymeshObjectVolume(objID)](pyhelios.Context.Context.getPolymeshObjectVolume) | Enclosed volume, summed over the closed pieces |
 
-Only a closed mesh has a well-defined enclosed volume. For a mesh that carries a face table, `getPolymeshObjectVolume()` verifies closure first and raises an error naming the number of boundary edges, rather than returning a meaningless number for an open surface. Use `getPolymeshObjectSurfaceArea()` for an open mesh.
+Only a closed mesh has a well-defined enclosed volume. `getPolymeshObjectVolume()` separates a mesh into its connected pieces and sums the volume of those that are closed, so a solid shape modelled with an open stalk reports the shape's volume; an error naming the number of unmatched edges is raised only when no piece is closed. A mesh carrying no face table has its closure checked by matching facets on coincident corners. Use `getPolymeshObjectSurfaceArea()` for a wholly open mesh.
 
 ```python
 if context.isPolymeshObjectClosed(objID):
@@ -302,6 +302,58 @@ else:
 `Sphere`, `Tube` and `Cone` objects can report the true surface normal of the curved shape they approximate, rather than the flat normal of the triangle that approximates it. [doesObjectHaveAnalyticVertexNormals()](pyhelios.Context.Context.doesObjectHaveAnalyticVertexNormals) reports which object types can, and [getObjectPrimitiveVertexNormals()](pyhelios.Context.Context.getObjectPrimitiveVertexNormals) returns the normals at each vertex of a member primitive. Pass a list of UUIDs instead of one to evaluate many primitives at once, which prepares the per-object quantities only once.
 
 Normals are evaluated from each shape's own definition rather than stored, so they account for taper and remain correct after the object is transformed or its nodes and radii are changed. Object types built from genuinely flat faces, such as a tile or box, report that they have no analytic normals and return an empty list.
+
+### Shared Vertex Topology {#SharedVertexTopology}
+
+A compound object can report which of its member primitives meet at each mesh vertex. This is what lets a per-face quantity — an outgoing flux, a colour, a scalar field — be averaged onto the vertices that neighbouring faces have in common, and then interpolated back across each face, so a tessellated curve reads as a curve rather than as a set of flat panels.
+
+[doesObjectHaveSharedVertexTopology()](pyhelios.Context.Context.doesObjectHaveSharedVertexTopology) reports whether an object exposes this. `Tile`, `AdaptiveTile`, `Sphere`, `Tube` and `Cone` objects always do; a `Polymesh` does when it carries a face table (see \ref MeshTopology). A `Box` or `Disk` object, and a polymesh assembled from loose primitives by `addPolymeshObject()`, does not.
+
+[getObjectSharedVertexCount()](pyhelios.Context.Context.getObjectSharedVertexCount) gives the number of distinct shared vertices — one greater than the largest index the accessors can return. [getObjectPrimitiveSharedVertexIndices()](pyhelios.Context.Context.getObjectPrimitiveSharedVertexIndices) returns, for one primitive, the shared vertex each of its corners belongs to, in the same order as `getPrimitiveVertices()`. Two primitives meeting at a corner report the same index there.
+
+Both take a `VertexWeldMode`, which sets the granularity at which coincident vertices count as the same shared vertex:
+
+| Value | Meaning |
+|---|---|
+| `VertexWeldMode.WELD_FULL` | Treat every coincident vertex of the object as one shared vertex |
+| `VertexWeldMode.WELD_CROSS_SECTION_ONLY` | Weld only within a cross-section, keeping vertices at the same cross-sectional position on different segments distinct |
+
+The distinction matters only for object types with a distinguished axis. For a `Tube`, welding fully smooths along the axis as well as around it, which erases detail the tessellation actually captured; welding only around the cross-section removes the faceting without touching the axial direction. A `Polymesh` or `Tile` has only one sensible answer and reports the same topology for either mode.
+
+```python
+from pyhelios.types import VertexWeldMode
+
+if context.doesObjectHaveSharedVertexTopology(objID):
+    n = context.getObjectSharedVertexCount(objID, VertexWeldMode.WELD_FULL)
+
+    uuids = context.getObjectPrimitiveUUIDs(objID)
+    # Batched: prepares the per-object quantities once for the whole walk.
+    indices = context.getObjectPrimitiveSharedVertexIndicesMulti(objID, uuids)
+
+    accum = [0.0] * n
+    counts = [0] * n
+    for uuid, corners in zip(uuids, indices):
+        value = context.getPrimitiveData(uuid, "some_flux")
+        for i in corners:
+            accum[i] += value
+            counts[i] += 1
+    per_vertex = [a / c if c else 0.0 for a, c in zip(accum, counts)]
+```
+
+Prefer [getObjectPrimitiveSharedVertexIndicesMulti()](pyhelios.Context.Context.getObjectPrimitiveSharedVertexIndicesMulti) when walking a whole object: the per-primitive form locates the primitive in the object's list on every call, so a full walk of a `Sphere`, `Tube` or `Cone` is quadratic. [getPrimitiveSharedVertexIndices()](pyhelios.Context.Context.getPrimitiveSharedVertexIndices) is a convenience form that resolves the primitive's parent object itself, and returns an empty list for a primitive that belongs to no object.
+
+### Deforming a Mesh {#MeshDeform}
+
+[setPolymeshObjectVertices()](pyhelios.Context.Context.setPolymeshObjectVertices) moves every shared vertex of a polymesh in one call and pushes the new positions out to the member primitives, so faces that meet at a vertex stay welded. This is the supported way to deform a mesh: transforming the member primitives individually leaves each shared vertex wherever the last facet processed put it, tearing the surface apart.
+
+The topology is unchanged, so the list must be parallel to and the same length as [getPolymeshObjectVertices()](pyhelios.Context.Context.getPolymeshObjectVertices). Texture coordinates are not touched, and neither is the solid fraction of the member primitives — which is a function of the (u,v) coordinates rather than the vertex positions — so deforming a textured mesh does not re-rasterize its alpha mask.
+
+```python
+verts = context.getPolymeshObjectVertices(objID)
+context.setPolymeshObjectVertices(objID, [vec3(v.x, v.y, v.z * 1.5) for v in verts])
+```
+
+\note Vertex normals are not recomputed and no longer describe the deformed surface. Call [computePolymeshObjectVertexNormals()](pyhelios.Context.Context.computePolymeshObjectVertexNormals) again if exact normals are needed.
 
 ## Exporting Project to XML File Format {#Export}
 

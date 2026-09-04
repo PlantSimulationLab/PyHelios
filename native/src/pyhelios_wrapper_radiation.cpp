@@ -3144,6 +3144,82 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
         }
     }
 
+    // ========================================================================
+    // Camera Flux Smoothing (helios-core 1.3.84+)
+    // ========================================================================
+
+    PYHELIOS_API void enableCameraFluxSmoothing(RadiationModel* radiation_model, float crease_angle_degrees) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->enableCameraFluxSmoothing(crease_angle_degrees);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableCameraFluxSmoothing): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableCameraFluxSmoothing): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableCameraFluxSmoothing(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->disableCameraFluxSmoothing();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableCameraFluxSmoothing): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableCameraFluxSmoothing): Unknown error");
+        }
+    }
+
+    PYHELIOS_API int isCameraFluxSmoothingEnabled(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0;
+            }
+
+            return radiation_model->isCameraFluxSmoothingEnabled() ? 1 : 0;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::isCameraFluxSmoothingEnabled): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::isCameraFluxSmoothingEnabled): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API float getCameraFluxSmoothingCreaseAngle(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return 0.f;
+            }
+
+            return radiation_model->getCameraFluxSmoothingCreaseAngle();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraFluxSmoothingCreaseAngle): ") + e.what());
+            return 0.f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraFluxSmoothingCreaseAngle): Unknown error");
+            return 0.f;
+        }
+    }
+
 } //extern "C"
 
 #endif //RADIATION_PLUGIN_AVAILABLE

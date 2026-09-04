@@ -290,17 +290,18 @@ class SolarPosition:
     # Solar angle calculations
     def getSunElevation(self) -> float:
         """
-        Get the sun elevation angle in degrees.
+        Get the sun elevation angle in radians.
         
         Returns:
-            Sun elevation angle in degrees (0° = horizon, 90° = zenith)
+            Sun elevation angle in radians (0 = horizon, pi/2 = zenith)
             
         Raises:
             SolarPositionError: If calculation fails
             
         Example:
+            >>> import math
             >>> elevation = solar.getSunElevation()
-            >>> print(f"Sun is {elevation:.1f}° above horizon")
+            >>> print(f"Sun is {math.degrees(elevation):.1f}° above horizon")
         """
         self._check_context_alive()
         try:
@@ -310,17 +311,18 @@ class SolarPosition:
     
     def getSunZenith(self) -> float:
         """
-        Get the sun zenith angle in degrees.
+        Get the sun zenith angle in radians.
         
         Returns:
-            Sun zenith angle in degrees (0° = zenith, 90° = horizon)
+            Sun zenith angle in radians (0 = zenith, pi/2 = horizon)
             
         Raises:
             SolarPositionError: If calculation fails
             
         Example:
+            >>> import math
             >>> zenith = solar.getSunZenith()
-            >>> print(f"Sun zenith angle: {zenith:.1f}°")
+            >>> print(f"Sun zenith angle: {math.degrees(zenith):.1f}°")
         """
         self._check_context_alive()
         try:
@@ -330,17 +332,19 @@ class SolarPosition:
     
     def getSunAzimuth(self) -> float:
         """
-        Get the sun azimuth angle in degrees.
+        Get the sun azimuth angle in radians.
         
         Returns:
-            Sun azimuth angle in degrees (0° = North, 90° = East, 180° = South, 270° = West)
+            Sun azimuth angle in radians (0 = North, pi/2 = East, pi = South,
+            3*pi/2 = West)
             
         Raises:
             SolarPositionError: If calculation fails
             
         Example:
+            >>> import math
             >>> azimuth = solar.getSunAzimuth()
-            >>> print(f"Sun azimuth: {azimuth:.1f}° (compass bearing)")
+            >>> print(f"Sun azimuth: {math.degrees(azimuth):.1f}° (compass bearing)")
         """
         self._check_context_alive()
         try:

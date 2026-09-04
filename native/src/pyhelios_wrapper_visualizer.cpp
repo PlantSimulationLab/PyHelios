@@ -47,82 +47,255 @@ extern "C" {
     }
     
     PYHELIOS_API void destroyVisualizer(Visualizer* visualizer) {
-        delete visualizer;
-    }
-    
-    PYHELIOS_API void buildContextGeometry(Visualizer* visualizer, helios::Context* context) {
-        visualizer->buildContextGeometry(context);
-    }
-    
-    PYHELIOS_API void buildContextGeometryUUIDs(Visualizer* visualizer, helios::Context* context, unsigned int* uuids, unsigned int count) {
-        std::vector<unsigned int> uuid_vector(uuids, uuids + count);
-        visualizer->buildContextGeometry(context, uuid_vector);
-    }
-    
-    PYHELIOS_API void plotInteractive(Visualizer* visualizer) {
-        visualizer->plotInteractive();
-    }
-    
-    PYHELIOS_API void plotUpdate(Visualizer* visualizer) {
-        visualizer->plotUpdate();
-    }
-    
-    PYHELIOS_API void printWindow(Visualizer* visualizer, const char* filename) {
-        visualizer->printWindow(filename);
-    }
-    
-    PYHELIOS_API void closeWindow(Visualizer* visualizer) {
-        visualizer->closeWindow();
-    }
-    
-    PYHELIOS_API void setBackgroundColor(Visualizer* visualizer, float* color) {
-        helios::RGBcolor bg_color(color[0], color[1], color[2]);
-        visualizer->setBackgroundColor(bg_color);
-    }
-    
-    PYHELIOS_API void setLightDirection(Visualizer* visualizer, float* direction) {
-        helios::vec3 light_dir(direction[0], direction[1], direction[2]);
-        visualizer->setLightDirection(light_dir);
-    }
-    
-    PYHELIOS_API void setCameraPosition(Visualizer* visualizer, float* position, float* lookat) {
-        helios::vec3 camera_pos(position[0], position[1], position[2]);
-        helios::vec3 look_at(lookat[0], lookat[1], lookat[2]);
-        visualizer->setCameraPosition(camera_pos, look_at);
-    }
-    
-    PYHELIOS_API void setCameraPositionSpherical(Visualizer* visualizer, float* angle, float* lookat) {
-        // angle array: [radius, elevation, azimuth] - create SphericalCoord properly
-        helios::SphericalCoord camera_angle = helios::make_SphericalCoord(angle[0], angle[1], angle[2]);
-        helios::vec3 look_at(lookat[0], lookat[1], lookat[2]);
-        visualizer->setCameraPosition(camera_angle, look_at);
-    }
-    
-    PYHELIOS_API void setLightingModel(Visualizer* visualizer, unsigned int model) {
-        Visualizer::LightingModel lighting_model;
-        
-        switch (model) {
-            case 0:
-                lighting_model = Visualizer::LIGHTING_NONE;
-                break;
-            case 1:
-                lighting_model = Visualizer::LIGHTING_PHONG;
-                break;
-            case 2:
-                lighting_model = Visualizer::LIGHTING_PHONG_SHADOWED;
-                break;
-            default:
-                // Default to phong if unknown
-                lighting_model = Visualizer::LIGHTING_PHONG;
-                break;
+        try {
+            clearError();
+            delete visualizer;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (destroyVisualizer): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (destroyVisualizer): Unknown error");
         }
-        
-        visualizer->setLightingModel(lighting_model);
     }
-    
+
+    PYHELIOS_API void buildContextGeometry(Visualizer* visualizer, helios::Context* context) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            visualizer->buildContextGeometry(context);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (buildContextGeometry): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (buildContextGeometry): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void buildContextGeometryUUIDs(Visualizer* visualizer, helios::Context* context, unsigned int* uuids, unsigned int count) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return;
+            }
+            if (!uuids && count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID array is null");
+                return;
+            }
+            std::vector<unsigned int> uuid_vector(uuids, uuids + count);
+            visualizer->buildContextGeometry(context, uuid_vector);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (buildContextGeometryUUIDs): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (buildContextGeometryUUIDs): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void plotInteractive(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            visualizer->plotInteractive();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (plotInteractive): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (plotInteractive): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void plotUpdate(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            visualizer->plotUpdate();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (plotUpdate): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (plotUpdate): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void printWindow(Visualizer* visualizer, const char* filename) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename is null");
+                return;
+            }
+            visualizer->printWindow(filename);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (printWindow): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (printWindow): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void closeWindow(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            visualizer->closeWindow();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (closeWindow): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (closeWindow): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setBackgroundColor(Visualizer* visualizer, float* color) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!color) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Color array is null");
+                return;
+            }
+            helios::RGBcolor bg_color(color[0], color[1], color[2]);
+            visualizer->setBackgroundColor(bg_color);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setBackgroundColor): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setBackgroundColor): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setLightDirection(Visualizer* visualizer, float* direction) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!direction) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Direction array is null");
+                return;
+            }
+            helios::vec3 light_dir(direction[0], direction[1], direction[2]);
+            visualizer->setLightDirection(light_dir);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setLightDirection): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setLightDirection): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setCameraPosition(Visualizer* visualizer, float* position, float* lookat) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!position || !lookat) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Position and look-at arrays cannot be null");
+                return;
+            }
+            helios::vec3 camera_pos(position[0], position[1], position[2]);
+            helios::vec3 look_at(lookat[0], lookat[1], lookat[2]);
+            visualizer->setCameraPosition(camera_pos, look_at);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setCameraPosition): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setCameraPosition): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setCameraPositionSpherical(Visualizer* visualizer, float* angle, float* lookat) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!angle || !lookat) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Angle and look-at arrays cannot be null");
+                return;
+            }
+            // angle array: [radius, elevation, azimuth] - create SphericalCoord properly
+            helios::SphericalCoord camera_angle = helios::make_SphericalCoord(angle[0], angle[1], angle[2]);
+            helios::vec3 look_at(lookat[0], lookat[1], lookat[2]);
+            visualizer->setCameraPosition(camera_angle, look_at);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setCameraPositionSpherical): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setCameraPositionSpherical): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void setLightingModel(Visualizer* visualizer, unsigned int model) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            Visualizer::LightingModel lighting_model;
+
+            switch (model) {
+                case 0:
+                    lighting_model = Visualizer::LIGHTING_NONE;
+                    break;
+                case 1:
+                    lighting_model = Visualizer::LIGHTING_PHONG;
+                    break;
+                case 2:
+                    lighting_model = Visualizer::LIGHTING_PHONG_SHADOWED;
+                    break;
+                default:
+                    // Default to phong if unknown
+                    lighting_model = Visualizer::LIGHTING_PHONG;
+                    break;
+            }
+
+            visualizer->setLightingModel(lighting_model);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setLightingModel): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setLightingModel): Unknown error");
+        }
+    }
+
     PYHELIOS_API bool validateTextureFile(const char* texture_file) {
-        std::string filename(texture_file);
-        return ::validateTextureFile(filename);
+        try {
+            clearError();
+            if (!texture_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Texture file path is null");
+                return false;
+            }
+            std::string filename(texture_file);
+            return ::validateTextureFile(filename);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (validateTextureFile): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (validateTextureFile): Unknown error");
+            return false;
+        }
     }
     
     PYHELIOS_API void colorContextPrimitivesByData(Visualizer* visualizer, const char* data_name) {

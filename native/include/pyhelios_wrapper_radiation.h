@@ -1236,6 +1236,61 @@ PYHELIOS_API int probeAnyGPUBackend();
  */
 PYHELIOS_API int gpuBackendsDisabledByEnvironment();
 
+// ============================================================================
+// Camera Flux Smoothing (helios-core 1.3.84+)
+// ============================================================================
+
+/**
+ * @brief Reconstruct camera images by interpolating outgoing flux across each facet
+ *
+ * Averages each primitive's outgoing flux onto the mesh vertices it shares with its
+ * neighbours and interpolates back across the facet, so a coarsely tessellated curved
+ * surface reads as a curve rather than as a set of flat panels. Applies to Tube, Sphere,
+ * Cone, Polymesh, Tile and AdaptiveTile objects; a Box, a Disk, and any primitive
+ * belonging to no object are left alone. A Polymesh must carry a face table.
+ *
+ * This changes what the camera reports: a pixel carries a blend of the primitive's value
+ * with its neighbours' rather than the primitive's own, so pixel values no longer
+ * correspond exactly to the radiation_flux_* primitive data. The radiation solve itself,
+ * those primitive data values, and the pixel-label and depth images are all unchanged.
+ * Smoothing is off by default for this reason.
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @param crease_angle_degrees Angle between adjacent facet normals above which a shared
+ *        edge is treated as a hard crease and flux is not averaged across it. Applies to
+ *        Polymesh objects only. Must be between 0 and 180 degrees.
+ * @note If geometry has already been built, this re-uploads it and rebuilds the
+ *       acceleration structure, which is not cheap.
+ */
+PYHELIOS_API void enableCameraFluxSmoothing(RadiationModel* radiation_model, float crease_angle_degrees);
+
+/**
+ * @brief Reconstruct camera images by holding the outgoing flux constant across each facet
+ *
+ * This is the default. Each pixel reports the outgoing flux of the primitive behind it.
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @note If geometry has already been built, this re-uploads it and rebuilds the
+ *       acceleration structure.
+ */
+PYHELIOS_API void disableCameraFluxSmoothing(RadiationModel* radiation_model);
+
+/**
+ * @brief Query whether camera flux smoothing is enabled
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @return 1 if camera images are reconstructed by interpolating flux across each facet, 0 otherwise
+ */
+PYHELIOS_API int isCameraFluxSmoothingEnabled(RadiationModel* radiation_model);
+
+/**
+ * @brief Get the crease angle used by camera flux smoothing
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @return Crease angle in degrees last passed to enableCameraFluxSmoothing() (default 30)
+ */
+PYHELIOS_API float getCameraFluxSmoothingCreaseAngle(RadiationModel* radiation_model);
+
 #ifdef __cplusplus
 }
 #endif

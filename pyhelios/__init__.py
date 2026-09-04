@@ -1,6 +1,6 @@
 from .Global import Global
 from .Logger import Logger
-from .Context import Context, PrimitiveType, VertexNormalSource
+from .Context import Context, PrimitiveType, VertexNormalSource, VertexWeldMode
 
 # Version information with robust fallback strategies
 def _get_version():

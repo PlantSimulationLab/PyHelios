@@ -1158,6 +1158,187 @@ PYHELIOS_API void setLiDARCellGtheta(LiDARcloud* cloud, float Gtheta, unsigned i
  */
 PYHELIOS_API void gapfillLiDARMisses(LiDARcloud* cloud);
 
+/**
+ * @brief Gapfill every scan's missing points, returning only how many were added
+ *
+ * Identical to gapfillLiDARMisses() except that the number of filled points is returned.
+ * The vector-returning native overload allocates one vec3 per filled point, which for a
+ * fine scan grid is a very large allocation callers usually discard.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return Number of missing points added across all scans
+ */
+PYHELIOS_API unsigned long long gapfillLiDARMissesCount(LiDARcloud* cloud);
+
+/**
+ * @brief Gapfill one scan's missing points, returning only how many were added
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID ID of the scan to gapfill
+ * @param gapfill_grid_only If true, fill only within the voxel grid's bounding box
+ * @param add_flags If true, gapfillMisses_code is added as hit point data (0=original, 1=gapfilled)
+ * @return Number of missing points added to the scan
+ */
+PYHELIOS_API unsigned long long gapfillLiDARMissesCountScan(LiDARcloud* cloud, unsigned int scanID, bool gapfill_grid_only, bool add_flags);
+
+//=============================================================================
+// Virtualized Gap-Filled Misses (helios-core 1.3.84+)
+//=============================================================================
+
+/**
+ * @brief Number of gap-filled misses currently held in virtualized form
+ *
+ * A miss synthesized by the row/column gap-filling path is stored implicitly as a per-cell
+ * occupancy bit plus a scan-wide angular model, rather than as an element of the hit array.
+ * These points are counted by getLiDARHitCount() and readable through every index accessor,
+ * but occupy no per-point storage.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return Number of virtualized misses across all scans
+ */
+PYHELIOS_API unsigned long long getLiDARVirtualMissCount(LiDARcloud* cloud);
+
+/**
+ * @brief Whether any gap-filled miss is currently held in virtualized form
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return true if at least one virtualized miss exists
+ */
+PYHELIOS_API bool hasLiDARVirtualMisses(LiDARcloud* cloud);
+
+/**
+ * @brief Convert every virtualized gap-filled miss into a stored hit point
+ *
+ * Every observable is unchanged by this call; it trades the memory saving for real storage.
+ * It happens automatically before any operation that renumbers the hit index space.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ */
+PYHELIOS_API void materializeLiDARMisses(LiDARcloud* cloud);
+
+/**
+ * @brief Direction of the beam at a scan-grid cell, from the model fitted during gap-filling
+ *
+ * Available once gapfillLiDARMisses() has run on the scan through the row/column path. This
+ * is the same reconstruction used to place synthesized misses, exposed so a caller can check
+ * the fitted geometry against known directions.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @param row Scan-grid row (zenith index)
+ * @param column Scan-grid column (azimuth index)
+ * @param out Receives [radius, elevation, azimuth]; zenith is derived as PI/2 - elevation
+ */
+PYHELIOS_API void getLiDARScanGridDirection(LiDARcloud* cloud, unsigned int scanID, int row, int column, float* out);
+
+//=============================================================================
+// One-Pass Columnar Hit Readers (helios-core 1.3.84+)
+//=============================================================================
+
+/**
+ * @brief Read every hit's position in index order in one pass
+ *
+ * Walks each scan's occupancy bitset in row-major order, which is index order, so every hit
+ * costs O(1). Resolving a virtualized gap-filled miss through the per-index accessor instead
+ * costs O(Nphi), which is quadratic over a whole cloud.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param out Output array of 3*n floats [x0,y0,z0, x1,y1,z1, ...]
+ * @param n Capacity of the output array in points
+ */
+PYHELIOS_API void getLiDARHitXYZColumn(LiDARcloud* cloud, float* out, unsigned int n);
+
+/**
+ * @brief Read every hit's scan ID in index order in one pass
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param out Output array of n ints
+ * @param n Capacity of the output array
+ */
+PYHELIOS_API void getLiDARHitScanIDColumn(LiDARcloud* cloud, int* out, unsigned int n);
+
+//=============================================================================
+// Memory Budgeting and Capacity Control (helios-core 1.3.84+)
+//=============================================================================
+
+/**
+ * @brief Estimate the resident memory a cloud of hit_count points will occupy, in bytes
+ *
+ * Each stored point costs sizeof(HitPoint) plus, for every scalar-data label the cloud
+ * carries, one double of value and one byte of presence. Excludes virtualized misses and the
+ * transient of growing the arrays. Most accurate once at least one point exists, since it
+ * reads the labels created so far.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param hit_count Number of hit points to estimate for
+ * @return Estimated resident bytes
+ */
+PYHELIOS_API unsigned long long estimateLiDARHitPointMemory(LiDARcloud* cloud, unsigned long long hit_count);
+
+/**
+ * @brief Set the cap on stored hit points before loading fails with a diagnostic
+ *
+ * Exceeding the cap raises an error naming the projected point count and the limit, rather
+ * than throwing from inside the allocator where neither the scan responsible nor the size is
+ * visible. The default is deliberately generous: it guards against a mis-specified scan grid
+ * exhausting the machine, and is not a statement about machine capacity.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param max_hits Maximum stored hit points, or 0 to disable the check
+ */
+PYHELIOS_API void setLiDARMaxHitPoints(LiDARcloud* cloud, unsigned long long max_hits);
+
+/**
+ * @brief Current cap on stored hit points
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return Maximum stored hit points, or 0 if the check is disabled
+ */
+PYHELIOS_API unsigned long long getLiDARMaxHitPoints(LiDARcloud* cloud);
+
+/**
+ * @brief Default cap on the number of stored hit points in a cloud
+ * @return LiDARcloud::DEFAULT_MAX_HIT_POINTS (100 million)
+ */
+PYHELIOS_API unsigned long long getLiDARDefaultMaxHitPoints();
+
+/**
+ * @brief Reserve capacity for hit points and every scalar-data column at once
+ *
+ * Growing the hit-point array by repeated insertion reallocates geometrically, and during
+ * every reallocation the old and new buffers are both live. For tens of millions of returns
+ * that transient is gigabytes on top of the steady-state cost, and on Windows it is charged
+ * against the system commit limit at allocation time. Reserving the final size once removes
+ * the transient entirely.
+ *
+ * This only reserves capacity; it does not create hit points and the hit count is unchanged.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param hit_count Expected total number of hit points in the cloud
+ */
+PYHELIOS_API void reserveLiDARHitPoints(LiDARcloud* cloud, unsigned long long hit_count);
+
+//=============================================================================
+// Leaf-Area Inversion Path-Length Mode (helios-core 1.3.84+)
+//=============================================================================
+
+/**
+ * @brief Keep every beam path length exactly, instead of binning them
+ *
+ * The leaf-area inversion bins per-beam voxel path lengths once a voxel accumulates many
+ * samples, which bounds memory that would otherwise grow without limit with scan size.
+ * Binning recovers the extinction coefficient far inside the solver's tolerance, so this is
+ * an escape hatch for unusual geometry or for confirming binning is not responsible for a
+ * result difference.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param exact true to keep every sample; false (the default) to bin above the threshold
+ */
+PYHELIOS_API void setLiDARExactPathLengths(LiDARcloud* cloud, bool exact);
+
+/**
+ * @brief Whether path lengths are accumulated exactly
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return true if every sample is kept
+ */
+PYHELIOS_API bool getLiDARExactPathLengths(LiDARcloud* cloud);
+
 //=============================================================================
 // Leaf Area Calculations
 //=============================================================================

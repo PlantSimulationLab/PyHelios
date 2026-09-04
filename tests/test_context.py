@@ -746,6 +746,36 @@ class TestNumPyArrayOperations:
         expected_color = RGBcolor(1.0/3, 1.0/3, 1.0/3)  # Average of RGB
         assert_color_equal(actual_color, expected_color, tolerance=1e-5)
     
+
+    def test_addTrianglesFromArrays_vertex_colors_averaged_vectorized(self, basic_context):
+        """Per-vertex colours must be averaged in one array op, not once per triangle.
+
+        The averaging used to call np.mean() on a freshly built 3-element Python list for every
+        face, which dominated the runtime of the standard trimesh/Open3D import path. This pins
+        both halves of the fix: the averaging is still exactly right, and it is no longer
+        dispatched per triangle.
+        """
+        rng = np.random.default_rng(0)
+        n_faces = 300
+        vertices = rng.random((n_faces * 3, 3), dtype=np.float32)
+        faces = np.arange(n_faces * 3, dtype=np.int32).reshape(n_faces, 3)
+        colors = rng.random((n_faces * 3, 3), dtype=np.float32)
+
+        with patch('numpy.mean', wraps=np.mean) as spy:
+            triangle_uuids = basic_context.addTrianglesFromArrays(vertices, faces, colors)
+
+        assert len(triangle_uuids) == n_faces
+        assert spy.call_count <= 1, (
+            f"np.mean dispatched {spy.call_count} times for {n_faces} triangles; "
+            "the per-vertex colour average must be computed for the whole mesh at once"
+        )
+
+        # Every triangle must still carry the mean of its three vertex colours.
+        expected = (colors[faces[:, 0]] + colors[faces[:, 1]] + colors[faces[:, 2]]) / 3.0
+        for i in (0, n_faces // 2, n_faces - 1):
+            actual = basic_context.getPrimitiveColor(triangle_uuids[i])
+            assert_color_equal(actual, RGBcolor(*expected[i].tolist()), tolerance=1e-5)
+
     def test_addTrianglesFromArrays_validation(self, basic_context):
         """Test validation of NumPy array inputs."""
         # Invalid vertices shape
@@ -4320,15 +4350,6 @@ class TestScalarGetterErrorPaths:
             basic_context.getPrimitiveMaterialID(999999999)
 
 
-@pytest.mark.cross_platform
-class TestScalarAPIMockModeSkipped:
-    """Mock-mode placeholder. The native_only classes above are skipped automatically
-    when the native library is unavailable; this class documents the intent."""
-
-    def test_marker(self):
-        assert True
-
-
 # =============================================================================
 # Vector-return getters & geometry mutators
 # =============================================================================
@@ -5992,3 +6013,68 @@ class TestPrimitiveInfoBatching:
 
     def test_getAllPrimitiveInfo_empty_context(self, basic_context):
         assert basic_context.getAllPrimitiveInfo() == []
+
+
+@pytest.mark.cross_platform
+class TestFunctionAvailabilityGuards:
+    """Every wrapper must guard on the flag set by the block that registered its prototype.
+
+    A prototype registered inside a try/except AttributeError block has no argtypes when that
+    block fails. Calling it anyway passes each pointer as a C int, truncating it to 32 bits on
+    a 64-bit build -- a segfault or silently wrong geometry instead of a clean NotImplementedError.
+    Guarding on a flag from a *different* block is the same defect: the flag can be True while
+    this function's own registration failed. _FILE_LOADING_FUNCTIONS_AVAILABLE is exactly that:
+    an OR across the PLY, OBJ/XML and basic blocks, so either family could be called unregistered.
+    """
+
+    def test_obj_xml_wrappers_guard_on_obj_xml_flag_not_the_or_flag(self):
+        """loadOBJ/loadXML are registered in the OBJ/XML block, so that is the flag to check.
+
+        _FILE_LOADING_FUNCTIONS_AVAILABLE is an OR across the PLY, OBJ/XML and basic blocks, so a
+        successful PLY registration keeps it True even when the OBJ/XML block failed entirely.
+        """
+        from pyhelios.wrappers import UContextWrapper
+
+        cases = [
+            (UContextWrapper.loadOBJ, (None, "mesh.obj")),
+            (UContextWrapper.loadOBJWithOriginHeightRotationColor,
+             (None, "mesh.obj", [0.0, 0.0, 0.0], 1.0, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0])),
+            (UContextWrapper.loadOBJWithOriginHeightRotationColorUpaxis,
+             (None, "mesh.obj", [0.0, 0.0, 0.0], 1.0, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], "YUP")),
+            (UContextWrapper.loadOBJWithOriginScaleRotationColorUpaxis,
+             (None, "mesh.obj", [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0],
+              [1.0, 1.0, 1.0], "YUP")),
+            (UContextWrapper.loadXML, (None, "scene.xml")),
+        ]
+
+        # OBJ/XML registration failed; PLY succeeded, so the OR flag stays True.
+        with patch.object(UContextWrapper, '_OBJ_XML_LOADING_FUNCTIONS_AVAILABLE', False), \
+             patch.object(UContextWrapper, '_FILE_LOADING_FUNCTIONS_AVAILABLE', True):
+            for func, args in cases:
+                with pytest.raises(NotImplementedError, match="not available"):
+                    func(*args)
+
+    def test_ply_wrappers_guard_on_ply_flag_not_the_or_flag(self):
+        """The PLY loaders have the mirror-image bug: the OR flag is True when only OBJ/XML loaded."""
+        from pyhelios.wrappers import UContextWrapper
+
+        cases = [
+            (UContextWrapper.loadPLY, (None, "cloud.ply")),
+            (UContextWrapper.loadPLYWithOriginHeight,
+             (None, "cloud.ply", [0.0, 0.0, 0.0], 1.0)),
+            (UContextWrapper.loadPLYWithOriginHeightRotation,
+             (None, "cloud.ply", [0.0, 0.0, 0.0], 1.0, [0.0, 0.0, 0.0])),
+            (UContextWrapper.loadPLYWithOriginHeightColor,
+             (None, "cloud.ply", [0.0, 0.0, 0.0], 1.0, [1.0, 1.0, 1.0])),
+            (UContextWrapper.loadPLYWithOriginHeightRotationColor,
+             (None, "cloud.ply", [0.0, 0.0, 0.0], 1.0, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0])),
+        ]
+
+        # PLY registration failed; OBJ/XML succeeded, so the OR flag stays True.
+        with patch.object(UContextWrapper, '_PLY_LOADING_FUNCTIONS_AVAILABLE', False), \
+             patch.object(UContextWrapper, '_BASIC_PLY_AVAILABLE', False), \
+             patch.object(UContextWrapper, '_AVAILABLE_PLY_FUNCTIONS', []), \
+             patch.object(UContextWrapper, '_FILE_LOADING_FUNCTIONS_AVAILABLE', True):
+            for func, args in cases:
+                with pytest.raises((NotImplementedError, RuntimeError), match="not available|rebuilt"):
+                    func(*args)

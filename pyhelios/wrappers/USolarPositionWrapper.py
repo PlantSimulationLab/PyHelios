@@ -29,7 +29,7 @@ try:
     helios_lib.destroySolarPosition.argtypes = [ctypes.POINTER(USolarPosition)]
     helios_lib.destroySolarPosition.restype = None
     
-    # Solar angle calculations - basic angles in degrees
+    # Solar angle calculations - basic angles in radians
     helios_lib.getSunElevation.argtypes = [ctypes.POINTER(USolarPosition)]
     helios_lib.getSunElevation.restype = ctypes.c_float
     
@@ -210,7 +210,7 @@ def destroySolarPosition(solar_pos: ctypes.POINTER(USolarPosition)) -> None:
 
 # Solar angle calculations
 def getSunElevation(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
-    """Get sun elevation angle in degrees"""
+    """Get sun elevation angle in radians"""
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
     
@@ -218,7 +218,7 @@ def getSunElevation(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
 
 
 def getSunZenith(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
-    """Get sun zenith angle in degrees"""
+    """Get sun zenith angle in radians"""
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
     
@@ -226,7 +226,7 @@ def getSunZenith(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
 
 
 def getSunAzimuth(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
-    """Get sun azimuth angle in degrees"""
+    """Get sun azimuth angle in radians"""
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
     

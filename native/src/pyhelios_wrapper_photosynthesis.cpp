@@ -143,7 +143,11 @@ inline void packC4Coefficients(const C4ModelCoefficients &c, float *out) {
 // branch. Slots 0..3 are now packed from the temperature-response objects' value_at_25C and
 // unpacked through the setters, with slots 22..37 carrying the (dHa, Topt_C, dHd) that the
 // legacy slots cannot represent.
-constexpr unsigned int FARQUHAR_COEFF_COUNT = 38;
+// Slots 38..41 carry the light response curvature (theta) temperature response. Theta has no
+// legacy scalar slot, so this block is the only way it crosses the interface; a caller passing
+// a 38-float buffer keeps the pre-theta layout.
+constexpr unsigned int FARQUHAR_COEFF_COUNT = 42;
+constexpr unsigned int FARQUHAR_COEFF_COUNT_NO_THETA = 38;
 
 // Pack a FarquharModelCoefficients into the flat array. `count` is the caller's buffer size;
 // trailing blocks are written only when the buffer is large enough, so older callers passing
@@ -182,14 +186,28 @@ inline void packFarquharCoefficients(FarquharModelCoefficients c, float *out, un
         packTempResponse(c.getMesophyllConductance_gmTempResponse(), &out[18]);
     }
 
-    if (count >= FARQUHAR_COEFF_COUNT) {
+    if (count >= FARQUHAR_COEFF_COUNT_NO_THETA) {
         packTempResponse(vcmax, &out[22]);
         packTempResponse(jmax, &out[26]);
         packTempResponse(rd, &out[30]);
         packTempResponse(alpha, &out[34]);
     }
 
-    for (unsigned int i = (count >= FARQUHAR_COEFF_COUNT ? FARQUHAR_COEFF_COUNT : (count >= 22 ? 22u : 18u)); i < count; ++i) {
+    if (count >= FARQUHAR_COEFF_COUNT) {
+        packTempResponse(c.getLightResponseCurvatureTempResponse(), &out[38]);
+    }
+
+    unsigned int packed;
+    if (count >= FARQUHAR_COEFF_COUNT) {
+        packed = FARQUHAR_COEFF_COUNT;
+    } else if (count >= FARQUHAR_COEFF_COUNT_NO_THETA) {
+        packed = FARQUHAR_COEFF_COUNT_NO_THETA;
+    } else if (count >= 22) {
+        packed = 22u;
+    } else {
+        packed = 18u;
+    }
+    for (unsigned int i = packed; i < count; ++i) {
         out[i] = 0.0f;
     }
 }
@@ -223,7 +241,7 @@ inline FarquharModelCoefficients unpackFarquharCoefficients(const float *coeffic
     // Apply the rate temperature responses through the setters so the C++ side stays
     // authoritative. When the extended block is absent, fall back to the slot 0..3 value with
     // no temperature response (dHa = -1), reproducing the legacy constant-rate behaviour.
-    const bool extended = (count >= FARQUHAR_COEFF_COUNT);
+    const bool extended = (count >= FARQUHAR_COEFF_COUNT_NO_THETA);
     applyTempResponse([&](auto... a) { c.setVcmax(a...); }, coefficients[0],
                       extended ? coefficients[23] : -1.f, extended ? coefficients[24] : -1.f, extended ? coefficients[25] : -1.f);
     applyTempResponse([&](auto... a) { c.setJmax(a...); }, coefficients[1],
@@ -232,6 +250,12 @@ inline FarquharModelCoefficients unpackFarquharCoefficients(const float *coeffic
                       extended ? coefficients[35] : -1.f, extended ? coefficients[36] : -1.f, extended ? coefficients[37] : -1.f);
     applyTempResponse([&](auto... a) { c.setRd(a...); }, coefficients[3],
                       extended ? coefficients[31] : -1.f, extended ? coefficients[32] : -1.f, extended ? coefficients[33] : -1.f);
+
+    // Theta has no legacy slot, so it is applied only when the caller supplied the block.
+    if (count >= FARQUHAR_COEFF_COUNT) {
+        applyTempResponse([&](auto... a) { c.setLightResponseCurvature_theta(a...); },
+                          coefficients[38], coefficients[39], coefficients[40], coefficients[41]);
+    }
 
     return c;
 }

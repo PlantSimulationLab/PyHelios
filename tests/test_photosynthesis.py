@@ -181,17 +181,33 @@ class TestPhotosynthesisModelNative:
         assert photosynthesis.get_native_ptr() is None
         
     def test_model_type_configuration(self):
-        """Test setting model types."""
-        context = Context()
-        
-        with PhotosynthesisModel(context) as photosynthesis:
-            # Test empirical model
-            photosynthesis.setModelTypeEmpirical()
-            assert True  # Should not raise errors
-            
-            # Test Farquhar model
-            photosynthesis.setModelTypeFarquhar()
-            assert True  # Should not raise errors
+        """The selected model must actually drive the calculation.
+
+        There is no getModelType() accessor, so the model type is observable only through the
+        assimilation rate it produces: the empirical and Farquhar models give measurably
+        different answers for identical inputs.
+        """
+        from pyhelios.types import vec3, vec2
+
+        rates = {}
+        for label, select in (("empirical", "setModelTypeEmpirical"),
+                              ("farquhar", "setModelTypeFarquhar")):
+            context = Context()
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            context.setPrimitiveDataFloat(uuid, "radiation_flux_PAR", 500.0)
+            context.setPrimitiveDataFloat(uuid, "temperature", 300.0)
+
+            with PhotosynthesisModel(context) as photosynthesis:
+                getattr(photosynthesis, select)()
+                photosynthesis.run()
+
+            rates[label] = context.getPrimitiveDataFloat(uuid, "net_photosynthesis")
+
+        for label, rate in rates.items():
+            assert rate > 0, f"{label} model produced no assimilation"
+        assert rates["empirical"] != pytest.approx(rates["farquhar"], rel=1e-3), (
+            "both model types produced the same rate, so the selection had no effect"
+        )
             
     def test_species_configuration(self):
         """Test species coefficient configuration."""
@@ -199,11 +215,14 @@ class TestPhotosynthesisModelNative:
         
         with PhotosynthesisModel(context) as photosynthesis:
             photosynthesis.setSpeciesCoefficients("Apple")
-            assert True  # Should not raise errors
-            
-            # Test case insensitive
+            canonical = photosynthesis.getSpeciesCoefficients("Apple")
+
+            # The lookup is case insensitive: the alias must resolve to the same coefficients.
             photosynthesis.setSpeciesCoefficients("apple")
-            assert True  # Should not raise errors
+            assert photosynthesis.getSpeciesCoefficients("apple") == canonical
+
+            # And a real species must differ from the default, or the call did nothing.
+            assert canonical != photosynthesis.getSpeciesCoefficients("Almond")
             
     def test_species_coefficients_retrieval(self):
         """Test getting species coefficients."""
@@ -215,22 +234,35 @@ class TestPhotosynthesisModelNative:
             assert len(coeffs) > 0
             
     def test_empirical_model_configuration(self):
-        """Test empirical model configuration."""
+        """The coefficients set globally must reach each primitive."""
+        from pyhelios.types import vec3, vec2
+
         context = Context()
-        
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+
         with PhotosynthesisModel(context) as photosynthesis:
             coeffs = EmpiricalModelCoefficients()
+            coeffs.Asat = 25.0
             photosynthesis.setEmpiricalModelCoefficients(coeffs)
-            assert True  # Should not raise errors
+
+            # Slot 2 of the empirical layout is Asat; see EmpiricalModelCoefficients.to_array().
+            assert photosynthesis.getEmpiricalModelCoefficients(uuid)[2] == pytest.approx(25.0)
             
     def test_farquhar_model_configuration(self):
-        """Test Farquhar model configuration."""
+        """The coefficients set globally must reach each primitive."""
+        from pyhelios.types import vec3, vec2
+
         context = Context()
-        
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+
         with PhotosynthesisModel(context) as photosynthesis:
             coeffs = FarquharModelCoefficients(Vcmax=100.0, Jmax=180.0)
             photosynthesis.setFarquharModelCoefficients(coeffs)
-            assert True  # Should not raise errors
+
+            stored = FarquharModelCoefficients.from_array(
+                photosynthesis.getFarquharModelCoefficients(uuid))
+            assert stored.getVcmaxTempResponse().value_at_25C == pytest.approx(100.0, abs=1e-4)
+            assert stored.getJmaxTempResponse().value_at_25C == pytest.approx(180.0, abs=1e-4)
             
     @pytest.mark.native_only
     def test_individual_farquhar_parameters(self):
@@ -259,11 +291,23 @@ class TestPhotosynthesisModelNative:
             photosynthesis.setQuantumEfficiency(0.85, [uuid1])
             photosynthesis.setLightResponseCurvature(0.7, [uuid1])
             
+            # Each setter must actually store its value, not merely avoid raising.
+            coeffs = FarquharModelCoefficients.from_array(
+                photosynthesis.getFarquharModelCoefficients(uuid1))
+            assert coeffs.getVcmaxTempResponse().value_at_25C == pytest.approx(100.0, abs=1e-4)
+            assert coeffs.getJmaxTempResponse().value_at_25C == pytest.approx(180.0, abs=1e-4)
+            assert coeffs.getRdTempResponse().value_at_25C == pytest.approx(2.0, abs=1e-4)
+            assert coeffs.getQuantumEfficiencyTempResponse().value_at_25C == pytest.approx(0.85, abs=1e-4)
+            assert photosynthesis.getLightResponseCurvature(uuid1) == pytest.approx(0.7, abs=1e-4)
+
             # Test with temperature response parameters
             photosynthesis.setVcmax(100.0, [uuid1], dha=65000.0, topt=25.0, dhd=200000.0)
             photosynthesis.setJmax(180.0, [uuid1], dha=43000.0, topt=25.0, dhd=200000.0)
-            
-            assert True  # Should not raise errors
+
+            vcmax = FarquharModelCoefficients.from_array(
+                photosynthesis.getFarquharModelCoefficients(uuid1)).getVcmaxTempResponse()
+            assert vcmax.dHa == pytest.approx(65000.0, rel=1e-4)
+            assert vcmax.dHd == pytest.approx(200000.0, rel=1e-4)
     
     @pytest.mark.native_only
     def test_parameter_persistence_critical(self):
@@ -353,8 +397,11 @@ class TestPhotosynthesisModelNative:
             
     def test_model_execution(self):
         """Test model execution methods."""
+        from pyhelios.types import vec3, vec2
+
         context = Context()
-        
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+
         with PhotosynthesisModel(context) as photosynthesis:
             # Configure model first
             coeffs = EmpiricalModelCoefficients()
@@ -362,7 +409,9 @@ class TestPhotosynthesisModelNative:
             
             # Run model
             photosynthesis.run()
-            assert True  # Should not raise errors
+
+        # run() must write its default output for every primitive.
+        assert context.doesPrimitiveDataExist(uuid, "net_photosynthesis")
             
     def test_primitive_specific_operations(self):
         """Test operations with specific primitives."""
@@ -385,8 +434,9 @@ class TestPhotosynthesisModelNative:
             # Run for specific primitives
             photosynthesis.runForPrimitives([uuid1, uuid2])
             photosynthesis.runForPrimitives(uuid1)  # Single primitive
-            
-            assert True  # Should not raise errors
+
+        for uuid in (uuid1, uuid2):
+            assert context.doesPrimitiveDataExist(uuid, "net_photosynthesis")
             
     def test_coefficient_retrieval(self):
         """Test getting coefficients for primitives."""
@@ -419,8 +469,11 @@ class TestPhotosynthesisModelNative:
             
     def test_model_utilities(self):
         """Test model utility methods."""
+        from pyhelios.types import vec3, vec2
+
         context = Context()
-        
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+
         with PhotosynthesisModel(context) as photosynthesis:
             # Test message control
             photosynthesis.enableMessages()
@@ -437,10 +490,13 @@ class TestPhotosynthesisModelNative:
             assert isinstance(is_valid, bool)
             assert is_valid  # Should have valid pointer
             
-            # Test reset
+            # resetModel() must restore the library defaults, not merely avoid raising.
+            photosynthesis.setFarquharModelCoefficients(
+                FarquharModelCoefficients(Vcmax=123.0, Jmax=180.0))
+            assert photosynthesis.getFarquharModelCoefficients(uuid)[0] == pytest.approx(123.0)
+
             photosynthesis.resetModel()
-            
-            assert True  # Should not raise errors
+            assert photosynthesis.getFarquharModelCoefficients(uuid)[0] != pytest.approx(123.0)
 
 
 @pytest.mark.cross_platform
@@ -730,9 +786,10 @@ class TestC4PhotosynthesisNative:
             # Set a finite gm with a small dHa so it travels through the array layout.
             photo.setFarquharMesophyllConductance(0.4, dha=49.6, uuids=[uuid])
 
-            # 38-element layout (1.3.80+): slots 18..21 are (gm_at_25C, dHa, Topt_C, dHd).
+            # 42-element layout: slots 18..21 are (gm_at_25C, dHa, Topt_C, dHd); slots
+            # 38..41 carry the light response curvature theta.
             arr = photo.getFarquharModelCoefficients(uuid)
-            assert len(arr) == 38
+            assert len(arr) == 42
             assert arr[18] == pytest.approx(0.4, abs=1e-4)
             assert arr[19] == pytest.approx(49.6, abs=1e-4)
             # Topt was not set, so it must round-trip as the "no optimum" sentinel (-1).
@@ -831,6 +888,69 @@ class TestC4PhotosynthesisNative:
                 assert arr[base + 1] == pytest.approx(dha, abs=1e-2), f"{name} dHa in wrong slot"
                 assert arr[base + 2] == pytest.approx(topt, abs=1e-2), f"{name} Topt in wrong slot"
                 assert arr[base + 3] == pytest.approx(dhd, abs=1e-2), f"{name} dHd in wrong slot"
+
+
+
+@pytest.mark.native_only
+class TestLightResponseCurvatureIsApplied:
+    """setLightResponseCurvature() must actually write theta.
+
+    The method used to read each primitive's coefficients and write them straight back with the
+    curvature line commented out, so it silently did nothing: no error, and every subsequent run
+    used the default theta. A wrong theta changes the shape of the A-Q curve at intermediate
+    light without making the output look obviously wrong.
+    """
+
+    @staticmethod
+    def _make_primitive():
+        from pyhelios.types import vec3, vec2
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        return context, uuid
+
+    def test_curvature_round_trips(self):
+        """The value set must be the value read back."""
+        context, uuid = self._make_primitive()
+        with PhotosynthesisModel(context) as model:
+            model.setFarquharCoefficientsFromLibrary('Almond', [uuid])
+
+            default_theta = model.getLightResponseCurvature(uuid)
+            model.setLightResponseCurvature(0.42, [uuid])
+            assert model.getLightResponseCurvature(uuid) == pytest.approx(0.42, abs=1e-5), (
+                "setLightResponseCurvature() did not change the stored theta"
+            )
+            assert default_theta != pytest.approx(0.42, abs=1e-5), (
+                "test is vacuous: the library default already equals the value under test"
+            )
+
+    def test_curvature_temperature_response_round_trips(self):
+        """dha/topt/dhd select the peaked overload and must not be dropped."""
+        context, uuid = self._make_primitive()
+        with PhotosynthesisModel(context) as model:
+            model.setFarquharCoefficientsFromLibrary('Almond', [uuid])
+
+            model.setLightResponseCurvature(0.55, [uuid], dha=45000.0, topt=28.0, dhd=200000.0)
+
+            response = model.getLightResponseCurvatureTempResponse(uuid)
+            assert response.value_at_25C == pytest.approx(0.55, abs=1e-5)
+            assert response.dHa == pytest.approx(45000.0, rel=1e-4)
+            assert response.dHd == pytest.approx(200000.0, rel=1e-4)
+
+    def test_curvature_applies_to_only_the_listed_primitives(self):
+        """A UUID left out of the list keeps its original theta."""
+        from pyhelios.types import vec3, vec2
+        context = Context()
+        target = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        untouched = context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+
+        with PhotosynthesisModel(context) as model:
+            model.setFarquharCoefficientsFromLibrary('Almond', [target, untouched])
+            original = model.getLightResponseCurvature(untouched)
+
+            model.setLightResponseCurvature(0.31, [target])
+
+            assert model.getLightResponseCurvature(target) == pytest.approx(0.31, abs=1e-5)
+            assert model.getLightResponseCurvature(untouched) == pytest.approx(original, abs=1e-5)
 
 
 if __name__ == "__main__":

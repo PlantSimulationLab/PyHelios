@@ -1367,10 +1367,15 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
                 return;
             }
-            unsigned int count = cloud->getHitCount();
+            // Columnar bulk read with NaN as the absent marker, matching what the per-index loop
+            // this replaced produced. getHitDataColumn() resolves virtualized gap-filled misses in
+            // one pass; doesHitDataExist()/getHitData() cost O(Nphi) on each such point.
+            std::vector<double> column;
+            cloud->getHitDataColumn(label, column, std::nan(""));
+            unsigned int count = static_cast<unsigned int>(column.size());
             unsigned int limit = (n < count) ? n : count;
             for (unsigned int i = 0; i < limit; i++) {
-                out[i] = cloud->doesHitDataExist(i, label) ? float(cloud->getHitData(i, label)) : std::nanf("");
+                out[i] = float(column[i]);
             }
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARHitData_all): ") + e.what());
@@ -1449,11 +1454,20 @@ extern "C" {
             }
             unsigned int count = cloud->getHitCount();
             unsigned int limit = (n < count) ? n : count;
+            // Positions come from the columnar bulk read: resolving a gap-filled miss through the
+            // per-index accessor is O(Nphi), so a whole-cloud loop of them is quadratic once
+            // gapfillMisses() has virtualized any misses. Colors have no columnar equivalent, but
+            // a virtualized miss is not an element of the hit array, so getHitColor() returns its
+            // default without the row scan.
+            std::vector<helios::vec3> xyz;
+            cloud->getHitXYZColumn(xyz);
+            unsigned int xyz_limit = (limit < xyz.size()) ? limit : static_cast<unsigned int>(xyz.size());
+            for (unsigned int i = 0; i < xyz_limit; i++) {
+                xyz_out[3 * i + 0] = xyz[i].x;
+                xyz_out[3 * i + 1] = xyz[i].y;
+                xyz_out[3 * i + 2] = xyz[i].z;
+            }
             for (unsigned int i = 0; i < limit; i++) {
-                helios::vec3 position = cloud->getHitXYZ(i);
-                xyz_out[3 * i + 0] = position.x;
-                xyz_out[3 * i + 1] = position.y;
-                xyz_out[3 * i + 2] = position.z;
                 helios::RGBcolor color = cloud->getHitColor(i);
                 rgb_out[3 * i + 0] = color.r;
                 rgb_out[3 * i + 1] = color.g;
@@ -1477,10 +1491,15 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
                 return;
             }
-            unsigned int count = cloud->getHitCount();
+            // Columnar bulk read: getHitScanID() resolves a virtualized gap-filled miss by
+            // binary-searching to its scan and row and then scanning that row's occupancy bits,
+            // which is O(Nphi) per call and quadratic over a whole cloud.
+            std::vector<int> scanIDs;
+            cloud->getHitScanIDColumn(scanIDs);
+            unsigned int count = static_cast<unsigned int>(scanIDs.size());
             unsigned int limit = (n < count) ? n : count;
             for (unsigned int i = 0; i < limit; i++) {
-                out[i] = cloud->getHitScanID(i);
+                out[i] = scanIDs[i];
             }
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARHitScanID_all): ") + e.what());
@@ -1500,10 +1519,30 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
                 return;
             }
+            // Bulk-read the canonical is_miss flag, which getHitDataColumn() fills natively for
+            // virtualized gap-filled misses in one pass. Going through isHitMiss() per index costs
+            // O(Nphi) on each such point once gapfillMisses() has run.
+            //
+            // The flag is recorded per hit, not per cloud: hit_data_present carries a byte per
+            // point, so a hit added by a path that does not set is_miss leaves the column
+            // present-but-absent at that index even when other hits carry it. isHitMiss() falls
+            // back to classifying by range from the scan origin for exactly those hits, so a
+            // sentinel absent_value is used here to detect them individually and defer to
+            // isHitMiss() only for them. Deciding the strategy from whether the column exists
+            // cloud-wide would misreport every unflagged hit in a mixed-provenance cloud.
+            //
+            // NaN is safe as the sentinel: a real is_miss value is 0 or 1, and it is what
+            // getHitDataColumn() writes for a label no stored hit carries, so a cloud predating
+            // the flag entirely takes the isHitMiss() path on every point -- which is correct, and
+            // not the quadratic case, since only gapfillMisses() creates virtualized misses and it
+            // writes the flag.
             unsigned int count = cloud->getHitCount();
             unsigned int limit = (n < count) ? n : count;
+            std::vector<double> column;
+            cloud->getHitDataColumn("is_miss", column, std::nan(""));
             for (unsigned int i = 0; i < limit; i++) {
-                out[i] = cloud->isHitMiss(i) ? 1 : 0;
+                const double v = (i < column.size()) ? column[i] : std::nan("");
+                out[i] = std::isnan(v) ? (cloud->isHitMiss(i) ? 1 : 0) : ((v != 0.0) ? 1 : 0);
             }
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (isLiDARHitMiss_all): ") + e.what());
@@ -2528,11 +2567,275 @@ extern "C" {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
                 return;
             }
-            cloud->gapfillMisses();
+            // gapfillMissesCount() does the same work but does not materialize a vec3 per filled
+            // point, which for a fine scan grid is a very large allocation this wrapper discarded.
+            cloud->gapfillMissesCount();
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (gapfillLiDARMisses): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (gapfillLiDARMisses): Unknown error");
+        }
+    }
+
+    /* Gapfill returning a count (helios-core 1.3.84+) */
+    PYHELIOS_API unsigned long long gapfillLiDARMissesCount(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return static_cast<unsigned long long>(cloud->gapfillMissesCount());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (gapfillLiDARMissesCount): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (gapfillLiDARMissesCount): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned long long gapfillLiDARMissesCountScan(LiDARcloud* cloud, unsigned int scanID, bool gapfill_grid_only, bool add_flags) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return static_cast<unsigned long long>(cloud->gapfillMissesCount(scanID, gapfill_grid_only, add_flags));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (gapfillLiDARMissesCountScan): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (gapfillLiDARMissesCountScan): Unknown error");
+            return 0;
+        }
+    }
+
+    /* Virtualized gap-filled miss introspection (helios-core 1.3.84+) */
+    PYHELIOS_API unsigned long long getLiDARVirtualMissCount(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return static_cast<unsigned long long>(cloud->getVirtualMissCount());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARVirtualMissCount): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARVirtualMissCount): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API bool hasLiDARVirtualMisses(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return false;
+            }
+            return cloud->hasVirtualMisses();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (hasLiDARVirtualMisses): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (hasLiDARVirtualMisses): Unknown error");
+            return false;
+        }
+    }
+
+    PYHELIOS_API void materializeLiDARMisses(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            cloud->materializeMisses();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (materializeLiDARMisses): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (materializeLiDARMisses): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getLiDARScanGridDirection(LiDARcloud* cloud, unsigned int scanID, int row, int column, float* out) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
+                return;
+            }
+            helios::SphericalCoord d = cloud->getScanGridDirection(scanID, row, column);
+            // radius, elevation, azimuth -- the three independent components. zenith is
+            // derived (PI/2 - elevation) and is not transported separately.
+            out[0] = d.radius;
+            out[1] = d.elevation;
+            out[2] = d.azimuth;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanGridDirection): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanGridDirection): Unknown error");
+        }
+    }
+
+    /* Memory budgeting and capacity control (helios-core 1.3.84+) */
+    PYHELIOS_API unsigned long long estimateLiDARHitPointMemory(LiDARcloud* cloud, unsigned long long hit_count) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return static_cast<unsigned long long>(cloud->estimateHitPointMemory(static_cast<size_t>(hit_count)));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (estimateLiDARHitPointMemory): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (estimateLiDARHitPointMemory): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API void setLiDARMaxHitPoints(LiDARcloud* cloud, unsigned long long max_hits) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            cloud->setMaxHitPoints(static_cast<size_t>(max_hits));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setLiDARMaxHitPoints): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setLiDARMaxHitPoints): Unknown error");
+        }
+    }
+
+    PYHELIOS_API unsigned long long getLiDARMaxHitPoints(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return 0;
+            }
+            return static_cast<unsigned long long>(cloud->getMaxHitPoints());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARMaxHitPoints): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARMaxHitPoints): Unknown error");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned long long getLiDARDefaultMaxHitPoints() {
+        return static_cast<unsigned long long>(LiDARcloud::DEFAULT_MAX_HIT_POINTS);
+    }
+
+    PYHELIOS_API void reserveLiDARHitPoints(LiDARcloud* cloud, unsigned long long hit_count) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            cloud->reserveHitPoints(static_cast<size_t>(hit_count));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (reserveLiDARHitPoints): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (reserveLiDARHitPoints): Unknown error");
+        }
+    }
+
+    /* One-pass columnar hit readers (helios-core 1.3.84+) */
+    PYHELIOS_API void getLiDARHitXYZColumn(LiDARcloud* cloud, float* out, unsigned int n) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
+                return;
+            }
+            std::vector<helios::vec3> xyz;
+            cloud->getHitXYZColumn(xyz);
+            unsigned int limit = (n < xyz.size()) ? n : static_cast<unsigned int>(xyz.size());
+            for (unsigned int i = 0; i < limit; i++) {
+                out[3 * i + 0] = xyz[i].x;
+                out[3 * i + 1] = xyz[i].y;
+                out[3 * i + 2] = xyz[i].z;
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARHitXYZColumn): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARHitXYZColumn): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getLiDARHitScanIDColumn(LiDARcloud* cloud, int* out, unsigned int n) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output array is null");
+                return;
+            }
+            std::vector<int> scanIDs;
+            cloud->getHitScanIDColumn(scanIDs);
+            unsigned int limit = (n < scanIDs.size()) ? n : static_cast<unsigned int>(scanIDs.size());
+            for (unsigned int i = 0; i < limit; i++) {
+                out[i] = scanIDs[i];
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARHitScanIDColumn): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARHitScanIDColumn): Unknown error");
+        }
+    }
+
+    /* Leaf-area inversion path-length accumulation mode (helios-core 1.3.84+) */
+    PYHELIOS_API void setLiDARExactPathLengths(LiDARcloud* cloud, bool exact) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            cloud->setExactPathLengths(exact);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setLiDARExactPathLengths): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setLiDARExactPathLengths): Unknown error");
+        }
+    }
+
+    PYHELIOS_API bool getLiDARExactPathLengths(LiDARcloud* cloud) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return false;
+            }
+            return cloud->getExactPathLengths();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARExactPathLengths): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARExactPathLengths): Unknown error");
+            return false;
         }
     }
 

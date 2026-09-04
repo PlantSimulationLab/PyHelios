@@ -2729,9 +2729,34 @@ class TestPhenologicalControl:
                     max_leaf_lifespan=90
                 )
                 
-                # Method should complete without error
-                assert True
-                
+                # The thresholds must actually steer development: a plant told to flower
+                # almost immediately diverts resources from vegetative growth, so it carries
+                # measurably less geometry after the same elapsed time than a plant whose
+                # reproductive thresholds lie beyond the simulated window.
+                plantarch.advanceTime(40)
+                early_flowering_count = basic_context.getPrimitiveCount()
+
+            with PlantArchitecture(basic_context) as late:
+                late.loadPlantModelFromLibrary("tomato")
+                late_id = late.buildPlantInstanceFromLibrary(vec3(5, 0, 0), 10.0)
+                late.setPlantPhenologicalThresholds(
+                    plant_id=late_id,
+                    time_to_dormancy_break=0,
+                    time_to_flower_initiation=300,
+                    time_to_flower_opening=320,
+                    time_to_fruit_set=340,
+                    time_to_fruit_maturity=360,
+                    time_to_dormancy=400,
+                    max_leaf_lifespan=90
+                )
+                late.advanceTime(40)
+
+            late_flowering_count = basic_context.getPrimitiveCount() - early_flowering_count
+            assert early_flowering_count > 0 and late_flowering_count > 0
+            assert early_flowering_count != late_flowering_count, (
+                "phenological thresholds had no effect on development"
+            )
+
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
 
@@ -2756,7 +2781,9 @@ class TestPhenologicalControl:
                     is_evergreen=True
                 )
 
-                assert True
+                # An evergreen perennial must still develop when advanced past dormancy break.
+                plantarch.advanceTime(90)
+                assert basic_context.getPrimitiveCount() > 0
                 
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
@@ -2804,7 +2831,10 @@ class TestPhenologicalControl:
                     # max_leaf_lifespan uses default 1e6
                 )
 
-                assert True
+                # The default lifespan is effectively unbounded, so no leaf is dropped for
+                # age over a short run and the plant keeps accumulating geometry.
+                plantarch.advanceTime(20)
+                assert basic_context.getPrimitiveCount() > 0
 
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture not available: {e}")
@@ -3906,19 +3936,20 @@ class TestPlantArchitecturePruningValidation:
 class TestShootParameterChildShootRoundTrip:
     """Redefining a shoot type must not discard values the JSON cannot carry.
 
-    ShootParameters holds child_shoot_type_labels/probabilities, which are protected in
-    C++ with no public getter and so cannot be serialized. Because defineShootType()
+    ShootParameters holds child_shoot_type_labels/probabilities. Because defineShootType()
     replaces the stored entry in its entirety, rebuilding the structure from JSON alone
-    leaves them empty and erases the shoot type's branching topology --
+    used to leave them empty and erase the shoot type's branching topology --
     Shoot::sampleChildShootType() then falls back to reproducing the parent type. The
-    wrapper avoids this by seeding the rebuilt structure from the entry being replaced.
+    wrapper seeds the rebuilt structure from the entry being replaced, which is still what
+    carries the fields with no JSON representation, notably the custom function pointers.
 
-    The tests below cover the marshalling contract. They cannot observe the child shoot
-    vectors directly: there is no getter to expose them, and every downstream geometric
-    signal (primitive, shoot and rank counts) is dominated by the model's own parameter
-    sampling, which varies roughly +/-10% between identical builds. Regression coverage
-    that reads the values back belongs with the core getter -- see the handoff note in
-    docs/CHANGELOG.md for that release.
+    The tests below cover that marshalling contract. Since helios-core 1.3.84 the child
+    shoot vectors themselves are readable and round-trip through the JSON; the tests that
+    read them back live in TestChildShootTypeRoundTrip in
+    tests/test_plant_architecture_params.py. They are asserted there rather than through
+    geometry, because every downstream geometric signal (primitive, shoot and rank counts)
+    is dominated by the model's own parameter sampling, which varies roughly +/-10%
+    between identical builds.
     """
 
     @pytest.fixture

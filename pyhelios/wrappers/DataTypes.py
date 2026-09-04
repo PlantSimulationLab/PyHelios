@@ -22,6 +22,19 @@ class VertexNormalSource(IntEnum):
     AUTHORED = 1
     COMPUTED = 2
 
+class VertexWeldMode(IntEnum):
+    """Granularity at which coincident vertices are treated as one shared vertex (helios-core 1.3.84).
+
+    Object types with no distinguished axis -- a Polymesh, a Tile -- report the same
+    topology for either mode.
+    """
+    #: Treat every coincident vertex of the object as one shared vertex.
+    WELD_FULL = 0
+    #: Weld only within a cross-section, leaving vertices at the same cross-sectional
+    #: position on different segments distinct. For a Tube or Sphere this preserves
+    #: variation along the axis; identical to WELD_FULL for objects with no such axis.
+    WELD_CROSS_SECTION_ONLY = 1
+
 class int2(ctypes.Structure):
     _fields_ = [('x', ctypes.c_int32), ('y', ctypes.c_int32)]
 

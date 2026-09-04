@@ -1479,16 +1479,15 @@ class TestBatch3SpectralData:
                 radiation.addRadiationBand("SW")
                 source_id = radiation.addCollimatedRadiationSource()
 
-                # Test that method accepts string argument (even if label doesn't exist)
-                # If label doesn't exist, C++ will raise error - verify error handling works
-                try:
+                # A label naming global data that was never defined must raise a meaningful
+                # error rather than silently accepting the source or crashing.
+                with pytest.raises(Exception) as exc_info:
                     radiation.setSourceSpectrum(source_id, "D65_illuminant")
-                    # If it works, great - verify no crash
-                    assert True
-                except Exception as e:
-                    # If it fails, verify we get a meaningful error (not a crash)
-                    assert "error" in str(e).lower() or "not found" in str(e).lower() or "does not exist" in str(e).lower(), \
-                        f"Expected meaningful error about missing label, got: {e}"
+
+                message = str(exc_info.value).lower()
+                assert "global data" in message or "does not exist" in message, (
+                    f"Expected an error naming the missing global data, got: {exc_info.value}"
+                )
 
     def test_set_source_spectrum_multiple_sources(self):
         """Test setSourceSpectrum for multiple sources"""
@@ -3493,3 +3492,91 @@ class TestRayTracingBackendSelection:
             f"NVIDIA_DRIVER_CAPABILITIES including 'graphics' so libnvoptix.so.1 "
             f"is injected; on bare metal, check the NVIDIA driver is >= 560 for OptiX 8."
         )
+
+
+@pytest.mark.native_only
+class TestCameraFluxSmoothing:
+    """helios-core 1.3.84 camera flux smoothing.
+
+    Constructed through radiation_model_or_skip() rather than marked requires_gpu:
+    smoothing runs on the Vulkan software BVH too, so requires_gpu would skip these
+    on the very platforms they cover.
+    """
+
+    def test_disabled_by_default(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                assert radiation.isCameraFluxSmoothingEnabled() is False
+
+    def test_default_crease_angle_is_30_degrees(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                assert radiation.getCameraFluxSmoothingCreaseAngle() == pytest.approx(30.0)
+
+    def test_enable_then_query(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.enableCameraFluxSmoothing(45.0)
+                assert radiation.isCameraFluxSmoothingEnabled() is True
+                assert radiation.getCameraFluxSmoothingCreaseAngle() == pytest.approx(45.0)
+
+    def test_enable_defaults_to_30_degrees(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.enableCameraFluxSmoothing()
+                assert radiation.getCameraFluxSmoothingCreaseAngle() == pytest.approx(30.0)
+
+    def test_disable_restores_default(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.enableCameraFluxSmoothing(60.0)
+                radiation.disableCameraFluxSmoothing()
+                assert radiation.isCameraFluxSmoothingEnabled() is False
+
+    def test_crease_angle_survives_disable(self):
+        """Disabling stops smoothing but does not forget the configured angle."""
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.enableCameraFluxSmoothing(75.0)
+                radiation.disableCameraFluxSmoothing()
+                assert radiation.getCameraFluxSmoothingCreaseAngle() == pytest.approx(75.0)
+
+    @pytest.mark.parametrize("angle", [-1.0, 181.0, 360.0])
+    def test_out_of_range_crease_angle_raises(self, angle):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                with pytest.raises(RadiationModelError):
+                    radiation.enableCameraFluxSmoothing(angle)
+
+    @pytest.mark.parametrize("angle", [0.0, 90.0, 180.0])
+    def test_boundary_crease_angles_accepted(self, angle):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.enableCameraFluxSmoothing(angle)
+                assert radiation.getCameraFluxSmoothingCreaseAngle() == pytest.approx(angle)
+
+    def test_non_numeric_crease_angle_raises_value_error(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                with pytest.raises(ValueError, match="must be a number"):
+                    radiation.enableCameraFluxSmoothing("45")
+
+    def test_toggling_after_geometry_build_is_safe(self):
+        """Enabling after updateGeometry() re-uploads and rebuilds the acceleration structure."""
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.updateGeometry()
+                radiation.enableCameraFluxSmoothing(30.0)
+                assert radiation.isCameraFluxSmoothingEnabled() is True
+                radiation.disableCameraFluxSmoothing()
+                assert radiation.isCameraFluxSmoothingEnabled() is False

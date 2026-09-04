@@ -2017,6 +2017,111 @@ class RadiationModel:
         self._check_context_alive()
         return radiation_wrapper.isSIFCamera(self.radiation_model, camera_label)
 
+    @require_plugin('radiation', 'enable camera flux smoothing')
+    def enableCameraFluxSmoothing(self, crease_angle_degrees: float = 30.0) -> None:
+        """
+        Reconstruct camera images by interpolating outgoing flux across each facet.
+
+        Averages each primitive's outgoing flux onto the mesh vertices it shares with its
+        neighbours and interpolates it back across the facet, so a coarsely tessellated
+        curved surface reads as a curve rather than as a set of flat panels. This applies
+        to Tube, Sphere, Cone, Polymesh, Tile and AdaptiveTile objects. A Box, a Disk, and
+        any primitive belonging to no object are left alone, since their faces are genuinely
+        flat. A polymesh must carry the face table that :meth:`Context.loadOBJ` and
+        :meth:`Context.loadPLY` retain; one assembled from loose primitives by
+        :meth:`Context.addPolymeshObject` has no topology and is left alone.
+
+        Smoothing is off by default and should be enabled deliberately: it changes what the
+        camera reports. A pixel no longer carries the outgoing flux of the primitive behind
+        it, but a blend of that primitive's value with its neighbours', so pixel values no
+        longer correspond exactly to the ``radiation_flux_*`` primitive data. The radiation
+        solve, those primitive data values, and the pixel-label and depth images are all
+        unchanged.
+
+        Args:
+            crease_angle_degrees: Angle between adjacent facet normals above which a shared
+                edge is treated as a hard crease, so flux is not averaged across it. Applies
+                to polymesh objects only; the curved object types are smooth by construction
+                and are never creased. Must be between 0 and 180 degrees. Defaults to 30.
+
+        Raises:
+            RadiationModelError: If the crease angle is out of range or the call fails
+            RuntimeError: If the native library predates helios-core v1.3.84
+
+        Note:
+            If geometry has already been built, this re-uploads it and rebuilds the
+            acceleration structure, which is not cheap. Prefer calling it before
+            :meth:`updateGeometry`.
+
+        Example:
+            >>> with RadiationModel(context) as radiation:
+            ...     radiation.enableCameraFluxSmoothing(crease_angle_degrees=45.0)
+            ...     radiation.updateGeometry()
+        """
+        from .wrappers import URadiationModelWrapper as radiation_wrapper
+        if not isinstance(crease_angle_degrees, (int, float)) or isinstance(crease_angle_degrees, bool):
+            raise ValueError(
+                f"crease_angle_degrees must be a number, got {type(crease_angle_degrees).__name__}"
+            )
+        self._check_context_alive()
+        try:
+            radiation_wrapper.enableCameraFluxSmoothing(self.radiation_model, float(crease_angle_degrees))
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to enable camera flux smoothing: {e}")
+
+    @require_plugin('radiation', 'disable camera flux smoothing')
+    def disableCameraFluxSmoothing(self) -> None:
+        """
+        Reconstruct camera images by holding the outgoing flux constant across each facet.
+
+        This is the default. Each pixel reports the outgoing flux of the primitive behind it.
+
+        Raises:
+            RadiationModelError: If the call fails
+            RuntimeError: If the native library predates helios-core v1.3.84
+
+        Note:
+            If geometry has already been built, this re-uploads it and rebuilds the
+            acceleration structure.
+        """
+        from .wrappers import URadiationModelWrapper as radiation_wrapper
+        self._check_context_alive()
+        try:
+            radiation_wrapper.disableCameraFluxSmoothing(self.radiation_model)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to disable camera flux smoothing: {e}")
+
+    @require_plugin('radiation', 'query camera flux smoothing state')
+    def isCameraFluxSmoothingEnabled(self) -> bool:
+        """
+        Return True if camera images are reconstructed by interpolating flux across each facet.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        from .wrappers import URadiationModelWrapper as radiation_wrapper
+        self._check_context_alive()
+        return radiation_wrapper.isCameraFluxSmoothingEnabled(self.radiation_model)
+
+    @require_plugin('radiation', 'query camera flux smoothing crease angle')
+    def getCameraFluxSmoothingCreaseAngle(self) -> float:
+        """
+        Return the crease angle in degrees used by camera flux smoothing.
+
+        This is the value last passed to :meth:`enableCameraFluxSmoothing`, or 30.0 if it
+        has never been called.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.84
+        """
+        from .wrappers import URadiationModelWrapper as radiation_wrapper
+        self._check_context_alive()
+        return radiation_wrapper.getCameraFluxSmoothingCreaseAngle(self.radiation_model)
+
     @require_plugin('radiation', 'manage camera position')
     def setCameraPosition(self, camera_label: str, position):
         """

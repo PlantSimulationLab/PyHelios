@@ -517,5 +517,104 @@ class TestPluginCLI:
         )
 
 
+@pytest.mark.cross_platform
+class TestLibraryLoadErrorIsNotSwallowed:
+    """A library that exists but will not load must not be reported as "no plugins available".
+
+    The loader distinguishes "no library file" from "library present but unloadable" and builds
+    a message naming the missing system library. The registry used to catch every exception and
+    fall back to an empty plugin set, which turned a missing libGL into "plugin not available"
+    and pointed users at `build_helios --plugins <name>` -- a rebuild that cannot fix a missing
+    system dependency, and that produces a single-plugin library breaking everything else.
+    """
+
+    def test_library_load_error_propagates(self):
+        from pyhelios.plugins.registry import PluginRegistry
+        from pyhelios.plugins.loader import LibraryLoadError
+
+        message = (
+            "Failed to load native Helios library for platform 'Linux'.\n"
+            "The library file was found but could not be loaded:\n"
+            "  /x/libhelios.so\n    libGL.so.1: cannot open shared object file\n"
+            "This indicates missing system libraries: libGL.so.1\n"
+        )
+
+        registry = PluginRegistry()
+        with patch('pyhelios.plugins.registry.detect_available_plugins',
+                   side_effect=LibraryLoadError(message)):
+            with pytest.raises(LibraryLoadError, match="libGL"):
+                registry.initialize()
+
+    def test_unrelated_errors_still_degrade_gracefully(self):
+        """Only load failures propagate; other faults keep the old empty-set behaviour."""
+        from pyhelios.plugins.registry import PluginRegistry
+
+        registry = PluginRegistry()
+        with patch('pyhelios.plugins.registry.detect_available_plugins',
+                   side_effect=ValueError("something unrelated")):
+            registry.initialize()
+
+        assert registry.get_available_plugins() == []
+
+
+@pytest.mark.cross_platform
+class TestWheelRuntimeAssets:
+    """Assets a plugin loads at runtime must be staged into the wheel.
+
+    Building a plugin into the wheel does not ship its data files: prepare_wheel.py copies only
+    directories named in its per-plugin allowlist. A missing entry builds and tests clean, then
+    raises at the first call that resolves the asset.
+    """
+
+    @staticmethod
+    def _prepare_wheel_source():
+        """Source of copy_assets_for_packaging, or skip if the repo build scripts are absent.
+
+        These assertions introspect build_scripts/prepare_wheel.py, which ships in the repo but
+        not in the wheel. The wheel test jobs run from an isolated directory holding only the
+        copied test suite, so there is nothing to introspect there.
+        """
+        import inspect
+
+        repo_root = Path(__file__).resolve().parents[1]
+        if not (repo_root / 'build_scripts' / 'prepare_wheel.py').exists():
+            pytest.skip("wheel asset staging tests need the repo "
+                        "(build_scripts/prepare_wheel.py not found)")
+
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+        from build_scripts import prepare_wheel
+
+        return inspect.getsource(prepare_wheel.copy_assets_for_packaging)
+
+    def test_radiation_camera_library_is_staged(self):
+        """setCameraSpectralResponseFromLibrary() resolves camera_library/camera_library.xml."""
+        source = self._prepare_wheel_source()
+        assert "'camera_library'" in source or '"camera_library"' in source, (
+            "radiation's camera_library directory is not staged into the wheel, so "
+            "setCameraSpectralResponseFromLibrary() raises at runtime in an installed wheel"
+        )
+
+    def test_staged_asset_dirs_exist_in_helios_core(self):
+        """Every directory named in the allowlist must exist, or it silently stages nothing."""
+        import re
+
+        source = self._prepare_wheel_source()
+
+        repo_root = Path(__file__).resolve().parents[1]
+        plugins_src = repo_root / 'helios-core' / 'plugins'
+        if not plugins_src.exists():
+            pytest.skip("helios-core plugins directory not available")
+        match = re.search(r'plugin_asset_dirs = \{(.*?)\n    \}', source, re.DOTALL)
+        assert match, "could not locate plugin_asset_dirs in prepare_wheel.py"
+
+        missing = []
+        for plugin, subdir in re.findall(r"'([\w]+)':\s*\[([^\]]*)\]", match.group(1)):
+            for entry in re.findall(r"'([^']+)'", subdir):
+                if not (plugins_src / plugin / entry).exists():
+                    missing.append(f"{plugin}/{entry}")
+
+        assert not missing, f"allowlisted asset directories do not exist: {missing}"
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

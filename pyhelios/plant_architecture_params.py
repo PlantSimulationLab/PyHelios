@@ -28,12 +28,13 @@ Notes
   naming a built-in Helios prototype (e.g. ``"AlmondFlowerPrototype"``). An empty
   string / ``None`` means "unset". The C++ ``shared_ptr<Phytomer>`` creation and
   callback functions are not exposable from Python and are not represented here.
-* Child shoot types serialize on input only (the native struct has no public
-  getter); see :attr:`ShootParameters.child_shoot_types`.
+* Child shoot types round-trip in both directions as of helios-core 1.3.84; see
+  :attr:`ShootParameters.child_shoot_types`.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -180,7 +181,17 @@ class LeafPrototype:
     petiole_roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     wave_period: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     wave_amplitude: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    longitudinal_curvature_exponent: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(4.0))
+    flexibility: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    flexibility_taper: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(1.0))
+    flexibility_aging: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    flexibility_aging_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(4.0))
+    #: Deprecated since helios-core 1.3.84; superseded by :attr:`flexibility`. Setting a non-zero
+    #: value emits a DeprecationWarning. The value is still honoured natively -- it is converted to
+    #: an equivalent ``flexibility`` -- but only when ``flexibility`` itself is left at zero.
     leaf_buckle_length: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Deprecated since helios-core 1.3.84; superseded by :attr:`flexibility`. See
+    #: :attr:`leaf_buckle_length`.
     leaf_buckle_angle: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     leaf_offset: Vec3 = (0.0, 0.0, 0.0)
     subdivisions: int = 1
@@ -190,7 +201,30 @@ class LeafPrototype:
     leaf_texture_file: Dict[int, str] = field(default_factory=dict)
     prototype_function: Optional[str] = None
 
+    def _warn_if_deprecated_buckle_set(self) -> None:
+        """Warn when a deprecated buckle parameter carries a non-zero value.
+
+        helios-core 1.3.84 replaced the fixed-station kink these produced with the
+        continuous self-weight droop of :attr:`flexibility`. The buckle values are still
+        converted to an equivalent flexibility natively, but only while :attr:`flexibility`
+        is zero, so a plant setting both silently ignores the buckle pair.
+        """
+        for name in ("leaf_buckle_length", "leaf_buckle_angle"):
+            param = getattr(self, name)
+            if any(v != 0.0 for v in param.parameters):
+                warnings.warn(
+                    f"LeafPrototype.{name} is deprecated since helios-core 1.3.84 and is "
+                    "superseded by LeafPrototype.flexibility, which bends the leaf continuously "
+                    "under its own weight as it grows rather than kinking it at a fixed station. "
+                    "Set flexibility (and optionally flexibility_taper / flexibility_aging) instead; "
+                    "the buckle value is converted to an equivalent flexibility only while "
+                    "flexibility is left at zero.",
+                    DeprecationWarning,
+                    stacklevel=3,
+                )
+
     def to_dict(self) -> Dict[str, Any]:
+        self._warn_if_deprecated_buckle_set()
         return {
             "leaf_aspect_ratio": self.leaf_aspect_ratio.to_dict(),
             "midrib_fold_fraction": self.midrib_fold_fraction.to_dict(),
@@ -199,6 +233,11 @@ class LeafPrototype:
             "petiole_roll": self.petiole_roll.to_dict(),
             "wave_period": self.wave_period.to_dict(),
             "wave_amplitude": self.wave_amplitude.to_dict(),
+            "longitudinal_curvature_exponent": self.longitudinal_curvature_exponent.to_dict(),
+            "flexibility": self.flexibility.to_dict(),
+            "flexibility_taper": self.flexibility_taper.to_dict(),
+            "flexibility_aging": self.flexibility_aging.to_dict(),
+            "flexibility_aging_max": self.flexibility_aging_max.to_dict(),
             "leaf_buckle_length": self.leaf_buckle_length.to_dict(),
             "leaf_buckle_angle": self.leaf_buckle_angle.to_dict(),
             "leaf_offset": _vec3_to_dict(self.leaf_offset),
@@ -222,6 +261,11 @@ class LeafPrototype:
             petiole_roll=_rpf(d, "petiole_roll", base.petiole_roll),
             wave_period=_rpf(d, "wave_period", base.wave_period),
             wave_amplitude=_rpf(d, "wave_amplitude", base.wave_amplitude),
+            longitudinal_curvature_exponent=_rpf(d, "longitudinal_curvature_exponent", base.longitudinal_curvature_exponent),
+            flexibility=_rpf(d, "flexibility", base.flexibility),
+            flexibility_taper=_rpf(d, "flexibility_taper", base.flexibility_taper),
+            flexibility_aging=_rpf(d, "flexibility_aging", base.flexibility_aging),
+            flexibility_aging_max=_rpf(d, "flexibility_aging_max", base.flexibility_aging_max),
             leaf_buckle_length=_rpf(d, "leaf_buckle_length", base.leaf_buckle_length),
             leaf_buckle_angle=_rpf(d, "leaf_buckle_angle", base.leaf_buckle_angle),
             leaf_offset=_vec3_from_dict(d["leaf_offset"], base.leaf_offset) if "leaf_offset" in d else base.leaf_offset,
@@ -540,8 +584,11 @@ class ShootParameters:
     determinate_shoot_growth: bool = True
 
     # Optional child shoot type definition: {"labels": [...], "probabilities": [...]}.
-    # Note: the native struct exposes no getter, so this round-trips on input only --
-    # getCurrentShootParameters() will not populate it.
+    # Round-trips in both directions since helios-core 1.3.84 added
+    # ShootParameters::getChildShootTypeLabels()/getChildShootTypeProbabilities(), so
+    # getCurrentShootParameters() populates it. The one value that cannot be applied is an
+    # explicitly empty list: defineChildShootTypes() rejects empty input natively, so an
+    # empty list leaves whatever the shoot type being replaced already carried.
     child_shoot_types: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:

@@ -1,5 +1,77 @@
 # Changelog
 
+# [v0.1.31] 2026-08-04
+
+- Updated helios-core to v1.3.84
+
+## Context
+- Added the shared vertex topology accessors `doesObjectHaveSharedVertexTopology()`, `getObjectSharedVertexCount()`, `getObjectPrimitiveSharedVertexIndices()`, `getObjectPrimitiveSharedVertexIndicesMulti()`, and `getPrimitiveSharedVertexIndices()`, reporting which member primitives of a compound object meet at each mesh vertex
+- Added the `VertexWeldMode` enum (`WELD_FULL`, `WELD_CROSS_SECTION_ONLY`), selecting whether coincident vertices on different segments of a tube or sphere are welded together
+- Added `setPolymeshObjectVertices()`, moving every shared vertex of a polymesh in one call so a mesh can be deformed without tearing
+- `getPolymeshObjectVolume()` now separates a mesh into its connected pieces and sums the volume of those that are closed, so a solid shape modelled with an open stalk reports the shape's volume instead of raising; a mesh carrying no face table now has its closure checked by matching facets on coincident corners
+- Fixed `loadOBJ()`, `loadXML()`, and the `loadPLY()` variants calling into the native library when their own prototypes had failed to register, which crashed or produced wrong geometry instead of raising `NotImplementedError`
+- `addTrianglesFromArrays()` now averages per-vertex colors for the whole mesh in one array operation instead of once per triangle, roughly halving the time to import a colored mesh
+
+## Solar Position
+- Added value-correctness tests checking sun angles and ambient longwave against the reference values in helios-core's own `selfTest.cpp`, alongside physical invariants, atmospheric input validation, and the unit contract
+- Fixed the documentation of `getSunElevation()`, `getSunZenith()`, and `getSunAzimuth()`, which claimed the returned angle was in degrees when all three return radians as helios-core does; no behavior changed, but code trusting the old docstrings was reading an angle roughly 57x too small
+
+## Radiation
+- Added `enableCameraFluxSmoothing()`, `disableCameraFluxSmoothing()`, `isCameraFluxSmoothingEnabled()`, and `getCameraFluxSmoothingCreaseAngle()`, reconstructing camera images by interpolating outgoing flux across each facet so a coarsely tessellated curved surface renders as a curve
+
+## LiDAR
+- Added `gapfillMissesCount()`, gap-filling and returning only the number of points added rather than every filled position
+- Added `getVirtualMissCount()`, `hasVirtualMisses()`, and `materializeMisses()`, reporting and collapsing the gap-filled misses that are stored implicitly rather than as hit points
+- Added the one-pass columnar readers `getHitXYZColumn()` and `getHitScanIDColumn()`
+- Added `reserveHitPoints()`, `estimateHitPointMemory()`, `setMaxHitPoints()`, `getMaxHitPoints()`, and `getDefaultMaxHitPoints()` for budgeting the memory of a large cloud
+- Added `setExactPathLengths()` and `getExactPathLengths()`, keeping every leaf-area inversion path-length sample instead of binning them
+- Added `getScanGridDirection()`, returning a scan-grid cell's beam direction from the angular model fitted during gap-filling
+- Fixed `getHitsXYZRGB()`, `getHitScanIDArray()`, `getHitMissArray()`, and `getHitDataAll()` becoming quadratic after `gapfillMisses()`, which made extracting a gap-filled cloud far slower than the per-index getters they were introduced to replace
+- Fixed `gapfillMisses()` never returning for a scan acquired top-down (zenith angle decreasing over the sweep)
+- Fixed `coordinateShift()` and `coordinateRotation()` leaving gap-filled miss points behind, so a transformed cloud's misses stayed at their original positions
+- `gapfillMisses()` is substantially faster and uses far less memory on a scan whose declared grid is much finer than its returns populate, and now reconstructs miss directions from a scan-wide angular model rather than a per-row one
+- `gapfillMisses()` now raises an error when a scan's returns do not form a consistent angular raster about the stated scan origin, instead of silently reconstructing miss directions from a wrong one
+- The `gapfillMisses_code` hit data value 4 ("extrapolated row") is retired; every gap-filled cell is now reported as 1
+- Misses synthesized by `gapfillMisses()` now carry a reconstructed `timestamp`
+- `calculateLeafArea()` now raises an error when more returns share a timestamp than the pulse's target count allows, instead of treating them as one beam
+- `calculateHitGridCell()` now rejects a hit outside the bounding box of every grid cell before testing cells individually, which speeds up a gap-filled cloud considerably
+- Loading an ASCII scan file now reserves capacity up front, removing the reallocation transient on a large cloud
+
+## Photosynthesis
+- Fixed `setLightResponseCurvature()` silently discarding its argument, so the light response curvature theta kept its default and A-Q curves were wrong at intermediate light
+- Added `getLightResponseCurvature()` and `getLightResponseCurvatureTempResponse()`, reading back the theta a primitive is actually using
+
+## Plant Architecture
+- Added the `LeafPrototype` parameters `flexibility`, `flexibility_taper`, `flexibility_aging`, `flexibility_aging_max`, and `longitudinal_curvature_exponent`, which droop a leaf blade under its own weight as it grows
+- Deprecated `LeafPrototype.leaf_buckle_length` and `leaf_buckle_angle`, superseded by `flexibility`; setting either now raises a `DeprecationWarning`
+- Fixed `getCurrentShootParameters()` omitting a shoot type's child shoot types, so a read-modify-write through `defineShootType()` silently erased its branching topology
+- Fixed `readPlantStructureXML()` not restoring the mature leaf size, so repeatedly saving and reloading a plant inflated its leaves without bound
+- Fixed `readPlantStructureXML()` not restoring the scalar peduncle parameters (length, radius, pitch, curvature, roll), so a reloaded inflorescence was redrawn from fresh random values
+- Fixed fruit growing by the square of their growth fraction on every save/load cycle
+- Fixed `readPlantStructureXML()` discarding the internode curvature and yaw perturbations it parsed, so a saved plant's branch tortuosity was lost on reload
+- Fixed `readPlantStructureXML()` re-drawing the number of leaflets per petiole instead of using the count in the file, which mispositioned compound leaves
+- Fixed the leaves of a plant restored by `readPlantStructureXML()` being pointed in the wrong directions
+- Fixed `readPlantStructureXML()` integrating petiole curvature at the petiole's current rather than mature size, rebuilding every unexpanded petiole straighter than it grew
+- Fixed `writePlantStructureXML()` throwing when writing a petiole carrying exactly two leaflets
+- Fixed `writePlantStructureXML()` emitting pruned shoots as empty elements that the reader rebuilt as live shoots
+- Fixed `enableGroundClipping()` leaving a plant's geometry and structure out of step, so leaf area and carbohydrate transfer still counted organs whose geometry had been deleted
+- `readPlantStructureXML()` now clears floral buds a phytomer inherited from its shoot type when the file records none, and rejects a fruit scale factor outside zero to one instead of silently collapsing the fruit
+- `writePlantStructureXML()` now records which interchangeable leaf prototype each blade came from and the age of each phytomer, so a reloaded plant keeps its blade shapes and its self-weight droop
+- `writePlantStructureXML()` now records the peduncle roll actually used to orient each inflorescence rather than a fresh random draw
+- Leaves generated by `GenericLeafPrototype()` now carry an indexed face set describing their connectivity, so mesh topology queries work on them
+- Fixed generated leaves losing their petiolule, and the petiolule's `object_label` primitive data being overwritten with "leaf"
+- Fixed leaf blades being aimed at the mirror image of their petiole's azimuth
+- Fixed leaf expansion being measured against the shoot type's `prototype_scale` rather than each leaf's own maximum size
+- Fixed setting a phytomer's mature leaf size also moving its growth fraction, so a leaf resized mid-simulation jumped in rendered size
+- Internode girth now counts the area of a terminal inflorescence alongside the leaves it supports, and a terminal peduncle now continues the culm's taper instead of meeting it in a visible step
+- Midrib folding of a generated leaf now tapers along the blade instead of being applied uniformly
+- The `CowpeaPod` asset is now watertight, so it encloses a volume for the carbohydrate model
+- The maize, sorghum, wheat and rice models have been recalibrated: leaf shapes are rebuilt around the new compliance model, maize leaves above the ear are stiffer, sorghum leaf size peaks below the flag leaf and gains its elongated flag-leaf internode, and wheat now builds to a realistic height — geometry for these species differs from previous versions
+
+## Build System
+- Fixed the radiation plugin's `camera_library.xml` not being packaged into the wheel, so `setCameraSpectralResponseFromLibrary()` failed at runtime in an installed wheel
+- Fixed a native library that exists but cannot load (a missing system library, for example) being reported as "no plugins available" with a rebuild suggestion that could not fix it; the loader's diagnosis is now surfaced instead
+
 # [v0.1.30] 2026-08-28
 
 - Updated helios-core to v1.3.83
@@ -36,6 +108,7 @@
 - `enableExactColorMode()` and `disableExactColorMode()` now also toggle the linear-light pipeline, since tone mapping would alter values read back out of the framebuffer
 - Phong material parameters can now be overridden per material by attaching `phong_ambient`, `phong_diffuse`, `phong_specular`, or `phong_shininess` material data with `setMaterialDataFloat()`
 - Rendering a scene no longer rebuilds and re-uploads every primitive on every frame, so frame cost is now proportional to what actually changed rather than to scene size
+- Fixed 14 visualizer functions, including `printWindow()`, `plotUpdate()`, and `buildContextGeometry()`, crashing the interpreter instead of raising when passed a destroyed visualizer or when the underlying C++ call failed
 - Fixed every visualizer call silently discarding native error reports, so failures returned zero-valued or empty results instead of raising
 - Fixed `getTextboxSize()`, `setBackgroundTransparent()`, `setBackgroundSkyTexture()`, `hideNavigationGizmo()`, and `showNavigationGizmo()` failing to find their packaged assets unless the process happened to be running from the asset directory
 - Fixed `setBackgroundSkyTexture()` with no argument failing instead of using the default sky texture

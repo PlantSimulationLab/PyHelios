@@ -150,6 +150,14 @@ with Context() as context, PlantArchitecture(context) as plant:
     plant.defineShootType("trunk", sp)
 ```
 
+A shoot type's child shoot types — the labels it can branch into and their
+probabilities — round-trip through `getCurrentShootParameters()` /
+`defineShootType()` as of helios-core 1.3.84, under the `child_shoot_types` key. Before
+that they could be written but not read, so a read-modify-write cycle silently erased a
+shoot type's branching topology. One case still cannot be expressed: an explicitly empty
+list, which the native `defineChildShootTypes()` rejects, leaves whatever the shoot type
+being replaced already carried.
+
 `getCurrentShootParameters()` returns a plain nested `dict` by default; pass
 `return_typed=True` to get a `ShootParameters` object. The returned structure
 surfaces the full `phytomer_parameters` sub-structure (internode, petiole, leaf,
@@ -167,6 +175,38 @@ plantarch.listShootTypeLabels(plant_id=plant_id)     # as built into a plant
 ```
 
 `getAvailablePlantModels()` lists the species names those take.
+
+### Leaf droop and blade shape
+
+A leaf blade is treated as a cantilever loaded by its own weight: it points along the
+shoot's growing direction while it is small and stiff, and bends over as it grows and
+its self-weight moment increases. Five `LeafPrototype` parameters control this.
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `flexibility` | 0.0 | Dimensionless bending compliance. 0 is a rigid blade; larger values droop more for the same size. |
+| `flexibility_taper` | 1.0 | How much more compliant the blade is at its tip than at its base. 1 is uniform stiffness; roughly 10-150 gives the straight-base/curved-tip shape of a grass blade. |
+| `flexibility_aging` | 0.0 | Timescale in days over which a mature blade keeps softening after it has stopped growing. 0 disables ageing, so droop follows from leaf size alone. |
+| `flexibility_aging_max` | 4.0 | Ceiling on the ageing multiplier, so an old leaf cannot hang straight down. |
+| `longitudinal_curvature_exponent` | 4.0 | How the longitudinal curvature is distributed along the blade. Around 2 gives a continuously arcing blade; the tip deflection itself is unchanged by this. |
+
+```python
+from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
+
+sp = plant.getCurrentShootParameters("trunk", return_typed=True)
+leaf = sp.phytomer_parameters.leaf.prototype
+leaf.flexibility = RandomParameterFloat.uniform(1.2, 1.8)
+leaf.flexibility_taper = RandomParameterFloat.constant(40.0)
+plant.defineShootType("trunk_droopy", sp)
+```
+
+\note `leaf_buckle_length` and `leaf_buckle_angle` are **deprecated** as of
+helios-core 1.3.84. They bent a leaf by a fixed angle at a fixed station along its
+length to approximate the same self-weight droop that is now modelled directly.
+Existing code keeps working — a buckle value is converted to an equivalent
+`flexibility` — but only while `flexibility` is left at zero, so setting both means
+the buckle pair is ignored. Setting either to a non-zero value raises a
+`DeprecationWarning`. Set `flexibility` instead.
 
 **A custom shoot type only affects plants you assemble yourself.**
 `buildPlantInstanceFromLibrary()` calls a hard-coded builder for the species that

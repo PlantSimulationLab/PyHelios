@@ -70,6 +70,13 @@ class PluginRegistry:
             
             logger.info(f"Plugin registry initialized with {len(self._available_plugins)} plugins: {sorted(self._available_plugins)}")
             
+        except LibraryLoadError:
+            # The library exists but could not be loaded (a missing system dependency, an
+            # incompatible build). Reporting this as "no plugins available" sends users to
+            # rebuild with --plugins, which cannot fix it and produces a single-plugin library.
+            # The loader's message names the real cause, so let it through unchanged.
+            raise
+
         except Exception as e:
             logger.error(f"Failed to initialize plugin registry: {e}")
             # Initialize with empty sets so the system can still function

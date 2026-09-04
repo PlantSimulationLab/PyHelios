@@ -597,27 +597,43 @@ class PhotosynthesisModel:
             if needed. To modify all primitives, use setFarquharModelCoefficients()
             with complete coefficient objects.
         
-        Note:
-            The theta parameter is stored in the coefficient array but may not be
-            directly exposed in the current FarquharModelCoefficients structure.
-            This method sets the basic curvature value.
+        """
+        self._check_context_alive()
+        photosynthesis_wrapper.setFarquharLightResponseCurvature(
+            self._native_ptr, curvature,
+            -1.0 if dha is None else dha,
+            -1.0 if topt is None else topt,
+            -1.0 if dhd is None else dhd,
+            uuids,
+        )
+
+    def getLightResponseCurvature(self, uuid: int) -> float:
+        """
+        Get the light response curvature (theta) at 25 degrees C for a primitive.
+
+        Args:
+            uuid: Primitive UUID to query
+
+        Returns:
+            Light response curvature at 25 degrees C (dimensionless)
+        """
+        return self.getLightResponseCurvatureTempResponse(uuid).value_at_25C
+
+    def getLightResponseCurvatureTempResponse(self, uuid: int):
+        """
+        Get the full light response curvature (theta) temperature response for a primitive.
+
+        Args:
+            uuid: Primitive UUID to query
+
+        Returns:
+            PhotosyntheticTemperatureResponseParameters for theta
         """
         from .types import FarquharModelCoefficients
-        
-        # For each UUID, get existing coefficients, modify theta/curvature, then set back
-        for uuid in uuids:
-            # Get existing coefficients as raw array
-            existing_array = self.getFarquharModelCoefficients(uuid)
-            
-            # Create new coefficient object from existing values
-            existing_coeffs = FarquharModelCoefficients.from_array(existing_array)
-            
-            # Note: theta/curvature parameter mapping would need to be checked
-            # For now, this is a placeholder - the actual field mapping needs verification
-            # existing_coeffs.theta = curvature  # This field may not exist
-            
-            # Set the modified coefficients back for this UUID
-            self.setFarquharModelCoefficients(existing_coeffs, [uuid])
+
+        coefficients = self.getFarquharModelCoefficients(uuid)
+        return FarquharModelCoefficients.from_array(
+            coefficients).getLightResponseCurvatureTempResponse()
 
     # Results and Output
     def getEmpiricalModelCoefficients(self, uuid: int) -> List[float]:

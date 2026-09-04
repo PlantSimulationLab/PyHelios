@@ -228,8 +228,15 @@ nlohmann::json leafPrototypeToJSON(const LeafPrototype& p) {
     j["petiole_roll"] = randomParameterFloatToJSON(p.petiole_roll);
     j["wave_period"] = randomParameterFloatToJSON(p.wave_period);
     j["wave_amplitude"] = randomParameterFloatToJSON(p.wave_amplitude);
+    j["longitudinal_curvature_exponent"] = randomParameterFloatToJSON(p.longitudinal_curvature_exponent);
+    j["flexibility"] = randomParameterFloatToJSON(p.flexibility);
+    j["flexibility_taper"] = randomParameterFloatToJSON(p.flexibility_taper);
+    j["flexibility_aging"] = randomParameterFloatToJSON(p.flexibility_aging);
+    j["flexibility_aging_max"] = randomParameterFloatToJSON(p.flexibility_aging_max);
+    HELIOS_PUSH_IGNORE_DEPRECATED
     j["leaf_buckle_length"] = randomParameterFloatToJSON(p.leaf_buckle_length);
     j["leaf_buckle_angle"] = randomParameterFloatToJSON(p.leaf_buckle_angle);
+    HELIOS_POP_IGNORE_DEPRECATED
     j["leaf_offset"] = vec3ToJSON(p.leaf_offset);
     j["subdivisions"] = p.subdivisions;
     j["unique_prototypes"] = p.unique_prototypes;
@@ -252,8 +259,15 @@ void jsonToLeafPrototype(LeafPrototype& p, const nlohmann::json& j, std::minstd_
     if (j.contains("petiole_roll")) p.petiole_roll = jsonToRandomParameterFloat(j["petiole_roll"], generator);
     if (j.contains("wave_period")) p.wave_period = jsonToRandomParameterFloat(j["wave_period"], generator);
     if (j.contains("wave_amplitude")) p.wave_amplitude = jsonToRandomParameterFloat(j["wave_amplitude"], generator);
+    if (j.contains("longitudinal_curvature_exponent")) p.longitudinal_curvature_exponent = jsonToRandomParameterFloat(j["longitudinal_curvature_exponent"], generator);
+    if (j.contains("flexibility")) p.flexibility = jsonToRandomParameterFloat(j["flexibility"], generator);
+    if (j.contains("flexibility_taper")) p.flexibility_taper = jsonToRandomParameterFloat(j["flexibility_taper"], generator);
+    if (j.contains("flexibility_aging")) p.flexibility_aging = jsonToRandomParameterFloat(j["flexibility_aging"], generator);
+    if (j.contains("flexibility_aging_max")) p.flexibility_aging_max = jsonToRandomParameterFloat(j["flexibility_aging_max"], generator);
+    HELIOS_PUSH_IGNORE_DEPRECATED
     if (j.contains("leaf_buckle_length")) p.leaf_buckle_length = jsonToRandomParameterFloat(j["leaf_buckle_length"], generator);
     if (j.contains("leaf_buckle_angle")) p.leaf_buckle_angle = jsonToRandomParameterFloat(j["leaf_buckle_angle"], generator);
+    HELIOS_POP_IGNORE_DEPRECATED
     if (j.contains("leaf_offset")) p.leaf_offset = jsonToVec3(j["leaf_offset"], p.leaf_offset);
     if (j.contains("subdivisions")) p.subdivisions = j["subdivisions"];
     if (j.contains("unique_prototypes")) p.unique_prototypes = j["unique_prototypes"];
@@ -505,6 +519,13 @@ nlohmann::json shootParametersToJSON(const ShootParameters& params) {
     j["growth_requires_dormancy"] = params.growth_requires_dormancy;
     j["determinate_shoot_growth"] = params.determinate_shoot_growth;
 
+    // Child shoot types. Readable since helios-core 1.3.84 via ShootParameters::getChildShootTypeLabels()
+    // and getChildShootTypeProbabilities(); an empty list is meaningful (the shoot reproduces its own type).
+    nlohmann::json child = nlohmann::json::object();
+    child["labels"] = params.getChildShootTypeLabels();
+    child["probabilities"] = params.getChildShootTypeProbabilities();
+    j["child_shoot_types"] = child;
+
     // Nested phytomer parameters (internode/petiole/leaf/peduncle/inflorescence + leaf prototype)
     j["phytomer_parameters"] = phytomerParametersToJSON(params.phytomer_parameters);
 
@@ -550,11 +571,17 @@ ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0
     if (j.contains("growth_requires_dormancy")) params.growth_requires_dormancy = j["growth_requires_dormancy"];
     if (j.contains("determinate_shoot_growth")) params.determinate_shoot_growth = j["determinate_shoot_growth"];
 
-    // Child shoot types
+    // Child shoot types. An empty list is a meaningful state -- the shoot reproduces its own type --
+    // but ShootParameters::defineChildShootTypes() rejects empty input, so only call it when non-empty.
+    // An explicitly empty list therefore leaves whatever the base carried; that is the conservative
+    // choice, since erasing a shoot type's branching topology silently is the failure this seeding
+    // was introduced to prevent.
     if (j.contains("child_shoot_types")) {
         std::vector<std::string> labels = j["child_shoot_types"]["labels"];
         std::vector<float> probs = j["child_shoot_types"]["probabilities"];
-        params.defineChildShootTypes(labels, probs);
+        if (!labels.empty()) {
+            params.defineChildShootTypes(labels, probs);
+        }
     }
 
     // Nested phytomer parameters. ShootParameters(generator) does NOT propagate the
@@ -2671,13 +2698,11 @@ extern "C" {
             std::minstd_rand0* generator = context->getRandomGenerator();
 
             // Seed from the entry being replaced, when there is one, rather than from a fresh
-            // ShootParameters. ShootParameters::operator= copies child_shoot_type_labels and
-            // child_shoot_type_probabilities, which are protected with no public getter and so
-            // cannot be represented in the JSON. Building from a default-constructed instance
-            // would leave them empty, and because defineShootType() replaces the stored entry in
-            // its entirety that silently erases the shoot type's branching topology --
-            // Shoot::sampleChildShootType() then falls back to reproducing the parent type. The
-            // JSON values are overlaid on top, so any field the caller did send still wins.
+            // ShootParameters. Since helios-core 1.3.84 the child shoot types are readable and are
+            // round-tripped through the JSON, but the seeding is still what carries the fields that
+            // have no JSON representation -- notably the custom function pointers -- across a
+            // defineShootType() call, which replaces the stored entry in its entirety. The JSON
+            // values are overlaid on top, so any field the caller did send still wins.
             bool shoot_type_exists = false;
             ShootParameters existing(generator);
             try {

@@ -20,7 +20,7 @@ PYHELIOS_API HeliosSolarPosition* createSolarPosition(void* context_ptr);
 PYHELIOS_API HeliosSolarPosition* createSolarPositionWithCoordinates(void* context_ptr, float UTC_hours, float latitude_deg, float longitude_deg);
 PYHELIOS_API void destroySolarPosition(HeliosSolarPosition* solar_pos);
 
-// Solar angle calculations - basic angles in degrees
+// Solar angle calculations - basic angles in radians
 PYHELIOS_API float getSunElevation(HeliosSolarPosition* solar_pos);
 PYHELIOS_API float getSunZenith(HeliosSolarPosition* solar_pos);
 PYHELIOS_API float getSunAzimuth(HeliosSolarPosition* solar_pos);

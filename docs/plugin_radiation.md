@@ -1444,6 +1444,38 @@ radiation.runBand(["red", "green", "blue"])          # required before writing a
 radiation.writeCameraImage("cam", ["red", "green", "blue"], "after")
 ```
 
+### Camera Flux Smoothing
+
+By default each pixel reports the outgoing flux of the primitive behind it, so a coarsely tessellated curved surface renders as a set of flat panels. `enableCameraFluxSmoothing()` averages each primitive's outgoing flux onto the mesh vertices it shares with its neighbours and interpolates it back across the facet, so the tessellated curve reads as a curve.
+
+This applies to `Tube`, `Sphere`, `Cone`, `Polymesh`, `Tile` and `AdaptiveTile` objects. A `Box` or `Disk` object, and any primitive belonging to no object, is left alone: its faces are genuinely flat, so the per-facet value is already correct everywhere on them. A polymesh must carry the face table that `loadOBJ()` and `loadPLY()` retain; one assembled from loose primitives by `addPolymeshObject()` has no topology and is left alone.
+
+> **Smoothing changes what the camera reports.** A pixel no longer carries the outgoing flux of the primitive behind it, but a blend of that primitive's value with those of its neighbours, so pixel values no longer correspond exactly to the `radiation_flux_*` primitive data. Nothing else is affected: the radiation solve, the `radiation_flux_*` values themselves, and the pixel-label and depth images are all unchanged. Smoothing is off by default for this reason and should be enabled deliberately.
+
+The crease angle is the angle between adjacent facet normals above which a shared edge is treated as a hard crease, so flux is not averaged across it. It applies to polymesh objects only, whose facets may meet at a genuine edge the tessellation resolved; the curved object types are smooth by construction and are never creased. It must be between 0 and 180 degrees.
+
+```python
+with RadiationModel(context) as radiation:
+    radiation.enableCameraFluxSmoothing(crease_angle_degrees=45.0)
+    print(radiation.isCameraFluxSmoothingEnabled())        # True
+    print(radiation.getCameraFluxSmoothingCreaseAngle())   # 45.0
+
+    radiation.updateGeometry()
+    radiation.runBand(["red", "green", "blue"])
+    radiation.writeCameraImage("cam", ["red", "green", "blue"], "smoothed")
+
+    radiation.disableCameraFluxSmoothing()                 # back to per-facet flux
+```
+
+Toggling smoothing after geometry has been built re-uploads the geometry and rebuilds the acceleration structure, which is not cheap — prefer calling it before `updateGeometry()`.
+
+| Method | Description |
+|---|---|
+| [enableCameraFluxSmoothing(crease_angle_degrees)](pyhelios.RadiationModel.RadiationModel.enableCameraFluxSmoothing) | Interpolate flux across each facet; crease angle defaults to 30 degrees |
+| [disableCameraFluxSmoothing()](pyhelios.RadiationModel.RadiationModel.disableCameraFluxSmoothing) | Hold flux constant across each facet (the default) |
+| [isCameraFluxSmoothingEnabled()](pyhelios.RadiationModel.RadiationModel.isCameraFluxSmoothingEnabled) | Whether smoothing is enabled |
+| [getCameraFluxSmoothingCreaseAngle()](pyhelios.RadiationModel.RadiationModel.getCameraFluxSmoothingCreaseAngle) | Crease angle in degrees |
+
 ### Camera Exposure
 
 `CameraProperties` carries an `exposure` field that is passed through to the native camera by `addRadiationCamera()` and `updateCameraParameters()`. Supported modes are `"auto"` (automatic exposure, the default), `"manual"` (no automatic exposure scaling), and `"ISOXXX"` (ISO-based, e.g. `"ISO100"`, calibrated against auto-exposure at reference settings). Use `"manual"` when you need radiometrically comparable pixel values across frames or cameras.

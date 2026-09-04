@@ -2690,6 +2690,99 @@ PYHELIOS_API void setPolymeshObjectTopology(helios::Context* context, unsigned i
 PYHELIOS_API float* getPolymeshObjectVertices(helios::Context* context, unsigned int objID, unsigned int* size);
 
 /**
+ * @brief Move every shared vertex of a polymesh object, deforming the mesh
+ *
+ * Writes every shared vertex in one pass and pushes the new positions out to the member
+ * primitives, so faces that meet at a vertex stay welded. This is the supported way to
+ * deform a mesh: transforming member primitives individually leaves each shared vertex
+ * wherever the last facet processed put it.
+ *
+ * The topology is unchanged, so vertex_count must match getPolymeshObjectVertices().
+ * Texture coordinates and the primitives' solid fraction are not touched. Vertex normals
+ * are NOT recomputed and no longer describe the deformed surface; call
+ * computePolymeshObjectVertexNormals() again if exact normals are needed.
+ *
+ * @param context Pointer to the Helios context
+ * @param objID Object ID of the polymesh object
+ * @param vertices Flat array of vertex positions [x0,y0,z0, x1,y1,z1, ...] in global coordinates
+ * @param vertex_count Number of vertices (the array holds 3*vertex_count floats)
+ */
+PYHELIOS_API void setPolymeshObjectVertices(helios::Context* context, unsigned int objID, float* vertices, unsigned int vertex_count);
+
+/**
+ * @brief Query whether a compound object exposes which member primitives meet at each mesh vertex
+ *
+ * @param context Pointer to the Helios context
+ * @param objID Object ID of the compound object
+ * @return true if getObjectPrimitiveSharedVertexIndices() returns indices for this object
+ */
+PYHELIOS_API bool doesObjectHaveSharedVertexTopology(helios::Context* context, unsigned int objID);
+
+/**
+ * @brief Get the number of distinct shared vertices in a compound object's mesh
+ *
+ * @param context Pointer to the Helios context
+ * @param objID Object ID of the compound object
+ * @param weld_mode helios::VertexWeldMode as an int (0=WELD_FULL, 1=WELD_CROSS_SECTION_ONLY)
+ * @return Number of shared vertices, one greater than the largest index the accessors can
+ *         return. Zero if the object exposes no topology.
+ * @note Returned as unsigned long long rather than unsigned int: the native return type is
+ *       size_t and a large mesh would be truncated.
+ */
+PYHELIOS_API unsigned long long getObjectSharedVertexCount(helios::Context* context, unsigned int objID, int weld_mode);
+
+/**
+ * @brief Get the shared mesh vertex that each vertex of a primitive belongs to
+ *
+ * Indices are in the same order as getPrimitiveVertices(), and two primitives meeting at a
+ * corner report the same index there.
+ *
+ * @param context Pointer to the Helios context
+ * @param objID Object ID of the compound object the primitive belongs to
+ * @param UUID UUID of the primitive
+ * @param weld_mode helios::VertexWeldMode as an int
+ * @param size Receives the number of indices returned
+ * @return Pointer to the index array, or nullptr if the object exposes no topology
+ */
+PYHELIOS_API int* getObjectPrimitiveSharedVertexIndices(helios::Context* context, unsigned int objID, unsigned int UUID, int weld_mode, unsigned int* size);
+
+/**
+ * @brief Get the shared mesh vertices for many primitives of a compound object at once
+ *
+ * Equivalent to calling getObjectPrimitiveSharedVertexIndices() per UUID, except any
+ * per-object quantity needed to locate the vertices is prepared once for the whole batch.
+ * Prefer this when walking an entire object: the per-UUID form is O(n) each on Sphere,
+ * Tube and Cone objects, so a full walk is O(n^2).
+ *
+ * The ragged result is flattened into one buffer; counts_out receives the per-UUID length
+ * so the caller can split it.
+ *
+ * @param context Pointer to the Helios context
+ * @param objID Object ID of the compound object
+ * @param UUIDs Array of primitive UUIDs
+ * @param uuid_count Number of UUIDs
+ * @param weld_mode helios::VertexWeldMode as an int
+ * @param counts_out Receives a pointer to an array of uuid_count per-primitive index counts
+ * @param total_size Receives the total number of indices in the flattened buffer
+ * @return Pointer to the flattened index array, or nullptr if empty
+ */
+PYHELIOS_API int* getObjectPrimitiveSharedVertexIndicesMulti(helios::Context* context, unsigned int objID, unsigned int* UUIDs, unsigned int uuid_count, int weld_mode, unsigned int** counts_out, unsigned int* total_size);
+
+/**
+ * @brief Get a primitive's shared mesh vertex indices without naming its parent object
+ *
+ * Resolves the primitive's parent object and forwards to it.
+ *
+ * @param context Pointer to the Helios context
+ * @param UUID UUID of the primitive
+ * @param weld_mode helios::VertexWeldMode as an int
+ * @param size Receives the number of indices returned
+ * @return Pointer to the index array, or nullptr if the primitive has no parent object or
+ *         its parent exposes no topology
+ */
+PYHELIOS_API int* getPrimitiveSharedVertexIndices(helios::Context* context, unsigned int UUID, int weld_mode, unsigned int* size);
+
+/**
  * @brief Get the vertex index triples defining each face of a Polymesh object
  * @param context Pointer to the Context
  * @param objID Object ID of the Polymesh object

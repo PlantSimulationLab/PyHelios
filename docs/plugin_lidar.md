@@ -978,9 +978,84 @@ with Context() as context:
         pointcloud.exportLeafAreaDensities("../output/leaf_area_densities.txt")
 ```
 
+## Memory Budgeting and Large Clouds {#LiDARmemory}
+
+A point cloud of tens of millions of returns is dominated by two costs: the steady-state storage of the hit points and their scalar-data columns, and the transient of growing those arrays. Growing by repeated insertion reallocates geometrically, and during every reallocation the old and new buffers are both live — for a large cloud that transient is gigabytes on top of the steady-state cost, and on Windows it is charged against the system commit limit at allocation time, so a load that would comfortably fit once settled can still fail while growing.
+
+`reserveHitPoints()` removes the transient entirely by reserving the hit array and every scalar-data column at once. It only reserves capacity: no hit points are created and `getHitCount()` is unchanged. Reserving less than the eventual total is harmless, as is reserving more.
+
+`estimateHitPointMemory()` reports the resident bytes a cloud of a given size will occupy. Each stored point costs the size of a hit point plus, for every scalar-data label the cloud carries, one double of value and one byte of presence — the columnar store is dense, so every label costs on every point. It is most accurate once at least one point exists, since it reads the labels created so far.
+
+`setMaxHitPoints()` caps the number of stored hit points. Exceeding the cap raises an error naming the projected point count and the limit, rather than throwing from inside the allocator where neither the scan responsible nor the size is visible. The default of 100 million is deliberately generous — it guards against a mis-specified scan grid exhausting the machine, and is not a statement about machine capacity. Raise it when the machine genuinely has the memory, or pass 0 to disable the check.
+
+```python
+from pyhelios import LiDARCloud
+
+with LiDARCloud() as pointcloud:
+    print(f"{pointcloud.estimateHitPointMemory(40_000_000) / 1e9:.1f} GB for 40M points")
+
+    pointcloud.setMaxHitPoints(200_000_000)   # this machine has the memory
+    pointcloud.reserveHitPoints(40_000_000)   # avoid the reallocation transient
+    pointcloud.loadXML("large_scan.xml")
+```
+
+| Method | Description |
+|---|---|
+| [reserveHitPoints(hit_count)](pyhelios.LiDARCloud.LiDARCloud.reserveHitPoints) | Reserve capacity for hit points and every scalar-data column |
+| [estimateHitPointMemory(hit_count)](pyhelios.LiDARCloud.LiDARCloud.estimateHitPointMemory) | Estimated resident bytes for a cloud of that size |
+| [setMaxHitPoints(max_hits)](pyhelios.LiDARCloud.LiDARCloud.setMaxHitPoints) | Cap on stored hit points; 0 disables the check |
+| [getMaxHitPoints()](pyhelios.LiDARCloud.LiDARCloud.getMaxHitPoints) | Current cap |
+| [getDefaultMaxHitPoints()](pyhelios.LiDARCloud.LiDARCloud.getDefaultMaxHitPoints) | Default cap (100 million) |
+
+## Virtualized Gap-Filled Misses {#LiDARvirtualmisses}
+
+A miss synthesized by `gapfillMisses()` through the row/column path is a pure function of its scan-grid cell, so it is stored implicitly — a per-cell occupancy bit plus a scan-wide angular model — rather than as an element of the hit array. Such points are counted by `getHitCount()` and readable through every accessor, but occupy no per-point storage. This is what makes gap-filling a fine scan grid affordable.
+
+The virtualization is invisible except in two respects.
+
+First, **read the cloud back through the bulk accessors**. Resolving a virtualized miss by index requires locating its scan and row and then scanning that row's occupancy bits, which is O(N<sub>phi</sub>) per call. `getHitXYZColumn()` and `getHitScanIDColumn()` walk each scan's occupancy bitset in row-major order — which is index order — so every hit costs O(1). The existing bulk readers (`getHitsXYZRGB()`, `getHitScanIDArray()`, `getHitMissArray()`, `getHitDataArray()`) already take this path; a Python loop over the per-index getters does not.
+
+Second, `materializeMisses()` converts every virtualized miss into a stored hit point. Every observable is unchanged by this — it trades the memory saving for real storage — and it happens automatically before any operation that renumbers the hit index space (adding or deleting a hit point, writing hit data or a grid cell), so calling it explicitly is only needed to pay that cost at a chosen moment.
+
+`gapfillMissesCount()` does the same work as `gapfillMisses()` but returns only the number of points added, skipping the position vector that gap-filling a fine grid would otherwise allocate and most callers discard.
+
+```python
+pointcloud.gapfillMissesCount()               # returns the count, not the positions
+print(pointcloud.getVirtualMissCount(), "misses held implicitly")
+
+xyz = pointcloud.getHitXYZColumn()            # one pass, O(1) per hit
+scan_ids = pointcloud.getHitScanIDColumn()
+```
+
+| Method | Description |
+|---|---|
+| [gapfillMissesCount(scanID=None, ...)](pyhelios.LiDARCloud.LiDARCloud.gapfillMissesCount) | Gapfill and return only how many points were added |
+| [getVirtualMissCount()](pyhelios.LiDARCloud.LiDARCloud.getVirtualMissCount) | Misses currently held in virtualized form |
+| [hasVirtualMisses()](pyhelios.LiDARCloud.LiDARCloud.hasVirtualMisses) | Whether any virtualized miss exists |
+| [materializeMisses()](pyhelios.LiDARCloud.LiDARCloud.materializeMisses) | Convert virtualized misses into stored hit points |
+| [getHitXYZColumn()](pyhelios.LiDARCloud.LiDARCloud.getHitXYZColumn) | Every hit position in index order, in one pass |
+| [getHitScanIDColumn()](pyhelios.LiDARCloud.LiDARCloud.getHitScanIDColumn) | Every hit scan ID in index order, in one pass |
+| [getScanGridDirection(scanID, row, column)](pyhelios.LiDARCloud.LiDARCloud.getScanGridDirection) | Beam direction at a grid cell, from the fitted model |
+
+\note `getScanGridDirection()` requires that `gapfillMisses()` has already run on the scan through the row/column path, since that is what fits the angular model. It raises otherwise.
+
+## Exact Path Lengths {#LiDARexactpaths}
+
+The leaf-area inversion bins per-beam voxel path lengths once a voxel accumulates many samples, which bounds memory that would otherwise grow without limit with scan size. Binning recovers the extinction coefficient far inside the solver's tolerance, so the default is appropriate for essentially all data. `setExactPathLengths(True)` keeps every sample instead — an escape hatch for unusual geometry, or for confirming that binning is not responsible for a difference between two results.
+
+```python
+pointcloud.setExactPathLengths(True)
+pointcloud.calculateLeafAreaGPU()
+```
+
+| Method | Description |
+|---|---|
+| [setExactPathLengths(exact)](pyhelios.LiDARCloud.LiDARCloud.setExactPathLengths) | Keep every path-length sample instead of binning |
+| [getExactPathLengths()](pyhelios.LiDARCloud.LiDARCloud.getExactPathLengths) | Whether samples are kept exactly |
+
 ## PyHelios API Coverage
 
-The PyHelios `LiDARCloud` binding covers the full standard workflow — scan definition (raster, spinning multibeam, moving-platform, and physical-parameter spinning/moving-raster, with noise and tilt), scan-mode introspection (`getScanMode()`, `getScanStepsPerRev()`, `getScanRotationRate()`, `getScanRevolutions()`), analytic-waveform return-mode configuration (`setScanReturnMode()`/`setScanMaxReturns()`/`setScanSingleReturnSelection()`/`setScanPulseWidth()`/`setScanDetectionThreshold()` and the `syntheticScan(return_mode=...)` override), hit-point import/bulk-add, columnar bulk reads (`getHitDataColumn()`/`getHitDataColumnArray()`), miss handling (`gapfillMisses()`, synthetic `record_misses`), grid definition including terrain-following columns (`addGrid(column_z_offsets=...)`) and cell queries (`getCellCenter()`, `getCellSize()`, `getCellRotation()`), triangulation, leaf-area inversion with uncertainty/confidence intervals, G(theta), GPU control, and all of the file-export routines above.
+The PyHelios `LiDARCloud` binding covers the full standard workflow — scan definition (raster, spinning multibeam, moving-platform, and physical-parameter spinning/moving-raster, with noise and tilt), scan-mode introspection (`getScanMode()`, `getScanStepsPerRev()`, `getScanRotationRate()`, `getScanRevolutions()`), analytic-waveform return-mode configuration (`setScanReturnMode()`/`setScanMaxReturns()`/`setScanSingleReturnSelection()`/`setScanPulseWidth()`/`setScanDetectionThreshold()` and the `syntheticScan(return_mode=...)` override), hit-point import/bulk-add, columnar bulk reads (`getHitDataColumn()`/`getHitDataColumnArray()`), miss handling (`gapfillMisses()`, `gapfillMissesCount()`, virtualized-miss introspection, synthetic `record_misses`), memory budgeting (`reserveHitPoints()`, `estimateHitPointMemory()`, `setMaxHitPoints()`), one-pass columnar hit readers (`getHitXYZColumn()`, `getHitScanIDColumn()`), path-length accumulation mode (`setExactPathLengths()`), grid definition including terrain-following columns (`addGrid(column_z_offsets=...)`) and cell queries (`getCellCenter()`, `getCellSize()`, `getCellRotation()`), triangulation, leaf-area inversion with uncertainty/confidence intervals, G(theta), GPU control, and all of the file-export routines above.
 
 The following C++ features are documented in the native LiDAR plugin but **not yet wrapped** in PyHelios. For these, use the C++ API:
 

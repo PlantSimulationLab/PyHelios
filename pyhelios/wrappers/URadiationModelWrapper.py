@@ -721,6 +721,31 @@ except AttributeError:
     _SIF_CAMERA_FUNCTIONS_AVAILABLE = False
 
 
+# Camera flux smoothing bindings (helios-core v1.3.84+). Probed separately so wheels
+# built against older libraries keep the rest of the RadiationModel API working.
+_CAMERA_FLUX_SMOOTHING_AVAILABLE = False
+try:
+    helios_lib.enableCameraFluxSmoothing.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_float]
+    helios_lib.enableCameraFluxSmoothing.restype = None
+    helios_lib.enableCameraFluxSmoothing.errcheck = _check_error
+
+    helios_lib.disableCameraFluxSmoothing.argtypes = [ctypes.POINTER(URadiationModel)]
+    helios_lib.disableCameraFluxSmoothing.restype = None
+    helios_lib.disableCameraFluxSmoothing.errcheck = _check_error
+
+    helios_lib.isCameraFluxSmoothingEnabled.argtypes = [ctypes.POINTER(URadiationModel)]
+    helios_lib.isCameraFluxSmoothingEnabled.restype = ctypes.c_int
+    helios_lib.isCameraFluxSmoothingEnabled.errcheck = _check_error
+
+    helios_lib.getCameraFluxSmoothingCreaseAngle.argtypes = [ctypes.POINTER(URadiationModel)]
+    helios_lib.getCameraFluxSmoothingCreaseAngle.restype = ctypes.c_float
+    helios_lib.getCameraFluxSmoothingCreaseAngle.errcheck = _check_error
+
+    _CAMERA_FLUX_SMOOTHING_AVAILABLE = True
+except AttributeError:
+    _CAMERA_FLUX_SMOOTHING_AVAILABLE = False
+
+
 # Python wrapper functions
 
 #=============================================================================
@@ -2508,3 +2533,37 @@ def gpuBackendsDisabledByEnvironment() -> bool:
 
     return helios_lib.gpuBackendsDisabledByEnvironment() != 0
 
+
+
+def _require_camera_flux_smoothing() -> None:
+    """Raise if the native library predates the camera flux smoothing API."""
+    if not _CAMERA_FLUX_SMOOTHING_AVAILABLE:
+        raise RuntimeError(
+            "Camera flux smoothing is not available in the current native library. "
+            "It requires helios-core v1.3.84 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def enableCameraFluxSmoothing(radiation_model, crease_angle_degrees: float = 30.0) -> None:
+    """Reconstruct camera images by interpolating outgoing flux across each facet."""
+    _require_camera_flux_smoothing()
+    helios_lib.enableCameraFluxSmoothing(radiation_model, ctypes.c_float(float(crease_angle_degrees)))
+
+
+def disableCameraFluxSmoothing(radiation_model) -> None:
+    """Reconstruct camera images by holding outgoing flux constant across each facet."""
+    _require_camera_flux_smoothing()
+    helios_lib.disableCameraFluxSmoothing(radiation_model)
+
+
+def isCameraFluxSmoothingEnabled(radiation_model) -> bool:
+    """Return True if camera flux smoothing is enabled."""
+    _require_camera_flux_smoothing()
+    return helios_lib.isCameraFluxSmoothingEnabled(radiation_model) != 0
+
+
+def getCameraFluxSmoothingCreaseAngle(radiation_model) -> float:
+    """Return the crease angle (degrees) used by camera flux smoothing."""
+    _require_camera_flux_smoothing()
+    return float(helios_lib.getCameraFluxSmoothingCreaseAngle(radiation_model))

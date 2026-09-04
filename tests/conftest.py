@@ -9,6 +9,7 @@ import os
 # Exclude manual tests from automatic collection (they require extra dependencies)
 collect_ignore_glob = [os.path.join("manual", "*")]
 
+import ctypes
 import pytest
 import platform
 from unittest.mock import Mock, MagicMock
@@ -142,6 +143,77 @@ def setup_development_mode():
         yield
         # Reset plugin registry to prevent state contamination
         _reset_plugin_registry_if_available()
+
+
+def _metal_device_loaded_in_this_process() -> bool:
+    """True if a Metal GPU device has been created in this process.
+
+    Apple's AGX driver bundle (e.g. AGXMetalG14X) is dlopened at the moment a
+    real MTLDevice is instantiated, and not before: importing pyhelios pulls in
+    Metal.framework itself but loads no AGX bundle. Its presence is therefore a
+    precise signal for "something created a Metal device here", which is exactly
+    the state that is fatal in the pytest parent.
+    """
+    if platform.system() != "Darwin":
+        return False
+    try:
+        libc = ctypes.CDLL(None)
+        libc._dyld_image_count.restype = ctypes.c_uint32
+        libc._dyld_get_image_name.restype = ctypes.c_char_p
+        libc._dyld_get_image_name.argtypes = [ctypes.c_uint32]
+        return any(
+            "AGXMetal" in libc._dyld_get_image_name(i).decode("utf-8", "replace")
+            for i in range(libc._dyld_image_count())
+        )
+    except Exception:
+        # Never let the guard itself break a test run.
+        return False
+
+
+@pytest.fixture(scope="function", autouse=True)
+def fail_if_metal_device_in_pytest_parent(request):
+    """Fail loudly if a Metal device gets created in the ``--forked`` parent.
+
+    macOS only. ``--forked`` runs each test body in a ``fork()``ed child, and
+    Apple's Metal stack is not fork-safe: it reaches its shader compiler over an
+    XPC connection served by dispatch worker threads, and ``fork()`` inherits
+    neither -- only the calling thread survives and the connection is dead. Once
+    ANY MTLDevice exists in the parent, every forked child dies inside AGXMetal
+    the moment it touches the GPU, reported as signal 6, 9 or 11 depending on
+    where the dispatch collapses.
+
+    A bare MTLCreateSystemDefaultDevice() in the parent is enough to trigger it;
+    no MoltenVK or RadiationModel is required. Nothing in normal collection does
+    this, which is why the suite passes -- but anything that starts to (an eager
+    import, a probe that stops using a subprocess, a session fixture that builds
+    a model) would turn the whole GPU-touching suite into a wall of crash
+    signals with no Python traceback pointing at the cause.
+
+    There is no fix that keeps ``--forked`` and lets the parent hold a device:
+    the state cannot be undone once created, and preloading cannot repair a
+    severed XPC connection. So this guard does not try to repair anything -- it
+    converts a silent, misleading failure mode into one legible error naming the
+    real cause. See pytest-forked's py/_process/forkedfunc.py, which is a bare
+    os.fork() with no spawn option.
+
+    Checked per test rather than once per session so the offending test is named.
+    """
+    if _metal_device_loaded_in_this_process():
+        pytest.fail(
+            "A Metal device was created in the pytest parent process, which is "
+            "fatal under --forked on macOS: Apple's Metal stack is not "
+            "fork-safe, so every forked child that touches the GPU will die "
+            "inside AGXMetal (signal 6/9/11) with no usable traceback.\n\n"
+            "Something loaded an AGXMetal driver bundle in the parent before "
+            f"'{request.node.nodeid}' ran. Likely causes: a module-level or "
+            "conftest-level construction of a RadiationModel/Visualizer, or a "
+            "capability probe that stopped running in a subprocess.\n\n"
+            "Fix the parent-side device creation -- run it in a subprocess, as "
+            "radiation_backend_constructible() in tests/test_radiation_model.py "
+            "does. Warming caches or preloading libraries does NOT help; the "
+            "damage cannot be undone once the device exists."
+        )
+    yield
 
 
 def _reset_plugin_registry_if_available():

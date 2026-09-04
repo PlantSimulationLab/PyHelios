@@ -1012,7 +1012,12 @@ class TestPolymeshTopologyNative:
             assert context.getPolymeshObjectVolume(objID) == pytest.approx(1.0 / 6.0, rel=1e-5)
 
     def test_volume_of_open_mesh_raises(self):
-        """1.3.83 rejects an open surface rather than returning a meaningless number."""
+        """A mesh with no closed piece is rejected rather than returning a meaningless number.
+
+        Since 1.3.84 a mesh is split into connected pieces and the closed ones are summed,
+        so the error fires only when none of them is closed -- which is the case for this
+        single open triangle.
+        """
         with Context() as context:
             verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
             uuid = context.addTriangle(*verts)
@@ -1020,7 +1025,7 @@ class TestPolymeshTopologyNative:
             context.setPolymeshObjectTopology(objID, verts, [int3(0, 1, 2)], [uuid])
 
             from pyhelios.exceptions import HeliosRuntimeError
-            with pytest.raises(HeliosRuntimeError, match="not a closed surface"):
+            with pytest.raises(HeliosRuntimeError, match="none of its 1 connected pieces is a closed surface"):
                 context.getPolymeshObjectVolume(objID)
 
     def test_surface_area_sums_face_areas(self):
@@ -1216,3 +1221,168 @@ class TestAnalyticVertexNormalsNative:
                 assert len(group) == len(single)
                 for a, b in zip(group, single):
                     assert (a.x, a.y, a.z) == pytest.approx((b.x, b.y, b.z))
+
+
+@pytest.mark.cross_platform
+class TestVertexWeldModeEnum:
+    """The VertexWeldMode enum is pure Python and needs no native library."""
+
+    def test_values_match_native(self):
+        assert int(VertexWeldMode.WELD_FULL) == 0
+        assert int(VertexWeldMode.WELD_CROSS_SECTION_ONLY) == 1
+
+    def test_exported_from_package_root(self):
+        from pyhelios import VertexWeldMode as FromRoot
+        from pyhelios.types import VertexWeldMode as FromTypes
+        assert FromRoot is VertexWeldMode
+        assert FromTypes is VertexWeldMode
+
+
+@pytest.mark.native_only
+class TestSharedVertexTopology:
+    """helios-core 1.3.84 shared vertex topology (Context-level accessors)."""
+
+    def test_tile_reports_topology(self):
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(2, 2))
+            assert context.doesObjectHaveSharedVertexTopology(objID) is True
+
+    def test_tile_shared_vertex_count_is_lattice_nodes(self):
+        """A 2x2 tile has a 3x3 grid of nodes, so 9 distinct shared vertices."""
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(2, 2))
+            assert context.getObjectSharedVertexCount(objID, VertexWeldMode.WELD_FULL) == 9
+
+    def test_weld_mode_defaults_to_full(self):
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(2, 2))
+            assert (context.getObjectSharedVertexCount(objID) ==
+                    context.getObjectSharedVertexCount(objID, VertexWeldMode.WELD_FULL))
+
+    def test_indices_are_within_shared_vertex_count(self):
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(3, 3))
+            n = context.getObjectSharedVertexCount(objID, VertexWeldMode.WELD_FULL)
+            for uuid in context.getObjectPrimitiveUUIDs(objID):
+                idx = context.getObjectPrimitiveSharedVertexIndices(objID, uuid)
+                assert len(idx) == 4, "a tile sub-patch has four corners"
+                assert all(0 <= i < n for i in idx)
+
+    def test_neighbouring_subpatches_share_vertex_indices(self):
+        """Adjacent sub-patches must report the same index at a corner they share."""
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(2, 2))
+            uuids = context.getObjectPrimitiveUUIDs(objID)
+            all_idx = [set(context.getObjectPrimitiveSharedVertexIndices(objID, u))
+                       for u in uuids]
+            # The centre node of a 2x2 tile is shared by all four sub-patches.
+            shared_by_all = set.intersection(*all_idx)
+            assert len(shared_by_all) == 1
+
+    def test_batched_matches_per_primitive(self):
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(3, 3))
+            uuids = context.getObjectPrimitiveUUIDs(objID)
+            batched = context.getObjectPrimitiveSharedVertexIndicesMulti(objID, uuids)
+            assert len(batched) == len(uuids)
+            for uuid, row in zip(uuids, batched):
+                assert row == context.getObjectPrimitiveSharedVertexIndices(objID, uuid)
+
+    def test_parent_resolving_form_matches_explicit_form(self):
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(2, 2))
+            uuid = context.getObjectPrimitiveUUIDs(objID)[0]
+            assert (context.getPrimitiveSharedVertexIndices(uuid) ==
+                    context.getObjectPrimitiveSharedVertexIndices(objID, uuid))
+
+    def test_primitive_with_no_parent_object_reports_nothing(self):
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            assert context.getPrimitiveSharedVertexIndices(uuid) == []
+
+    def test_tube_distinguishes_weld_modes(self):
+        """A Tube has an axis, so welding only within a cross-section keeps more vertices."""
+        with Context() as context:
+            objID = context.addTubeObject(ndivs=6,
+                                          nodes=[vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 0, 2)],
+                                          radii=[0.1, 0.1, 0.1])
+            full = context.getObjectSharedVertexCount(objID, VertexWeldMode.WELD_FULL)
+            cross = context.getObjectSharedVertexCount(objID,
+                                                       VertexWeldMode.WELD_CROSS_SECTION_ONLY)
+            assert cross > full
+
+    def test_tile_reports_same_count_for_both_weld_modes(self):
+        """A Tile has no distinguished axis, so the two modes must agree."""
+        with Context() as context:
+            objID = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1),
+                                          subdiv=int2(2, 2))
+            assert (context.getObjectSharedVertexCount(objID, VertexWeldMode.WELD_FULL) ==
+                    context.getObjectSharedVertexCount(objID,
+                                                       VertexWeldMode.WELD_CROSS_SECTION_ONLY))
+
+    def test_object_without_topology_reports_false_and_zero(self):
+        """A polymesh assembled from loose primitives carries no face table."""
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            objID = context.addPolymeshObject([uuid])
+            assert context.doesObjectHaveSharedVertexTopology(objID) is False
+            assert context.getObjectSharedVertexCount(objID) == 0
+            assert context.getObjectPrimitiveSharedVertexIndices(objID, uuid) == []
+
+
+@pytest.mark.native_only
+class TestSetPolymeshObjectVertices:
+    """helios-core 1.3.84 mesh deformation."""
+
+    @staticmethod
+    def _open_triangle(context):
+        verts = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]
+        uuid = context.addTriangle(*verts)
+        objID = context.addPolymeshObject([uuid])
+        context.setPolymeshObjectTopology(objID, verts, [int3(0, 1, 2)], [uuid])
+        return objID, verts
+
+    def test_vertices_are_written_back(self):
+        with Context() as context:
+            objID, verts = self._open_triangle(context)
+            moved = [vec3(v.x, v.y, v.z + 1.0) for v in context.getPolymeshObjectVertices(objID)]
+            context.setPolymeshObjectVertices(objID, moved)
+            got = context.getPolymeshObjectVertices(objID)
+            assert len(got) == len(moved)
+            for g, m in zip(got, moved):
+                assert g.x == pytest.approx(m.x, abs=1e-5)
+                assert g.y == pytest.approx(m.y, abs=1e-5)
+                assert g.z == pytest.approx(m.z, abs=1e-5)
+
+    def test_deformation_changes_surface_area(self):
+        """Scaling the triangle in x doubles its area."""
+        with Context() as context:
+            objID, _ = self._open_triangle(context)
+            before = context.getPolymeshObjectSurfaceArea(objID)
+            verts = context.getPolymeshObjectVertices(objID)
+            context.setPolymeshObjectVertices(objID, [vec3(v.x * 2.0, v.y, v.z) for v in verts])
+            assert context.getPolymeshObjectSurfaceArea(objID) == pytest.approx(before * 2.0,
+                                                                                rel=1e-5)
+
+    def test_wrong_vertex_count_raises(self):
+        from pyhelios.exceptions import HeliosRuntimeError
+        with Context() as context:
+            objID, _ = self._open_triangle(context)
+            verts = context.getPolymeshObjectVertices(objID)
+            with pytest.raises(HeliosRuntimeError):
+                context.setPolymeshObjectVertices(objID, verts[:-1])
+
+    def test_non_vec3_vertex_raises_value_error(self):
+        """Argument type validation policy: wrong types must be rejected clearly."""
+        with Context() as context:
+            objID, _ = self._open_triangle(context)
+            n = len(context.getPolymeshObjectVertices(objID))
+            with pytest.raises(ValueError, match="must be a vec3"):
+                context.setPolymeshObjectVertices(objID, [(0.0, 0.0, 0.0)] * n)

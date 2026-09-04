@@ -413,7 +413,8 @@ class FarquharModelCoefficients:
         conductance gm temperature response: (gm_at_25C, dHa, Topt_C, dHd) using the
         -1 sentinel convention (dHa < 0 → constant, Topt_C < 0 → monotonic Arrhenius,
         dHd < 0 → default deactivation energy). Slots 22..37 carry the same 4-float block
-        for Vcmax, Jmax, Rd and alpha in that order.
+        for Vcmax, Jmax, Rd and alpha in that order, and slots 38..41 the same block for the
+        light response curvature theta.
 
         The rate blocks in slots 22..37 exist because slots 0..3 can only express a rate at
         25 C. As of helios-core 1.3.80 the C++ setters stamp the deprecated scalar fields to
@@ -434,6 +435,9 @@ class FarquharModelCoefficients:
             *self._temp_response_block(self._jmax_temp_response, self.Jmax),
             *self._temp_response_block(self._rd_temp_response, self.Rd),
             *self._temp_response_block(self._alpha_temp_response, self.alpha),
+            # Light response curvature theta temperature response (slots 38..41). Theta has no
+            # legacy scalar slot, so this block is the only representation that crosses.
+            *self._temp_response_block(self._theta_temp_response, 0.7),
         ]
 
     @classmethod
@@ -442,8 +446,9 @@ class FarquharModelCoefficients:
 
         Accepts the legacy 18-float layout (pre-1.3.72), the 22-float layout with mesophyll
         conductance gm in slots 18..21, and the 38-float layout (1.3.80+) that additionally
-        carries the Vcmax/Jmax/Rd/alpha temperature responses in slots 22..37. Shorter arrays
-        leave the corresponding responses unset, reproducing the earlier behaviour.
+        carries the Vcmax/Jmax/Rd/alpha temperature responses in slots 22..37, and the
+        42-float layout that adds the light response curvature theta in slots 38..41. Shorter
+        arrays leave the corresponding responses unset, reproducing the earlier behaviour.
         """
         if len(coefficients) < 18:
             raise ValueError("Need at least 18 coefficients for Farquhar model")
@@ -477,6 +482,17 @@ class FarquharModelCoefficients:
                     setter(value, dha, topt)
                 else:
                     setter(value, dha, topt, dhd)
+
+        if len(coefficients) >= 42:
+            value, dha, topt, dhd = coefficients[38:42]
+            if dha < 0:
+                instance.setLightResponseCurvature_theta(value)
+            elif topt < 0:
+                instance.setLightResponseCurvature_theta(value, dha)
+            elif dhd < 0:
+                instance.setLightResponseCurvature_theta(value, dha, topt)
+            else:
+                instance.setLightResponseCurvature_theta(value, dha, topt, dhd)
 
         return instance
 

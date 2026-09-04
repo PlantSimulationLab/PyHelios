@@ -87,7 +87,7 @@ void destroySolarPosition(HeliosSolarPosition* solar_pos) {
     }
 }
 
-// Solar angle calculations - basic angles in degrees
+// Solar angle calculations - basic angles in radians
 float getSunElevation(HeliosSolarPosition* solar_pos) {
     try {
         clearError();

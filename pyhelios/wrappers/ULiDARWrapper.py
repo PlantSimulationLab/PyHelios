@@ -869,6 +869,78 @@ except AttributeError:
     _LIDAR_FUNCTIONS_AVAILABLE = False
 
 
+# helios-core 1.3.84 additions, probed separately so a library built against an older core
+# keeps the whole LiDAR API working rather than falling back to mock mode. (One missing
+# symbol in the main block above mocks every LiDAR function.)
+_LIDAR_1384_AVAILABLE = False
+try:
+    for _fn in ("gapfillLiDARMissesCount", "getLiDARVirtualMissCount", "getLiDARMaxHitPoints"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(ULiDARcloud)]
+        getattr(helios_lib, _fn).restype = ctypes.c_ulonglong
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    helios_lib.estimateLiDARHitPointMemory.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_ulonglong]
+    helios_lib.estimateLiDARHitPointMemory.restype = ctypes.c_ulonglong
+    helios_lib.estimateLiDARHitPointMemory.errcheck = _check_error
+
+    helios_lib.gapfillLiDARMissesCountScan.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.c_bool, ctypes.c_bool,
+    ]
+    helios_lib.gapfillLiDARMissesCountScan.restype = ctypes.c_ulonglong
+    helios_lib.gapfillLiDARMissesCountScan.errcheck = _check_error
+
+    helios_lib.hasLiDARVirtualMisses.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.hasLiDARVirtualMisses.restype = ctypes.c_bool
+    helios_lib.hasLiDARVirtualMisses.errcheck = _check_error
+
+    helios_lib.materializeLiDARMisses.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.materializeLiDARMisses.restype = None
+    helios_lib.materializeLiDARMisses.errcheck = _check_error
+
+    helios_lib.getLiDARScanGridDirection.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+    ]
+    helios_lib.getLiDARScanGridDirection.restype = None
+    helios_lib.getLiDARScanGridDirection.errcheck = _check_error
+
+    helios_lib.getLiDARHitXYZColumn.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+    ]
+    helios_lib.getLiDARHitXYZColumn.restype = None
+    helios_lib.getLiDARHitXYZColumn.errcheck = _check_error
+
+    helios_lib.getLiDARHitScanIDColumn.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(ctypes.c_int), ctypes.c_uint,
+    ]
+    helios_lib.getLiDARHitScanIDColumn.restype = None
+    helios_lib.getLiDARHitScanIDColumn.errcheck = _check_error
+
+    helios_lib.setLiDARMaxHitPoints.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_ulonglong]
+    helios_lib.setLiDARMaxHitPoints.restype = None
+    helios_lib.setLiDARMaxHitPoints.errcheck = _check_error
+
+    helios_lib.getLiDARDefaultMaxHitPoints.argtypes = []
+    helios_lib.getLiDARDefaultMaxHitPoints.restype = ctypes.c_ulonglong
+    helios_lib.getLiDARDefaultMaxHitPoints.errcheck = _check_error
+
+    helios_lib.reserveLiDARHitPoints.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_ulonglong]
+    helios_lib.reserveLiDARHitPoints.restype = None
+    helios_lib.reserveLiDARHitPoints.errcheck = _check_error
+
+    helios_lib.setLiDARExactPathLengths.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_bool]
+    helios_lib.setLiDARExactPathLengths.restype = None
+    helios_lib.setLiDARExactPathLengths.errcheck = _check_error
+
+    helios_lib.getLiDARExactPathLengths.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.getLiDARExactPathLengths.restype = ctypes.c_bool
+    helios_lib.getLiDARExactPathLengths.errcheck = _check_error
+
+    _LIDAR_1384_AVAILABLE = True
+except AttributeError:
+    _LIDAR_1384_AVAILABLE = False
+
+
 # Python wrapper functions
 def createLiDARcloud() -> ctypes.POINTER(ULiDARcloud):
     """Create LiDARcloud instance"""
@@ -2374,3 +2446,124 @@ if not _LIDAR_FUNCTIONS_AVAILABLE:
     createLiDARcloud = mock_createLiDARcloud
     addLiDARScan = mock_lidar_operation
     addLiDARHitPoint = mock_lidar_operation
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.84 additions
+# ---------------------------------------------------------------------------
+
+def _require_lidar_1384() -> None:
+    """Raise if the native library predates the helios-core 1.3.84 LiDAR additions."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE or not _LIDAR_1384_AVAILABLE:
+        raise RuntimeError(
+            "This LiDAR function is not available in the current native library. "
+            "It requires helios-core v1.3.84 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def gapfillLiDARMissesCount(cloud_ptr) -> int:
+    """Gapfill every scan, returning only the number of points added."""
+    _require_lidar_1384()
+    return int(helios_lib.gapfillLiDARMissesCount(cloud_ptr))
+
+
+def gapfillLiDARMissesCountScan(cloud_ptr, scanID: int, gapfill_grid_only: bool,
+                                add_flags: bool) -> int:
+    """Gapfill one scan, returning only the number of points added."""
+    _require_lidar_1384()
+    return int(helios_lib.gapfillLiDARMissesCountScan(
+        cloud_ptr, ctypes.c_uint(int(scanID)),
+        ctypes.c_bool(bool(gapfill_grid_only)), ctypes.c_bool(bool(add_flags))
+    ))
+
+
+def getLiDARVirtualMissCount(cloud_ptr) -> int:
+    """Number of gap-filled misses currently held in virtualized form."""
+    _require_lidar_1384()
+    return int(helios_lib.getLiDARVirtualMissCount(cloud_ptr))
+
+
+def hasLiDARVirtualMisses(cloud_ptr) -> bool:
+    """Whether any gap-filled miss is currently held in virtualized form."""
+    _require_lidar_1384()
+    return bool(helios_lib.hasLiDARVirtualMisses(cloud_ptr))
+
+
+def materializeLiDARMisses(cloud_ptr) -> None:
+    """Convert every virtualized gap-filled miss into a stored hit point."""
+    _require_lidar_1384()
+    helios_lib.materializeLiDARMisses(cloud_ptr)
+
+
+def getLiDARScanGridDirection(cloud_ptr, scanID: int, row: int, column: int):
+    """Beam direction at a scan-grid cell as (radius, elevation, azimuth)."""
+    _require_lidar_1384()
+    out = (ctypes.c_float * 3)()
+    helios_lib.getLiDARScanGridDirection(
+        cloud_ptr, ctypes.c_uint(int(scanID)), ctypes.c_int(int(row)),
+        ctypes.c_int(int(column)), out
+    )
+    return (float(out[0]), float(out[1]), float(out[2]))
+
+
+def getLiDARHitXYZColumn(cloud_ptr, count: int):
+    """Read every hit's position in index order in one pass."""
+    _require_lidar_1384()
+    if count <= 0:
+        return []
+    buf = (ctypes.c_float * (3 * count))()
+    helios_lib.getLiDARHitXYZColumn(cloud_ptr, buf, ctypes.c_uint(int(count)))
+    return [(float(buf[3*i]), float(buf[3*i+1]), float(buf[3*i+2])) for i in range(count)]
+
+
+def getLiDARHitScanIDColumn(cloud_ptr, count: int):
+    """Read every hit's scan ID in index order in one pass."""
+    _require_lidar_1384()
+    if count <= 0:
+        return []
+    buf = (ctypes.c_int * count)()
+    helios_lib.getLiDARHitScanIDColumn(cloud_ptr, buf, ctypes.c_uint(int(count)))
+    return [int(x) for x in buf]
+
+
+def estimateLiDARHitPointMemory(cloud_ptr, hit_count: int) -> int:
+    """Estimated resident bytes for a cloud of ``hit_count`` points."""
+    _require_lidar_1384()
+    return int(helios_lib.estimateLiDARHitPointMemory(cloud_ptr, ctypes.c_ulonglong(int(hit_count))))
+
+
+def setLiDARMaxHitPoints(cloud_ptr, max_hits: int) -> None:
+    """Set the cap on stored hit points (0 disables the check)."""
+    _require_lidar_1384()
+    helios_lib.setLiDARMaxHitPoints(cloud_ptr, ctypes.c_ulonglong(int(max_hits)))
+
+
+def getLiDARMaxHitPoints(cloud_ptr) -> int:
+    """Current cap on stored hit points."""
+    _require_lidar_1384()
+    return int(helios_lib.getLiDARMaxHitPoints(cloud_ptr))
+
+
+def getLiDARDefaultMaxHitPoints() -> int:
+    """Default cap on the number of stored hit points in a cloud."""
+    _require_lidar_1384()
+    return int(helios_lib.getLiDARDefaultMaxHitPoints())
+
+
+def reserveLiDARHitPoints(cloud_ptr, hit_count: int) -> None:
+    """Reserve capacity for hit points and every scalar-data column at once."""
+    _require_lidar_1384()
+    helios_lib.reserveLiDARHitPoints(cloud_ptr, ctypes.c_ulonglong(int(hit_count)))
+
+
+def setLiDARExactPathLengths(cloud_ptr, exact: bool) -> None:
+    """Keep every beam path length exactly, instead of binning them."""
+    _require_lidar_1384()
+    helios_lib.setLiDARExactPathLengths(cloud_ptr, ctypes.c_bool(bool(exact)))
+
+
+def getLiDARExactPathLengths(cloud_ptr) -> bool:
+    """Whether path lengths are accumulated exactly."""
+    _require_lidar_1384()
+    return bool(helios_lib.getLiDARExactPathLengths(cloud_ptr))

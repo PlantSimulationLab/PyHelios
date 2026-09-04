@@ -11795,6 +11795,102 @@ extern "C" {
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPolymeshObjectVertices): Unknown error."); if (size) *size = 0; return nullptr; }
     }
 
+    // ========================================================================
+    // Shared vertex topology (helios-core 1.3.84+)
+    // ========================================================================
+
+    PYHELIOS_API void setPolymeshObjectVertices(helios::Context* context, unsigned int objID, float* vertices, unsigned int vertex_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!vertices && vertex_count > 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertex array is null"); return; }
+            std::vector<helios::vec3> v;
+            v.reserve(vertex_count);
+            for (unsigned int i = 0; i < vertex_count; i++) {
+                v.emplace_back(vertices[3*i], vertices[3*i+1], vertices[3*i+2]);
+            }
+            context->setPolymeshObjectVertices(objID, v);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPolymeshObjectVertices): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPolymeshObjectVertices): Unknown error."); }
+    }
+
+    PYHELIOS_API bool doesObjectHaveSharedVertexTopology(helios::Context* context, unsigned int objID) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->doesObjectHaveSharedVertexTopology(objID);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return false; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::doesObjectHaveSharedVertexTopology): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::doesObjectHaveSharedVertexTopology): Unknown error."); return false; }
+    }
+
+    // Returns size_t natively; exposed as unsigned long long so a large mesh is not truncated.
+    PYHELIOS_API unsigned long long getObjectSharedVertexCount(helios::Context* context, unsigned int objID, int weld_mode) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return static_cast<unsigned long long>(context->getObjectSharedVertexCount(objID, static_cast<helios::VertexWeldMode>(weld_mode)));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getObjectSharedVertexCount): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectSharedVertexCount): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API int* getObjectPrimitiveSharedVertexIndices(helios::Context* context, unsigned int objID, unsigned int UUID, int weld_mode, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<int> idx = context->getObjectPrimitiveSharedVertexIndices(objID, UUID, static_cast<helios::VertexWeldMode>(weld_mode));
+            static thread_local std::vector<int> buf;
+            buf = idx;
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getObjectPrimitiveSharedVertexIndices): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveSharedVertexIndices): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    // Batched form. The ragged result is flattened into one index buffer; counts_out receives the
+    // per-UUID length so the caller can split it. Both buffers stay valid until the next call.
+    PYHELIOS_API int* getObjectPrimitiveSharedVertexIndicesMulti(helios::Context* context, unsigned int objID, unsigned int* UUIDs, unsigned int uuid_count, int weld_mode, unsigned int** counts_out, unsigned int* total_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (total_size) *total_size = 0; if (counts_out) *counts_out = nullptr; return nullptr; }
+            if (!UUIDs && uuid_count > 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID array is null"); if (total_size) *total_size = 0; if (counts_out) *counts_out = nullptr; return nullptr; }
+            std::vector<unsigned int> uuid_vec(UUIDs, UUIDs + uuid_count);
+            std::vector<std::vector<int>> idx = context->getObjectPrimitiveSharedVertexIndices(objID, uuid_vec, static_cast<helios::VertexWeldMode>(weld_mode));
+            static thread_local std::vector<int> buf;
+            static thread_local std::vector<unsigned int> counts;
+            buf.clear(); counts.clear(); counts.reserve(idx.size());
+            size_t total = 0;
+            for (const auto& row : idx) { total += row.size(); }
+            buf.reserve(total);
+            for (const auto& row : idx) {
+                counts.push_back(static_cast<unsigned int>(row.size()));
+                buf.insert(buf.end(), row.begin(), row.end());
+            }
+            *total_size = static_cast<unsigned int>(buf.size());
+            if (counts_out) *counts_out = counts.empty() ? nullptr : counts.data();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (total_size) *total_size = 0; if (counts_out) *counts_out = nullptr; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getObjectPrimitiveSharedVertexIndices): ") + e.what()); if (total_size) *total_size = 0; if (counts_out) *counts_out = nullptr; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveSharedVertexIndices): Unknown error."); if (total_size) *total_size = 0; if (counts_out) *counts_out = nullptr; return nullptr; }
+    }
+
+    PYHELIOS_API int* getPrimitiveSharedVertexIndices(helios::Context* context, unsigned int UUID, int weld_mode, unsigned int* size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); if (size) *size = 0; return nullptr; }
+            std::vector<int> idx = context->getPrimitiveSharedVertexIndices(UUID, static_cast<helios::VertexWeldMode>(weld_mode));
+            static thread_local std::vector<int> buf;
+            buf = idx;
+            *size = buf.size();
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveSharedVertexIndices): ") + e.what()); if (size) *size = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveSharedVertexIndices): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
     PYHELIOS_API int* getPolymeshObjectFaces(helios::Context* context, unsigned int objID, unsigned int* size) {
         clearError();
         try {

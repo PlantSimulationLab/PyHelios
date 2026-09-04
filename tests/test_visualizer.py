@@ -1559,6 +1559,137 @@ class TestVisualizerV1383Native:
         assert isinstance(visualizer.isHeadlessMultisamplingActive(), bool)
 
 
+@pytest.mark.native_only
+class TestVisualizerNullPointerGuards:
+    """The visualizer C interface must not let a null handle or a C++ exception reach the process.
+
+    Every other subsystem in native/src/ null-checks its handle and wraps the body in try/catch;
+    the visualizer entry points added before that convention did neither, so a null handle was an
+    unguarded dereference and a throwing callee was std::terminate. Both kill the interpreter
+    instead of raising, so these run in a subprocess and assert on the exit code.
+    """
+
+    # Entry points that take a Visualizer* first and are callable with a null handle alone.
+    NULL_HANDLE_FUNCTIONS = [
+        "destroyVisualizer",
+        "plotInteractive",
+        "plotUpdate",
+        "closeWindow",
+    ]
+
+    @pytest.mark.parametrize("func_name", NULL_HANDLE_FUNCTIONS)
+    def test_null_visualizer_handle_does_not_crash(self, func_name):
+        """A null Visualizer* must set an error, not segfault."""
+        import subprocess
+        import textwrap
+
+        repro = textwrap.dedent(
+            f"""
+            import ctypes
+            from pyhelios.wrappers import UVisualizerWrapper as vw
+
+            null_handle = ctypes.POINTER(vw.UVisualizer)()
+            vw.helios_lib.{func_name}(null_handle)
+            print("SURVIVED")
+            """
+        )
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env = dict(os.environ, PYTHONPATH=repo_root)
+        result = subprocess.run([sys.executable, "-c", repro], cwd=repo_root, env=env,
+                                capture_output=True, text=True, timeout=180)
+
+        assert result.returncode == 0, (
+            f"{func_name}(NULL) exited with {result.returncode} "
+            f"(-11/139 indicates SIGSEGV).\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "SURVIVED" in result.stdout
+
+    def test_null_visualizer_handle_with_array_args_does_not_crash(self):
+        """The setters taking float arrays must reject a null handle before dereferencing it."""
+        import subprocess
+        import textwrap
+
+        repro = textwrap.dedent(
+            """
+            import ctypes
+            from pyhelios.wrappers import UVisualizerWrapper as vw
+
+            null_handle = ctypes.POINTER(vw.UVisualizer)()
+            triple = (ctypes.c_float * 3)(1.0, 2.0, 3.0)
+            vw.helios_lib.setBackgroundColor(null_handle, triple)
+            vw.helios_lib.setLightDirection(null_handle, triple)
+            vw.helios_lib.setCameraPosition(null_handle, triple, triple)
+            vw.helios_lib.setCameraPositionSpherical(null_handle, triple, triple)
+            vw.helios_lib.setLightingModel(null_handle, 1)
+            print("SURVIVED")
+            """
+        )
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env = dict(os.environ, PYTHONPATH=repo_root)
+        result = subprocess.run([sys.executable, "-c", repro], cwd=repo_root, env=env,
+                                capture_output=True, text=True, timeout=180)
+
+        assert result.returncode == 0, (
+            f"null-handle setters exited with {result.returncode} "
+            f"(-11/139 indicates SIGSEGV).\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "SURVIVED" in result.stdout
+
+    def test_null_string_arguments_do_not_crash(self):
+        """validateTextureFile constructs a std::string from its argument without checking it."""
+        import subprocess
+        import textwrap
+
+        repro = textwrap.dedent(
+            """
+            import ctypes
+            from pyhelios.wrappers import UVisualizerWrapper as vw
+
+            vw.helios_lib.validateTextureFile(None)
+            print("SURVIVED")
+            """
+        )
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env = dict(os.environ, PYTHONPATH=repo_root)
+        result = subprocess.run([sys.executable, "-c", repro], cwd=repo_root, env=env,
+                                capture_output=True, text=True, timeout=180)
+
+        assert result.returncode == 0, (
+            f"validateTextureFile(NULL) exited with {result.returncode} "
+            f"(-11/139 indicates SIGSEGV).\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "SURVIVED" in result.stdout
+
+    def test_null_context_to_build_context_geometry_does_not_crash(self):
+        """buildContextGeometry dereferences both handles; neither was checked."""
+        import subprocess
+        import textwrap
+
+        repro = textwrap.dedent(
+            """
+            import ctypes
+            from pyhelios.wrappers import UVisualizerWrapper as vw
+
+            null_handle = ctypes.POINTER(vw.UVisualizer)()
+            vw.helios_lib.buildContextGeometry(null_handle, None)
+            print("SURVIVED")
+            """
+        )
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env = dict(os.environ, PYTHONPATH=repo_root)
+        result = subprocess.run([sys.executable, "-c", repro], cwd=repo_root, env=env,
+                                capture_output=True, text=True, timeout=180)
+
+        assert result.returncode == 0, (
+            f"buildContextGeometry(NULL, NULL) exited with {result.returncode} "
+            f"(-11/139 indicates SIGSEGV).\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "SURVIVED" in result.stdout
+
 if __name__ == "__main__":
     # Run tests when executed directly
     pytest.main([__file__, "-v"])

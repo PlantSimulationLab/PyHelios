@@ -6,6 +6,7 @@ Native-only tests exercise the full JSON round-trip through the C++ wrapper.
 """
 
 import json
+import warnings
 
 import pytest
 
@@ -336,3 +337,164 @@ class TestPhytomerFunctionPreservation:
 
         out = plantarch.getCurrentShootParameters("custom_mainstem_variant")
         assert out["max_nodes"] == {"distribution": "constant", "parameters": [12.0]}
+
+
+# --------------------------------------------------------------------------- #
+# helios-core 1.3.84: leaf flexibility (self-weight droop) parameters
+# --------------------------------------------------------------------------- #
+@pytest.mark.cross_platform
+class TestLeafFlexibilityParams:
+    """The five new LeafPrototype shape parameters, in the pure-Python typed model."""
+
+    NEW_FIELDS = (
+        "longitudinal_curvature_exponent",
+        "flexibility",
+        "flexibility_taper",
+        "flexibility_aging",
+        "flexibility_aging_max",
+    )
+
+    def test_defaults_match_native(self):
+        """Defaults must match LeafPrototype's C++ constructor, or a round-trip shifts them."""
+        lp = LeafPrototype()
+        assert lp.longitudinal_curvature_exponent.parameters == [4.0]
+        assert lp.flexibility.parameters == [0.0]
+        assert lp.flexibility_taper.parameters == [1.0]
+        assert lp.flexibility_aging.parameters == [0.0]
+        assert lp.flexibility_aging_max.parameters == [4.0]
+
+    def test_all_new_fields_serialize(self):
+        d = LeafPrototype().to_dict()
+        for name in self.NEW_FIELDS:
+            assert name in d, f"{name} missing from to_dict()"
+
+    def test_round_trip_preserves_new_fields(self):
+        """The erasure this guards against: a field absent from to_dict() silently resets."""
+        lp = LeafPrototype(
+            flexibility=RandomParameterFloat.constant(2.5),
+            flexibility_taper=RandomParameterFloat.constant(40.0),
+            flexibility_aging=RandomParameterFloat.constant(7.0),
+            flexibility_aging_max=RandomParameterFloat.constant(3.0),
+            longitudinal_curvature_exponent=RandomParameterFloat.constant(2.0),
+        )
+        back = LeafPrototype.from_dict(lp.to_dict())
+        assert back.flexibility.parameters == [2.5]
+        assert back.flexibility_taper.parameters == [40.0]
+        assert back.flexibility_aging.parameters == [7.0]
+        assert back.flexibility_aging_max.parameters == [3.0]
+        assert back.longitudinal_curvature_exponent.parameters == [2.0]
+
+    def test_round_trip_preserves_distributions(self):
+        lp = LeafPrototype(flexibility=RandomParameterFloat.uniform(1.0, 3.0))
+        back = LeafPrototype.from_dict(lp.to_dict())
+        assert back.flexibility.distribution == "uniform"
+        assert back.flexibility.parameters == [1.0, 3.0]
+
+    def test_missing_key_falls_back_to_the_default(self):
+        """Reading a dict written before 1.3.84 must not crash."""
+        d = LeafPrototype().to_dict()
+        for name in self.NEW_FIELDS:
+            d.pop(name)
+        back = LeafPrototype.from_dict(d)
+        assert back.flexibility_taper.parameters == [1.0]
+        assert back.longitudinal_curvature_exponent.parameters == [4.0]
+
+
+@pytest.mark.cross_platform
+class TestLeafBuckleDeprecation:
+    """leaf_buckle_length/angle are deprecated in favour of the flexibility model."""
+
+    def test_default_prototype_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            LeafPrototype().to_dict()
+
+    @pytest.mark.parametrize("field_name", ["leaf_buckle_length", "leaf_buckle_angle"])
+    def test_non_zero_buckle_warns(self, field_name):
+        lp = LeafPrototype(**{field_name: RandomParameterFloat.constant(30.0)})
+        with pytest.warns(DeprecationWarning, match=field_name):
+            lp.to_dict()
+
+    def test_warning_names_the_replacement(self):
+        lp = LeafPrototype(leaf_buckle_angle=RandomParameterFloat.constant(30.0))
+        with pytest.warns(DeprecationWarning, match="flexibility"):
+            lp.to_dict()
+
+    def test_deprecated_fields_still_round_trip(self):
+        """Deprecated is not removed: native still converts them to a flexibility."""
+        lp = LeafPrototype(leaf_buckle_length=RandomParameterFloat.constant(0.6),
+                           leaf_buckle_angle=RandomParameterFloat.constant(25.0))
+        with pytest.warns(DeprecationWarning):
+            d = lp.to_dict()
+        back = LeafPrototype.from_dict(d)
+        assert back.leaf_buckle_length.parameters == [0.6]
+        assert back.leaf_buckle_angle.parameters == [25.0]
+
+
+@pytest.mark.native_only
+class TestLeafFlexibilityNativeRoundTrip:
+    """The new leaf parameters must survive a real trip through the C++ JSON bridge."""
+
+    def test_new_fields_present_in_native_parameters(self):
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            sp = ShootParameters.from_dict(pa.getCurrentShootParameters("trunk"))
+            leaf = sp.phytomer_parameters.leaf.prototype
+            for name in TestLeafFlexibilityParams.NEW_FIELDS:
+                assert hasattr(leaf, name)
+
+    def test_flexibility_survives_define_shoot_type(self):
+        """A set-then-read cycle must not reset the droop parameters to their defaults."""
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            sp = ShootParameters.from_dict(pa.getCurrentShootParameters("trunk"))
+            sp.phytomer_parameters.leaf.prototype.flexibility = \
+                RandomParameterFloat.constant(2.75)
+            sp.phytomer_parameters.leaf.prototype.flexibility_taper = \
+                RandomParameterFloat.constant(33.0)
+            pa.defineShootType("trunk_flex", sp)
+
+            back = ShootParameters.from_dict(pa.getCurrentShootParameters("trunk_flex"))
+            assert back.phytomer_parameters.leaf.prototype.flexibility.parameters == \
+                pytest.approx([2.75])
+            assert back.phytomer_parameters.leaf.prototype.flexibility_taper.parameters == \
+                pytest.approx([33.0])
+
+
+@pytest.mark.native_only
+class TestChildShootTypeRoundTrip:
+    """helios-core 1.3.84 made the child shoot types readable, so they round-trip."""
+
+    def test_child_shoot_types_are_reported(self):
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            params = pa.getCurrentShootParameters("trunk")
+            assert "child_shoot_types" in params
+            assert "labels" in params["child_shoot_types"]
+            assert "probabilities" in params["child_shoot_types"]
+
+    def test_labels_and_probabilities_are_parallel(self):
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            for label in ("trunk", "shoot"):
+                try:
+                    child = pa.getCurrentShootParameters(label)["child_shoot_types"]
+                except PlantArchitectureError:
+                    continue
+                assert len(child["labels"]) == len(child["probabilities"])
+
+    def test_child_shoot_types_survive_a_round_trip(self):
+        """Previously unreadable, so defineShootType() silently erased branching topology."""
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            before = pa.getCurrentShootParameters("trunk")["child_shoot_types"]
+            sp = ShootParameters.from_dict(pa.getCurrentShootParameters("trunk"))
+            pa.defineShootType("trunk_copy", sp)
+            after = pa.getCurrentShootParameters("trunk_copy")["child_shoot_types"]
+            assert after["labels"] == before["labels"]
+            assert after["probabilities"] == pytest.approx(before["probabilities"])

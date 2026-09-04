@@ -1095,8 +1095,8 @@ def getObjectPrimitiveUUIDs(context, object_id:int):
 
 # Python wrappers for loadPLY functions
 def loadPLY(context, filename:str, silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _PLY_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("PLY loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     
@@ -1112,6 +1112,8 @@ def loadPLY(context, filename:str, silent:bool=False):
     return list(uuids_ptr[:size.value])
 
 def loadPLYWithOriginHeight(context, filename:str, origin:List[float], height:float, upaxis:str="YUP", silent:bool=False):
+    if not _PLY_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("PLY loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     upaxis_encoded = upaxis.encode('utf-8')
@@ -1120,8 +1122,8 @@ def loadPLYWithOriginHeight(context, filename:str, origin:List[float], height:fl
     return list(uuids_ptr[:size.value])
 
 def loadPLYWithOriginHeightRotation(context, filename:str, origin:List[float], height:float, rotation:List[float], upaxis:str="YUP", silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _PLY_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("PLY loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     upaxis_encoded = upaxis.encode('utf-8')
@@ -1131,8 +1133,8 @@ def loadPLYWithOriginHeightRotation(context, filename:str, origin:List[float], h
     return list(uuids_ptr[:size.value])
 
 def loadPLYWithOriginHeightColor(context, filename:str, origin:List[float], height:float, color:List[float], upaxis:str="YUP", silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _PLY_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("PLY loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     upaxis_encoded = upaxis.encode('utf-8')
@@ -1142,8 +1144,8 @@ def loadPLYWithOriginHeightColor(context, filename:str, origin:List[float], heig
     return list(uuids_ptr[:size.value])
 
 def loadPLYWithOriginHeightRotationColor(context, filename:str, origin:List[float], height:float, rotation:List[float], color:List[float], upaxis:str="YUP", silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _PLY_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("PLY loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     upaxis_encoded = upaxis.encode('utf-8')
@@ -1155,16 +1157,16 @@ def loadPLYWithOriginHeightRotationColor(context, filename:str, origin:List[floa
 
 # Python wrappers for loadOBJ functions
 def loadOBJ(context, filename:str, silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _OBJ_XML_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("OBJ/XML loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     uuids_ptr = helios_lib.loadOBJ(context, filename_encoded, silent, ctypes.byref(size))
     return list(uuids_ptr[:size.value])
 
 def loadOBJWithOriginHeightRotationColor(context, filename:str, origin:List[float], height:float, rotation:List[float], color:List[float], silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _OBJ_XML_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("OBJ/XML loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     origin_ptr = (ctypes.c_float * len(origin))(*origin)
@@ -1174,8 +1176,8 @@ def loadOBJWithOriginHeightRotationColor(context, filename:str, origin:List[floa
     return list(uuids_ptr[:size.value])
 
 def loadOBJWithOriginHeightRotationColorUpaxis(context, filename:str, origin:List[float], height:float, rotation:List[float], color:List[float], upaxis:str="YUP", silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _OBJ_XML_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("OBJ/XML loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     upaxis_encoded = upaxis.encode('utf-8')
@@ -1186,8 +1188,8 @@ def loadOBJWithOriginHeightRotationColorUpaxis(context, filename:str, origin:Lis
     return list(uuids_ptr[:size.value])
 
 def loadOBJWithOriginScaleRotationColorUpaxis(context, filename:str, origin:List[float], scale:List[float], rotation:List[float], color:List[float], upaxis:str="YUP", silent:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _OBJ_XML_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("OBJ/XML loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     upaxis_encoded = upaxis.encode('utf-8')
@@ -1200,8 +1202,8 @@ def loadOBJWithOriginScaleRotationColorUpaxis(context, filename:str, origin:List
 
 # Python wrapper for loadXML function
 def loadXML(context, filename:str, quiet:bool=False):
-    if not _FILE_LOADING_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("File loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
+    if not _OBJ_XML_LOADING_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("OBJ/XML loading functions not available in current Helios library. These require updated C++ wrapper implementation.")
     size = ctypes.c_uint()
     filename_encoded = filename.encode('utf-8')
     uuids_ptr = helios_lib.loadXML(context, filename_encoded, quiet, ctypes.byref(size))
@@ -6845,6 +6847,10 @@ _NOT_AVAILABLE_SCALAR_API_MSG = (
     "Rebuild with: build_scripts/build_helios --clean"
 )
 
+# Set before the registration block below so the name is always defined, even if that
+# block raises before reaching the shared-vertex probe.
+_SHARED_VERTEX_TOPOLOGY_AVAILABLE = False
+
 try:
     # ---- Bool getters ----
     helios_lib.doesObjectExist.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
@@ -6943,6 +6949,50 @@ try:
         getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint]
         getattr(helios_lib, _fn).restype = ctypes.c_uint
         getattr(helios_lib, _fn).errcheck = _check_error
+
+    # Shared vertex topology + mesh deformation (helios-core 1.3.84). Probed separately so a
+    # library built against an older core keeps the rest of the Context API working.
+    try:
+        helios_lib.setPolymeshObjectVertices.argtypes = [
+            ctypes.POINTER(UContext), ctypes.c_uint,
+            ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+        ]
+        helios_lib.setPolymeshObjectVertices.restype = None
+        helios_lib.setPolymeshObjectVertices.errcheck = _check_error
+
+        helios_lib.doesObjectHaveSharedVertexTopology.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint]
+        helios_lib.doesObjectHaveSharedVertexTopology.restype = ctypes.c_bool
+        helios_lib.doesObjectHaveSharedVertexTopology.errcheck = _check_error
+
+        # Native return type is size_t; c_ulonglong avoids truncating a large mesh.
+        helios_lib.getObjectSharedVertexCount.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_int]
+        helios_lib.getObjectSharedVertexCount.restype = ctypes.c_ulonglong
+        helios_lib.getObjectSharedVertexCount.errcheck = _check_error
+
+        helios_lib.getObjectPrimitiveSharedVertexIndices.argtypes = [
+            ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_uint, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_uint),
+        ]
+        helios_lib.getObjectPrimitiveSharedVertexIndices.restype = ctypes.POINTER(ctypes.c_int)
+        helios_lib.getObjectPrimitiveSharedVertexIndices.errcheck = _check_error
+
+        helios_lib.getObjectPrimitiveSharedVertexIndicesMulti.argtypes = [
+            ctypes.POINTER(UContext), ctypes.c_uint,
+            ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_int,
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)), ctypes.POINTER(ctypes.c_uint),
+        ]
+        helios_lib.getObjectPrimitiveSharedVertexIndicesMulti.restype = ctypes.POINTER(ctypes.c_int)
+        helios_lib.getObjectPrimitiveSharedVertexIndicesMulti.errcheck = _check_error
+
+        helios_lib.getPrimitiveSharedVertexIndices.argtypes = [
+            ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_int, ctypes.POINTER(ctypes.c_uint),
+        ]
+        helios_lib.getPrimitiveSharedVertexIndices.restype = ctypes.POINTER(ctypes.c_int)
+        helios_lib.getPrimitiveSharedVertexIndices.errcheck = _check_error
+
+        _SHARED_VERTEX_TOPOLOGY_AVAILABLE = True
+    except AttributeError:
+        _SHARED_VERTEX_TOPOLOGY_AVAILABLE = False
 
     helios_lib.computePolymeshObjectVertexNormals.argtypes = [ctypes.POINTER(UContext), ctypes.c_uint, ctypes.c_float]
     helios_lib.computePolymeshObjectVertexNormals.restype = None
@@ -7238,6 +7288,81 @@ def getPolymeshObjectVertexCountWrapper(context, objID: int) -> int:
 def getPolymeshObjectFaceCountWrapper(context, objID: int) -> int:
     _require_ctx_scalar_api()
     return int(helios_lib.getPolymeshObjectFaceCount(context, int(objID)))
+
+
+def _require_shared_vertex_topology() -> None:
+    """Raise if the native library predates the shared vertex topology API."""
+    if not _SHARED_VERTEX_TOPOLOGY_AVAILABLE:
+        raise RuntimeError(
+            "Shared vertex topology is not available in the current native library. "
+            "It requires helios-core v1.3.84 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def setPolymeshObjectVerticesWrapper(context, objID: int, vertices) -> None:
+    _require_ctx_scalar_api()
+    _require_shared_vertex_topology()
+    n_vert = len(vertices)
+    flat = []
+    for v in vertices:
+        flat.extend((float(v[0]), float(v[1]), float(v[2])))
+    arr = (ctypes.c_float * len(flat))(*flat) if flat else None
+    helios_lib.setPolymeshObjectVertices(context, int(objID), arr, ctypes.c_uint(n_vert))
+
+
+def doesObjectHaveSharedVertexTopologyWrapper(context, objID: int) -> bool:
+    _require_ctx_scalar_api()
+    _require_shared_vertex_topology()
+    return bool(helios_lib.doesObjectHaveSharedVertexTopology(context, int(objID)))
+
+
+def getObjectSharedVertexCountWrapper(context, objID: int, weld_mode: int = 0) -> int:
+    _require_ctx_scalar_api()
+    _require_shared_vertex_topology()
+    return int(helios_lib.getObjectSharedVertexCount(context, int(objID), ctypes.c_int(int(weld_mode))))
+
+
+def getObjectPrimitiveSharedVertexIndicesWrapper(context, objID: int, uuid: int, weld_mode: int = 0):
+    _require_ctx_scalar_api()
+    _require_shared_vertex_topology()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getObjectPrimitiveSharedVertexIndices(
+        context, int(objID), int(uuid), ctypes.c_int(int(weld_mode)), ctypes.byref(size)
+    )
+    return _pull_int_array(ptr, size.value)
+
+
+def getObjectPrimitiveSharedVertexIndicesMultiWrapper(context, objID: int, uuids, weld_mode: int = 0):
+    _require_ctx_scalar_api()
+    _require_shared_vertex_topology()
+    n = len(uuids)
+    uuid_arr = (ctypes.c_uint * n)(*[int(u) for u in uuids]) if n else None
+    counts_ptr = ctypes.POINTER(ctypes.c_uint)()
+    total = ctypes.c_uint()
+    ptr = helios_lib.getObjectPrimitiveSharedVertexIndicesMulti(
+        context, int(objID), uuid_arr, ctypes.c_uint(n), ctypes.c_int(int(weld_mode)),
+        ctypes.byref(counts_ptr), ctypes.byref(total)
+    )
+    flat = _pull_int_array(ptr, total.value)
+    counts = _pull_uint_array(counts_ptr, n)
+    # Split the flattened buffer back into one list per requested UUID.
+    out = []
+    offset = 0
+    for c in counts:
+        out.append(flat[offset:offset + c])
+        offset += c
+    return out
+
+
+def getPrimitiveSharedVertexIndicesWrapper(context, uuid: int, weld_mode: int = 0):
+    _require_ctx_scalar_api()
+    _require_shared_vertex_topology()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPrimitiveSharedVertexIndices(
+        context, int(uuid), ctypes.c_int(int(weld_mode)), ctypes.byref(size)
+    )
+    return _pull_int_array(ptr, size.value)
 
 
 def getPolymeshObjectFaceIndexForPrimitiveWrapper(context, objID: int, uuid: int) -> int:
