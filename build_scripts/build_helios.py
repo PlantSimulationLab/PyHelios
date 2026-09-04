@@ -285,8 +285,78 @@ class HeliosBuilder:
             print(f"ctypes architecture test failed: {e}")
             return None
     
+    # Visual Studio major version -> CMake generator name, newest first.
+    _VS_MAJOR_TO_GENERATOR = {
+        18: 'Visual Studio 18 2026',
+        17: 'Visual Studio 17 2022',
+        16: 'Visual Studio 16 2019',
+        15: 'Visual Studio 15 2017',
+    }
+
+    @staticmethod
+    def _vswhere_installed_majors() -> List[int]:
+        """Major versions of the Visual Studio instances actually installed.
+
+        `cmake --help` lists every generator this CMake knows about, installed
+        or not, so it cannot answer "which Visual Studio is on this machine".
+        vswhere can, and it ships at a fixed path with every VS 2017+ installer.
+
+        Returns [] when vswhere is absent or reports nothing, which leaves the
+        caller on its original `cmake --help` scan.
+        """
+        vswhere = (Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)'))
+                   / 'Microsoft Visual Studio' / 'Installer' / 'vswhere.exe')
+        if not vswhere.exists():
+            return []
+        try:
+            result = subprocess.run(
+                [str(vswhere), '-products', '*', '-property', 'installationVersion'],
+                capture_output=True, text=True, timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        majors = set()
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                majors.add(int(line.split('.')[0]))
+            except ValueError:
+                continue
+        return sorted(majors, reverse=True)
+
     def _detect_visual_studio_version(self) -> Tuple[str, str]:
         """Detect available Visual Studio version and return (generator, architecture)."""
+        arch_flag = 'ARM64' if self.architecture == 'arm64' else (
+            'x64' if self.architecture == 'x64' else 'Win32')
+
+        # Ask vswhere what is installed before falling back to the generator
+        # scan below. The scan alone matches on `cmake --help`, which lists
+        # generators regardless of what is installed -- on a machine carrying
+        # only Visual Studio 2026 it selected "Visual Studio 17 2022" and CMake
+        # then failed configure with "could not find any instance of Visual
+        # Studio".
+        cmake_help = ''
+        try:
+            cmake_help = subprocess.run(
+                ['cmake', '--help'], capture_output=True, text=True).stdout
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+        for major in self._vswhere_installed_majors():
+            generator = self._VS_MAJOR_TO_GENERATOR.get(major)
+            if generator is None:
+                continue
+            # ARM64 is only well supported from VS 2022 onwards.
+            if self.architecture == 'arm64' and major < 17:
+                continue
+            # Installed, but this CMake is too old to emit that generator.
+            if cmake_help and generator not in cmake_help:
+                continue
+            print(f"Detected Visual Studio generator: {generator} (architecture: {arch_flag})")
+            return generator, arch_flag
+
         # List of Visual Studio generators to try (newest first)
         vs_generators = [
             ('Visual Studio 17 2022', 'x64' if self.architecture == 'x64' else 'Win32'),
