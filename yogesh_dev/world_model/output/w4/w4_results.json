@@ -1,0 +1,44 @@
+{
+  "episode": "train/view_s10000_g0_row_traversal.npz",
+  "steps": 12000,
+  "image_size": 64,
+  "teacher_forced_reconstruction": {
+    "psnr_db": 30.669448852539062,
+    "ssim": 0.9556288719177246,
+    "depth_mae_m": 0.04729103296995163,
+    "miou": 1.0,
+    "rgb_mse": 0.0008619299624115229
+  },
+  "imagination": {
+    "t+1": {
+      "psnr_db": 30.999866485595703,
+      "ssim": 0.9543269872665405,
+      "depth_mae_m": 0.043300703167915344,
+      "miou": 1.0
+    },
+    "t+5": {
+      "psnr_db": 30.88883399963379,
+      "ssim": 0.9517368674278259,
+      "depth_mae_m": 0.044836919754743576,
+      "miou": 1.0
+    },
+    "t+10": {
+      "psnr_db": 31.0732364654541,
+      "ssim": 0.9479035139083862,
+      "depth_mae_m": 0.045804429799318314,
+      "miou": 1.0
+    },
+    "t+25": {
+      "psnr_db": 30.135913848876953,
+      "ssim": 0.9573203921318054,
+      "depth_mae_m": 0.05322325602173805,
+      "miou": 1.0
+    }
+  },
+  "acceptance": {
+    "criterion": "teacher-forced reconstruction PSNR > 25 dB AND semantic mIoU > 0.7 on the single memorised trajectory",
+    "passed": true,
+    "psnr_db": 30.669448852539062,
+    "miou": 1.0
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "seed": 20260729,
+  "tree_age_days": 720.0,
+  "resolution": [
+    320,
+    240
+  ],
+  "build_time_s": 0.7989292144775391,
+  "n_primitives": 41351,
+  "semantic_class_counts": {
+    "fruit": 5562,
+    "leaf": 10593,
+    "shoot": 19040,
+    "petiole": 5778,
+    "peduncle": 378
+  },
+  "n_fruit": 27,
+  "branch_segment_extraction_s": 0.03232765197753906,
+  "n_branch_segments": 1336,
+  "tube_type_report": {
+    "shoot": {
+      "n_objects": 61,
+      "n_tube": 61,
+      "n_other": 0
+    },
+    "petiole": {
+      "n_objects": 963,
+      "n_tube": 0,
+      "n_other": 963
+    },
+    "peduncle": {
+      "n_objects": 27,
+      "n_tube": 27,
+      "n_other": 0
+    }
+  },
+  "roadmap": {
+    "arm_low": {
+      "grid_samples": 576,
+      "rejected": 27,
+      "reachable_nodes": 549,
+      "edges": 3718,
+      "build_time_s": 0.01164388656616211
+    },
+    "arm_mid": {
+      "grid_samples": 576,
+      "rejected": 108,
+      "reachable_nodes": 468,
+      "edges": 3228,
+      "build_time_s": 0.00951528549194336
+    },
+    "arm_high": {
+      "grid_samples": 576,
+      "rejected": 108,
+      "reachable_nodes": 468,
+      "edges": 3230,
+      "build_time_s": 0.00910043716430664
+    }
+  },
+  "n_render_poses": 42,
+  "render_total_s": 3.9472124576568604,
+  "render_per_view_s": 0.09398124899183001,
+  "hfov_deg": 57.82240163683314,
+  "fl_x": 289.7056274847714
+}

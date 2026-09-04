@@ -1,0 +1,102 @@
+{
+  "resolution_stated": [
+    320,
+    240
+  ],
+  "n_valid_pixels_reference_view": 57860,
+  "modules": {
+    "phase2_visibility.fruit_visible_fraction_all_fruit": {
+      "n_repeats": 50,
+      "mean_ms": 0.08298797991301399,
+      "p95_ms": 0.08528044982085703,
+      "p99_ms": 0.09107006895646917,
+      "max_ms": 0.09540999963064678,
+      "min_ms": 0.08131900176522322,
+      "work_unit": "fruit visibility evaluations (real per-fruit AVUB-style area-weighted fraction)",
+      "n_work_units_per_call": 27,
+      "ns_per_work_unit": 3073.628885667185
+    },
+    "phase3_kinematics.inverse_kinematics": {
+      "n_repeats": 200,
+      "mean_ms": 0.0009262451021641027,
+      "p95_ms": 0.0010789990483317524,
+      "p99_ms": 0.0011671313041006204,
+      "max_ms": 0.0019310027710162103,
+      "min_ms": 0.0008089991752058268,
+      "work_unit": "one 5-DOF closed-form inverse-kinematics solve",
+      "n_work_units_per_call": 1,
+      "ns_per_work_unit": 926.2451021641027
+    },
+    "phase3_motion_time.move_time": {
+      "n_repeats": 200,
+      "mean_ms": 0.0007061700671329163,
+      "p95_ms": 0.0007751521479804069,
+      "p99_ms": 0.0007994120096554976,
+      "max_ms": 0.0012109994713682681,
+      "min_ms": 0.0006549998943228275,
+      "work_unit": "one real T3.3 trapezoidal-profile move-time evaluation (5 axes)",
+      "n_work_units_per_call": 5,
+      "ns_per_work_unit": 141.23401342658326
+    },
+    "phase4_occupancy_map.integrate_view": {
+      "n_repeats": 20,
+      "mean_ms": 8.565742700375267,
+      "p95_ms": 8.682692550974025,
+      "p99_ms": 8.690680909094226,
+      "max_ms": 8.692677998624276,
+      "min_ms": 8.282957998744678,
+      "work_unit": "valid (non-sky) pixels beam-model-integrated into the occupancy grid (pixel_stride=2)",
+      "n_work_units_per_call": 14446,
+      "ns_per_work_unit": 592.9491001228898
+    },
+    "phase4_semantic_map.integrate_semantic_view": {
+      "n_repeats": 20,
+      "mean_ms": 1.160716799859074,
+      "p95_ms": 1.1737532493498293,
+      "p99_ms": 1.2665378486053667,
+      "max_ms": 1.2897339984192513,
+      "min_ms": 1.1432719984441064,
+      "work_unit": "valid pixels semantic-integrated into the voxel class-count map (pixel_stride=2)",
+      "n_work_units_per_call": 14446,
+      "ns_per_work_unit": 80.34866398027647
+    },
+    "phase4_information_gain.batch_information_gain": {
+      "n_repeats": 20,
+      "mean_ms": 1.0708067509767716,
+      "p95_ms": 1.0881301006520516,
+      "p99_ms": 1.0936036215207423,
+      "max_ms": 1.094972001737915,
+      "min_ms": 1.0592510006972589,
+      "work_unit": "(candidate pose x ray x march-step) volumetric entropy evaluations, fully vectorized/batched",
+      "n_work_units_per_call": 13440,
+      "ns_per_work_unit": 79.67312135243836
+    },
+    "phase4_tracker.extract_detections_one_arm": {
+      "n_repeats": 10,
+      "mean_ms": 18.35477229942626,
+      "p95_ms": 18.55050834983558,
+      "p99_ms": 18.56208487002732,
+      "max_ms": 18.564979000075255,
+      "min_ms": 17.818284999520984,
+      "work_unit": "real rendered (depth, instance-label) frames processed into 3D detections",
+      "n_work_units_per_call": 14,
+      "ns_per_work_unit": 1311055.1642447326
+    },
+    "phase4_roadmap.dijkstra": {
+      "n_repeats": 50,
+      "mean_ms": 0.010192379995714873,
+      "p95_ms": 0.010439397919981275,
+      "p99_ms": 0.012100559506507121,
+      "max_ms": 0.01291199805564247,
+      "min_ms": 0.009932999091688544,
+      "work_unit": "one shortest-path solve over the real roadmap graph",
+      "n_work_units_per_call": 1,
+      "graph_size": {
+        "n_nodes": 468,
+        "n_edges": 3230
+      },
+      "ns_per_edge": 3.1555356023885057
+    }
+  },
+  "note": "All timings are wall-clock (time.perf_counter, warmup=2, then N repeated calls) on the CPU running this job -- see PHASE6_LOG.md for the machine context. Every call operates on REAL data (real depth EXRs, real label maps, real roadmap graphs, real fruit records) at the ACTUAL resolution/graph-size Phase 4 generated them at (320x240), not synthetic/scaled inputs."
+}

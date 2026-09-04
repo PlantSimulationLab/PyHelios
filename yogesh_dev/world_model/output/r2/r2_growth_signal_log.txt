@@ -1,0 +1,45 @@
+R2-A growth signal analysis  2026-07-31 03:04:31
+  data=yogesh_dev/world_model/output/dataset  split=test  stages=[540.0, 545.0, 550.0, 555.0, 560.0, 565.0, 570.0, 580.0]
+  growth episodes: 832 total, 64 in split
+  view episodes:   96 in split
+
+[M1] growth action degeneracy (all splits)
+  distinct a_grow sequences over 832 growth episodes: 1
+    [5,5,5,5,5,5,10,0] x832
+  => the growth action is CONSTANT across the entire dataset. It carries no
+     information beyond the frame index, so there is no counterfactual growth
+     variation anywhere in the training data.
+  contrast: view action per-dim std over 3072 steps = [0.08919999748468399, 0.033799998462200165, 0.02019999921321869, 0.05460000038146973] (non-degenerate)
+
+[M2] per-step ground-truth change, growth channel
+    t->t+1          age  a_grow  RGB PSNR  depth MAE  sem mIoU  sem agree  d fruit_vis
+    0->1      540->545         5     17.97      0.199     0.484      0.934      +0.0033
+    1->2      545->550         5     21.04      0.123     0.745      0.954      +0.0024
+    2->3      550->555         5     20.95      0.110     0.777      0.954      +0.0029
+    3->4      555->560         5     20.91      0.092     0.799      0.955      +0.0032
+    4->5      560->565         5     21.16      0.068     0.836      0.962      +0.0033
+    5->6      565->570         5     21.14      0.061     0.840      0.963      +0.0038
+    6->7      570->580        10     21.05      0.055     0.868      0.964      +0.0010
+  mean over transitions: RGB PSNR 20.60 dB (simulator noise floor 20.82 dB), depth MAE 0.101 m, sem mIoU 0.764
+
+[M2b] per-step ground-truth change, view channel (same statistics)
+  over 768 view steps: RGB PSNR 17.77 dB, depth MAE 0.467 m, sem mIoU 0.339, agree 0.802
+
+[M3] scene-dependence of the growth transition (RGB delta decomposition)
+     explained = variance of the mean delta / total delta variance;
+     it is the fraction of the growth change predictable from the ACTION alone.
+  0->1 (540->545 d): delta RMS  32.46 levels, mean-delta RMS   6.36, explained by action alone =   3.8%
+  1->2 (545->550 d): delta RMS  22.79 levels, mean-delta RMS   5.26, explained by action alone =   5.3%
+  2->3 (550->555 d): delta RMS  23.12 levels, mean-delta RMS   5.29, explained by action alone =   5.2%
+  3->4 (555->560 d): delta RMS  23.35 levels, mean-delta RMS   4.90, explained by action alone =   4.4%
+  4->5 (560->565 d): delta RMS  22.74 levels, mean-delta RMS   4.64, explained by action alone =   4.2%
+  5->6 (565->570 d): delta RMS  22.80 levels, mean-delta RMS   4.41, explained by action alone =   3.7%
+  6->7 (570->580 d): delta RMS  23.08 levels, mean-delta RMS   4.90, explained by action alone =   4.5%
+  mean explained fraction: 4.5%
+
+[M4] growth step vs view step, in comparable units
+  RGB change per step (RMS levels): growth 23.79, view 32.96, simulator noise 23.20
+  growth RGB step is 1.03x the simulator noise, view RGB step is 1.42x
+  depth change per step: growth 0.101 m, view 0.467 m (0.217x)
+
+wrote /home/yogesh/PyHelios/yogesh_dev/world_model/output/r2/r2_growth_signal.json in 1s

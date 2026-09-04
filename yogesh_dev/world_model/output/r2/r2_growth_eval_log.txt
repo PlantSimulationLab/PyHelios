@@ -1,0 +1,92 @@
+
+=== r1_main ===
+  ckpt=yogesh_dev/world_model/output/train/main2/ckpt_best.pt step=14000 image_size=64
+  base age 545 d; candidate dt -> target stage: 5d->550d, 10d->555d, 15d->560d, 20d->565d, 25d->570d, 35d->580d
+  64 growth episodes x 8 stages at 64x64
+  [G1] dt response: predictions for dt=5d and dt=35d differ by RMS 0.05436; the ground-truth frames differ by 0.14391 => 37.8% of real growth change
+  [G2] dt identification accuracy 16.9% (chance 16.7%) over all 6 candidates
+       rows = dt asked for, cols = nearest ground-truth age
+            550    555    560    565    570    580
+     5d      64      0      0      0      0      0
+    10d      63      1      0      0      0      0
+    15d      64      0      0      0      0      0
+    20d      64      0      0      0      0      0
+    25d      63      1      0      0      0      0
+    35d      64      0      0      0      0      0
+       restricted to dt <= 20 d (the values stage subsampling actually produces): 25.4% (chance 25.0%)
+  [G3]   dt  target |    PSNR    copy |  depthMAE    copy |   mIoU   copy
+          5     550 |   19.43   21.05 |     1.501   0.259 |  0.271  0.733
+         10     555 |   18.61   19.57 |     1.563   0.451 |  0.263  0.615
+         15     560 |   17.84   18.48 |     1.612   0.590 |  0.256  0.559
+         20     565 |   17.15   17.61 |     1.659   0.699 |  0.251  0.503
+         25     570 |   16.50   16.87 |     1.727   0.785 |  0.246  0.466
+         35     580 |   15.79   16.11 |     1.782   0.875 |  0.237  0.438
+
+=== r2_main ===
+  ckpt=yogesh_dev/world_model/output/train/r2_main/ckpt_best.pt step=26000 image_size=64
+  base age 545 d; candidate dt -> target stage: 5d->550d, 10d->555d, 15d->560d, 20d->565d, 25d->570d, 35d->580d
+  64 growth episodes x 8 stages at 64x64
+  [G1] dt response: predictions for dt=5d and dt=35d differ by RMS 0.05617; the ground-truth frames differ by 0.14391 => 39.0% of real growth change
+  [G2] dt identification accuracy 16.4% (chance 16.7%) over all 6 candidates
+       rows = dt asked for, cols = nearest ground-truth age
+            550    555    560    565    570    580
+     5d      59      5      0      0      0      0
+    10d      60      4      0      0      0      0
+    15d      61      3      0      0      0      0
+    20d      62      2      0      0      0      0
+    25d      63      1      0      0      0      0
+    35d      64      0      0      0      0      0
+       restricted to dt <= 20 d (the values stage subsampling actually produces): 24.6% (chance 25.0%)
+  [G3]   dt  target |    PSNR    copy |  depthMAE    copy |   mIoU   copy
+          5     550 |   20.10   21.05 |     1.320   0.259 |  0.286  0.733
+         10     555 |   19.22   19.57 |     1.478   0.451 |  0.273  0.615
+         15     560 |   18.40   18.48 |     1.589   0.590 |  0.258  0.559
+         20     565 |   17.64   17.61 |     1.681   0.699 |  0.251  0.503
+         25     570 |   16.92   16.87 |     1.759   0.785 |  0.238  0.466
+         35     580 |   16.17   16.11 |     1.855   0.875 |  0.226  0.438
+
+=== r2_growth ===
+  ckpt=yogesh_dev/world_model/output/train/r2_growth/ckpt_best.pt step=32000 image_size=64
+  base age 545 d; candidate dt -> target stage: 5d->550d, 10d->555d, 15d->560d, 20d->565d, 25d->570d, 35d->580d
+  64 growth episodes x 8 stages at 64x64
+  [G1] dt response: predictions for dt=5d and dt=35d differ by RMS 0.07867; the ground-truth frames differ by 0.14391 => 54.7% of real growth change
+  [G2] dt identification accuracy 24.5% (chance 16.7%) over all 6 candidates
+       rows = dt asked for, cols = nearest ground-truth age
+            550    555    560    565    570    580
+     5d      52      8      4      0      0      0
+    10d      46     11      4      3      0      0
+    15d      36     15      8      4      1      0
+    20d      31     12      6     10      4      1
+    25d      20     19      5     11      5      4
+    35d      16     13      7     15      5      8
+       restricted to dt <= 20 d (the values stage subsampling actually produces): 33.2% (chance 25.0%)
+  [G3]   dt  target |    PSNR    copy |  depthMAE    copy |   mIoU   copy
+          5     550 |   19.95   21.05 |     1.335   0.259 |  0.291  0.733
+         10     555 |   19.40   19.57 |     1.390   0.451 |  0.298  0.615
+         15     560 |   18.87   18.48 |     1.406   0.590 |  0.296  0.559
+         20     565 |   18.60   17.61 |     1.359   0.699 |  0.300  0.503
+         25     570 |   18.29   16.87 |     1.342   0.785 |  0.301  0.466
+         35     580 |   17.97   16.11 |     1.348   0.875 |  0.298  0.438
+
+=== r2_final ===
+  ckpt=yogesh_dev/world_model/output/train/r2_final/ckpt_best.pt step=26000 image_size=64
+  base age 545 d; candidate dt -> target stage: 5d->550d, 10d->555d, 15d->560d, 20d->565d, 25d->570d, 35d->580d
+  64 growth episodes x 8 stages at 64x64
+  [G1] dt response: predictions for dt=5d and dt=35d differ by RMS 0.05662; the ground-truth frames differ by 0.14391 => 39.3% of real growth change
+  [G2] dt identification accuracy 16.9% (chance 16.7%) over all 6 candidates
+       rows = dt asked for, cols = nearest ground-truth age
+            550    555    560    565    570    580
+     5d      61      3      0      0      0      0
+    10d      60      4      0      0      0      0
+    15d      61      3      0      0      0      0
+    20d      61      3      0      0      0      0
+    25d      63      1      0      0      0      0
+    35d      62      2      0      0      0      0
+       restricted to dt <= 20 d (the values stage subsampling actually produces): 25.4% (chance 25.0%)
+  [G3]   dt  target |    PSNR    copy |  depthMAE    copy |   mIoU   copy
+          5     550 |   20.34   21.05 |     1.065   0.259 |  0.318  0.733
+         10     555 |   19.59   19.57 |     1.175   0.451 |  0.311  0.615
+         15     560 |   18.62   18.48 |     1.317   0.590 |  0.294  0.559
+         20     565 |   17.85   17.61 |     1.428   0.699 |  0.286  0.503
+         25     570 |   17.00   16.87 |     1.579   0.785 |  0.275  0.466
+         35     580 |   16.22   16.11 |     1.649   0.875 |  0.264  0.438
