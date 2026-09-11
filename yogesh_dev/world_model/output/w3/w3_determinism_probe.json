@@ -1,0 +1,39 @@
+{
+  "episode": "train/view_s10000_g0_row_traversal.npz",
+  "seed": 10000,
+  "rgb": {
+    "identical": false,
+    "frac_pixels_differing": 0.41061830520629883,
+    "mean_abs_diff_levels": 6.191476980845134,
+    "max_abs_diff_levels": 255,
+    "p99_abs_diff_levels": 134.0,
+    "psnr_db": 20.82135675508188
+  },
+  "instance": {
+    "identical": false,
+    "fruit_mask_identical": true,
+    "fruit_mask_iou": 1.0,
+    "n_unique_ids_run_a": 796,
+    "n_unique_ids_run_b": 796,
+    "id_sets_equal": true,
+    "frac_pixels_differing": 4.1961669921875e-05
+  },
+  "depth": {
+    "identical": true
+  },
+  "semantic": {
+    "identical": true
+  },
+  "a_view": {
+    "identical": true
+  },
+  "pose": {
+    "identical": true
+  },
+  "state": {
+    "identical": true
+  },
+  "fruit_vis": {
+    "identical": true
+  }
+}

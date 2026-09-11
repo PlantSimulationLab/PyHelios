@@ -1,0 +1,952 @@
+{
+  "T6.7": {
+    "arm_mid": {
+      "ground_set_size": 498,
+      "n_steps": 5,
+      "sequence_matches_official_celf_explore": true,
+      "final_coverage_fraction": 1.0,
+      "total_compute_time_s": 3.660099901026115e-05,
+      "total_motion_time_s": 56.91485498727361,
+      "compute_fraction_of_wallclock": 6.430829961872901e-07,
+      "curve": [
+        {
+          "step": 1,
+          "view_index": 1.0,
+          "cumulative_motion_time_s": 18.333239697419135,
+          "cumulative_wallclock_incl_compute_s": 18.333256236420215,
+          "coverage_fraction": 0.6947791164658634
+        },
+        {
+          "step": 2,
+          "view_index": 2.0,
+          "cumulative_motion_time_s": 32.24152621279537,
+          "cumulative_wallclock_incl_compute_s": 32.24155426679609,
+          "coverage_fraction": 0.9477911646586346
+        },
+        {
+          "step": 3,
+          "view_index": 3.0,
+          "cumulative_motion_time_s": 35.399604417520294,
+          "cumulative_wallclock_incl_compute_s": 35.39963694651871,
+          "coverage_fraction": 0.9759036144578314
+        },
+        {
+          "step": 4,
+          "view_index": 4.0,
+          "cumulative_motion_time_s": 44.20738067567971,
+          "cumulative_wallclock_incl_compute_s": 44.207415702678084,
+          "coverage_fraction": 0.9959839357429718
+        },
+        {
+          "step": 5,
+          "view_index": 5.0,
+          "cumulative_motion_time_s": 56.91485498727361,
+          "cumulative_wallclock_incl_compute_s": 56.91489158827262,
+          "coverage_fraction": 1.0
+        }
+      ],
+      "auc_normalized": {
+        "view_index": 0.8228915662650602,
+        "motion_time": 0.7413699611640827,
+        "wallclock_incl_compute": 0.741369898011639
+      },
+      "time_to_90pct": {
+        "view_index": 2.0,
+        "motion_time_s": 32.24152621279537,
+        "wallclock_incl_compute_s": 32.24155426679609
+      },
+      "note": "'joint-space path length' x-axis realized as cumulative real T3.3 motion time (Dijkstra over the T3.4 roadmap, edge weights = kinematics.move_time) -- the roadmap's edge cost IS a monotonic function of joint-space travel distance, so this is the direct, available proxy for it, not a separate physical distance metric (Phase 3/4 do not track a separate 'joint-space arc length' unit; see PHASE6_LOG.md)."
+    },
+    "arm_high": {
+      "ground_set_size": 1785,
+      "n_steps": 8,
+      "sequence_matches_official_celf_explore": true,
+      "final_coverage_fraction": 1.0,
+      "total_compute_time_s": 0.00024628000028315,
+      "total_motion_time_s": 58.332031911157095,
+      "compute_fraction_of_wallclock": 4.222019230520705e-06,
+      "curve": [
+        {
+          "step": 1,
+          "view_index": 1.0,
+          "cumulative_motion_time_s": 15.133031386767824,
+          "cumulative_wallclock_incl_compute_s": 15.133074625768485,
+          "coverage_fraction": 0.42633053221288514
+        },
+        {
+          "step": 2,
+          "view_index": 2.0,
+          "cumulative_motion_time_s": 17.066364720101156,
+          "cumulative_wallclock_incl_compute_s": 17.066476524102946,
+          "coverage_fraction": 0.5983193277310924
+        },
+        {
+          "step": 3,
+          "view_index": 3.0,
+          "cumulative_motion_time_s": 22.157776258159412,
+          "cumulative_wallclock_incl_compute_s": 22.157929737162032,
+          "coverage_fraction": 0.6952380952380952
+        },
+        {
+          "step": 4,
+          "view_index": 4.0,
+          "cumulative_motion_time_s": 24.091109591492746,
+          "cumulative_wallclock_incl_compute_s": 24.091296645496364,
+          "coverage_fraction": 0.8095238095238095
+        },
+        {
+          "step": 5,
+          "view_index": 5.0,
+          "cumulative_motion_time_s": 30.082729440202314,
+          "cumulative_wallclock_incl_compute_s": 30.08294335220657,
+          "coverage_fraction": 0.861624649859944
+        },
+        {
+          "step": 6,
+          "view_index": 6.0,
+          "cumulative_motion_time_s": 32.01606277353565,
+          "cumulative_wallclock_incl_compute_s": 32.016294094538154,
+          "coverage_fraction": 0.8980392156862745
+        },
+        {
+          "step": 7,
+          "view_index": 7.0,
+          "cumulative_motion_time_s": 45.432125547071294,
+          "cumulative_wallclock_incl_compute_s": 45.43236871007316,
+          "coverage_fraction": 0.9988795518207283
+        },
+        {
+          "step": 8,
+          "view_index": 8.0,
+          "cumulative_motion_time_s": 58.332031911157095,
+          "cumulative_wallclock_incl_compute_s": 58.33227819115738,
+          "coverage_fraction": 1.0
+        }
+      ],
+      "auc_normalized": {
+        "view_index": 0.7234943977591037,
+        "motion_time": 0.7078216143457361,
+        "wallclock_incl_compute": 0.7078211745164043
+      },
+      "time_to_90pct": {
+        "view_index": 7.0,
+        "motion_time_s": 45.432125547071294,
+        "wallclock_incl_compute_s": 45.43236871007316
+      },
+      "note": "'joint-space path length' x-axis realized as cumulative real T3.3 motion time (Dijkstra over the T3.4 roadmap, edge weights = kinematics.move_time) -- the roadmap's edge cost IS a monotonic function of joint-space travel distance, so this is the direct, available proxy for it, not a separate physical distance metric (Phase 3/4 do not track a separate 'joint-space arc length' unit; see PHASE6_LOG.md)."
+    }
+  },
+  "T6.8": {
+    "arm_mid": {
+      "n_candidates": 14,
+      "ground_set_size": 498,
+      "per_step": [
+        {
+          "k": 1,
+          "planner_coverage": 346,
+          "oracle_coverage": 346,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        },
+        {
+          "k": 2,
+          "planner_coverage": 472,
+          "oracle_coverage": 472,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        },
+        {
+          "k": 3,
+          "planner_coverage": 486,
+          "oracle_coverage": 486,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        },
+        {
+          "k": 4,
+          "planner_coverage": 496,
+          "oracle_coverage": 496,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        },
+        {
+          "k": 5,
+          "planner_coverage": 498,
+          "oracle_coverage": 498,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        }
+      ],
+      "mean_Pi": 1.0,
+      "final_Pi": 1.0,
+      "final_regret_elements": 0
+    },
+    "arm_high": {
+      "n_candidates": 14,
+      "ground_set_size": 1785,
+      "per_step": [
+        {
+          "k": 1,
+          "planner_coverage": 761,
+          "oracle_coverage": 773,
+          "Pi": 0.9844760672703752,
+          "regret_elements": 12,
+          "regret_fraction_of_ground_set": 0.0067226890756302525
+        },
+        {
+          "k": 2,
+          "planner_coverage": 1068,
+          "oracle_coverage": 1166,
+          "Pi": 0.9159519725557461,
+          "regret_elements": 98,
+          "regret_fraction_of_ground_set": 0.054901960784313725
+        },
+        {
+          "k": 3,
+          "planner_coverage": 1241,
+          "oracle_coverage": 1432,
+          "Pi": 0.8666201117318436,
+          "regret_elements": 191,
+          "regret_fraction_of_ground_set": 0.10700280112044817
+        },
+        {
+          "k": 4,
+          "planner_coverage": 1445,
+          "oracle_coverage": 1611,
+          "Pi": 0.8969584109248914,
+          "regret_elements": 166,
+          "regret_fraction_of_ground_set": 0.09299719887955182
+        },
+        {
+          "k": 5,
+          "planner_coverage": 1538,
+          "oracle_coverage": 1679,
+          "Pi": 0.9160214413341274,
+          "regret_elements": 141,
+          "regret_fraction_of_ground_set": 0.07899159663865546
+        },
+        {
+          "k": 6,
+          "planner_coverage": 1603,
+          "oracle_coverage": 1738,
+          "Pi": 0.9223245109321059,
+          "regret_elements": 135,
+          "regret_fraction_of_ground_set": 0.07563025210084033
+        },
+        {
+          "k": 7,
+          "planner_coverage": 1783,
+          "oracle_coverage": 1783,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        },
+        {
+          "k": 8,
+          "planner_coverage": 1785,
+          "oracle_coverage": 1785,
+          "Pi": 1.0,
+          "regret_elements": 0,
+          "regret_fraction_of_ground_set": 0.0
+        }
+      ],
+      "mean_Pi": 0.9377940643436362,
+      "final_Pi": 1.0,
+      "final_regret_elements": 0
+    },
+    "phase5_reference": {
+      "available": true,
+      "caveat": "Computed on a DIFFERENT scene (Phase 5's own fresh 3-tree/83-fruit build, seed 20260729) than T6.8's primary oracle above (Phase 4's single-tree/27-fruit gen_dataset.py scene) -- not the same denominator, included for reference only, NOT used to normalize T6.8's Pi/regret numbers above.",
+      "T5.6_greedy_oracle_at_k": {
+        "1": {
+          "n_views_used": 1,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.14633323793018183,
+          "n_fruit_observed_at_all": 73,
+          "fraction_fruit_observed": 0.8795180722891566
+        },
+        "2": {
+          "n_views_used": 2,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.2151088739208695,
+          "n_fruit_observed_at_all": 74,
+          "fraction_fruit_observed": 0.891566265060241
+        },
+        "3": {
+          "n_views_used": 3,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.2751770465805178,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "4": {
+          "n_views_used": 4,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3101909019745269,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "5": {
+          "n_views_used": 5,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3353084593700415,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "6": {
+          "n_views_used": 6,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3584959759307251,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "7": {
+          "n_views_used": 7,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.37802046322472926,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "8": {
+          "n_views_used": 8,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.39231930851595076,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        }
+      },
+      "T5.7_ilp_ceiling_by_k": {
+        "1": {
+          "n_views_used": 1,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 12.145658748205078,
+          "ilp_own_solution_real_value": 0.14633323793018183,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.14633323793018183,
+          "n_fruit_observed_at_all": 73,
+          "fraction_fruit_observed": 0.8795180722891566
+        },
+        "2": {
+          "n_views_used": 2,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 17.85403653543218,
+          "ilp_own_solution_real_value": 0.2151088739208695,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.2151088739208695,
+          "n_fruit_observed_at_all": 74,
+          "fraction_fruit_observed": 0.891566265060241
+        },
+        "3": {
+          "n_views_used": 3,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 22.937624479234806,
+          "ilp_own_solution_real_value": 0.27635692143656393,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.27635692143656393,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "4": {
+          "n_views_used": 4,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 25.805068878997695,
+          "ilp_own_solution_real_value": 0.3109044443252733,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3109044443252733,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "5": {
+          "n_views_used": 5,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 27.97753085360545,
+          "ilp_own_solution_real_value": 0.33711676193179857,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.33711676193179857,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "6": {
+          "n_views_used": 6,
+          "selection_source": "greedy_oracle_at_k",
+          "ilp_status": "Not Solved",
+          "ilp_reported_objective": 31.734566005438964,
+          "ilp_own_solution_real_value": 0.0,
+          "verified_at_least_as_good_as_known_lower_bounds": false,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3584959759307251,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "7": {
+          "n_views_used": 7,
+          "selection_source": "greedy_oracle_at_k",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 29.146775451008804,
+          "ilp_own_solution_real_value": 0.3511659692892629,
+          "verified_at_least_as_good_as_known_lower_bounds": false,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.37802046322472926,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "8": {
+          "n_views_used": 8,
+          "selection_source": "greedy_oracle_at_k",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 30.495410960799756,
+          "ilp_own_solution_real_value": 0.367414589889154,
+          "verified_at_least_as_good_as_known_lower_bounds": false,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.39231930851595076,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        }
+      }
+    }
+  },
+  "T6.9": {
+    "arm": "arm_high",
+    "n_steps": 13,
+    "per_step": [
+      {
+        "step": 0,
+        "n_candidates": 14,
+        "spearman_rho": NaN,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          0.0,
+          766.203125,
+          525.21875,
+          0.0,
+          371.1875,
+          1217.1875,
+          68.46875,
+          0.0,
+          1041.78125,
+          823.359375,
+          0.0,
+          265.3125,
+          960.6875,
+          0.0
+        ],
+        "candidate_node_ids": [
+          0,
+          33,
+          66,
+          99,
+          132,
+          165,
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 1,
+        "n_candidates": 13,
+        "spearman_rho": NaN,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          766.203125,
+          525.21875,
+          0.0,
+          371.1875,
+          1217.1875,
+          68.46875,
+          0.0,
+          1041.78125,
+          823.359375,
+          0.0,
+          265.3125,
+          960.6875,
+          0.0
+        ],
+        "candidate_node_ids": [
+          33,
+          66,
+          99,
+          132,
+          165,
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 2,
+        "n_candidates": 12,
+        "spearman_rho": -0.07938008079785017,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54206587423504,
+          66.54206587423504,
+          66.54279539787339,
+          73.16035958002117,
+          66.54206587423504,
+          66.54206420377012,
+          66.55259974565945,
+          66.54206587423504,
+          66.54206587423504,
+          66.54205629390239,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          483.25,
+          0.0,
+          253.1875,
+          983.234375,
+          44.390625,
+          0.0,
+          877.0,
+          726.171875,
+          0.0,
+          254.984375,
+          869.578125,
+          0.0
+        ],
+        "candidate_node_ids": [
+          66,
+          99,
+          132,
+          165,
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 3,
+        "n_candidates": 11,
+        "spearman_rho": -0.24885451860187593,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.59508456180507,
+          66.54206587423504,
+          66.54279441908591,
+          73.1721817661207,
+          66.54206587423504,
+          66.54206420377012,
+          66.55259974565945,
+          66.54206587423504,
+          66.54206587423504,
+          66.54205629390239,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          0.0,
+          253.171875,
+          916.953125,
+          35.234375,
+          0.0,
+          863.703125,
+          685.9375,
+          0.0,
+          254.96875,
+          865.796875,
+          0.0
+        ],
+        "candidate_node_ids": [
+          99,
+          132,
+          165,
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 4,
+        "n_candidates": 10,
+        "spearman_rho": -0.1243531130413189,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54279441908591,
+          73.1721817661207,
+          66.54206587423504,
+          66.54206420377012,
+          66.55259974565945,
+          66.54206587423504,
+          66.54206587423504,
+          66.54205629390239,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          253.171875,
+          916.953125,
+          35.234375,
+          0.0,
+          863.703125,
+          685.9375,
+          0.0,
+          254.96875,
+          865.796875,
+          0.0
+        ],
+        "candidate_node_ids": [
+          132,
+          165,
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 5,
+        "n_candidates": 9,
+        "spearman_rho": -0.11508481266693305,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54279431528968,
+          73.1721817661207,
+          66.54206587423504,
+          66.54192134747711,
+          71.72720171144701,
+          66.54206587423504,
+          66.54206587423504,
+          66.54204667659087,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          884.53125,
+          35.25,
+          0.0,
+          801.96875,
+          682.0625,
+          0.0,
+          247.96875,
+          800.34375,
+          0.0
+        ],
+        "candidate_node_ids": [
+          165,
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 6,
+        "n_candidates": 8,
+        "spearman_rho": -0.4029033148052782,
+        "top1_hit": false,
+        "predicted_gain": [
+          73.59077897960674,
+          66.54206587423504,
+          66.54192110159018,
+          71.74632951428386,
+          66.54206587423504,
+          66.54206587423504,
+          66.54204667659087,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          30.421875,
+          0.0,
+          714.765625,
+          565.71875,
+          0.0,
+          238.984375,
+          758.46875,
+          0.0
+        ],
+        "candidate_node_ids": [
+          198,
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 7,
+        "n_candidates": 7,
+        "spearman_rho": -0.49071649206571843,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54192110159018,
+          71.74632951428386,
+          66.54206587423504,
+          66.54206587423504,
+          66.54204667659087,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          0.0,
+          714.765625,
+          565.703125,
+          0.0,
+          238.984375,
+          758.484375,
+          0.0
+        ],
+        "candidate_node_ids": [
+          231,
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 8,
+        "n_candidates": 6,
+        "spearman_rho": -0.5236349380886428,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54192110159018,
+          71.74632951428386,
+          66.54206587423504,
+          66.54206587423504,
+          66.54204667659087,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          714.765625,
+          565.703125,
+          0.0,
+          238.984375,
+          758.484375,
+          0.0
+        ],
+        "candidate_node_ids": [
+          264,
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 9,
+        "n_candidates": 5,
+        "spearman_rho": -0.22941573387056174,
+        "top1_hit": false,
+        "predicted_gain": [
+          72.8524658751728,
+          66.54206587423504,
+          66.54206587423504,
+          66.54203651680548,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          478.390625,
+          0.0,
+          214.671875,
+          688.5,
+          0.0
+        ],
+        "candidate_node_ids": [
+          297,
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 10,
+        "n_candidates": 4,
+        "spearman_rho": -0.816496580927726,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54206587423504,
+          66.54203651680548,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          0.0,
+          214.671875,
+          677.203125,
+          0.0
+        ],
+        "candidate_node_ids": [
+          330,
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 11,
+        "n_candidates": 3,
+        "spearman_rho": -0.8660254037844387,
+        "top1_hit": false,
+        "predicted_gain": [
+          66.54206587423504,
+          66.54203651680548,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          214.671875,
+          677.203125,
+          0.0
+        ],
+        "candidate_node_ids": [
+          363,
+          396,
+          429
+        ]
+      },
+      {
+        "step": 12,
+        "n_candidates": 2,
+        "spearman_rho": 1.0,
+        "top1_hit": true,
+        "predicted_gain": [
+          66.59597222516521,
+          66.54206587423504
+        ],
+        "actual_gain": [
+          606.625,
+          0.0
+        ],
+        "candidate_node_ids": [
+          396,
+          429
+        ]
+      }
+    ],
+    "mean_spearman_rho": -0.26335136260457676,
+    "top1_hit_rate": 0.07692307692307693,
+    "sparsification_curve_first_step": {
+      "n": 14,
+      "cum_actual_gain_frac_by_predicted_order": [
+        0.0,
+        0.1268672934528953,
+        0.2138325890893662,
+        0.2138325890893662,
+        0.27529351498750393,
+        0.47683443633221395,
+        0.488171436554711,
+        0.488171436554711,
+        0.6606687329569856,
+        0.7969999120360549,
+        0.7969999120360549,
+        0.8409301411045167,
+        1.0,
+        1.0
+      ],
+      "cum_actual_gain_frac_by_oracle_order": [
+        0.20154092134471,
+        0.37403821774698465,
+        0.533108076642468,
+        0.6694392557215372,
+        0.7963065491744326,
+        0.8832718448109034,
+        0.9447327707090412,
+        0.9886629997775029,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cum_actual_gain_frac_random_order": [
+        0.07142857142857142,
+        0.14285714285714285,
+        0.21428571428571427,
+        0.2857142857142857,
+        0.35714285714285715,
+        0.42857142857142855,
+        0.5,
+        0.5714285714285714,
+        0.6428571428571429,
+        0.7142857142857143,
+        0.7857142857142857,
+        0.8571428571428571,
+        0.9285714285714286,
+        1.0
+      ]
+    },
+    "AUIGSE_first_step": 0.27940915579006037,
+    "note": "'actual gain' = real total occupancy-grid binary-entropy reduction from actually integrating that candidate's real depth (counterfactual, then reverted -- only the real roadmap-order-chosen node's view is permanently integrated before advancing to the next step). pixel_stride=4 (vs T4.1's own default 2) for tractable repeated counterfactual integration; documented, not hidden."
+  }
+}

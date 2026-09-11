@@ -1,0 +1,96 @@
+loaded yogesh_dev/world_model/output/train/r2_final/ckpt_best.pt (step 26000, image_size 64)
+loaded no-action ablation yogesh_dev/world_model/output/train/r2_noaction/ckpt_best.pt (step 26000)
+
+view episodes: {'split': 'test', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 0.0, 'growth_fraction_realised': None, 'growth_subsample': False, 'growth_dt_histogram': {}}
+
+=== R1/R2/R4  VIEW CHANNEL (open-loop rollout) ===
+  t+1
+    full             PSNR= 18.47dB  SSIM=0.5359  depthMAE= 0.810m  mIoU=0.2944  fruitMAE=0.0031
+    zero_action      PSNR= 18.41dB  SSIM=0.5336  depthMAE= 0.833m  mIoU=0.2930  fruitMAE=0.0034
+    shuffled_action  PSNR= 18.39dB  SSIM=0.5336  depthMAE= 0.843m  mIoU=0.2901  fruitMAE=0.0032
+    copy_last        PSNR= 16.71dB  SSIM=0.5591  depthMAE= 0.657m  mIoU=0.3329  fruitMAE=0.0016
+    noaction_model   PSNR= 18.16dB  SSIM=0.5255  depthMAE= 1.050m  mIoU=0.2643  fruitMAE=0.0046
+  t+5
+    full             PSNR= 18.19dB  SSIM=0.5307  depthMAE= 0.891m  mIoU=0.2825  fruitMAE=0.0042
+    zero_action      PSNR= 18.05dB  SSIM=0.5256  depthMAE= 0.949m  mIoU=0.2760  fruitMAE=0.0052
+    shuffled_action  PSNR= 18.04dB  SSIM=0.5258  depthMAE= 0.966m  mIoU=0.2750  fruitMAE=0.0053
+    copy_last        PSNR= 15.63dB  SSIM=0.4722  depthMAE= 0.968m  mIoU=0.2639  fruitMAE=0.0039
+    noaction_model   PSNR= 17.93dB  SSIM=0.5213  depthMAE= 1.123m  mIoU=0.2652  fruitMAE=0.0051
+  t+10
+    full             PSNR= 17.82dB  SSIM=0.5235  depthMAE= 0.975m  mIoU=0.2689  fruitMAE=0.0067
+    zero_action      PSNR= 17.76dB  SSIM=0.5196  depthMAE= 1.037m  mIoU=0.2648  fruitMAE=0.0071
+    shuffled_action  PSNR= 17.68dB  SSIM=0.5178  depthMAE= 1.074m  mIoU=0.2605  fruitMAE=0.0070
+    copy_last        PSNR= 15.38dB  SSIM=0.4517  depthMAE= 1.096m  mIoU=0.2495  fruitMAE=0.0057
+    noaction_model   PSNR= 17.73dB  SSIM=0.5165  depthMAE= 1.183m  mIoU=0.2610  fruitMAE=0.0064
+  t+25
+    full             PSNR= 17.57dB  SSIM=0.5139  depthMAE= 1.068m  mIoU=0.2583  fruitMAE=0.0076
+    zero_action      PSNR= 17.35dB  SSIM=0.5065  depthMAE= 1.166m  mIoU=0.2487  fruitMAE=0.0078
+    shuffled_action  PSNR= 17.27dB  SSIM=0.5053  depthMAE= 1.222m  mIoU=0.2453  fruitMAE=0.0085
+    copy_last        PSNR= 15.14dB  SSIM=0.4349  depthMAE= 1.205m  mIoU=0.2368  fruitMAE=0.0074
+    noaction_model   PSNR= 17.27dB  SSIM=0.5047  depthMAE= 1.311m  mIoU=0.2477  fruitMAE=0.0101
+
+=== R2b  ACTION SENSITIVITY (how far the prediction moves when the action changes) ===
+  t+1   zeroed-vs-true RMS=0.03399 (22.04% of real motion)   negated-vs-true RMS=0.03649 (23.72%)   real motion RMS=0.15438
+  t+5   zeroed-vs-true RMS=0.04966 (28.47% of real motion)   negated-vs-true RMS=0.05261 (30.22%)   real motion RMS=0.17502
+  t+10  zeroed-vs-true RMS=0.05908 (32.28% of real motion)   negated-vs-true RMS=0.06660 (36.41%)   real motion RMS=0.18360
+  t+25  zeroed-vs-true RMS=0.07135 (38.22% of real motion)   negated-vs-true RMS=0.08268 (44.28%)   real motion RMS=0.18713
+
+growth episodes: {'split': 'test', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 1.0, 'growth_fraction_realised': None, 'growth_subsample': False, 'growth_dt_histogram': {}} (n_stages=8, context=2, horizons=(1, 2, 3, 5))
+
+=== R3  GROWTH CHANNEL (counterfactual advanceTime) ===
+  t+1
+    full             PSNR= 20.24dB  SSIM=0.6797  depthMAE= 1.104m  mIoU=0.3138  fruitMAE=0.0012
+    zero_action      PSNR= 20.30dB  SSIM=0.6823  depthMAE= 1.089m  mIoU=0.3195  fruitMAE=0.0017
+    shuffled_action  PSNR= 20.20dB  SSIM=0.6786  depthMAE= 1.130m  mIoU=0.3135  fruitMAE=0.0012
+    copy_last        PSNR= 20.97dB  SSIM=0.8104  depthMAE= 0.259m  mIoU=0.7312  fruitMAE=0.0025
+    noaction_model   PSNR= 19.91dB  SSIM=0.6690  depthMAE= 1.372m  mIoU=0.2845  fruitMAE=0.0021
+  t+2
+    full             PSNR= 19.64dB  SSIM=0.6523  depthMAE= 1.096m  mIoU=0.3196  fruitMAE=0.0017
+    zero_action      PSNR= 19.68dB  SSIM=0.6575  depthMAE= 1.127m  mIoU=0.3229  fruitMAE=0.0020
+    shuffled_action  PSNR= 19.60dB  SSIM=0.6508  depthMAE= 1.122m  mIoU=0.3186  fruitMAE=0.0017
+    copy_last        PSNR= 19.52dB  SSIM=0.7667  depthMAE= 0.451m  mIoU=0.6159  fruitMAE=0.0054
+    noaction_model   PSNR= 19.24dB  SSIM=0.6416  depthMAE= 1.392m  mIoU=0.2851  fruitMAE=0.0038
+  t+3
+    full             PSNR= 19.18dB  SSIM=0.6258  depthMAE= 1.091m  mIoU=0.3198  fruitMAE=0.0026
+    zero_action      PSNR= 19.04dB  SSIM=0.6323  depthMAE= 1.164m  mIoU=0.3184  fruitMAE=0.0039
+    shuffled_action  PSNR= 19.12dB  SSIM=0.6247  depthMAE= 1.115m  mIoU=0.3218  fruitMAE=0.0024
+    copy_last        PSNR= 18.43dB  SSIM=0.7292  depthMAE= 0.589m  mIoU=0.5569  fruitMAE=0.0088
+    noaction_model   PSNR= 18.63dB  SSIM=0.6143  depthMAE= 1.413m  mIoU=0.2810  fruitMAE=0.0059
+  t+5
+    full             PSNR= 18.50dB  SSIM=0.5897  depthMAE= 1.083m  mIoU=0.3203  fruitMAE=0.0046
+    zero_action      PSNR= 17.87dB  SSIM=0.5960  depthMAE= 1.226m  mIoU=0.3102  fruitMAE=0.0102
+    shuffled_action  PSNR= 18.40dB  SSIM=0.5888  depthMAE= 1.112m  mIoU=0.3197  fruitMAE=0.0041
+    copy_last        PSNR= 16.83dB  SSIM=0.6760  depthMAE= 0.780m  mIoU=0.4714  fruitMAE=0.0161
+    noaction_model   PSNR= 17.61dB  SSIM=0.5773  depthMAE= 1.453m  mIoU=0.2722  fruitMAE=0.0112
+
+=== ACCEPTANCE ===
+{
+  "t+1": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+5": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+10": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  },
+  "t+25": {
+    "full_beats_copy_last_psnr": true,
+    "full_beats_zero_action_psnr": true,
+    "full_beats_shuffled_action_psnr": true,
+    "full_beats_trained_noaction_psnr": true
+  }
+}
+
+wrote 2 qualitative rollout strips (top row = Helios ground truth at t+[1, 5, 10, 25], bottom = model imagination)
+
+Wrote yogesh_dev/world_model/output/r2_w6_final/w6_results.json
