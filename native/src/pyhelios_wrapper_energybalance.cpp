@@ -322,6 +322,98 @@ extern "C" {
         }
     }
     
+    PYHELIOS_API void enableCanopyAirspaceModel(EnergyBalanceModel* energy_model, const unsigned int* canopy_uuids, unsigned int canopy_count, const unsigned int* ground_uuids, unsigned int ground_count, float canopy_height_m, float reference_height_m, float leaf_area_index, unsigned int num_layers) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+            if (!canopy_uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Canopy UUIDs array is null");
+                return;
+            }
+            if (canopy_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Canopy UUID count must be greater than 0");
+                return;
+            }
+            if (!ground_uuids && ground_count > 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Ground UUIDs array is null but ground count is greater than 0");
+                return;
+            }
+            if (canopy_height_m <= 0.0f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Canopy height must be positive");
+                return;
+            }
+            if (reference_height_m <= canopy_height_m) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Reference height must be greater than canopy height");
+                return;
+            }
+            if (leaf_area_index <= 0.0f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Leaf area index must be positive");
+                return;
+            }
+            if (num_layers == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Number of layers must be greater than 0");
+                return;
+            }
+
+            std::vector<uint> canopy_vector(canopy_uuids, canopy_uuids + canopy_count);
+            std::vector<uint> ground_vector;
+            if (ground_uuids && ground_count > 0) {
+                ground_vector.assign(ground_uuids, ground_uuids + ground_count);
+            }
+            energy_model->enableCanopyAirspaceModel(canopy_vector, ground_vector, canopy_height_m, reference_height_m, leaf_area_index, num_layers);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::enableCanopyAirspaceModel): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::enableCanopyAirspaceModel): Unknown error enabling canopy airspace model.");
+        }
+    }
+
+    PYHELIOS_API void disableCanopyAirspaceModel(EnergyBalanceModel* energy_model) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+
+            energy_model->disableCanopyAirspaceModel();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::disableCanopyAirspaceModel): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::disableCanopyAirspaceModel): Unknown error disabling canopy airspace model.");
+        }
+    }
+
+    PYHELIOS_API void setCanopyAirspaceConvergence(EnergyBalanceModel* energy_model, float tolerance_K, unsigned int max_iterations) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+            if (tolerance_K <= 0.0f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Convergence tolerance must be positive");
+                return;
+            }
+            if (max_iterations == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Maximum iterations must be greater than 0");
+                return;
+            }
+
+            energy_model->setCanopyAirspaceConvergence(tolerance_K, max_iterations);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::setCanopyAirspaceConvergence): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::setCanopyAirspaceConvergence): Unknown error setting canopy airspace convergence.");
+        }
+    }
+
     PYHELIOS_API void energyBalanceOptionalOutputPrimitiveData(EnergyBalanceModel* energy_model, const char* label) {
         try {
             clearError();

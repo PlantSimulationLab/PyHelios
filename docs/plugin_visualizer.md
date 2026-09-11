@@ -128,7 +128,7 @@ In order to actually display a window for visualization, we must issue a command
 - \ref pyhelios.Visualizer.Visualizer::plotInteractive "plotInteractive()" - Open an interactive visualization window that allows for user input control. This type of visualization allows for one to, for example, rotate the view or zoom in/out. This will cause the program to wait until the window is closed by the user to continue.
 - \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" - Open a window and update it with the current visualization, then continue the program. This does not allow for any user input, since it continues on without checking for input. This is useful when generating a large number of visualization images for a movie.
 
-If \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" is issued, another command \ref pyhelios.Visualizer.Visualizer::printWindow "printWindow()" can be used to output the current visualization to file (JPEG or PNG files).
+The command \ref pyhelios.Visualizer.Visualizer::printWindow "printWindow()" outputs the current visualization to file (JPEG or PNG). As of helios-core 1.3.85 it renders the frame itself when the one on the GPU is stale, so calling `plotUpdate()` first is harmless but no longer necessary: `buildContextGeometry()` followed directly by `printWindow()` produces a correct image.
 
 The current window can be closed using the \ref pyhelios.Visualizer.Visualizer::closeWindow "closeWindow()" command.
 
@@ -183,8 +183,9 @@ Headless rendering is anti-aliased: geometry is rendered into a multisampled fra
 > **Note:** macOS drives OpenGL through a translation layer that accepts the multisampled attachments but does not rasterize into them, so `isHeadlessMultisamplingActive()` can report `True` there while the saved image is not actually anti-aliased.
 
 **Important Notes:**
-- When in headless mode, \ref pyhelios.Visualizer.Visualizer::plotInteractive "plotInteractive()" is not available
-- Always use \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" for headless workflows
+- When in headless mode, \ref pyhelios.Visualizer.Visualizer::plotInteractive "plotInteractive()" is not available; as of helios-core 1.3.85 it raises an error rather than driving a window that was never shown
+- Use \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" and \ref pyhelios.Visualizer.Visualizer::printWindow "printWindow()" for headless workflows
+- On Linux, helios-core 1.3.85 can create the headless OpenGL context through EGL, binding directly to the GPU with no X11 or Wayland display server at all, which makes headless rendering (and `SyntheticAnnotation`, which is built on it) usable on a batch compute node. EGL is tried first and the hidden-window GLFW path is used when it is unavailable. This requires EGL at build time; the Linux wheels are built with it, so they need `libegl1` installed alongside `libgl1` (see the README)
 
 **Use Cases:**
 - Automated visualization pipelines on servers
@@ -433,7 +434,7 @@ Keyboard camera controls are given by:
 
 #### plotUpdate() {#PlotUpdate}
 
-The \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" function simply updates the plot window based on current geometry, and continues on to the next lines of code. This can be useful if only a still image is to be written to file, as illustrated below.
+The \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" function simply updates the plot window based on current geometry, and continues on to the next lines of code. This can be useful when a window should show the scene while the program carries on. Writing a still image to file no longer requires it (helios-core 1.3.85+): `printWindow()` renders the frame itself, so the `plotUpdate()` call in the example below is redundant but harmless.
 
 ```python
 from pyhelios import Context, Visualizer

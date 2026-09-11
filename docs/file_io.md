@@ -262,9 +262,11 @@ A mesh assembled with [addPolymeshObject()](pyhelios.Context.Context.addPolymesh
 
 ### Vertex Normals {#VertexNormals}
 
-Helios never synthesizes vertex normals implicitly. A mesh has them only if the source file supplied them or [computePolymeshObjectVertexNormals()](pyhelios.Context.Context.computePolymeshObjectVertexNormals) was called explicitly. That function averages face normals weighted by area, and splits vertices across edges whose dihedral angle exceeds `crease_angle_degrees` so that hard edges stay hard.
+A mesh loaded by `loadOBJ()` or `loadPLY()` always carries vertex normals. Normals authored in the file are kept as they are; a file that supplies none (most exporters omit them unless asked) has them generated from the mesh connectivity at load time (helios-core 1.3.85+), so a curved imported surface shades smoothly without any further call. The generated normals are blended across every edge, which leaves the shared-vertex topology intact, so `isPolymeshObjectClosed()` and `getPolymeshObjectVolume()` are unaffected.
 
-[getPolymeshObjectVertexNormalSource()](pyhelios.Context.Context.getPolymeshObjectVertexNormalSource) reports the provenance as a `VertexNormalSource`: `NONE`, `AUTHORED` (read from the file) or `COMPUTED`.
+Only a mesh assembled programmatically through `setPolymeshObjectTopology()` without normals has none. [computePolymeshObjectVertexNormals()](pyhelios.Context.Context.computePolymeshObjectVertexNormals) generates them for that case, or regenerates them at a different crease angle or after the mesh has been deformed. It averages face normals weighted by area, and splits vertices across edges whose dihedral angle exceeds `crease_angle_degrees` so that hard edges stay hard.
+
+[getPolymeshObjectVertexNormalSource()](pyhelios.Context.Context.getPolymeshObjectVertexNormalSource) reports the provenance as a `VertexNormalSource`: `AUTHORED` (read from the file), `COMPUTED` (generated, by the loader or by `computePolymeshObjectVertexNormals()`) or `NONE` (a programmatic mesh with no normals).
 
 ```python
 from pyhelios import Context
@@ -274,8 +276,11 @@ context = Context()
 uuids = context.loadOBJ("mesh.obj")
 objID = context.getPrimitiveParentObjectID(uuids[0])
 
-if context.getPolymeshObjectVertexNormalSource(objID) == VertexNormalSource.NONE:
-    context.computePolymeshObjectVertexNormals(objID, crease_angle_degrees=30)
+# AUTHORED if mesh.obj carried "vn" records, otherwise COMPUTED by the loader.
+print(context.getPolymeshObjectVertexNormalSource(objID))
+
+# Regenerate at a sharper crease angle, e.g. for a mechanical part with hard edges.
+context.computePolymeshObjectVertexNormals(objID, crease_angle_degrees=15)
 ```
 
 ### Topological Queries {#MeshTopoQueries}

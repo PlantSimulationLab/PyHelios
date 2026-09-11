@@ -239,6 +239,65 @@ The primitive boundary-layer conductance can either be set using the \ref pyheli
 
  where \f$U\f$ is the wind speed just outside of the primitive boundary-layer, and \f$L\f$ is the characteristic length/dimension of the object that the primitive belongs to. For a leaf consisting of a single primitive, \f$L\f$ could be assumed to be the length of the primitive. \f$n_s\f$ is the number of primitive faces, which is determined by the value of primitive data "twosided_flag" (twosided\_flag=0 is single-sided and \f$n_s=1\f$, twosided\_flag=1 is two-sided and \f$n_s=2\f$).
 
+### Canopy Airspace Model {#EBcanopyairspace}
+
+By default the air temperature and humidity surrounding each leaf are held at whatever the
+'air_temperature' and 'air_humidity' primitive data say, so the canopy cannot influence the air
+that drives its own transpiration. \ref pyhelios.EnergyBalance.EnergyBalanceModel::enableCanopyAirspaceModel "enableCanopyAirspaceModel()"
+resolves the within-canopy air temperature \f$T_{ac}\f$ and vapor pressure \f$e_{ac}\f$ from a
+vertically layered resistance network instead. The canopy airspace is divided into vertical layers
+of equal leaf area index, each exchanging sensible heat and water vapor with the leaves it
+contains, with its neighboring layers, and -- for the bottom and top layers -- with the soil
+surface and the above-canopy reference air.
+
+Unlike \ref pyhelios.EnergyBalance.EnergyBalanceModel::enableAirEnergyBalance "enableAirEnergyBalance()",
+which evolves a prognostic atmospheric boundary layer and thereby assumes a horizontally infinite
+canopy, this model imposes the measured above-canopy air state as a fixed boundary condition. It is
+therefore appropriate for canopies of limited extent subject to advection, such as an orchard
+block. **The two models determine the same air state and may not both be enabled.** Because the
+canopy airspace model solves for a steady state, it also cannot be combined with the form of
+`run()` that takes a timestep.
+
+The above-canopy boundary condition is read from global data 'air_temperature_reference',
+'air_humidity_reference' and 'wind_speed_reference' when present, and otherwise falls back to the
+model's default values.
+
+| Method | Effect |
+|---|---|
+| `enableCanopyAirspaceModel(canopy_UUIDs, canopy_height_m, reference_height_m, leaf_area_index, num_layers=1, ground_UUIDs=None)` | Enable the model. `reference_height_m` must exceed `canopy_height_m`; `num_layers=1` gives a single within-canopy node |
+| `disableCanopyAirspaceModel()` | Return to a single surface energy balance pass using the current 'air_temperature' and 'air_humidity' |
+| `setCanopyAirspaceConvergence(tolerance_K=0.01, max_iterations=50)` | Temperature tolerance (K) and iteration cap of the coupled solution |
+
+Running the model sets primitive data 'air_temperature', 'air_humidity' and 'wind_speed' on the
+canopy primitives, and reports global data 'canopy_air_temperature', 'canopy_air_humidity', their
+per-layer counterparts, 'aerodynamic_resistance' and 'canopy_airspace_iterations'. It also adds
+'boundarylayer_conductance_out' to the optional outputs, which the airspace solution requires.
+
+```python
+from pyhelios import Context, EnergyBalanceModel
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    leaves = [context.addPatch(center=vec3(0, 0, 0.5 + 0.2 * i), size=vec2(0.3, 0.3))
+              for i in range(10)]
+    ground = [context.addPatch(center=vec3(0, 0, 0), size=vec2(4, 4))]
+
+    # Above-canopy boundary condition
+    context.setGlobalDataFloat("air_temperature_reference", 300.0)
+    context.setGlobalDataFloat("air_humidity_reference", 0.5)
+    context.setGlobalDataFloat("wind_speed_reference", 2.0)
+
+    with EnergyBalanceModel(context) as energy_balance:
+        energy_balance.addRadiationBand("SW")
+        energy_balance.enableCanopyAirspaceModel(
+            canopy_UUIDs=leaves, canopy_height_m=2.5, reference_height_m=5.0,
+            leaf_area_index=2.0, num_layers=5, ground_UUIDs=ground)
+        energy_balance.setCanopyAirspaceConvergence(tolerance_K=0.01, max_iterations=50)
+        energy_balance.run()
+
+        T_ac = context.getGlobalDataFloat("canopy_air_temperature")
+```
+
 ### Moisture Conductance {#EBgm}
 
  For surfaces that are not completely dry or completely saturated with water, availability of water at the surface determines the rate of moisture transfer from the surface. This is represented by the surface moisture conductance \f$g_S\f$, and corresponds to the conductance between the sub-surface air spaces and the surface.

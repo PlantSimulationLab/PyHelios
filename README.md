@@ -37,15 +37,18 @@ This installs pre-built PyHelios with platform-appropriate plugins:
 - **macOS (Intel)**: Pre-built wheels not available - please [build from source](#build-from-source)
 - **Windows/Linux**: All plugins with GPU acceleration via OptiX backend (NVIDIA GPUs)
 
-**Linux system libraries:** the visualizer links OpenGL and X11, which Linux wheels
-do not bundle (they are loaded from the system at runtime). Desktop distributions
-normally already have them; minimal container images such as `python:3-slim` and
-`nvidia/cuda:*` do not:
+**Linux system libraries:** the visualizer links OpenGL, EGL and X11, which Linux
+wheels do not bundle (they are loaded from the system at runtime). Desktop
+distributions normally already have them; minimal container images such as
+`python:3-slim` and `nvidia/cuda:*` do not:
 
 ```bash
 apt-get update && apt-get install -y \
-  libgl1 libsm6 libice6 libx11-6 libxext6
+  libgl1 libegl1 libsm6 libice6 libx11-6 libxext6
 ```
+
+EGL (`libegl1`, helios-core 1.3.85+) is what lets the visualizer render headless on a
+machine with no display server at all, such as a batch compute node.
 
 Without these, `import pyhelios` reports the missing library and falls back to mock mode.
 

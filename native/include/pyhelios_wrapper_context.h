@@ -2273,6 +2273,14 @@ PYHELIOS_API void aggregatePrimitiveDataProduct(helios::Context* context, unsign
 // Surface area
 PYHELIOS_API float sumPrimitiveSurfaceArea(helios::Context* context, unsigned int* uuids, unsigned int count);
 
+// Area index
+// Ground area basis is the horizontal footprint of the Context bounding box when ground_area is not supplied.
+// Voxel primitives are rejected by the native code, since a voxel's area is its total enclosing surface area.
+PYHELIOS_API float calculateAreaIndexLeaf(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count);
+PYHELIOS_API float calculateAreaIndexLeafGroundArea(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count, float ground_area);
+PYHELIOS_API float calculateAreaIndexLeafWood(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count, unsigned int* wood_uuids, unsigned int wood_count);
+PYHELIOS_API float calculateAreaIndexLeafWoodGroundArea(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count, unsigned int* wood_uuids, unsigned int wood_count, float ground_area);
+
 // Filter
 PYHELIOS_API unsigned int* filterPrimitivesByDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count);
 PYHELIOS_API unsigned int* filterPrimitivesByDataInt(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, int value, const char* comparator, unsigned int* result_count);

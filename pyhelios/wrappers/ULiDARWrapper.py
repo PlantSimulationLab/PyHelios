@@ -28,6 +28,18 @@ def _check_error(result, func, args):
 # Progress-callback function-pointer type fired during syntheticScan: void(float progress, const char* message)
 LiDARProgressCallback = ctypes.CFUNCTYPE(None, ctypes.c_float, ctypes.c_char_p)
 
+# Streaming sink fired once per scan by triangulateHitPoints (helios-core 1.3.86):
+# void(uint scanID, const float* xyz9, const int* triIDs, uint triCount, void* user_data).
+# xyz9 is triCount x 9 floats; triIDs is triCount x 2 ints [scanID, gridcell].
+LiDARTriangulationSinkCallback = ctypes.CFUNCTYPE(
+    None, ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int),
+    ctypes.c_uint, ctypes.c_void_p)
+
+# Streaming sink fired after each chunk of a synthetic scan lands in the cloud (helios-core 1.3.86):
+# void(size_t first, size_t count, void* user_data).
+LiDARSyntheticScanHitSinkCallback = ctypes.CFUNCTYPE(
+    None, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p)
+
 
 # Function prototypes with availability detection
 try:
@@ -601,6 +613,14 @@ try:
     helios_lib.getLiDARCellCenter.restype = None
     helios_lib.getLiDARCellCenter.errcheck = _check_error
 
+    helios_lib.getLiDARCellCenterUnrotated.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float)
+    ]
+    helios_lib.getLiDARCellCenterUnrotated.restype = None
+    helios_lib.getLiDARCellCenterUnrotated.errcheck = _check_error
+
     helios_lib.getLiDARCellSize.argtypes = [
         ctypes.POINTER(ULiDARcloud),
         ctypes.c_uint,
@@ -939,6 +959,196 @@ try:
     _LIDAR_1384_AVAILABLE = True
 except AttributeError:
     _LIDAR_1384_AVAILABLE = False
+
+
+# helios-core 1.3.85 additions, probed separately for the same reason as the 1.3.84 block.
+_LIDAR_1385_AVAILABLE = False
+try:
+    helios_lib.lidarIsMultiReturnData.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.lidarIsMultiReturnData.restype = ctypes.c_int
+    helios_lib.lidarIsMultiReturnData.errcheck = _check_error
+
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.POINTER(UContext),
+        ctypes.POINTER(ctypes.c_float),  # Gtheta_per_cell
+        ctypes.c_uint,                   # cell_count
+        ctypes.c_int,                    # min_voxel_hits
+        ctypes.c_float,                  # element_width
+    ]
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell.restype = None
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell.errcheck = _check_error
+
+    _LIDAR_1385_AVAILABLE = True
+except AttributeError:
+    _LIDAR_1385_AVAILABLE = False
+
+
+# helios-core 1.3.86 additions, probed separately for the same reason as the blocks above.
+# NOTE: every wrapper function below must guard with _require_lidar_1386(); guarding with an
+# older flag would skip the NotImplementedError and call a symbol with no argtypes set.
+_LIDAR_1386_AVAILABLE = False
+try:
+    helios_lib.createLiDARHitDataColumn.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_char_p, ctypes.c_int,
+    ]
+    helios_lib.createLiDARHitDataColumn.restype = None
+    helios_lib.createLiDARHitDataColumn.errcheck = _check_error
+
+    helios_lib.getLiDARHitDataType.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_char_p]
+    helios_lib.getLiDARHitDataType.restype = ctypes.c_int
+    helios_lib.getLiDARHitDataType.errcheck = _check_error
+
+    helios_lib.getLiDARHitDataColumnF32.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.c_float,
+    ]
+    helios_lib.getLiDARHitDataColumnF32.restype = None
+    helios_lib.getLiDARHitDataColumnF32.errcheck = _check_error
+
+    helios_lib.getLiDARHitDataColumnI32.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_int,
+    ]
+    helios_lib.getLiDARHitDataColumnI32.restype = None
+    helios_lib.getLiDARHitDataColumnI32.errcheck = _check_error
+
+    helios_lib.addLiDARHitPointsBulk.argtypes = [
+        ctypes.POINTER(ULiDARcloud),
+        ctypes.c_uint,                    # scanID
+        ctypes.c_size_t,                  # n
+        ctypes.POINTER(ctypes.c_double),  # xyz (n x 3)
+        ctypes.POINTER(ctypes.c_float),   # dir_spherical (n x 3), nullable
+        ctypes.POINTER(ctypes.c_char_p),  # labels
+        ctypes.c_uint,                    # nLabels
+        ctypes.POINTER(ctypes.c_double),  # values (n x nLabels)
+    ]
+    helios_lib.addLiDARHitPointsBulk.restype = None
+    helios_lib.addLiDARHitPointsBulk.errcheck = _check_error
+
+    helios_lib.deleteLiDARHitPoints.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_size_t, ctypes.c_size_t,
+    ]
+    helios_lib.deleteLiDARHitPoints.restype = None
+    helios_lib.deleteLiDARHitPoints.errcheck = _check_error
+
+    helios_lib.setLiDARTriangulationSink.argtypes = [
+        ctypes.POINTER(ULiDARcloud), LiDARTriangulationSinkCallback, ctypes.c_void_p,
+    ]
+    helios_lib.setLiDARTriangulationSink.restype = None
+    helios_lib.setLiDARTriangulationSink.errcheck = _check_error
+
+    helios_lib.setLiDARSyntheticScanHitSink.argtypes = [
+        ctypes.POINTER(ULiDARcloud), LiDARSyntheticScanHitSinkCallback, ctypes.c_void_p,
+    ]
+    helios_lib.setLiDARSyntheticScanHitSink.restype = None
+    helios_lib.setLiDARSyntheticScanHitSink.errcheck = _check_error
+
+    helios_lib.getLiDARScanHitCount.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanHitCount.restype = ctypes.c_size_t
+    helios_lib.getLiDARScanHitCount.errcheck = _check_error
+
+    helios_lib.getLiDARScanHitIndices.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+    ]
+    helios_lib.getLiDARScanHitIndices.restype = None
+    helios_lib.getLiDARScanHitIndices.errcheck = _check_error
+
+    helios_lib.getLiDARScanHitXYZColumn.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+    ]
+    helios_lib.getLiDARScanHitXYZColumn.restype = None
+    helios_lib.getLiDARScanHitXYZColumn.errcheck = _check_error
+
+    helios_lib.getLiDARScanHitDataColumn.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_double), ctypes.c_uint, ctypes.c_double,
+    ]
+    helios_lib.getLiDARScanHitDataColumn.restype = None
+    helios_lib.getLiDARScanHitDataColumn.errcheck = _check_error
+
+    helios_lib.getLiDARScanHitDataColumnF32.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint, ctypes.c_float,
+    ]
+    helios_lib.getLiDARScanHitDataColumnF32.restype = None
+    helios_lib.getLiDARScanHitDataColumnF32.errcheck = _check_error
+
+    helios_lib.getLiDARScanHitDataColumnI32.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_int,
+    ]
+    helios_lib.getLiDARScanHitDataColumnI32.restype = None
+    helios_lib.getLiDARScanHitDataColumnI32.errcheck = _check_error
+
+    helios_lib.calculateLiDARLeafAreaBlock.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(UContext),
+        ctypes.c_int,                  # min_voxel_hits
+        ctypes.c_float,                # element_width
+        ctypes.POINTER(ctypes.c_int),  # ijk_min[3]
+        ctypes.POINTER(ctypes.c_int),  # ijk_max[3]
+    ]
+    helios_lib.calculateLiDARLeafAreaBlock.restype = None
+    helios_lib.calculateLiDARLeafAreaBlock.errcheck = _check_error
+
+    helios_lib.calculateLiDARLeafAreaGthetaBlock.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(UContext),
+        ctypes.c_float,                # Gtheta
+        ctypes.c_int,                  # min_voxel_hits
+        ctypes.c_float,                # element_width
+        ctypes.POINTER(ctypes.c_int),  # ijk_min[3]
+        ctypes.POINTER(ctypes.c_int),  # ijk_max[3]
+    ]
+    helios_lib.calculateLiDARLeafAreaGthetaBlock.restype = None
+    helios_lib.calculateLiDARLeafAreaGthetaBlock.errcheck = _check_error
+
+    helios_lib.calculateLiDARLeafAreaGthetaPerCellBlock.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(UContext),
+        ctypes.POINTER(ctypes.c_float),  # Gtheta_per_cell
+        ctypes.c_uint,                   # cell_count
+        ctypes.c_int,                    # min_voxel_hits
+        ctypes.c_float,                  # element_width
+        ctypes.POINTER(ctypes.c_int),    # ijk_min[3]
+        ctypes.POINTER(ctypes.c_int),    # ijk_max[3]
+    ]
+    helios_lib.calculateLiDARLeafAreaGthetaPerCellBlock.restype = None
+    helios_lib.calculateLiDARLeafAreaGthetaPerCellBlock.errcheck = _check_error
+
+    helios_lib.getLiDARCellGlobalIJK.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getLiDARCellGlobalIJK.restype = None
+    helios_lib.getLiDARCellGlobalIJK.errcheck = _check_error
+
+    helios_lib.getLiDARGridGlobalCount.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getLiDARGridGlobalCount.restype = None
+    helios_lib.getLiDARGridGlobalCount.errcheck = _check_error
+
+    helios_lib.getLiDARHitPointCapacity.argtypes = [ctypes.POINTER(ULiDARcloud)]
+    helios_lib.getLiDARHitPointCapacity.restype = ctypes.c_size_t
+    helios_lib.getLiDARHitPointCapacity.errcheck = _check_error
+
+    _LIDAR_1386_AVAILABLE = True
+except AttributeError:
+    _LIDAR_1386_AVAILABLE = False
+
+# Cropped-return inference in the leaf-area inversion (helios-core > 1.3.84), probed separately
+# for the same reason as the block above: a library built against an older core must keep the
+# rest of the LiDAR API working.
+_LIDAR_CROPPED_RETURNS_AVAILABLE = False
+try:
+    helios_lib.getLiDARCroppedReturnStats.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.POINTER(ctypes.c_ulonglong),
+    ]
+    helios_lib.getLiDARCroppedReturnStats.restype = None
+    helios_lib.getLiDARCroppedReturnStats.errcheck = _check_error
+    _LIDAR_CROPPED_RETURNS_AVAILABLE = True
+except AttributeError:
+    _LIDAR_CROPPED_RETURNS_AVAILABLE = False
 
 
 # Python wrapper functions
@@ -2043,6 +2253,16 @@ def getLiDARCellCenter(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> Li
     return list(center)
 
 
+def getLiDARCellCenterUnrotated(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List[float]:
+    """Get the UNROTATED (axis-aligned lattice) center position of a grid cell"""
+    if not _LIDAR_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("LiDAR functions not available")
+
+    center = (ctypes.c_float * 3)()
+    helios_lib.getLiDARCellCenterUnrotated(cloud_ptr, index, center)
+    return list(center)
+
+
 def getLiDARCellSize(cloud_ptr: ctypes.POINTER(ULiDARcloud), index: int) -> List[float]:
     """Get size of a grid cell"""
     if not _LIDAR_FUNCTIONS_AVAILABLE:
@@ -2484,6 +2704,25 @@ def getLiDARVirtualMissCount(cloud_ptr) -> int:
     return int(helios_lib.getLiDARVirtualMissCount(cloud_ptr))
 
 
+_CROPPED_RETURN_STATS_FIELDS = (
+    "beams_with_hidden_returns", "hidden_before", "hidden_after",
+    "hidden_ambiguous", "beams_ambiguous", "standins_ignored",
+)
+
+
+def getLiDARCroppedReturnStats(cloud_ptr) -> dict:
+    """Returns the last leaf-area inversion inferred from target_count, as a dict of counts."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE or not _LIDAR_CROPPED_RETURNS_AVAILABLE:
+        raise RuntimeError(
+            "getLiDARCroppedReturnStats is not available in the current native library. "
+            "It requires a helios-core newer than v1.3.84; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+    out = (ctypes.c_ulonglong * len(_CROPPED_RETURN_STATS_FIELDS))()
+    helios_lib.getLiDARCroppedReturnStats(cloud_ptr, out)
+    return {name: int(out[i]) for i, name in enumerate(_CROPPED_RETURN_STATS_FIELDS)}
+
+
 def hasLiDARVirtualMisses(cloud_ptr) -> bool:
     """Whether any gap-filled miss is currently held in virtualized form."""
     _require_lidar_1384()
@@ -2567,3 +2806,331 @@ def getLiDARExactPathLengths(cloud_ptr) -> bool:
     """Whether path lengths are accumulated exactly."""
     _require_lidar_1384()
     return bool(helios_lib.getLiDARExactPathLengths(cloud_ptr))
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.85 additions
+# ---------------------------------------------------------------------------
+
+def _require_lidar_1385() -> None:
+    """Raise if the native library predates the helios-core 1.3.85 LiDAR additions."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE or not _LIDAR_1385_AVAILABLE:
+        raise RuntimeError(
+            "This LiDAR function is not available in the current native library. "
+            "It requires helios-core v1.3.85 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def lidarIsMultiReturnData(cloud_ptr) -> bool:
+    """Whether any hit has target_count > 1 (the switch triangulateHitPoints() branches on)."""
+    _require_lidar_1385()
+    return bool(helios_lib.lidarIsMultiReturnData(cloud_ptr))
+
+
+def calculateLiDARLeafAreaGthetaPerCell(cloud_ptr, context_ptr, Gtheta_per_cell: List[float],
+                                        min_voxel_hits: int, element_width: float) -> None:
+    """Calculate leaf area with one caller-supplied G(theta) per grid cell, without triangulation.
+
+    Gtheta_per_cell must have one entry per grid cell, in grid-cell order, every value in (0,1].
+    """
+    _require_lidar_1385()
+    values = [float(g) for g in Gtheta_per_cell]
+    if not values:
+        raise ValueError("Gtheta_per_cell must contain at least one value")
+    arr = (ctypes.c_float * len(values))(*values)
+    helios_lib.calculateLiDARLeafAreaGthetaPerCell(
+        cloud_ptr, context_ptr, arr, ctypes.c_uint(len(values)),
+        ctypes.c_int(int(min_voxel_hits)), ctypes.c_float(float(element_width)))
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.86 additions
+# ---------------------------------------------------------------------------
+
+def _require_lidar_1386() -> None:
+    """Raise if the native library predates the helios-core 1.3.86 LiDAR additions."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE or not _LIDAR_1386_AVAILABLE:
+        raise RuntimeError(
+            "This LiDAR function is not available in the current native library. "
+            "It requires helios-core v1.3.86 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def createLiDARHitDataColumn(cloud_ptr, label: str, type_code: int) -> None:
+    """Create a per-hit scalar-data column with an explicit storage type.
+
+    type_code is the HitDataType ABI integer: 0=FLOAT64, 1=FLOAT32, 2=INT32.
+    """
+    _require_lidar_1386()
+    helios_lib.createLiDARHitDataColumn(cloud_ptr, label.encode('utf-8'), ctypes.c_int(int(type_code)))
+
+
+def getLiDARHitDataType(cloud_ptr, label: str) -> int:
+    """Storage type of an existing column as the HitDataType ABI integer (raises if unknown)."""
+    _require_lidar_1386()
+    return int(helios_lib.getLiDARHitDataType(cloud_ptr, label.encode('utf-8')))
+
+
+def getLiDARHitDataColumnF32(cloud_ptr, label: str, n: int,
+                             absent_value: float = -9999.0) -> List[float]:
+    """Bulk-export a named scalar column as 32-bit floats (no widening of a FLOAT32 column)."""
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    out = (ctypes.c_float * n)()
+    helios_lib.getLiDARHitDataColumnF32(cloud_ptr, label.encode('utf-8'), out,
+                                        ctypes.c_uint(int(n)), ctypes.c_float(float(absent_value)))
+    return [float(x) for x in out]
+
+
+def getLiDARHitDataColumnF32_np(cloud_ptr, label: str, n: int, absent_value: float = -9999.0):
+    """Bulk-export a named scalar column as an (n,) float32 numpy array."""
+    import numpy as np
+    _require_lidar_1386()
+    if n <= 0:
+        return np.empty((0,), np.float32)
+    out = (ctypes.c_float * n)()
+    helios_lib.getLiDARHitDataColumnF32(cloud_ptr, label.encode('utf-8'), out,
+                                        ctypes.c_uint(int(n)), ctypes.c_float(float(absent_value)))
+    return np.frombuffer(out, dtype=np.float32, count=n).copy()
+
+
+def getLiDARHitDataColumnI32(cloud_ptr, label: str, n: int,
+                             absent_value: int = -9999) -> List[int]:
+    """Bulk-export a named scalar column as 32-bit ints.
+
+    Raises if any value is not a 32-bit integer; read such a label as doubles instead.
+    """
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    out = (ctypes.c_int * n)()
+    helios_lib.getLiDARHitDataColumnI32(cloud_ptr, label.encode('utf-8'), out,
+                                        ctypes.c_uint(int(n)), ctypes.c_int(int(absent_value)))
+    return [int(x) for x in out]
+
+
+def getLiDARHitDataColumnI32_np(cloud_ptr, label: str, n: int, absent_value: int = -9999):
+    """Bulk-export a named scalar column as an (n,) int32 numpy array."""
+    import numpy as np
+    _require_lidar_1386()
+    if n <= 0:
+        return np.empty((0,), np.int32)
+    out = (ctypes.c_int * n)()
+    helios_lib.getLiDARHitDataColumnI32(cloud_ptr, label.encode('utf-8'), out,
+                                        ctypes.c_uint(int(n)), ctypes.c_int(int(absent_value)))
+    return np.frombuffer(out, dtype=np.int32, count=n).copy()
+
+
+def addLiDARHitPointsBulk(cloud_ptr, scanID: int, xyz, dir_spherical=None,
+                          labels: Optional[List[str]] = None, values=None) -> None:
+    """Bulk-ingest hit points through the native addHitPoints path.
+
+    xyz is an (n, 3) float64 array. dir_spherical is an (n, 3) float32 array of
+    (radius, elevation, azimuth), or None to derive each direction from the point's position
+    relative to the scan origin. values is (n, len(labels)) float64.
+    """
+    import numpy as np
+    _require_lidar_1386()
+
+    xyz = np.ascontiguousarray(xyz, dtype=np.float64)
+    if xyz.ndim != 2 or xyz.shape[1] != 3:
+        raise ValueError("xyz must have shape (N, 3)")
+    n = xyz.shape[0]
+
+    dir_ptr = None
+    if dir_spherical is not None:
+        dir_spherical = np.ascontiguousarray(dir_spherical, dtype=np.float32)
+        if dir_spherical.ndim != 2 or dir_spherical.shape[1] != 3:
+            raise ValueError("dir_spherical must have shape (N, 3)")
+        if dir_spherical.shape[0] != n:
+            raise ValueError("dir_spherical must have the same number of rows as xyz")
+        dir_ptr = dir_spherical.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+    labels = labels or []
+    nLabels = len(labels)
+    label_ptr = None
+    if nLabels > 0:
+        encoded = [s.encode('utf-8') for s in labels]
+        label_ptr = (ctypes.c_char_p * nLabels)(*encoded)
+
+    values_ptr = None
+    if nLabels > 0:
+        if values is None:
+            raise ValueError("values is required when labels are supplied")
+        values = np.ascontiguousarray(values, dtype=np.float64)
+        if values.ndim != 2 or values.shape != (n, nLabels):
+            raise ValueError(f"values must have shape (N, len(labels)) == ({n}, {nLabels})")
+        values_ptr = values.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+
+    helios_lib.addLiDARHitPointsBulk(
+        cloud_ptr, ctypes.c_uint(int(scanID)), ctypes.c_size_t(int(n)),
+        xyz.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), dir_ptr,
+        label_ptr, ctypes.c_uint(nLabels), values_ptr)
+
+
+def deleteLiDARHitPoints(cloud_ptr, first: int, count: int) -> None:
+    """Delete hits [first, first+count), preserving the order of the rest."""
+    _require_lidar_1386()
+    helios_lib.deleteLiDARHitPoints(cloud_ptr, ctypes.c_size_t(int(first)),
+                                    ctypes.c_size_t(int(count)))
+
+
+def setLiDARTriangulationSink(cloud_ptr, callback) -> None:
+    """Register a per-scan triangulation sink.
+
+    `callback` must be a LiDARTriangulationSinkCallback instance (or None to clear). The caller
+    is responsible for keeping it alive for as long as native code holds it.
+    """
+    _require_lidar_1386()
+    cb = callback if callback is not None else ctypes.cast(None, LiDARTriangulationSinkCallback)
+    helios_lib.setLiDARTriangulationSink(cloud_ptr, cb, None)
+
+
+def setLiDARSyntheticScanHitSink(cloud_ptr, callback) -> None:
+    """Register a synthetic-scan chunk sink.
+
+    `callback` must be a LiDARSyntheticScanHitSinkCallback instance (or None to clear). The
+    caller is responsible for keeping it alive for as long as native code holds it.
+    """
+    _require_lidar_1386()
+    cb = callback if callback is not None else ctypes.cast(None, LiDARSyntheticScanHitSinkCallback)
+    helios_lib.setLiDARSyntheticScanHitSink(cloud_ptr, cb, None)
+
+
+def getLiDARScanHitCount(cloud_ptr, scanID: int) -> int:
+    """Number of hit points (stored returns plus virtualized misses) belonging to one scan."""
+    _require_lidar_1386()
+    return int(helios_lib.getLiDARScanHitCount(cloud_ptr, ctypes.c_uint(int(scanID))))
+
+
+def getLiDARScanHitIndices(cloud_ptr, scanID: int, n: int) -> List[int]:
+    """Global hit indices of one scan, in the order the per-scan readers use."""
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    out = (ctypes.c_uint * n)()
+    helios_lib.getLiDARScanHitIndices(cloud_ptr, ctypes.c_uint(int(scanID)), out,
+                                      ctypes.c_uint(int(n)))
+    return [int(x) for x in out]
+
+
+def getLiDARScanHitXYZColumn(cloud_ptr, scanID: int, n: int):
+    """Read one scan's hit positions in a single pass, as a list of (x, y, z) tuples."""
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    buf = (ctypes.c_float * (3 * n))()
+    helios_lib.getLiDARScanHitXYZColumn(cloud_ptr, ctypes.c_uint(int(scanID)), buf,
+                                        ctypes.c_uint(int(n)))
+    return [(float(buf[3*i]), float(buf[3*i+1]), float(buf[3*i+2])) for i in range(n)]
+
+
+def getLiDARScanHitDataColumn(cloud_ptr, scanID: int, label: str, n: int,
+                              absent_value: float = -9999.0) -> List[float]:
+    """Read one scan's values of a scalar-data label as doubles."""
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    out = (ctypes.c_double * n)()
+    helios_lib.getLiDARScanHitDataColumn(cloud_ptr, ctypes.c_uint(int(scanID)),
+                                         label.encode('utf-8'), out, ctypes.c_uint(int(n)),
+                                         ctypes.c_double(float(absent_value)))
+    return list(out)
+
+
+def getLiDARScanHitDataColumnF32(cloud_ptr, scanID: int, label: str, n: int,
+                                 absent_value: float = -9999.0) -> List[float]:
+    """Read one scan's values of a scalar-data label as 32-bit floats."""
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    out = (ctypes.c_float * n)()
+    helios_lib.getLiDARScanHitDataColumnF32(cloud_ptr, ctypes.c_uint(int(scanID)),
+                                            label.encode('utf-8'), out, ctypes.c_uint(int(n)),
+                                            ctypes.c_float(float(absent_value)))
+    return [float(x) for x in out]
+
+
+def getLiDARScanHitDataColumnI32(cloud_ptr, scanID: int, label: str, n: int,
+                                 absent_value: int = -9999) -> List[int]:
+    """Read one scan's values of a scalar-data label as 32-bit ints."""
+    _require_lidar_1386()
+    if n <= 0:
+        return []
+    out = (ctypes.c_int * n)()
+    helios_lib.getLiDARScanHitDataColumnI32(cloud_ptr, ctypes.c_uint(int(scanID)),
+                                            label.encode('utf-8'), out, ctypes.c_uint(int(n)),
+                                            ctypes.c_int(int(absent_value)))
+    return [int(x) for x in out]
+
+
+def _ijk_array(ijk, name: str):
+    """Marshal a 3-element lattice index into a c_int[3]."""
+    values = [int(v) for v in ijk]
+    if len(values) != 3:
+        raise ValueError(f"{name} must have exactly 3 elements (i, j, k)")
+    return (ctypes.c_int * 3)(*values)
+
+
+def calculateLiDARLeafAreaBlock(cloud_ptr, context_ptr, min_voxel_hits: int,
+                                element_width: float, ijk_min, ijk_max) -> None:
+    """Calculate leaf area for only a block of the voxel grid (triangulation supplies G(theta))."""
+    _require_lidar_1386()
+    helios_lib.calculateLiDARLeafAreaBlock(
+        cloud_ptr, context_ptr, ctypes.c_int(int(min_voxel_hits)),
+        ctypes.c_float(float(element_width)),
+        _ijk_array(ijk_min, 'ijk_min'), _ijk_array(ijk_max, 'ijk_max'))
+
+
+def calculateLiDARLeafAreaGthetaBlock(cloud_ptr, context_ptr, Gtheta: float,
+                                      min_voxel_hits: int, element_width: float,
+                                      ijk_min, ijk_max) -> None:
+    """Calculate leaf area for a block of the grid with a caller-supplied G(theta)."""
+    _require_lidar_1386()
+    helios_lib.calculateLiDARLeafAreaGthetaBlock(
+        cloud_ptr, context_ptr, ctypes.c_float(float(Gtheta)),
+        ctypes.c_int(int(min_voxel_hits)), ctypes.c_float(float(element_width)),
+        _ijk_array(ijk_min, 'ijk_min'), _ijk_array(ijk_max, 'ijk_max'))
+
+
+def calculateLiDARLeafAreaGthetaPerCellBlock(cloud_ptr, context_ptr, Gtheta_per_cell: List[float],
+                                             min_voxel_hits: int, element_width: float,
+                                             ijk_min, ijk_max) -> None:
+    """Calculate leaf area for a block of the grid with one G(theta) per grid cell.
+
+    Gtheta_per_cell covers the whole grid, not just the block.
+    """
+    _require_lidar_1386()
+    values = [float(g) for g in Gtheta_per_cell]
+    if not values:
+        raise ValueError("Gtheta_per_cell must contain at least one value")
+    arr = (ctypes.c_float * len(values))(*values)
+    helios_lib.calculateLiDARLeafAreaGthetaPerCellBlock(
+        cloud_ptr, context_ptr, arr, ctypes.c_uint(len(values)),
+        ctypes.c_int(int(min_voxel_hits)), ctypes.c_float(float(element_width)),
+        _ijk_array(ijk_min, 'ijk_min'), _ijk_array(ijk_max, 'ijk_max'))
+
+
+def getLiDARCellGlobalIJK(cloud_ptr, index: int) -> Tuple[int, int, int]:
+    """Lattice index (i, j, k) of a grid cell."""
+    _require_lidar_1386()
+    out = (ctypes.c_int * 3)()
+    helios_lib.getLiDARCellGlobalIJK(cloud_ptr, ctypes.c_uint(int(index)), out)
+    return (int(out[0]), int(out[1]), int(out[2]))
+
+
+def getLiDARGridGlobalCount(cloud_ptr) -> Tuple[int, int, int]:
+    """Number of lattice cells (nx, ny, nz); raises if the grid is empty or irregular."""
+    _require_lidar_1386()
+    out = (ctypes.c_int * 3)()
+    helios_lib.getLiDARGridGlobalCount(cloud_ptr, out)
+    return (int(out[0]), int(out[1]), int(out[2]))
+
+
+def getLiDARHitPointCapacity(cloud_ptr) -> int:
+    """Number of hit points the cloud can hold before its arrays reallocate."""
+    _require_lidar_1386()
+    return int(helios_lib.getLiDARHitPointCapacity(cloud_ptr))

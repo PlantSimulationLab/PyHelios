@@ -161,6 +161,8 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
             ${BASE_DIRECTORY}/plugins/visualizer/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
+            # Visualizer.h includes <GL/glew.h> as of helios-core 1.3.85
+            ${BASE_DIRECTORY}/plugins/visualizer/lib/glew-2.2.0/include
         )
         # Silence OpenGL deprecation warnings on macOS
         if(APPLE)
@@ -250,6 +252,8 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
             ${BASE_DIRECTORY}/plugins/visualizer/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
             ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
+            # Visualizer.h includes <GL/glew.h> as of helios-core 1.3.85
+            ${BASE_DIRECTORY}/plugins/visualizer/lib/glew-2.2.0/include
         )
     endif()
 endif()
@@ -327,6 +331,8 @@ if("visualizer" IN_LIST PLUGINS)
         ${BASE_DIRECTORY}/plugins/visualizer/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
+        # Visualizer.h includes <GL/glew.h> as of helios-core 1.3.85
+        ${BASE_DIRECTORY}/plugins/visualizer/lib/glew-2.2.0/include
     )
     # Silence OpenGL deprecation warnings on macOS
     if(APPLE)
@@ -390,6 +396,8 @@ if("lidar" IN_LIST PLUGINS)
         ${BASE_DIRECTORY}/plugins/visualizer/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glfw-3.3.2/include
         ${BASE_DIRECTORY}/plugins/visualizer/lib/glm
+        # Visualizer.h includes <GL/glew.h> as of helios-core 1.3.85
+        ${BASE_DIRECTORY}/plugins/visualizer/lib/glew-2.2.0/include
     )
 endif()
 

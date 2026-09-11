@@ -32,6 +32,37 @@ except AttributeError:
     _GPU_ENV_FUNCTIONS_AVAILABLE = False
 
 
+# Process-wide random number generator from core/global.h (helios-core v1.3.85+).
+# Probed separately so a library built against an older core keeps the GPU
+# environment functions above working.
+_GLOBAL_RNG_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.seedGlobalRandomGenerator.argtypes = [ctypes.c_uint]
+    helios_lib.seedGlobalRandomGenerator.restype = None
+    helios_lib.seedGlobalRandomGenerator.errcheck = _check_error
+
+    helios_lib.globalRandu.argtypes = []
+    helios_lib.globalRandu.restype = ctypes.c_float
+    helios_lib.globalRandu.errcheck = _check_error
+
+    helios_lib.globalRanduInt.argtypes = [ctypes.c_int, ctypes.c_int]
+    helios_lib.globalRanduInt.restype = ctypes.c_int
+    helios_lib.globalRanduInt.errcheck = _check_error
+
+    _GLOBAL_RNG_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _GLOBAL_RNG_FUNCTIONS_AVAILABLE = False
+
+
+def _require_global_rng_functions(name: str) -> None:
+    if not _GLOBAL_RNG_FUNCTIONS_AVAILABLE:
+        raise RuntimeError(
+            f"{name} is not available in the current native library. It requires "
+            "helios-core v1.3.85 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
 def _require_gpu_env_functions(name: str) -> None:
     if not _GPU_ENV_FUNCTIONS_AVAILABLE:
         raise RuntimeError(
@@ -85,33 +116,32 @@ def requireGPUOrFail(context_message: str) -> None:
     helios_lib.requireGPUOrFail(encoded)
 
 
-# TODO: Implement global functions for build plugin root directory management
-# The Global.py module expects setBuildPluginRootDirectory and getBuildPluginRootDirectory
-# functions, but these are not currently implemented in the C++ interface.
-#
-# Once the C++ functions are implemented, add them here with proper error checking:
-#
-# try:
-#     helios_lib.setBuildPluginRootDirectory.argtypes = [ctypes.c_char_p]
-#     helios_lib.setBuildPluginRootDirectory.restype = None
-#     helios_lib.setBuildPluginRootDirectory.errcheck = _check_error
-#
-#     helios_lib.getBuildPluginRootDirectory.argtypes = []
-#     helios_lib.getBuildPluginRootDirectory.restype = ctypes.c_char_p
-#     helios_lib.getBuildPluginRootDirectory.errcheck = _check_error
-#
-#     _GLOBAL_FUNCTIONS_AVAILABLE = True
-# except AttributeError:
-#     _GLOBAL_FUNCTIONS_AVAILABLE = False
-#
-# def setBuildPluginRootDirectory(directory: str):
-#     if not _GLOBAL_FUNCTIONS_AVAILABLE:
-#         raise NotImplementedError("Global functions not available in current Helios library.")
-#     directory_bytes = directory.encode('utf-8')
-#     helios_lib.setBuildPluginRootDirectory(directory_bytes)
-#
-# def getBuildPluginRootDirectory() -> str:
-#     if not _GLOBAL_FUNCTIONS_AVAILABLE:
-#         raise NotImplementedError("Global functions not available in current Helios library.")
-#     result = helios_lib.getBuildPluginRootDirectory()
-#     return result.decode('utf-8') if result else ""
+
+def seedGlobalRandomGenerator(seed: int) -> None:
+    """Seed the process-wide generator behind the free function ``helios::randu()``.
+
+    Distinct from ``Context.seedRandomGenerator()``, which seeds a per-Context
+    generator. See ``pyhelios.Global.seedRandomGenerator`` for which native code
+    draws from which.
+    """
+    _require_global_rng_functions("seedGlobalRandomGenerator")
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        raise ValueError(f"seed must be an int, got {type(seed).__name__}")
+    if seed < 0 or seed > 0xFFFFFFFF:
+        raise ValueError(f"seed must fit in an unsigned 32-bit integer, got {seed}")
+    helios_lib.seedGlobalRandomGenerator(ctypes.c_uint(seed))
+
+
+def globalRandu() -> float:
+    """Draw a uniform float in [0, 1) from the process-wide generator."""
+    _require_global_rng_functions("globalRandu")
+    return float(helios_lib.globalRandu())
+
+
+def globalRanduInt(imin: int, imax: int) -> int:
+    """Draw a uniform integer over the inclusive range [imin, imax] from the process-wide generator."""
+    _require_global_rng_functions("globalRanduInt")
+    for name, v in (("imin", imin), ("imax", imax)):
+        if not isinstance(v, int) or isinstance(v, bool):
+            raise ValueError(f"{name} must be an int, got {type(v).__name__}")
+    return int(helios_lib.globalRanduInt(ctypes.c_int(imin), ctypes.c_int(imax)))

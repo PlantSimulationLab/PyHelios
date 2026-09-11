@@ -4944,6 +4944,57 @@ class Context:
         """Calculate total one-sided surface area for a set of primitives."""
         return context_wrapper.sumPrimitiveSurfaceAreaWrapper(self.context, uuids)
 
+    def calculateAreaIndex(self, leaf_uuids: List[int], wood_uuids: Optional[List[int]] = None,
+                           ground_area: Optional[float] = None) -> float:
+        """Calculate the one-sided area index on a ground-area basis.
+
+        This is the quantity :math:`L` appearing in Beer's law,
+        :math:`\\exp(-G L / \\cos\\theta)`: total one-sided area divided by the ground
+        area over which it is distributed.
+
+        Args:
+            leaf_uuids: UUIDs of leaf primitives.
+            wood_uuids: Optional UUIDs of woody (branch, trunk, stem) primitives. When
+                given, the result is a *plant* area index rather than a leaf area index.
+                Woody area is counted as one half of its summed one-sided area, because a
+                tube or cone encloses the branch and so sums to the full cylinder surface
+                rather than the projected area Beer's law requires. If woody elements are
+                instead represented by non-enclosing planar primitives that are already
+                one-sided silhouettes, this halving underestimates them by a factor of two.
+            ground_area: Optional ground area basis in m^2. When omitted, the basis is the
+                horizontal (x-y) footprint of the bounding box of *all* primitives in the
+                Context -- so a ground primitive extending beyond the canopy enlarges the
+                basis and lowers the reported index. Supply this explicitly whenever the
+                domain is not cropped tightly to the canopy.
+
+        Returns:
+            One-sided area index (m^2 area per m^2 ground area).
+
+        Raises:
+            ValueError: If ``leaf_uuids`` is empty or ``ground_area`` is not positive.
+            RuntimeError: If any primitive is a voxel, whose area is its total enclosing
+                surface area rather than a one-sided area.
+
+        Example:
+            >>> lai = context.calculateAreaIndex(leaf_uuids)
+            >>> pai = context.calculateAreaIndex(leaf_uuids, wood_uuids)
+            >>> lai = context.calculateAreaIndex(leaf_uuids, ground_area=100.0)
+        """
+        if not leaf_uuids:
+            raise ValueError("leaf_uuids must contain at least one UUID")
+        if ground_area is not None and ground_area <= 0:
+            raise ValueError(f"Ground area must be positive, got {ground_area}")
+
+        if wood_uuids is not None and ground_area is not None:
+            return context_wrapper.calculateAreaIndexLeafWoodGroundAreaWrapper(
+                self.context, leaf_uuids, wood_uuids, ground_area)
+        elif wood_uuids is not None:
+            return context_wrapper.calculateAreaIndexLeafWoodWrapper(self.context, leaf_uuids, wood_uuids)
+        elif ground_area is not None:
+            return context_wrapper.calculateAreaIndexLeafGroundAreaWrapper(self.context, leaf_uuids, ground_area)
+        else:
+            return context_wrapper.calculateAreaIndexLeafWrapper(self.context, leaf_uuids)
+
     def filterPrimitivesByData(self, uuids: List[int], label: str, value, comparator: str = "=") -> List[int]:
         """Filter primitives by data value. Auto-dispatches based on value type.
 
@@ -5704,8 +5755,12 @@ class Context:
         """
         Return the per-vertex normals of a polymesh object.
 
-        Returns an empty list if the mesh carries none. Helios never synthesizes normals
-        implicitly; call :meth:`computePolymeshObjectVertexNormals` to generate them.
+        Returns an empty list if the mesh carries none. A mesh loaded by :meth:`loadOBJ`
+        or :meth:`loadPLY` always has them (helios-core v1.3.85+): normals authored in the
+        file are kept, and a file that supplies none has them generated from the mesh
+        connectivity. Only a mesh assembled programmatically through
+        :meth:`setPolymeshObjectTopology` without normals carries none; call
+        :meth:`computePolymeshObjectVertexNormals` to generate them.
         """
         self._check_context_available()
         triples = context_wrapper.getPolymeshObjectVertexNormalsWrapper(self.context, objID)
@@ -5727,9 +5782,11 @@ class Context:
         Return where a polymesh object's vertex normals came from.
 
         ``AUTHORED`` means they were read from the source file (OBJ ``vn`` records, or
-        PLY ``nx``/``ny``/``nz`` properties); ``COMPUTED`` means
-        :meth:`computePolymeshObjectVertexNormals` generated them; ``NONE`` means the
-        mesh has no vertex normals.
+        PLY ``nx``/``ny``/``nz`` properties); ``COMPUTED`` means they were generated,
+        either by the file loader because the file supplied none (helios-core v1.3.85+)
+        or by :meth:`computePolymeshObjectVertexNormals`; ``NONE`` means the mesh has no
+        vertex normals, which only arises for a mesh assembled programmatically through
+        :meth:`setPolymeshObjectTopology`.
         """
         self._check_context_available()
         return VertexNormalSource(
@@ -5764,6 +5821,12 @@ class Context:
         ``crease_angle_degrees``, so hard edges stay hard rather than being smoothed
         away. The resulting normals are reported as
         :attr:`VertexNormalSource.COMPUTED`.
+
+        The file loaders call this automatically for a mesh whose source file supplied
+        no normals (helios-core v1.3.85+), so it is only needed for a mesh assembled
+        programmatically through :meth:`setPolymeshObjectTopology`, or to regenerate
+        normals at a different crease angle or after the mesh has been deformed with
+        :meth:`setPolymeshObjectVertices`.
 
         Args:
             objID: Object ID of the polymesh object

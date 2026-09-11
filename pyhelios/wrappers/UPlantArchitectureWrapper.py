@@ -725,6 +725,86 @@ if _PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
     helios_lib.setPlantNitrogenParametersFromJSON.errcheck = _check_error
     helios_lib.plantArchitectureOptionalOutputObjectData.errcheck = _check_error
 
+# helios-core 1.3.85 additions, probed separately so a library built against an older core keeps
+# the rest of the PlantArchitecture API working rather than falling back to mock mode.
+_PLANTARCHITECTURE_1385_AVAILABLE = False
+try:
+    helios_lib.addShootFromNodePositions.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+        ctypes.c_int,                     # parent_shoot_ID (-1 = base stem)
+        ctypes.c_uint,                    # parent_node_index
+        ctypes.POINTER(ctypes.c_float),   # node_positions (3*n)
+        ctypes.POINTER(ctypes.c_float),   # node_radii (n)
+        ctypes.c_int,                     # node_count
+        ctypes.c_char_p,                  # shoot_type_label
+        ctypes.c_char_p,                  # growth_shoot_type_label (NULL = same as build type)
+        ctypes.c_uint,                    # petiole_index
+    ]
+    helios_lib.addShootFromNodePositions.restype = ctypes.c_uint
+    helios_lib.addShootFromNodePositions.errcheck = _check_error
+
+    helios_lib.setPetioleNodePositions.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+        ctypes.POINTER(ctypes.c_float),   # node_positions (3*n)
+        ctypes.POINTER(ctypes.c_float),   # node_radii (n)
+        ctypes.c_int,                     # node_count
+    ]
+    helios_lib.setPetioleNodePositions.restype = ctypes.c_int
+    helios_lib.setPetioleNodePositions.errcheck = _check_error
+
+    helios_lib.setPetioleLeafGeometry.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+        ctypes.POINTER(ctypes.c_float),   # leaf_bases (3*n)
+        ctypes.POINTER(ctypes.c_float),   # leaf_rotations (3*n: pitch, yaw, roll in radians)
+        ctypes.POINTER(ctypes.c_float),   # leaf_sizes (n)
+        ctypes.c_int,                     # leaf_count
+    ]
+    helios_lib.setPetioleLeafGeometry.restype = ctypes.c_int
+    helios_lib.setPetioleLeafGeometry.errcheck = _check_error
+
+    helios_lib.isShootGeometryPrescribed.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint
+    ]
+    helios_lib.isShootGeometryPrescribed.restype = ctypes.c_int
+    helios_lib.isShootGeometryPrescribed.errcheck = _check_error
+
+    for _organ_fn in ("getPlantLeafAreas", "getPlantInternodeLengths", "getPlantLeafInclinations"):
+        getattr(helios_lib, _organ_fn).argtypes = [
+            ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_int)
+        ]
+        getattr(helios_lib, _organ_fn).restype = ctypes.POINTER(ctypes.c_float)
+        getattr(helios_lib, _organ_fn).errcheck = _check_error
+
+    _PLANTARCHITECTURE_1385_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1385_AVAILABLE = False
+
+# helios-core 1.3.86 additions, probed separately for the same reason as the block above.
+_PLANTARCHITECTURE_1386_AVAILABLE = False
+try:
+    helios_lib.setPetioleLeafCount.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+        ctypes.c_uint,                    # leaf_count
+    ]
+    helios_lib.setPetioleLeafCount.restype = ctypes.c_int
+    helios_lib.setPetioleLeafCount.errcheck = _check_error
+
+    helios_lib.setShootInternodeLengthMax.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint,     # plantID, shootID
+        ctypes.c_float,                   # internode_length_max
+    ]
+    helios_lib.setShootInternodeLengthMax.restype = ctypes.c_int
+    helios_lib.setShootInternodeLengthMax.errcheck = _check_error
+
+    _PLANTARCHITECTURE_1386_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1386_AVAILABLE = False
+
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
     """Create PlantArchitecture instance"""
@@ -2514,3 +2594,180 @@ def optionalOutputObjectData(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), 
         raise ValueError("Object data label cannot be empty")
 
     helios_lib.plantArchitectureOptionalOutputObjectData(plantarch_ptr, object_data_label.encode('utf-8'))
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.85 additions
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_1385() -> None:
+    """Raise if the native library predates the helios-core 1.3.85 PlantArchitecture additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1385_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.85 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def _flatten_xyz(points: List[List[float]], name: str) -> Tuple["ctypes.Array", int]:
+    """Pack an iterable of 3-element sequences into a flat ctypes float array."""
+    flat: List[float] = []
+    for i, pt in enumerate(points):
+        if len(pt) != 3:
+            raise ValueError(f"{name}[{i}] must have exactly 3 components, got {len(pt)}")
+        flat.extend(float(v) for v in pt)
+    count = len(points)
+    return (ctypes.c_float * max(len(flat), 1))(*flat), count
+
+
+def addShootFromNodePositions(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                              plant_id: int, parent_shoot_id: int, parent_node_index: int,
+                              node_positions: List[List[float]], node_radii: List[float],
+                              shoot_type_label: str, growth_shoot_type_label: Optional[str] = None,
+                              petiole_index: int = 0) -> int:
+    """Build a shoot whose internode path follows measured node positions."""
+    _require_plantarch_1385()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if parent_shoot_id < -1:
+        raise ValueError("Parent shoot ID must be -1 (base stem) or a non-negative shoot ID")
+    if parent_node_index < 0:
+        raise ValueError("Parent node index must be non-negative")
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    if not shoot_type_label:
+        raise ValueError("Shoot type label cannot be empty")
+    if len(node_positions) < 2:
+        raise ValueError("At least two node positions are required")
+    if len(node_radii) != len(node_positions):
+        raise ValueError(
+            f"node_radii must have one entry per node position: got {len(node_radii)} radii "
+            f"for {len(node_positions)} positions")
+    positions_c, count = _flatten_xyz(node_positions, "node_positions")
+    radii_c = (ctypes.c_float * count)(*[float(r) for r in node_radii])
+    growth = growth_shoot_type_label.encode('utf-8') if growth_shoot_type_label else None
+    return int(helios_lib.addShootFromNodePositions(
+        plantarch_ptr, plant_id, parent_shoot_id, parent_node_index,
+        positions_c, radii_c, count, shoot_type_label.encode('utf-8'), growth, petiole_index))
+
+
+def setPetioleNodePositions(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                            plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                            node_positions: List[List[float]], node_radii: List[float]) -> None:
+    """Prescribe the centerline of one petiole from measured node positions."""
+    _require_plantarch_1385()
+    for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                    ("Node index", node_index), ("Petiole index", petiole_index)):
+        if v < 0:
+            raise ValueError(f"{name} must be non-negative")
+    if len(node_positions) < 2:
+        raise ValueError("At least two node positions are required")
+    if len(node_radii) != len(node_positions):
+        raise ValueError(
+            f"node_radii must have one entry per node position: got {len(node_radii)} radii "
+            f"for {len(node_positions)} positions")
+    positions_c, count = _flatten_xyz(node_positions, "node_positions")
+    radii_c = (ctypes.c_float * count)(*[float(r) for r in node_radii])
+    helios_lib.setPetioleNodePositions(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                       positions_c, radii_c, count)
+
+
+def setPetioleLeafGeometry(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                           plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                           leaf_bases: List[List[float]], leaf_rotations: List[List[float]],
+                           leaf_sizes: List[float]) -> None:
+    """Prescribe base position, orientation (pitch, yaw, roll in radians) and size of every leaf on a petiole."""
+    _require_plantarch_1385()
+    for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                    ("Node index", node_index), ("Petiole index", petiole_index)):
+        if v < 0:
+            raise ValueError(f"{name} must be non-negative")
+    n = len(leaf_bases)
+    if n < 1:
+        raise ValueError("At least one leaf is required")
+    if len(leaf_rotations) != n or len(leaf_sizes) != n:
+        raise ValueError(
+            f"leaf_bases, leaf_rotations and leaf_sizes must have the same length: "
+            f"got {n}, {len(leaf_rotations)} and {len(leaf_sizes)}")
+    bases_c, _ = _flatten_xyz(leaf_bases, "leaf_bases")
+    rotations_c, _ = _flatten_xyz(leaf_rotations, "leaf_rotations")
+    sizes_c = (ctypes.c_float * n)(*[float(v) for v in leaf_sizes])
+    helios_lib.setPetioleLeafGeometry(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                      bases_c, rotations_c, sizes_c, n)
+
+
+def isShootGeometryPrescribed(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                              plant_id: int, shoot_id: int) -> bool:
+    """Report whether a shoot was built from prescribed node positions."""
+    _require_plantarch_1385()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return int(helios_lib.isShootGeometryPrescribed(plantarch_ptr, plant_id, shoot_id)) == 1
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.86 additions
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_1386() -> None:
+    """Raise if the native library predates the helios-core 1.3.86 PlantArchitecture additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1386_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.86 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def setPetioleLeafCount(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                        plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                        leaf_count: int) -> None:
+    """Change the number of leaves (leaflets) on one petiole, rebuilding them procedurally."""
+    _require_plantarch_1386()
+    for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                    ("Node index", node_index), ("Petiole index", petiole_index)):
+        if v < 0:
+            raise ValueError(f"{name} must be non-negative")
+    if leaf_count < 1:
+        raise ValueError(f"Leaf count must be at least 1, got {leaf_count}")
+    helios_lib.setPetioleLeafCount(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                   ctypes.c_uint(leaf_count))
+
+
+def setShootInternodeLengthMax(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                               plant_id: int, shoot_id: int, internode_length_max: float) -> None:
+    """Set the target length of internodes grown at the apex of an existing shoot."""
+    _require_plantarch_1386()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    if internode_length_max <= 0:
+        raise ValueError(f"Internode length must be positive, got {internode_length_max}")
+    helios_lib.setShootInternodeLengthMax(plantarch_ptr, plant_id, shoot_id,
+                                          ctypes.c_float(internode_length_max))
+
+
+def _plantFloatVector(fn_name: str, plantarch_ptr, plant_id: int) -> List[float]:
+    _require_plantarch_1385()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    count = ctypes.c_int()
+    ptr = getattr(helios_lib, fn_name)(plantarch_ptr, plant_id, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [float(ptr[i]) for i in range(count.value)]
+    return []
+
+
+def getPlantLeafAreas(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[float]:
+    """Built one-sided area (m^2) of every leaf on the plant."""
+    return _plantFloatVector("getPlantLeafAreas", plantarch_ptr, plant_id)
+
+
+def getPlantInternodeLengths(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[float]:
+    """Built length (m) of every internode on the plant."""
+    return _plantFloatVector("getPlantInternodeLengths", plantarch_ptr, plant_id)
+
+
+def getPlantLeafInclinations(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[float]:
+    """Inclination (degrees from horizontal) of every leaf on the plant."""
+    return _plantFloatVector("getPlantLeafInclinations", plantarch_ptr, plant_id)

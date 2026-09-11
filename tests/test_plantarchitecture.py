@@ -2712,6 +2712,12 @@ class TestPhenologicalControl:
     def test_set_phenological_thresholds_basic(self, basic_context):
         """Test setting phenological thresholds for a plant"""
         try:
+            # Tomato development draws from the Context's random generator, so without a
+            # fixed seed the organ counts vary run to run on identical inputs -- a single
+            # macOS wheel job ran this 3x and got 2 failures and 1 pass. Seeding the Context
+            # makes it exactly reproducible (verified: repro=12, prims=15569 over 4 trials).
+            # Global.seedRandomGenerator() is NOT sufficient; that is a separate generator.
+            basic_context.seedRandomGenerator(12345)
             with PlantArchitecture(basic_context) as plantarch:
                 plantarch.loadPlantModelFromLibrary("tomato")
                 
@@ -2729,11 +2735,17 @@ class TestPhenologicalControl:
                     max_leaf_lifespan=90
                 )
                 
-                # The thresholds must actually steer development: a plant told to flower
-                # almost immediately diverts resources from vegetative growth, so it carries
-                # measurably less geometry after the same elapsed time than a plant whose
-                # reproductive thresholds lie beyond the simulated window.
-                plantarch.advanceTime(40)
+                # The thresholds must actually steer development: a plant whose flower
+                # initiation falls inside the simulated window produces inflorescences, while
+                # one whose reproductive thresholds lie beyond it stays purely vegetative.
+                # Assert on that categorical difference rather than on total primitive count:
+                # the vegetative geometry of the two regimes is nondeterministic and its
+                # ordering reverses with the simulated duration, so an inequality on it is a
+                # coin flip that collapsed to "12670 != 12670" on the macOS wheel runner.
+                # 60 days is needed -- at 40 days neither regime has flowered yet.
+                plantarch.advanceTime(60)
+                early_reproductive = (len(plantarch.getPlantFlowerObjectIDs(plant_id))
+                                      + len(plantarch.getPlantFruitObjectIDs(plant_id)))
                 early_flowering_count = basic_context.getPrimitiveCount()
 
             with PlantArchitecture(basic_context) as late:
@@ -2749,12 +2761,19 @@ class TestPhenologicalControl:
                     time_to_dormancy=400,
                     max_leaf_lifespan=90
                 )
-                late.advanceTime(40)
+                late.advanceTime(60)
+                late_reproductive = (len(late.getPlantFlowerObjectIDs(late_id))
+                                     + len(late.getPlantFruitObjectIDs(late_id)))
 
             late_flowering_count = basic_context.getPrimitiveCount() - early_flowering_count
             assert early_flowering_count > 0 and late_flowering_count > 0
-            assert early_flowering_count != late_flowering_count, (
-                "phenological thresholds had no effect on development"
+            assert early_reproductive > 0, (
+                "plant whose flower initiation (30 d) precedes the simulated window (60 d) "
+                f"produced no flowers or fruit (got {early_reproductive})"
+            )
+            assert late_reproductive == 0, (
+                "plant whose flower initiation (300 d) lies beyond the simulated window "
+                f"(60 d) produced reproductive organs anyway (got {late_reproductive})"
             )
 
         except PlantArchitectureError as e:
@@ -4559,3 +4578,584 @@ class TestAttractionPoints:
             plantarch.updateAttractionPoints([vec3(1, 0, 1)], plant_id=-1)
         with pytest.raises(ValueError, match="non-negative"):
             plantarch.appendAttractionPoints([vec3(1, 0, 1)], plant_id=-1)
+
+
+@pytest.mark.cross_platform
+class TestReconstructionValidation:
+    """Argument validation for the helios-core 1.3.85 reconstruction methods runs before any
+    native call, so it holds in mock mode. A bare instance is enough."""
+
+    @staticmethod
+    def _bare():
+        pa = PlantArchitecture.__new__(PlantArchitecture)
+        pa._plantarch_ptr = None
+        return pa
+
+    def test_methods_exist(self):
+        for name in ("addShootFromNodePositions", "setPetioleNodePositions", "setPetioleLeafGeometry",
+                     "isShootGeometryPrescribed", "getPlantLeafAreas", "getPlantInternodeLengths",
+                     "getPlantLeafInclinations"):
+            assert callable(getattr(PlantArchitecture, name)), name
+
+    def test_add_shoot_rejects_bad_ids_and_labels(self):
+        pa = self._bare()
+        path = [vec3(0, 0, 0), vec3(0, 0, 0.1)]
+        with pytest.raises(ValueError, match="Plant ID"):
+            pa.addShootFromNodePositions(-1, -1, 0, path, [0.01, 0.01], "stem")
+        with pytest.raises(ValueError, match="Parent shoot ID"):
+            pa.addShootFromNodePositions(0, -2, 0, path, [0.01, 0.01], "stem")
+        with pytest.raises(ValueError, match="Shoot type label"):
+            pa.addShootFromNodePositions(0, -1, 0, path, [0.01, 0.01], "  ")
+        with pytest.raises(ValueError, match="Growth shoot type label"):
+            pa.addShootFromNodePositions(0, -1, 0, path, [0.01, 0.01], "stem", growth_shoot_type_label="")
+
+    def test_add_shoot_rejects_bad_geometry(self):
+        pa = self._bare()
+        with pytest.raises(ValueError, match="at least two positions"):
+            pa.addShootFromNodePositions(0, -1, 0, [vec3(0, 0, 0)], [0.01], "stem")
+        with pytest.raises(ValueError, match="one entry per position"):
+            pa.addShootFromNodePositions(0, -1, 0, [vec3(0, 0, 0), vec3(0, 0, 1)], [0.01], "stem")
+        with pytest.raises(ValueError, match=r"node_positions\[1\] must be a vec3"):
+            pa.addShootFromNodePositions(0, -1, 0, [vec3(0, 0, 0), (0, 0, 1)], [0.01, 0.01], "stem")
+        with pytest.raises(ValueError, match=r"node_radii\[1\] must be positive"):
+            pa.addShootFromNodePositions(0, -1, 0, [vec3(0, 0, 0), vec3(0, 0, 1)], [0.01, 0.0], "stem")
+
+    def test_set_petiole_leaf_geometry_rejects_mismatched_lists(self):
+        pa = self._bare()
+        with pytest.raises(ValueError, match="same length"):
+            pa.setPetioleLeafGeometry(0, 0, 0, 0, [vec3(0, 0, 0)], [AxisRotation(0, 0, 0)], [0.1, 0.1])
+        with pytest.raises(ValueError, match=r"leaf_rotations\[0\] must be an AxisRotation"):
+            pa.setPetioleLeafGeometry(0, 0, 0, 0, [vec3(0, 0, 0)], [(0, 0, 0)], [0.1])
+        with pytest.raises(ValueError, match=r"leaf_sizes\[0\] must be positive"):
+            pa.setPetioleLeafGeometry(0, 0, 0, 0, [vec3(0, 0, 0)], [AxisRotation(0, 0, 0)], [0.0])
+        with pytest.raises(ValueError, match="Node index"):
+            pa.setPetioleLeafGeometry(0, 0, -1, 0, [vec3(0, 0, 0)], [AxisRotation(0, 0, 0)], [0.1])
+
+    def test_set_petiole_node_positions_rejects_bad_geometry(self):
+        pa = self._bare()
+        with pytest.raises(ValueError, match="at least two positions"):
+            pa.setPetioleNodePositions(0, 0, 0, 0, [vec3(0, 0, 0)], [0.001])
+        with pytest.raises(ValueError, match="Petiole index"):
+            pa.setPetioleNodePositions(0, 0, 0, -1, [vec3(0, 0, 0), vec3(0, 0, 1)], [0.001, 0.001])
+
+    def test_queries_reject_negative_ids(self):
+        pa = self._bare()
+        for name in ("getPlantLeafAreas", "getPlantInternodeLengths", "getPlantLeafInclinations"):
+            with pytest.raises(ValueError, match="Plant ID"):
+                getattr(pa, name)(-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            pa.isShootGeometryPrescribed(0, -1)
+
+    def test_unavailable_library_raises_clear_error(self):
+        if plantarch_wrapper._PLANTARCHITECTURE_1385_AVAILABLE:
+            pytest.skip("Native library provides the 1.3.85 PlantArchitecture functions")
+        with pytest.raises(RuntimeError, match="helios-core v1.3.85"):
+            plantarch_wrapper.getPlantLeafAreas(None, 0)
+        with pytest.raises(RuntimeError, match="helios-core v1.3.85"):
+            plantarch_wrapper.isShootGeometryPrescribed(None, 0, 0)
+
+
+@pytest.mark.native_only
+class TestReconstructionFromMeasuredGeometry:
+    """helios-core 1.3.85: building shoots, petioles and leaves from measured geometry, and
+    reading built organ geometry back."""
+
+    # A gently curving four-node stem: three internodes of 0.1 m each.
+    PATH = [vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.1), vec3(0.02, 0.0, 0.198), vec3(0.05, 0.01, 0.293)]
+    RADII = [0.006, 0.005, 0.004, 0.003]
+    # Bean's phytomer-creation hook scales every new internode by min(1, 0.2 + 0.8*age/10) --
+    # prescribed ones included, since the hook runs on the phytomer after it is built -- so a
+    # plant created at age 0 comes out at a fifth of the measured size. Age 10 makes the scale 1.
+    AGE = 10.0
+
+    @pytest.fixture
+    def plantarch(self, basic_context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        if not plantarch_wrapper._PLANTARCHITECTURE_1385_AVAILABLE:
+            pytest.skip("Native library predates the helios-core 1.3.85 PlantArchitecture additions")
+        try:
+            pa = PlantArchitecture(basic_context)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+        pa.disableMessages()
+        if "bean" not in pa.getAvailablePlantModels():
+            pytest.skip("Bean model not available")
+        pa.loadPlantModelFromLibrary("bean")
+        yield pa
+        pa.__exit__(None, None, None)
+
+    @staticmethod
+    def _segment_lengths(path):
+        return [math.dist((a.x, a.y, a.z), (b.x, b.y, b.z)) for a, b in zip(path[:-1], path[1:])]
+
+    def test_base_stem_from_node_positions_is_prescribed_and_keeps_lengths(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        assert isinstance(shoot, int) and shoot >= 0
+        assert plantarch.isShootGeometryPrescribed(plant_id, shoot) is True
+        lengths = plantarch.getPlantInternodeLengths(plant_id)
+        assert lengths == pytest.approx(self._segment_lengths(self.PATH), rel=1e-3)
+        # The shoot's stored node path is the measured one.
+        verts = plantarch.getShootInternodeVertices(plant_id, shoot)
+        assert verts[0] == pytest.approx((0.0, 0.0, 0.0), abs=1e-5)
+        assert verts[-1] == pytest.approx((0.05, 0.01, 0.293), abs=1e-4)
+
+    def test_generated_shoot_is_not_prescribed(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addBaseStemShoot(plant_id, 3, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate")
+        assert plantarch.isShootGeometryPrescribed(plant_id, shoot) is False
+
+    def test_child_shoot_from_node_positions_attaches_to_parent(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        # parent_node_index=1 is the tip of phytomer 1, i.e. PATH[2].
+        branch_path = [self.PATH[2], vec3(0.08, 0.0, 0.22), vec3(0.14, 0.0, 0.25)]
+        branch = plantarch.addShootFromNodePositions(plant_id, stem, 1, branch_path, [0.003, 0.0025, 0.002], "trifoliate")
+        assert branch != stem
+        assert plantarch.getParentShootID(plant_id, branch) == stem
+        assert plantarch.isShootGeometryPrescribed(plant_id, branch) is True
+        assert plantarch.isShootGeometryPrescribed(plant_id, stem) is True
+        # Relative geometry is preserved: the branch is only translated onto the parent's surface.
+        verts = plantarch.getShootInternodeVertices(plant_id, branch)
+        assert math.dist(verts[0], verts[-1]) == pytest.approx(
+            math.dist((0.02, 0, 0.198), (0.14, 0, 0.25)), rel=1e-3)
+        assert math.dist(verts[0], (0.02, 0.0, 0.198)) < 2 * self.RADII[2] + 1e-3
+        lengths = plantarch.getPlantInternodeLengths(plant_id)
+        assert lengths == pytest.approx(self._segment_lengths(self.PATH) + self._segment_lengths(branch_path), rel=1e-3)
+
+    def test_child_shoot_far_from_parent_is_rejected(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        with pytest.raises(PlantArchitectureError, match="attachment tolerance|not be connected"):
+            plantarch.addShootFromNodePositions(plant_id, stem, 1, [vec3(1, 1, 1), vec3(1.1, 1, 1)],
+                                                [0.003, 0.002], "trifoliate")
+
+    def test_separate_growth_type_is_accepted(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII,
+                                                    "trifoliate", growth_shoot_type_label="unifoliate")
+        assert plantarch.isShootGeometryPrescribed(plant_id, shoot) is True
+        assert plantarch.getPlantInternodeLengths(plant_id) == pytest.approx(
+            self._segment_lengths(self.PATH), rel=1e-3)
+
+    def test_undefined_shoot_type_is_reported(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        with pytest.raises(PlantArchitectureError, match="not defined|does not exist"):
+            plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "no_such_type")
+
+    def test_coincident_nodes_are_rejected_natively(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        with pytest.raises(PlantArchitectureError):
+            plantarch.addShootFromNodePositions(plant_id, -1, 0,
+                                                [vec3(0, 0, 0), vec3(0, 0, 0), vec3(0, 0, 0.1)],
+                                                [0.01, 0.01, 0.01], "trifoliate")
+
+    def test_prescribed_geometry_survives_advance_time(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        before = plantarch.getPlantInternodeLengths(plant_id)
+        plantarch.breakPlantDormancy(plant_id)
+        plantarch.advanceTime(5.0)
+        after = plantarch.getPlantInternodeLengths(plant_id)
+        # The measured internodes are exempt from elongation; growth may only append new ones.
+        assert len(after) >= len(before)
+        assert after[:len(before)] == pytest.approx(before, rel=1e-3)
+
+    def _reload(self, plantarch, plant_id, tmp_path):
+        path = tmp_path / "prescribed.xml"
+        plantarch.writePlantStructureXML(plant_id, path)
+        context2 = Context()
+        pa2 = PlantArchitecture(context2)
+        pa2.disableMessages()
+        pa2.loadPlantModelFromLibrary("bean")
+        ids = pa2.readPlantStructureXML(path, quiet=True)
+        assert len(ids) == 1
+        return pa2, ids[0]
+
+    def test_prescribed_path_survives_xml_round_trip(self, plantarch, tmp_path):
+        """The measured shape comes back: same endpoints, same total length, still prescribed."""
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        pa2, reloaded = self._reload(plantarch, plant_id, tmp_path)
+        shoots = pa2.getAllShootIDs(reloaded)
+        assert len(shoots) == 1
+        assert pa2.isShootGeometryPrescribed(reloaded, shoots[0]) is True
+        original = plantarch.getShootInternodeVertices(plant_id, stem)
+        verts = pa2.getShootInternodeVertices(reloaded, shoots[0])
+        assert verts[0] == pytest.approx(original[0], abs=1e-4)
+        assert verts[-1] == pytest.approx(original[-1], abs=1e-4)
+        assert sum(pa2.getPlantInternodeLengths(reloaded)) == pytest.approx(
+            sum(self._segment_lengths(self.PATH)), rel=1e-3)
+
+    def test_prescribed_phytomer_count_survives_xml_round_trip(self, plantarch, tmp_path):
+        # Fixed in helios-core 1.3.86: writePlantStructureXML() now records one node per
+        # phytomer rather than one per internode.length_segments, so the reloaded shoot no
+        # longer comes back with length_segments times as many phytomers.
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        pa2, reloaded = self._reload(plantarch, plant_id, tmp_path)
+        assert pa2.getPlantInternodeLengths(reloaded) == pytest.approx(
+            self._segment_lengths(self.PATH), rel=1e-3)
+
+    def test_prescribed_child_shoot_survives_xml_round_trip(self, plantarch, tmp_path):
+        # Fixed in helios-core 1.3.86: with one written node per phytomer, a child's saved
+        # parent_node_index again names the node it was attached to, so the child reloads
+        # instead of raising the attachment-tolerance error.
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        branch_path = [self.PATH[2], vec3(0.08, 0.0, 0.22), vec3(0.14, 0.0, 0.25)]
+        plantarch.addShootFromNodePositions(plant_id, stem, 1, branch_path, [0.003, 0.0025, 0.002], "trifoliate")
+        pa2, reloaded = self._reload(plantarch, plant_id, tmp_path)
+        assert len(pa2.getAllShootIDs(reloaded)) == 2
+
+    @staticmethod
+    def _scalar(v):
+        return int(v["parameters"][0]) if isinstance(v, dict) else int(v)
+
+    def _leaves_per_petiole(self, plantarch, label):
+        pp = plantarch.getCurrentShootParameters(label)["phytomer_parameters"]
+        return self._scalar(pp["petiole"]["petioles_per_internode"]), self._scalar(pp["leaf"]["leaves_per_petiole"])
+
+    def test_set_petiole_node_positions_rebuilds_petiole(self, plantarch, basic_context):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        petioles_before = plantarch.getPlantPetioleObjectIDs(plant_id)
+        assert petioles_before, "trifoliate phytomers must carry petioles"
+        tip = self.PATH[1]  # internode tip of phytomer 0
+        petiole_path = [tip, vec3(tip.x + 0.03, tip.y, tip.z + 0.01), vec3(tip.x + 0.06, tip.y, tip.z + 0.015),
+                        vec3(tip.x + 0.09, tip.y, tip.z + 0.018)]
+        plantarch.setPetioleNodePositions(plant_id, shoot, 0, 0, petiole_path, [0.0012, 0.0011, 0.001, 0.0009])
+        petioles_after = plantarch.getPlantPetioleObjectIDs(plant_id)
+        assert len(petioles_after) == len(petioles_before)
+        # The rebuilt petiole tube reaches the prescribed tip.
+        bbox_min, bbox_max = basic_context.getObjectBoundingBox(petioles_after)
+        assert bbox_max.x >= petiole_path[-1].x - 0.002
+
+    def test_set_petiole_node_positions_far_from_stem_is_rejected(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        far = [vec3(5, 5, 5), vec3(5.05, 5, 5.01)]
+        with pytest.raises(PlantArchitectureError):
+            plantarch.setPetioleNodePositions(plant_id, shoot, 0, 0, far, [0.001, 0.001])
+
+    def test_set_petiole_leaf_geometry_moves_leaf_base(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        _, per_petiole = self._leaves_per_petiole(plantarch, "trifoliate")
+        bases = [vec3(0.3 + 0.01 * i, 0.2, 0.15) for i in range(per_petiole)]
+        rotations = [AxisRotation(0.2, 0.0, 0.0)] * per_petiole
+        sizes = [0.08] * per_petiole
+        plantarch.setPetioleLeafGeometry(plant_id, shoot, 0, 0, bases, rotations, sizes)
+        leaf_bases = plantarch.getPlantLeafBases(plant_id)
+        for b in bases:
+            assert any(math.dist((lb.x, lb.y, lb.z), (b.x, b.y, b.z)) < 1e-3 for lb in leaf_bases), (
+                f"prescribed base {b} not found among {leaf_bases}")
+        # Leaves are reported shoot by shoot, phytomer by phytomer, so the prescribed petiole's
+        # leaves come first. A blade of size 0.08 m fits inside a 0.08 m square.
+        areas = plantarch.getPlantLeafAreas(plant_id)
+        assert len(areas) == len(plantarch.getPlantLeafObjectIDs(plant_id))
+        assert all(0 < a < 0.08 * 0.08 for a in areas[:per_petiole])
+
+    def test_set_petiole_leaf_geometry_wrong_leaf_count_is_rejected(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), self.AGE)
+        shoot = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        _, per_petiole = self._leaves_per_petiole(plantarch, "trifoliate")
+        n = per_petiole + 1
+        with pytest.raises(PlantArchitectureError):
+            plantarch.setPetioleLeafGeometry(plant_id, shoot, 0, 0, [vec3(0.3, 0, 0.15)] * n,
+                                             [AxisRotation(0, 0, 0)] * n, [0.05] * n)
+
+
+@pytest.mark.native_only
+class TestBuiltGeometryOrganQueries:
+    """getPlantLeafAreas / getPlantInternodeLengths / getPlantLeafInclinations (helios-core 1.3.85)."""
+
+    @pytest.fixture
+    def grown(self, basic_context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        if not plantarch_wrapper._PLANTARCHITECTURE_1385_AVAILABLE:
+            pytest.skip("Native library predates the helios-core 1.3.85 PlantArchitecture additions")
+        try:
+            pa = PlantArchitecture(basic_context)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+        pa.disableMessages()
+        pa.loadPlantModelFromLibrary("bean")
+        plant_id = pa.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 30.0)
+        yield pa, plant_id, basic_context
+        pa.__exit__(None, None, None)
+
+    def test_leaf_areas_match_built_geometry(self, grown):
+        pa, plant_id, context = grown
+        areas = pa.getPlantLeafAreas(plant_id)
+        leaf_ids = pa.getPlantLeafObjectIDs(plant_id)
+        assert 0 < len(areas) <= len(leaf_ids)
+        assert all(a > 0 for a in areas)
+        built = sum(context.getObjectArea(objID) for objID in leaf_ids)
+        assert sum(areas) == pytest.approx(built, rel=1e-3)
+
+    def test_internode_lengths_one_per_phytomer(self, grown):
+        pa, plant_id, _ = grown
+        lengths = pa.getPlantInternodeLengths(plant_id)
+        assert lengths
+        assert all(l > 0 for l in lengths)
+        total_nodes = sum(len(pa.getShootInternodeRadii(plant_id, s)) > 0 for s in pa.getAllShootIDs(plant_id))
+        assert len(lengths) >= total_nodes  # at least one phytomer per live shoot
+        assert sum(lengths) <= pa.getPlantHeight(plant_id) * 5  # sanity: not wildly inconsistent
+
+    def test_leaf_inclinations_are_folded_to_first_quadrant(self, grown):
+        pa, plant_id, _ = grown
+        incl = pa.getPlantLeafInclinations(plant_id)
+        areas = pa.getPlantLeafAreas(plant_id)
+        assert incl
+        assert len(incl) <= len(areas)
+        assert all(0.0 <= a <= 90.0 for a in incl)
+        assert max(incl) - min(incl) > 0  # a real canopy is not all one angle
+
+    def test_empty_plant_reports_no_organs(self, grown):
+        pa, _, _ = grown
+        empty = pa.addPlantInstance(vec3(2, 2, 0), 0.0)
+        assert pa.getPlantLeafAreas(empty) == []
+        assert pa.getPlantInternodeLengths(empty) == []
+        assert pa.getPlantLeafInclinations(empty) == []
+
+
+@pytest.mark.native_only
+class TestAxisRotationIsRadians:
+    """AxisRotation passes through to helios::AxisRotation unchanged, so its angles are radians.
+    The docstrings said degrees until v0.1.32; this pins the semantics the native code has."""
+
+    @pytest.fixture
+    def plantarch(self, basic_context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        if not plantarch_wrapper._PLANTARCHITECTURE_PARAMETER_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture parameter functions not available")
+        try:
+            pa = PlantArchitecture(basic_context)
+        except PlantArchitectureError as e:
+            pytest.skip(f"PlantArchitecture initialization failed: {e}")
+        pa.disableMessages()
+        pa.loadPlantModelFromLibrary("bean")
+        # A straight, hook-free type: curvature and tortuosity zero so the base rotation alone
+        # sets the direction, and a new label so no species creation hook rescales it.
+        sp = pa.getCurrentShootParameters("trifoliate", return_typed=True)
+        from pyhelios.plant_architecture_params import RandomParameterFloat
+        sp.gravitropic_curvature = RandomParameterFloat.constant(0.0)
+        sp.tortuosity = RandomParameterFloat.constant(0.0)
+        # The phytomer's own internode pitch is added on top of the base rotation; zero it
+        # so the base rotation alone sets the direction.
+        sp.phytomer_parameters.internode.pitch = RandomParameterFloat.constant(0.0)
+        pa.defineShootType("straight", sp)
+        yield pa
+        pa.__exit__(None, None, None)
+
+    @staticmethod
+    def _tip_offset(pa, plant_id, shoot_id):
+        verts = pa.getShootInternodeVertices(plant_id, shoot_id)
+        base, tip = verts[0], verts[-1]
+        return tip[0] - base[0], tip[1] - base[1], tip[2] - base[2]
+
+    def test_pitch_of_half_pi_lays_the_shoot_flat(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+        shoot = plantarch.addBaseStemShoot(plant_id, 1, AxisRotation(math.pi / 2, 0, 0),
+                                           0.005, 0.1, 1.0, 1.0, 1.0, "straight")
+        dx, dy, dz = self._tip_offset(plantarch, plant_id, shoot)
+        horizontal = math.hypot(dx, dy)
+        assert horizontal == pytest.approx(0.1, rel=0.05)
+        assert abs(dz) < 0.01 * horizontal
+
+    def test_zero_rotation_is_vertical(self, plantarch):
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+        shoot = plantarch.addBaseStemShoot(plant_id, 1, AxisRotation(0, 0, 0),
+                                           0.005, 0.1, 1.0, 1.0, 1.0, "straight")
+        dx, dy, dz = self._tip_offset(plantarch, plant_id, shoot)
+        assert dz == pytest.approx(0.1, rel=0.05)
+        assert math.hypot(dx, dy) < 0.01 * dz
+
+    def test_ninety_is_not_ninety_degrees(self, plantarch):
+        """Passing 90 as if it were degrees is a rotation of 90 radians, not a horizontal shoot."""
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+        shoot = plantarch.addBaseStemShoot(plant_id, 1, AxisRotation(90, 0, 0),
+                                           0.005, 0.1, 1.0, 1.0, 1.0, "straight")
+        dx, dy, dz = self._tip_offset(plantarch, plant_id, shoot)
+        # 90 rad = 90 - 28*pi = 2.035 rad, so the tip is well below horizontal.
+        assert dz == pytest.approx(0.1 * math.cos(90.0), rel=0.05)
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitecture1386Validation:
+    """Argument validation for the helios-core 1.3.86 additions (pure Python)."""
+
+    def _pa(self):
+        return PlantArchitecture.__new__(PlantArchitecture)
+
+    @pytest.mark.parametrize("kwargs", [
+        dict(plant_id=-1, shoot_id=0, node_index=0, petiole_index=0, leaf_count=3),
+        dict(plant_id=0, shoot_id=-1, node_index=0, petiole_index=0, leaf_count=3),
+        dict(plant_id=0, shoot_id=0, node_index=-1, petiole_index=0, leaf_count=3),
+        dict(plant_id=0, shoot_id=0, node_index=0, petiole_index=-1, leaf_count=3),
+    ])
+    def test_setPetioleLeafCount_rejects_negative_indices(self, kwargs):
+        with pytest.raises(ValueError, match="must be non-negative"):
+            PlantArchitecture.setPetioleLeafCount(self._pa(), **kwargs)
+
+    @pytest.mark.parametrize("bad", [0, -2])
+    def test_setPetioleLeafCount_rejects_leaf_count_below_one(self, bad):
+        with pytest.raises(ValueError, match="at least 1"):
+            PlantArchitecture.setPetioleLeafCount(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, petiole_index=0, leaf_count=bad)
+
+    def test_setShootInternodeLengthMax_rejects_negative_ids(self):
+        with pytest.raises(ValueError, match="must be non-negative"):
+            PlantArchitecture.setShootInternodeLengthMax(
+                self._pa(), plant_id=-1, shoot_id=0, internode_length_max=0.05)
+
+    @pytest.mark.parametrize("bad", [0.0, -0.01])
+    def test_setShootInternodeLengthMax_rejects_non_positive_length(self, bad):
+        with pytest.raises(ValueError, match="[Ii]nternode length must be positive"):
+            PlantArchitecture.setShootInternodeLengthMax(
+                self._pa(), plant_id=0, shoot_id=0, internode_length_max=bad)
+
+    def test_wrapper_guard_uses_1386_flag(self):
+        """The guard must match the block that registered these symbols.
+
+        A wrapper checking the wrong availability flag would skip NotImplementedError
+        and call a function with no argtypes set.
+        """
+        with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1386_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.86"):
+                plantarch_wrapper.setPetioleLeafCount(None, 0, 0, 0, 0, 3)
+            with pytest.raises(RuntimeError, match="1.3.86"):
+                plantarch_wrapper.setShootInternodeLengthMax(None, 0, 0, 0.05)
+
+
+@pytest.mark.native_only
+class TestPlantArchitecture1386Native:
+    """setPetioleLeafCount and setShootInternodeLengthMax against the native library."""
+
+    # N+1 node positions define N prescribed internodes; advanceTime() leaves them alone.
+    PATH = [vec3(0, 0, 0), vec3(0, 0, 0.1), vec3(0.02, 0, 0.198)]
+    RADII = [0.006, 0.005, 0.004]
+    N_PRESCRIBED = len(PATH) - 1
+
+    def _plant_with_stem(self, plantarch):
+        plantarch.loadPlantModelFromLibrary("bean")
+        # Age 10 rather than 0: phytomer-creation hooks rescale prescribed wood at age 0.
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+        stem = plantarch.addShootFromNodePositions(
+            plant_id, -1, 0, self.PATH, self.RADII, "trifoliate")
+        return plant_id, stem
+
+    def test_setPetioleLeafCount_changes_leaf_count(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant_with_stem(plantarch)
+                before = len(plantarch.getPlantLeafAreas(plant_id))
+                # Drop the trifoliate's three leaflets to one, then back up to three.
+                plantarch.setPetioleLeafCount(plant_id, stem, 0, 0, 1)
+                after_one = len(plantarch.getPlantLeafAreas(plant_id))
+                assert after_one < before, (
+                    f"setPetioleLeafCount(1) should remove leaflets: {before} -> {after_one}")
+                plantarch.setPetioleLeafCount(plant_id, stem, 0, 0, 3)
+                after_three = len(plantarch.getPlantLeafAreas(plant_id))
+                assert after_three > after_one, (
+                    f"setPetioleLeafCount(3) should rebuild leaflets: {after_one} -> {after_three}")
+
+    def test_setPetioleLeafCount_beyond_prototype_raises(self):
+        """A count the species' leaf prototype has no texture for must fail loudly.
+
+        Bean's trifoliate prototype registers compound-leaf indices -1, 0 and +1 only
+        (PlantLibrary.cpp). setPetioleLeafCount places leaflets at
+        ind_from_tip = leaf - (leaf_count-1)/2, so a count of 5 asks for index -2, which
+        has no registered texture. That must surface as a clear error, not a silent
+        partial rebuild.
+        """
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant_with_stem(plantarch)
+                with pytest.raises(PlantArchitectureError, match="(?i)prototype|texture"):
+                    plantarch.setPetioleLeafCount(plant_id, stem, 0, 0, 5)
+
+    def test_setPetioleLeafCount_then_prescribe_that_many_leaves(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant_with_stem(plantarch)
+                # The point of the API: prescribe a leaflet count the shoot type does not have.
+                plantarch.setPetioleLeafCount(plant_id, stem, 0, 0, 2)
+                plantarch.setPetioleLeafGeometry(
+                    plant_id, stem, 0, 0,
+                    leaf_bases=[vec3(0.05, 0.0, 0.12), vec3(0.05, 0.01, 0.12)],
+                    leaf_rotations=[AxisRotation(0.2, 0.0, 0.0)] * 2,
+                    leaf_sizes=[0.06, 0.06])
+
+    def test_setShootInternodeLengthMax_accepted(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant_with_stem(plantarch)
+                plantarch.setShootInternodeLengthMax(plant_id, stem, 0.05)
+
+    def test_setShootInternodeLengthMax_governs_new_internodes(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        lengths = {}
+        for target in (0.02, 0.09):
+            with Context() as context:
+                with PlantArchitecture(context) as plantarch:
+                    plant_id, stem = self._plant_with_stem(plantarch)
+                    plantarch.setShootInternodeLengthMax(plant_id, stem, target)
+                    plantarch.breakPlantDormancy(plant_id)
+                    plantarch.advanceTime(15)
+                    lengths[target] = plantarch.getPlantInternodeLengths(plant_id)
+
+        # The prescribed internodes are left alone by advanceTime() and are the longest in
+        # both runs, so the global max says nothing. Compare only the internodes grown at the
+        # apex afterwards -- everything past the prescribed prefix.
+        grown = {k: v[self.N_PRESCRIBED:] for k, v in lengths.items()}
+        assert grown[0.02] and grown[0.09], (
+            f"no internodes were grown past the prescribed prefix: {lengths}")
+        assert max(grown[0.09]) > max(grown[0.02]), (
+            f"internode length max did not govern apex growth: "
+            f"grown max(0.09)={max(grown[0.09])} vs grown max(0.02)={max(grown[0.02])}; "
+            f"full lists {lengths}")
+
+    def test_setShootInternodeLengthMax_not_persisted_by_xml(self, tmp_path):
+        """Documented caveat: the value must be set again after readPlantStructureXML()."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        xml_path = str(tmp_path / "plant_ilm.xml")
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant_with_stem(plantarch)
+                plantarch.setShootInternodeLengthMax(plant_id, stem, 0.07)
+                plantarch.writePlantStructureXML(plant_id, xml_path)
+
+        with Context() as context2:
+            with PlantArchitecture(context2) as plantarch2:
+                plantarch2.loadPlantModelFromLibrary("bean")
+                reloaded = plantarch2.readPlantStructureXML(xml_path)
+                assert reloaded, "readPlantStructureXML returned no plants"
+                # Re-setting after reload must be accepted (the value itself is not restored).
+                plantarch2.setShootInternodeLengthMax(reloaded[0], 0, 0.07)

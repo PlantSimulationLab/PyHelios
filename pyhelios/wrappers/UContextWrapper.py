@@ -5970,6 +5970,19 @@ try:
     helios_lib.sumPrimitiveSurfaceArea.restype = ctypes.c_float
     helios_lib.sumPrimitiveSurfaceArea.errcheck = _check_error
 
+    helios_lib.calculateAreaIndexLeaf.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.calculateAreaIndexLeaf.restype = ctypes.c_float
+    helios_lib.calculateAreaIndexLeaf.errcheck = _check_error
+    helios_lib.calculateAreaIndexLeafGroundArea.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float]
+    helios_lib.calculateAreaIndexLeafGroundArea.restype = ctypes.c_float
+    helios_lib.calculateAreaIndexLeafGroundArea.errcheck = _check_error
+    helios_lib.calculateAreaIndexLeafWood.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint]
+    helios_lib.calculateAreaIndexLeafWood.restype = ctypes.c_float
+    helios_lib.calculateAreaIndexLeafWood.errcheck = _check_error
+    helios_lib.calculateAreaIndexLeafWoodGroundArea.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float]
+    helios_lib.calculateAreaIndexLeafWoodGroundArea.restype = ctypes.c_float
+    helios_lib.calculateAreaIndexLeafWoodGroundArea.errcheck = _check_error
+
     helios_lib.filterPrimitivesByDataFloat.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_char_p, ctypes.c_float, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
     helios_lib.filterPrimitivesByDataFloat.restype = ctypes.POINTER(ctypes.c_uint)
     helios_lib.filterPrimitivesByDataFloat.errcheck = _check_error
@@ -6078,6 +6091,30 @@ def sumPrimitiveSurfaceAreaWrapper(context, uuids: List[int]) -> float:
     if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
     arr = (ctypes.c_uint * len(uuids))(*uuids)
     return helios_lib.sumPrimitiveSurfaceArea(context, arr, len(uuids))
+
+def calculateAreaIndexLeafWrapper(context, leaf_uuids: List[int]) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(leaf_uuids))(*leaf_uuids)
+    return helios_lib.calculateAreaIndexLeaf(context, arr, len(leaf_uuids))
+
+def calculateAreaIndexLeafGroundAreaWrapper(context, leaf_uuids: List[int], ground_area: float) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    arr = (ctypes.c_uint * len(leaf_uuids))(*leaf_uuids)
+    return helios_lib.calculateAreaIndexLeafGroundArea(context, arr, len(leaf_uuids), ctypes.c_float(ground_area))
+
+def calculateAreaIndexLeafWoodWrapper(context, leaf_uuids: List[int], wood_uuids: List[int]) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    leaf_arr = (ctypes.c_uint * len(leaf_uuids))(*leaf_uuids)
+    wood_list = list(wood_uuids) if wood_uuids else []
+    wood_arr = (ctypes.c_uint * len(wood_list))(*wood_list) if wood_list else None
+    return helios_lib.calculateAreaIndexLeafWood(context, leaf_arr, len(leaf_uuids), wood_arr, len(wood_list))
+
+def calculateAreaIndexLeafWoodGroundAreaWrapper(context, leaf_uuids: List[int], wood_uuids: List[int], ground_area: float) -> float:
+    if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)
+    leaf_arr = (ctypes.c_uint * len(leaf_uuids))(*leaf_uuids)
+    wood_list = list(wood_uuids) if wood_uuids else []
+    wood_arr = (ctypes.c_uint * len(wood_list))(*wood_list) if wood_list else None
+    return helios_lib.calculateAreaIndexLeafWoodGroundArea(context, leaf_arr, len(leaf_uuids), wood_arr, len(wood_list), ctypes.c_float(ground_area))
 
 def filterPrimitivesByDataFloatWrapper(context, uuids: List[int], label: str, value: float, comparator: str) -> List[int]:
     if not _PRIMITIVE_DATA_STATS_AVAILABLE: raise NotImplementedError(_NOT_AVAILABLE_STATS_MSG)

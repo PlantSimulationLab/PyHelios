@@ -2,6 +2,12 @@ name: Build Wheels
 
 on:
   push:
+    # The release branch runs the FULL wheel pipeline before master is promoted. Master is
+    # fast-forwarded only after the wheels are built, tested and published, so a wheel failure
+    # can never strand master on a red commit -- master never needs a force-push to recover.
+    # publish stays gated on refs/tags/v*, which a branch push cannot match, so validating
+    # here can build and test wheels but can never upload.
+    branches: ['release']
     tags: ['v*','testing-v*']
   workflow_dispatch:
 
@@ -21,12 +27,18 @@ jobs:
             arch: arm64
 
     steps:
-      # Only for tag builds: force setuptools-scm to use the tag's version
+      # Only for tag builds: force setuptools-scm to use the tag's version. A release-branch
+      # validation run deliberately falls through to setuptools-scm's own derivation, which
+      # yields a dev version like 0.1.31.post1.devN+g<sha> -- a candidate wheel is then
+      # visibly not the release wheel, and cannot be mistaken for one.
       - name: Set package version from tag
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # Strip the testing- prefix first: testing-v* tags are dry runs that build and
+          # test wheels but never publish, and must still yield a valid PEP 440 version.
+          VERSION="${GITHUB_REF_NAME#testing-}"
+          VERSION="${VERSION#v}"
           # PyPI permanently reserves filenames for deleted releases.
           # Use .postN suffix for versions whose files were previously uploaded and deleted.
           case "$VERSION" in
@@ -691,10 +703,14 @@ jobs:
           # instances sharing one X connection abort with
           # "xcb_xlib_unknown_seq_number". Excluding them keeps a single copy.
           # Users on bare images install them via the package manager; see the
-          # Linux install notes in the README (issue #17).
+          # Linux install notes in the README (issue #17). libEGL joined the list
+          # with helios-core 1.3.85, whose visualizer links it for display-free
+          # headless rendering; mesa's libEGL dlopens its drivers by absolute path
+          # and must be the system copy for the same reason as libGL.
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
             auditwheel repair
             --exclude libGL.so.1
+            --exclude libEGL.so.1
             --exclude libX11.so.6
             --exclude libSM.so.6
             --exclude libICE.so.6
@@ -810,7 +826,7 @@ jobs:
           # on a bare image (issue #17).
           apt-get update
           apt-get install -y --no-install-recommends \
-            libgl1 libsm6 libice6 libx11-6 libxext6
+            libgl1 libegl1 libsm6 libice6 libx11-6 libxext6
 
       - name: Install wheel
         shell: bash
@@ -870,6 +886,21 @@ jobs:
           pattern: wheels-*
           merge-multiple: true
           path: wheelhouse
+
+      # The ubuntu legs run on a bare hosted image that has libGL but NOT libEGL.
+      # libhelios.so links EGL as of helios-core 1.3.85, and the wheel deliberately
+      # does not bundle libEGL.so.1 (auditwheel excludes it, same reason as libGL),
+      # so loading the wheel fails with "libEGL.so.1: cannot open shared object file"
+      # without this. Matches the package list the README gives Linux users and the
+      # one test_wheels_slim_container installs.
+      - name: Install Linux runtime system libraries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libegl1 libsm6 libice6 libx11-6 libxext6
 
       - name: Install wheel and test dependencies
         shell: bash
@@ -933,7 +964,11 @@ jobs:
     name: Test GPU wheels on GitHub-hosted GPU runner
     runs-on: linux-x64-gpu-githubhosted
     needs: build_wheels
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Runs on the release branch (pre-promotion validation), on release tags, and on
+    # testing-v* dry runs, so the GPU path is never the thing that first fails at tag time.
+    # publish keeps the narrower refs/tags/v* gate, so none of these can upload; its needs on
+    # this job keeps GPU tests gating a release.
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/testing-v') || github.ref == 'refs/heads/release')
     steps:
       - name: Checkout PyHelios for tests
         uses: actions/checkout@v4
@@ -948,7 +983,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libgl1 libglu1-mesa libx11-6 libxext6 libsm6 libice6 xvfb
+            libgl1 libegl1 libglu1-mesa libx11-6 libxext6 libsm6 libice6 xvfb
 
       # The NVIDIA driver is INSTALLED on this image but its kernel modules are not
       # LOADED at boot, so /dev/nvidia0 does not exist and nvidia-smi fails with

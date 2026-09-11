@@ -1,5 +1,93 @@
 # Changelog
 
+# [v0.1.32] 2026-09-11
+
+- Updated helios-core to v1.3.86
+
+## Global
+- Added `Global.seedRandomGenerator(seed)`, seeding the process-wide generator behind the native free function `randu()` (used by LiDAR leaf-area draws and grape berry placement) so those draws can be reproduced; it is distinct from `Context.seedRandomGenerator()`
+- Added `Global.randu()` and `Global.randu(imin, imax)`, drawing from that same process-wide generator; the integer form is uniform over the inclusive range
+- Removed `Global.set_build_plugin_root_directory()` and `Global.get_build_plugin_root_directory()`, which called native bindings that were never implemented and so raised a bare `AttributeError`; the plug-in build root is a per-model constructor argument
+
+## Context
+- Meshes loaded by `loadOBJ()` and `loadPLY()` from a file that supplies no vertex normals now have them generated from the mesh connectivity and report `VertexNormalSource.COMPUTED` rather than `NONE`, so a curved imported surface shades smoothly without calling `computePolymeshObjectVertexNormals()`
+- Added `Context.calculateAreaIndex(leaf_uuids, wood_uuids=None, ground_area=None)`, returning the one-sided leaf or plant area index on a ground-area basis -- the quantity `L` in Beer's law; woody primitives count as half their summed one-sided area
+- Fixed `addTile()` producing untextured black geometry when given a texture file
+- Fixed the textured `addTile()`, `addTileObject()` and `addAdaptiveTileObject()` overloads leaving their sub-patches out of `getAllUUIDs()` until some other operation invalidated the cache
+
+## Radiation
+- Fixed `runBand()` rebuilding surface radiative properties through an uncached code path on every call after the first, so absorbed fluxes differed between the first and subsequent identical calls
+- Fixed a spectrum overriding a per-band `reflectivity_<band>`/`transmissivity_<band>` value on the second and later calls to `runBand()`
+- Fixed `runBand()` throwing "Band has no wavelength bounds" on a camera-only band that had rendered correctly on the first call
+- Fixed every radiation camera after the first rendering scattered radiance weighted by the first camera's spectral response
+- Fixed `runBand()` failing on a band whose direct ray count is zero, as an emission-only longwave band set up with `setDirectRayCount(band, 0)` is
+- Added `CameraProperties.exposure_target`, the target median scene luminance for `"auto"` exposure (default 0.18, the middle-grey convention); a nadir canopy view is darker than a grey card and may need a lower value
+- `CameraProperties.to_array()` now returns 11 values; list-form camera properties passed to the wrapper layer must carry the new trailing `exposure_target`
+
+## LiDAR
+- Added `addHitPointsBulk()`, appending many hits from double-precision position and value arrays in one call; beam directions are derived from the positions when not supplied
+- Added `deleteHitPoints(first, count)`, removing a run of hits while preserving the order of the rest, unlike the swap-and-pop single-hit delete
+- Added `createHitDataColumn()` and `getHitDataType()`, fixing a per-hit data column's storage type explicitly instead of inferring it from the label, and reporting the current type
+- Added `HitDataType`, the storage type of a per-hit scalar-data column (`FLOAT64`, `FLOAT32`, `INT32`)
+- Added `getHitDataColumnFloat32()` and `getHitDataColumnInt32()`, reading a data column at its own width instead of widening every value to a double
+- Added `setTriangulationSink()`, handing each scan's triangles to a callback instead of retaining the mesh, so a large cloud triangulates in bounded memory
+- Added `setSyntheticScanHitSink()`, reporting each traced chunk of `syntheticScan()` as soon as it is stored so the caller can write it out and release it
+- Added `getScanHitCount()`, `getScanHitIndices()`, `getScanHitXYZColumn()` and `getScanHitDataColumn()` (with `Float32` and `Int32` variants), reading one scan's hits at a cost proportional to that scan rather than to the whole cloud
+- Added `calculateLeafAreaBlock()`, inverting only an inclusive block of the voxel lattice so a large grid can be processed a tile at a time
+- Added `getCellGlobalIJK()` and `getGridGlobalCount()`, exposing the lattice coordinate of a grid cell and the lattice dimensions
+- Added `getHitPointCapacity()`, reporting the allocated hit-point capacity that `reserveHitPoints()` sets
+- Fixed `lastHitFilter()` doing the opposite of what it documents: it deleted the last return of every pulse and kept all earlier returns, so a cloud filtered to "last hits only" contained everything except the last hits
+- Fixed the leaf-area inversion counting beams intercepted in front of a voxel as beams that entered it, which inflated `getCellBeamCount()` for occluded voxels and made the reported confidence intervals far too narrow
+- Added `isMultiReturnData()`, reporting whether any hit has `target_count` greater than 1, which is the switch `triangulateHitPoints()` branches on
+- `calculateLeafArea()` now accepts a per-grid-cell sequence for `Gtheta`, one value per cell in grid-cell order, for a leaf-angle distribution that varies with height; like the scalar form it needs no triangulation
+- Fixed `calculateLeafArea()` returning wrong leaf area for a terrain-following grid built with per-column z offsets, whose beams were attributed to the wrong voxels
+- Fixed `getHitDataColumn()` and `getHitScanIDColumn()` overflowing on Windows for clouds of more than about 2.1 billion entries
+- `calculateLeafArea()` now recovers returns that were removed from a cloud from the surviving `target_index` / `target_count` values: a return removed from beyond the last surviving return of its pulse is counted as transmitted through every voxel the beam pierces, so a cloud cropped to the voxel grid inverts to the same leaf area density as the full record; a return removed from between two surviving returns cannot be placed and is left out
+- Added `getCroppedReturnStats()`, reporting what that inference did in the last inversion -- how many returns were placed before the grid, beyond it, or could not be placed
+
+## Plant Architecture
+- Fixed the documentation of `AxisRotation` and of the `base_rotation` arguments of `addBaseStemShoot()`, `appendShoot()` and `addChildShoot()`, which claimed the angles were in degrees when the native code treats them as radians; no behavior changed, but an example rotation of `45` was a rotation of 45 radians
+- Added `addShootFromNodePositions()`, building one continuous shoot through caller-supplied internode node positions and radii (a QSM, a digitized skeleton, photogrammetry) instead of generating its path; an optional `growth_shoot_type_label` lets a different shoot type govern how the shoot grows afterwards
+- Added `setPetioleNodePositions()` and `setPetioleLeafGeometry()`, prescribing a petiole's path and the base position, orientation and size of the leaves on it from measured geometry; prescribed organs are left alone by `advanceTime()`
+- Added `setPetioleLeafCount()`, changing the number of leaves (leaflets) on one petiole of an existing phytomer by rebuilding them procedurally
+- Added `setShootInternodeLengthMax()`, setting the target length of internodes grown at the apex of an existing shoot; the value is not saved by `writePlantStructureXML()` and must be set again after `readPlantStructureXML()`
+- **`setPetioleLeafGeometry()` now poses leaves differently**: roll, pitch and yaw are applied as intrinsic rotations in the leaf's rest frame, the same way for every leaf, so angles fitted against the previous release must be re-derived
+- `writePlantStructureXML()` and `readPlantStructureXML()` now preserve petiole paths set by `setPetioleNodePositions()` and leaf poses set by `setPetioleLeafGeometry()`, which were previously lost on a round trip
+- Fixed `writePlantStructureXML()` recording a shoot built by `addShootFromNodePositions()` with one node per internode segment rather than one per phytomer, which multiplied the phytomer count on reload
+- `readPlantStructureXML()` now accepts files written before `<leaf_prototype>` was recorded, and files containing a leaf rebuilt by `setPetioleLeafGeometry()` or `setPetioleLeafCount()`, which it previously rejected outright
+- Fixed the carbohydrate model being applied once per plant in the model on every sub-step of `advanceTime()`, which starved and pruned shoots far too early in multi-plant simulations
+- `advanceTime()` results change for plants whose child shoots have a shorter phyllochron than their parent (bindweed, grapevine) and for any plant using `enableEpicormicChildShoots()`
+- Added `isShootGeometryPrescribed()`, reporting whether a shoot was built from prescribed node positions
+- Added `getPlantLeafAreas()`, `getPlantInternodeLengths()` and `getPlantLeafInclinations()`, reporting the leaf area, internode length and leaf inclination the model actually built, one entry per organ
+- Added `InflorescenceParameters.inflorescence_maturity_period`, letting an inflorescence expand on its own schedule instead of the plant-level fruit-maturity threshold (maize sets its tassel to 6 days)
+- `writePlantStructureXML()` and `readPlantStructureXML()` now preserve the shape of a shoot built by `addShootFromNodePositions()`, which previously came back standing vertical; the phytomer count is still not preserved and a prescribed child shoot still fails to reload, which is pinned as an expected failure until helios-core writes per-phytomer rather than per-segment nodes
+- Setting `vegetative_bud_break_probability_*`, petiole, leaf or inflorescence parameters on an individual shoot now takes effect; they were previously read from the plant's stored shoot type
+- Fixed a child shoot dropping onto its parent's axis, and an appended shoot floating sideways off the shoot it continues, as soon as the plant grew
+- Fixed `appendShoot()` segfaulting when the parent shoot had no phytomers, as after `pruneBranch()` with a node index of 0
+- Fixed `readPlantStructureXML()` failing outright on a plant whose shoot type sets `petioles_per_internode = 0`, and restoring petioles up to 6 degrees off their grown angle
+- Fixed flowers and fruit being aimed at the mirror image of their peduncle's azimuth, which visibly changes species with a non-zero inflorescence pitch (rice, maize, olive, bean, soybean, cowpea, tomato)
+- The `grapevine_VSP` model's `trunk_height` now defaults to 0.8 m instead of 0.1 m, which left the cordons on the ground
+- Maize gained a field-sized tassel, a flag leaf clear of it, and a corrected upper-canopy leaf-size taper (about 12% less total leaf area); cowpea pods now sit above the foliage; bindweed leaves face the sky again
+
+## Energy Balance
+- Added `EnergyBalanceModel.enableCanopyAirspaceModel()`, resolving within-canopy air temperature and humidity from a vertically layered resistance network so the canopy feeds back on the air driving its own transpiration; it cannot be combined with `enableAirEnergyBalance()` or with the timestep form of `run()`
+- Added `EnergyBalanceModel.disableCanopyAirspaceModel()` and `EnergyBalanceModel.setCanopyAirspaceConvergence()`, the latter setting the temperature tolerance and iteration cap of the airspace solution (default 0.01 K and 50 iterations)
+
+## Visualizer
+- Fixed `plotUpdate()` and `printWindow()` never showing changes made to a primitive after it was first displayed, so moving, recoloring or retexturing existing geometry -- or changing the colormap -- had no visible effect until the geometry was rebuilt
+- Fixed textured Context voxels being drawn with their texture and color override reversed
+- Fixed point culling scaling quadratically with the number of points added by `addPoint()`, and hiding an arbitrary subset of the cloud rather than the points it selected
+- `printWindow()` now renders the frame itself when the one on the GPU is stale, so calling `plotUpdate()` first is no longer necessary
+- Headless rendering on Linux can now create its OpenGL context through EGL with no display server at all; Linux wheels therefore need `libegl1` installed alongside `libgl1`
+- `plotInteractive()` now raises when the Visualizer was constructed in headless mode
+- **Rendered images are darker than before**: the ACES tone curve was brightening scenes instead of tone-mapping them; `disableLinearPipeline()` and `enableExactColorMode()` output is unaffected
+- Fixed deep shadows taking on a maroon or purple cast, a nadir camera rendering an empty frame, rendering slowing without bound as the colorbar re-registered a texture per character every frame, and stale GPU buffers after geometry compaction
+
+## Build System
+- Fixed Windows builds selecting a Visual Studio generator for a version that was not installed, which failed CMake configure with "could not find any instance of Visual Studio"; the installed version is now queried with `vswhere`, adding support for Visual Studio 2026
+- Fixed the build failing after the helios-core 1.3.85 merge, whose `Visualizer.h` now includes `GL/glew.h`, by adding the bundled GLEW include directory to the interface targets
+- Linux wheels no longer bundle `libEGL.so.1`, for the same reason as `libGL.so.1`; the wheel test jobs install `libegl1`
+
 # [v0.1.31] 2026-08-04
 
 - Updated helios-core to v1.3.84

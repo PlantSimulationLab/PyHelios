@@ -102,6 +102,47 @@ PYHELIOS_API int gpuRequiredByEnvironment();
 PYHELIOS_API void requireGPUOrFail(const char* context_message);
 
 //=============================================================================
+// Global Random Number Generator (helios-core v1.3.85+)
+//=============================================================================
+
+/**
+ * @brief Seed the generator behind the free function helios::randu()
+ *
+ * This is the process-wide generator used by plug-in code that draws random
+ * numbers outside a Context (LiDAR leaf-group and triangle index draws, grape
+ * berry placement in PlantArchitecture, ...). It is distinct from the per-Context
+ * generator seeded by seedRandomGenerator(helios::Context*, unsigned int). By
+ * default it is seeded from std::random_device, so each run differs; seeding it
+ * makes a run reproducible.
+ *
+ * The generator is shared by all threads and access to it is synchronized, so a
+ * seed set from any thread applies to every subsequent draw. Seeding fixes the
+ * sequence of values drawn, not which thread draws which value, so it does not
+ * by itself make a parallel loop reproducible.
+ *
+ * @param seed Value used to seed the generator
+ */
+PYHELIOS_API void seedGlobalRandomGenerator(unsigned int seed);
+
+/**
+ * @brief Draw from the process-wide generator: uniform float over [0,1)
+ * @return Uniform random float in [0,1); 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float globalRandu();
+
+/**
+ * @brief Draw from the process-wide generator: uniform integer over the inclusive range [imin,imax]
+ *
+ * Every value in the range, endpoints included, is equally likely. If imin >= imax,
+ * imin is returned.
+ *
+ * @param imin Lower bound (inclusive)
+ * @param imax Upper bound (inclusive)
+ * @return Uniform random integer in [imin,imax]; 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API int globalRanduInt(int imin, int imax);
+
+//=============================================================================
 // Internal Helper Functions (for use by other wrapper modules)
 //=============================================================================
 

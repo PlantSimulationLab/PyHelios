@@ -1796,6 +1796,138 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to get internode radii of shoot {shoot_id}, plant {plant_id}: {e}")
 
+    # =========================================================================
+    # Built-geometry organ queries (helios-core 1.3.85+)
+    # =========================================================================
+
+    def _plantFloatVector(self, wrapper_fn_name: str, plant_id: int, description: str) -> List[float]:
+        """Shared body for the per-organ built-geometry queries."""
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        self._check_context_alive()
+        try:
+            return getattr(plantarch_wrapper, wrapper_fn_name)(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get {description} for plant {plant_id}: {e}")
+
+    def getPlantLeafAreas(self, plant_id: int) -> List[float]:
+        """
+        Get the built one-sided surface area of every leaf on a plant.
+
+        Measured from the geometry that was actually built, rather than reported from
+        the shoot type's parameters. The two answer different questions: the shoot type
+        gives the distribution a parameter was drawn from, while this gives what the
+        plant ended up with. A plant whose leaf parameters carry a wide spread can still
+        deliver leaves of a single size (a random parameter caches its first draw, and a
+        shoot holds a copy of its type's parameters), and nothing in the parameters
+        themselves would reveal that.
+
+        This reports present area, so a leaf part-way through its growth is counted at
+        its current size. Leaves are visited shoot by shoot and then phytomer by phytomer,
+        the same order as :meth:`getPlantLeafObjectIDs`. Leaves whose geometry does not
+        exist (removed, senesced, or never built) are omitted rather than reported as
+        zero, so the result can be shorter than the list from :meth:`getPlantLeafObjectIDs`.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            One-sided surface area (m^2) of each leaf on the plant
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the query fails or the library predates v1.3.85
+
+        Example:
+            >>> areas = plantarch.getPlantLeafAreas(plant_id)
+            >>> print(f"{len(areas)} leaves, mean {sum(areas)/len(areas):.4f} m^2")
+        """
+        return self._plantFloatVector("getPlantLeafAreas", plant_id, "leaf areas")
+
+    def getPlantInternodeLengths(self, plant_id: int) -> List[float]:
+        """
+        Get the built length of every internode on a plant.
+
+        Measured along the internode's node positions as they were built, so a shoot
+        whose geometry was prescribed by :meth:`addShootFromNodePositions` reports its
+        measured lengths and a grown shoot reports what growth produced. See
+        :meth:`getPlantLeafAreas` for why this differs from reading the shoot type's
+        ``internode_length_max``.
+
+        Internodes are visited shoot by shoot and then phytomer by phytomer, so the
+        result has one entry per phytomer on the plant.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Length (m) of each internode on the plant
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the query fails or the library predates v1.3.85
+        """
+        return self._plantFloatVector("getPlantInternodeLengths", plant_id, "internode lengths")
+
+    def getPlantLeafInclinations(self, plant_id: int) -> List[float]:
+        """
+        Get the inclination angle of every leaf on a plant.
+
+        The angle between each leaf blade and the horizontal, computed from its
+        area-weighted normal so that a curved or folded blade is summarized by the
+        direction it mostly faces. 0 degrees is a horizontal blade and 90 degrees a
+        vertical one; because a blade is a surface, a normal pointing down describes the
+        same inclination as its opposite pointing up, so the angle is folded about the
+        horizontal and never exceeds 90 degrees.
+
+        Ordering and the treatment of missing geometry match :meth:`getPlantLeafAreas`.
+        A blade whose facet normals cancel exactly is additionally omitted, since it
+        faces no single direction.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Inclination angle (degrees, in [0, 90]) of each leaf on the plant
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the query fails or the library predates v1.3.85
+        """
+        return self._plantFloatVector("getPlantLeafInclinations", plant_id, "leaf inclinations")
+
+    def isShootGeometryPrescribed(self, plant_id: int, shoot_id: int) -> bool:
+        """
+        Report whether a shoot's existing geometry was prescribed by the caller rather than generated.
+
+        True for a shoot built by :meth:`addShootFromNodePositions`, whose internode path
+        follows measured node positions. Such a shoot's existing phytomers are exempt
+        from the re-scaling and re-curving performed by :meth:`advanceTime`, so a caller
+        reading geometry back can tell which parts of a plant are measurement and which
+        are model output.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+
+        Returns:
+            True if the shoot was built from prescribed node positions
+
+        Raises:
+            ValueError: If either ID is negative
+            PlantArchitectureError: If the query fails or the library predates v1.3.85
+        """
+        return self._shootScalarQuery("isShootGeometryPrescribed", plant_id, shoot_id,
+                                      "prescribed-geometry state")
+
     def getPlantAge(self, plant_id: int) -> float:
         """
         Get the current age of a plant in days.
@@ -3437,7 +3569,7 @@ class PlantArchitecture:
         Args:
             plant_id: ID of the plant instance
             current_node_number: Starting node number for this shoot (typically 1)
-            base_rotation: Orientation as AxisRotation(pitch, yaw, roll) in degrees
+            base_rotation: Orientation as AxisRotation(pitch, yaw, roll) in radians (use math.radians() to convert)
             internode_radius: Base radius of internodes in meters (must be > 0)
             internode_length_max: Maximum internode length in meters (must be > 0)
             internode_length_scale_factor_fraction: Scale factor for internode length (0-1 typically)
@@ -3537,7 +3669,7 @@ class PlantArchitecture:
             plant_id: ID of the plant instance
             parent_shoot_id: ID of the parent shoot to extend
             current_node_number: Starting node number for this shoot
-            base_rotation: Orientation as AxisRotation(pitch, yaw, roll) in degrees
+            base_rotation: Orientation as AxisRotation(pitch, yaw, roll) in radians (use math.radians() to convert)
             internode_radius: Base radius of internodes in meters (must be > 0)
             internode_length_max: Maximum internode length in meters (must be > 0)
             internode_length_scale_factor_fraction: Scale factor for internode length (0-1 typically)
@@ -3636,7 +3768,7 @@ class PlantArchitecture:
             parent_shoot_id: ID of the parent shoot
             parent_node_index: Index of the parent node where child emerges (0-based)
             current_node_number: Starting node number for this child shoot
-            shoot_base_rotation: Orientation as AxisRotation(pitch, yaw, roll) in degrees
+            shoot_base_rotation: Orientation as AxisRotation(pitch, yaw, roll) in radians (use math.radians() to convert)
             internode_radius: Base radius of child shoot internodes in meters (must be > 0)
             internode_length_max: Maximum internode length in meters (must be > 0)
             internode_length_scale_factor_fraction: Scale factor for internode length (0-1 typically)
@@ -3653,6 +3785,7 @@ class PlantArchitecture:
             PlantArchitectureError: If child shoot creation fails, parent doesn't exist, or shoot type not defined
 
         Example:
+            >>> import math
             >>> # Load model to define shoot types
             >>> plantarch.loadPlantModelFromLibrary("bean")
             >>>
@@ -3662,7 +3795,7 @@ class PlantArchitecture:
             ...     parent_shoot_id=main_shoot_id,
             ...     parent_node_index=3,
             ...     current_node_number=1,
-            ...     shoot_base_rotation=AxisRotation(45, 90, 0),  # 45° out, 90° rotation
+            ...     shoot_base_rotation=AxisRotation(math.radians(45), math.radians(90), 0),  # 45° out, 90° around
             ...     internode_radius=0.005,      # Thinner than main stem
             ...     internode_length_max=0.06,   # Shorter internodes
             ...     internode_length_scale_factor_fraction=1.0,
@@ -3673,7 +3806,7 @@ class PlantArchitecture:
             >>>
             >>> # Add second branch from opposite petiole
             >>> branch_id2 = plantarch.addChildShoot(
-            ...     plant_id, main_shoot_id, 3, 1, AxisRotation(45, 270, 0),
+            ...     plant_id, main_shoot_id, 3, 1, AxisRotation(math.radians(45), math.radians(270), 0),
             ...     0.005, 0.06, 1.0, 0.9, 0.8, "trifoliate", petiole_index=1
             ... )
         """
@@ -3717,6 +3850,409 @@ class PlantArchitecture:
                     f"Original error: {e}"
                 )
             raise PlantArchitectureError(f"Failed to add child shoot: {e}")
+
+    # =========================================================================
+    # Reconstruction from measured geometry (helios-core 1.3.85+)
+    # =========================================================================
+
+    @staticmethod
+    def _validateNodesAndRadii(node_positions, node_radii, positions_name: str, radii_name: str):
+        """Validate a measured node path and return it as plain lists for the ctypes layer."""
+        if not isinstance(node_positions, (list, tuple)):
+            raise ValueError(f"{positions_name} must be a list of vec3, got {type(node_positions).__name__}")
+        if not isinstance(node_radii, (list, tuple)):
+            raise ValueError(f"{radii_name} must be a list of floats, got {type(node_radii).__name__}")
+        if len(node_positions) < 2:
+            raise ValueError(f"{positions_name} must contain at least two positions, got {len(node_positions)}")
+        if len(node_radii) != len(node_positions):
+            raise ValueError(
+                f"{radii_name} must have one entry per position: got {len(node_radii)} radii "
+                f"for {len(node_positions)} positions")
+        positions = []
+        for i, pt in enumerate(node_positions):
+            if not isinstance(pt, vec3):
+                raise ValueError(f"{positions_name}[{i}] must be a vec3, got {type(pt).__name__}")
+            positions.append([pt.x, pt.y, pt.z])
+        radii = []
+        for i, r in enumerate(node_radii):
+            if isinstance(r, bool) or not isinstance(r, (int, float)):
+                raise ValueError(f"{radii_name}[{i}] must be a number, got {type(r).__name__}")
+            if r <= 0:
+                raise ValueError(f"{radii_name}[{i}] must be positive, got {r}")
+            radii.append(float(r))
+        return positions, radii
+
+    def addShootFromNodePositions(self,
+                                  plant_id: int,
+                                  parent_shoot_id: int,
+                                  parent_node_index: int,
+                                  node_positions: List[vec3],
+                                  node_radii: List[float],
+                                  shoot_type_label: str,
+                                  growth_shoot_type_label: Optional[str] = None,
+                                  petiole_index: int = 0) -> int:
+        """
+        Add a shoot whose internode geometry is prescribed by measured node positions.
+
+        This builds a single shoot, rendered as one continuous internode tube, that
+        follows a path given by the caller rather than one generated from the shoot
+        type's curvature and tortuosity parameters. It is intended for reconstructing a
+        plant from measured geometry such as a QSM, a digitized skeleton or
+        photogrammetry. A shoot built through :meth:`addBaseStemShoot`,
+        :meth:`appendShoot` or :meth:`addChildShoot` is an extrapolation from its base
+        rotation and cannot follow a measured curve; approximating one by chaining many
+        short shoots produces a separate tube object per link, which leaves visible gaps
+        at every bend.
+
+        The supplied positions are the phytomer endpoints: N+1 positions define N
+        internodes and therefore N phytomers. The shoot type's ``internode.length_segments``
+        still controls how finely each internode is subdivided, with the intermediate
+        nodes interpolated along the straight segment between the two prescribed
+        endpoints. The caller controls internode length by choosing how many nodes to
+        supply.
+
+        The prescribed phytomers are created fully elongated and are therefore not
+        re-scaled or re-curved by subsequent calls to :meth:`advanceTime`. New phytomers
+        added at the shoot apex as the plant grows are generated normally, continuing from
+        the direction of the final prescribed internode, and use the mean of the
+        prescribed internode lengths as their target length. Prescribed radii act as a
+        lower bound: a shoot type with a non-zero ``girth_area_factor`` may thicken an
+        internode during growth but never thins one, so a girth area factor of zero
+        preserves the prescribed radii exactly.
+
+        When ``parent_shoot_id`` is non-negative the base of the shoot is seated on the
+        parent as :meth:`addChildShoot` does (offset from the attachment node to the
+        surface of the parent internode) and the whole path is translated onto that
+        point. All relative geometry is preserved; only the absolute position changes,
+        and an error is raised if the discrepancy is large enough that the shoot would
+        not be connected to its parent.
+
+        **Separate growth type.** Building measured wood calls for curvature and
+        tortuosity of zero so the measured path is not fought, a node cap at least as
+        large as the longest measured branch, and often a girth area factor of zero so
+        the measured radii are preserved. None of those describe how the plant should
+        grow: a shoot inheriting them extends perfectly straight and never reaches its
+        node cap. Pass ``growth_shoot_type_label`` to take the node caps, the gravitropic
+        curvature of phytomers added at the apex, and the type of the shoots this shoot's
+        vegetative buds produce from a different shoot type. ``girth_area_factor`` and
+        bud-break probability are deliberately still taken from the build type, and the
+        build type remains the label reported by the shoot. A measured branch longer
+        than the growth type's ``max_nodes`` is accepted and simply stops extending.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            parent_shoot_id: ID of the shoot to attach to, or ``-1`` to create a base stem
+                shoot at the start of a new plant
+            parent_node_index: Node of the parent shoot at which the new shoot is added.
+                Ignored when ``parent_shoot_id`` is ``-1``
+            node_positions: Internode node positions in world coordinates, ordered from the
+                base of the shoot to its tip. At least two are required, and no two
+                consecutive positions may be coincident
+            node_radii: Radius of the shoot at each node, one per position. All must be > 0
+            shoot_type_label: Shoot type whose parameters build the measured geometry.
+                Must already be defined (by :meth:`loadPlantModelFromLibrary` or
+                :meth:`defineShootType`)
+            growth_shoot_type_label: Optional shoot type whose parameters govern the
+                shoot's future growth. ``None`` grows the shoot with ``shoot_type_label``
+            petiole_index: Petiole within the parent node to attach to (default 0)
+
+        Returns:
+            ID of the newly created shoot
+
+        Raises:
+            ValueError: If any ID is out of range, a position is not a vec3, a radius is
+                not positive, fewer than two nodes are given, or the counts differ
+            PlantArchitectureError: If the native build fails (undefined shoot type,
+                coincident consecutive nodes, base too far from the parent, ...) or the
+                library predates v1.3.85
+
+        Note:
+            Like every other manually added shoot, the new shoot is created dormant.
+            Call :meth:`breakPlantDormancy` before :meth:`advanceTime` if it is to grow.
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("bean")
+            >>> plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
+            >>> path = [vec3(0, 0, 0), vec3(0.01, 0, 0.1), vec3(0.03, 0.01, 0.2), vec3(0.04, 0.01, 0.3)]
+            >>> radii = [0.006, 0.005, 0.004, 0.003]
+            >>> stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, path, radii, "unifoliate")
+            >>> assert plantarch.isShootGeometryPrescribed(plant_id, stem)
+        """
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        if parent_shoot_id < -1:
+            raise ValueError("Parent shoot ID must be -1 (base stem) or a non-negative shoot ID")
+        if parent_node_index < 0:
+            raise ValueError("Parent node index must be non-negative")
+        if petiole_index < 0:
+            raise ValueError(f"Petiole index must be non-negative, got {petiole_index}")
+        if not isinstance(shoot_type_label, str) or not shoot_type_label.strip():
+            raise ValueError("Shoot type label cannot be empty")
+        if growth_shoot_type_label is not None:
+            if not isinstance(growth_shoot_type_label, str) or not growth_shoot_type_label.strip():
+                raise ValueError("Growth shoot type label cannot be empty when given")
+            growth_shoot_type_label = growth_shoot_type_label.strip()
+        positions, radii = self._validateNodesAndRadii(node_positions, node_radii, "node_positions", "node_radii")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.addShootFromNodePositions(
+                    self._plantarch_ptr, plant_id, parent_shoot_id, parent_node_index,
+                    positions, radii, shoot_type_label.strip(), growth_shoot_type_label, petiole_index)
+        except Exception as e:
+            error_msg = str(e)
+            if "does not exist" in error_msg.lower() and "shoot type" in error_msg.lower():
+                raise PlantArchitectureError(
+                    f"Shoot type not defined ('{shoot_type_label}'"
+                    f"{', ' + repr(growth_shoot_type_label) if growth_shoot_type_label else ''}). "
+                    f"Load a plant model or define the shoot type first:\n"
+                    f"  plantarch.loadPlantModelFromLibrary('bean')  # or defineShootType(...)\n"
+                    f"Original error: {e}")
+            raise PlantArchitectureError(f"Failed to add shoot from node positions: {e}")
+
+    def setPetioleNodePositions(self,
+                                plant_id: int,
+                                shoot_id: int,
+                                node_index: int,
+                                petiole_index: int,
+                                node_positions: List[vec3],
+                                node_radii: List[float]) -> None:
+        """
+        Prescribe the path of a petiole on an existing phytomer from measured node positions.
+
+        This is the organ-level counterpart of :meth:`addShootFromNodePositions`. Where
+        that method prescribes the internode skeleton of a shoot, this one prescribes the
+        centerline of a single petiole hanging off it, so that a reconstruction from
+        labelled measurements (a segmented point cloud, a digitized plant) can follow the
+        measured petiole rather than the path the shoot type's petiole pitch and
+        curvature would generate.
+
+        The supplied positions are the nodes of the petiole tube, ordered from the base
+        outward. Their number is free and need not match the shoot type's
+        ``petiole.length_segments``; the petiole tube is rebuilt to match. The first
+        position is snapped onto the tip of the internode the petiole grows from and the
+        rest of the path is translated by the same amount, so all relative geometry is
+        preserved exactly. An error is raised if that discrepancy is large enough that
+        the petiole would not be attached to the stem.
+
+        The prescribed petiole is not re-scaled by subsequent calls to
+        :meth:`advanceTime`, and its radii are held as given.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            node_positions: Petiole node positions in world coordinates, base to tip. At
+                least two are required, and no two consecutive positions may be coincident
+            node_radii: Radius of the petiole at each node, one per position. All must be > 0
+
+        Raises:
+            ValueError: If any index is negative, a position is not a vec3, a radius is
+                not positive, fewer than two nodes are given, or the counts differ
+            PlantArchitectureError: If the native call fails or the library predates v1.3.85
+
+        Note:
+            Call this **before** :meth:`setPetioleLeafGeometry` for the same petiole, since
+            leaf placement is oriented from the petiole axis.
+        """
+        for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                        ("Node index", node_index), ("Petiole index", petiole_index)):
+            if v < 0:
+                raise ValueError(f"{name} must be non-negative")
+        positions, radii = self._validateNodesAndRadii(node_positions, node_radii, "node_positions", "node_radii")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleNodePositions(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, positions, radii)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set petiole node positions (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeafGeometry(self,
+                               plant_id: int,
+                               shoot_id: int,
+                               node_index: int,
+                               petiole_index: int,
+                               leaf_bases: List[vec3],
+                               leaf_rotations: List[AxisRotation],
+                               leaf_sizes: List[float]) -> None:
+        """
+        Prescribe the base position, orientation and size of every leaf on a petiole.
+
+        This is the leaf-level counterpart of :meth:`setPetioleNodePositions`, intended
+        for the same reconstruction workflow. Every leaf on the petiole is prescribed in
+        one call: for a compound leaf the leaflets are not independent, since a
+        leaflet's roll and yaw signs and the prototype it is a copy of all follow from
+        its position along the petiole. A species with one leaf per petiole passes
+        one-element lists.
+
+        Each leaf is rebuilt from its prototype and re-oriented through the same
+        rotation chain used when a leaf is grown. The prescribed base, orientation and
+        size are held exactly and are not changed by :meth:`advanceTime`; prescribed
+        leaves are additionally exempt from the self-weight droop.
+
+        **Rotation units and frame.** ``leaf_rotations`` are given in **radians**, as
+        pitch, yaw and roll relative to the petiole and internode axes, not to world
+        axes (the same convention as the native ``Phytomer::leaf_rotation``). The full
+        chain that places a leaf includes the petiole's own azimuth and a
+        size-dependent correction and is not invertible, so there is no exact
+        conversion from a world-frame blade orientation; a caller fitting to measured
+        data should iterate by forward evaluation, reading the resulting geometry back
+        from the Context.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            leaf_bases: Base position of each leaf in world coordinates, one per leaf on
+                the petiole, in the petiole's existing leaf order
+            leaf_rotations: ``AxisRotation(pitch, yaw, roll)`` of each leaf in **radians**
+            leaf_sizes: Fully elongated size of each leaf in meters. All must be > 0
+
+        Raises:
+            ValueError: If any index is negative, a base is not a vec3, a rotation is not
+                an AxisRotation, a size is not positive, or the three lists differ in length
+            PlantArchitectureError: If the number of leaves does not match the petiole
+                (the count is fixed when the phytomer is created), the native call
+                fails, or the library predates v1.3.85
+
+        Note:
+            Rebuilding each leaf discards primitive data a caller has attached to it.
+            The object label and material are restored; other primitive data is not.
+        """
+        for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                        ("Node index", node_index), ("Petiole index", petiole_index)):
+            if v < 0:
+                raise ValueError(f"{name} must be non-negative")
+        for name, seq in (("leaf_bases", leaf_bases), ("leaf_rotations", leaf_rotations), ("leaf_sizes", leaf_sizes)):
+            if not isinstance(seq, (list, tuple)):
+                raise ValueError(f"{name} must be a list, got {type(seq).__name__}")
+        n = len(leaf_bases)
+        if n < 1:
+            raise ValueError("leaf_bases must contain at least one leaf")
+        if len(leaf_rotations) != n or len(leaf_sizes) != n:
+            raise ValueError(
+                f"leaf_bases, leaf_rotations and leaf_sizes must have the same length: "
+                f"got {n}, {len(leaf_rotations)} and {len(leaf_sizes)}")
+        bases = []
+        for i, b in enumerate(leaf_bases):
+            if not isinstance(b, vec3):
+                raise ValueError(f"leaf_bases[{i}] must be a vec3, got {type(b).__name__}")
+            bases.append([b.x, b.y, b.z])
+        rotations = []
+        for i, r in enumerate(leaf_rotations):
+            if not isinstance(r, AxisRotation):
+                raise ValueError(f"leaf_rotations[{i}] must be an AxisRotation, got {type(r).__name__}")
+            rotations.append([r.pitch, r.yaw, r.roll])
+        sizes = []
+        for i, sz in enumerate(leaf_sizes):
+            if isinstance(sz, bool) or not isinstance(sz, (int, float)):
+                raise ValueError(f"leaf_sizes[{i}] must be a number, got {type(sz).__name__}")
+            if sz <= 0:
+                raise ValueError(f"leaf_sizes[{i}] must be positive, got {sz}")
+            sizes.append(float(sz))
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeafGeometry(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                    bases, rotations, sizes)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set petiole leaf geometry (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeafCount(self, plant_id: int, shoot_id: int, node_index: int,
+                            petiole_index: int, leaf_count: int) -> None:
+        """
+        Change the number of leaves (leaflets) on one petiole of an existing phytomer.
+
+        The leaves are rebuilt procedurally. Without this, the count is fixed by the shoot
+        type's ``leaf.leaves_per_petiole`` for every phytomer, so a measured compound leaf
+        with a different number of leaflets could not be prescribed with
+        :meth:`setPetioleLeafGeometry`.
+
+        Args:
+            plant_id: Plant identifier.
+            shoot_id: Shoot identifier.
+            node_index: Index of the phytomer along the shoot.
+            petiole_index: Index of the petiole on that phytomer.
+            leaf_count: Number of leaves to place on the petiole. Must be at least 1.
+
+        Raises:
+            ValueError: If any index is negative or ``leaf_count`` is less than 1.
+            PlantArchitectureError: If the operation fails.
+
+        Note:
+            Call this **before** :meth:`setPetioleLeafGeometry` for the same petiole, whose
+            ``leaf_count`` must match the number of leaves on the petiole.
+        """
+        for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                        ("Node index", node_index), ("Petiole index", petiole_index)):
+            if v < 0:
+                raise ValueError(f"{name} must be non-negative")
+        if leaf_count < 1:
+            raise ValueError(f"Leaf count must be at least 1, got {leaf_count}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeafCount(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, leaf_count)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set petiole leaf count (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setShootInternodeLengthMax(self, plant_id: int, shoot_id: int,
+                                   internode_length_max: float) -> None:
+        """
+        Set the target length of internodes grown at the apex of an existing shoot.
+
+        A shoot built by :meth:`addShootFromNodePositions` otherwise grows toward the mean
+        of its prescribed internode lengths, so a measured seedling -- whose measured stem
+        is mostly hypocotyl -- could not be grown forward with realistic internodes.
+
+        Args:
+            plant_id: Plant identifier.
+            shoot_id: Shoot identifier.
+            internode_length_max: Target internode length in meters. Must be positive.
+
+        Raises:
+            ValueError: If an identifier is negative or the length is not positive.
+            PlantArchitectureError: If the operation fails.
+
+        Note:
+            This value is **not** saved by :meth:`writePlantStructureXML`, so it must be
+            set again after :meth:`readPlantStructureXML`.
+        """
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+        if internode_length_max <= 0:
+            raise ValueError(f"Internode length must be positive, got {internode_length_max}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setShootInternodeLengthMax(
+                    self._plantarch_ptr, plant_id, shoot_id, internode_length_max)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set shoot internode length max (plant {plant_id}, "
+                f"shoot {shoot_id}): {e}")
 
     def is_available(self) -> bool:
         """

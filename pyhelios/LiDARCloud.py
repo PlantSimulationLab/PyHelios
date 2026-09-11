@@ -24,6 +24,25 @@ class LiDARError(HeliosError):
     pass
 
 
+class HitDataType(IntEnum):
+    """Storage type of a per-hit scalar-data column (see :meth:`LiDARCloud.createHitDataColumn`).
+
+    Values mirror ``helios::HitDataType`` in declaration order and cross the ABI as 0/1/2.
+
+    A column created implicitly (by the first write that carries the label) starts with a type
+    chosen from the label's name and widens itself to FLOAT64 the first time it is given a value
+    it does not hold exactly. A column created explicitly is never widened: an explicit INT32
+    column rejects a value that is not a 32-bit integer, and an explicit FLOAT32 column stores
+    values at float precision.
+    """
+    #: 8-byte double. Holds any value exactly; the type of every unrecognized label.
+    FLOAT64 = 0
+    #: 4-byte float. For measurements such as intensity or reflectance.
+    FLOAT32 = 1
+    #: 4-byte signed integer. For counts and indices.
+    INT32 = 2
+
+
 class ScanPattern(IntEnum):
     """Geometric beam pattern returned by :meth:`LiDARCloud.getScanPattern`.
 
@@ -178,6 +197,14 @@ class LiDARCloud:
         # Keeps the ctypes progress-callback bridge alive while native code holds it (see
         # setProgressCallback); ctypes does not retain a reference on its own.
         self._progress_callback_ref = None
+
+        # Same for the 1.3.86 streaming sinks, plus the slots holding an exception raised
+        # inside a sink callback (which cannot propagate through the ctypes boundary; see
+        # setTriangulationSink and _raise_pending_callback_error).
+        self._triangulation_sink_ref = None
+        self._triangulation_sink_error = None
+        self._synthetic_hit_sink_ref = None
+        self._synthetic_hit_sink_error = None
 
     def __enter__(self):
         """Context manager entry"""
@@ -1225,6 +1252,32 @@ class LiDARCloud:
         """
         return lidar_wrapper.lidarHasMisses(self._cloud_ptr)
 
+    def isMultiReturnData(self) -> bool:
+        """Return True if the cloud contains multi-return data.
+
+        Multi-return data is data in which a single laser pulse produced more than one
+        recorded return (any hit with ``target_count`` greater than 1). This is a behavioral
+        switch, not just a descriptive property: :meth:`triangulateHitPoints` branches on
+        it, triangulating first returns only (with an adaptive separation filter) for
+        multi-return data and treating every return as an independent single return
+        otherwise. The two branches can differ substantially in reconstructed surface
+        area, so a cloud assembled by hand (for example through :meth:`addHitPoints` or
+        the native ASCII loader) can use this to confirm which one will run.
+
+        Multi-return data must also carry the ``timestamp`` and ``target_index`` hit-data
+        fields, which triangulation needs to group returns into beams and select first
+        returns. If ``target_count > 1`` is found but either field is absent, this raises
+        rather than reporting an answer the rest of the pipeline cannot act on.
+
+        Requires helios-core v1.3.85 or newer.
+
+        Raises:
+            HeliosError: If multi-return data is present but ``timestamp`` or
+                ``target_index`` is missing
+            RuntimeError: If the native library predates helios-core v1.3.85
+        """
+        return lidar_wrapper.lidarIsMultiReturnData(self._cloud_ptr)
+
     @staticmethod
     def getMissDistance() -> float:
         """Return the LIDAR_MISS_DISTANCE constant (meters): the distance at which a
@@ -1278,9 +1331,18 @@ class LiDARCloud:
         validate_positive_value(Lmax, 'Lmax', 'triangulateHitPoints')
         validate_positive_value(max_aspect_ratio, 'max_aspect_ratio', 'triangulateHitPoints')
         lidar_wrapper.lidarTriangulateHitPoints(self._cloud_ptr, Lmax, max_aspect_ratio)
+        # A triangulation sink runs during the call above. An exception raised inside it was
+        # swallowed by ctypes and stashed; surface it now rather than reporting success.
+        self._raise_pending_callback_error()
 
     def getTriangleCount(self) -> int:
-        """Get number of triangles in the mesh"""
+        """Get number of triangles in the mesh
+
+        .. warning::
+            Reports zero once a run's triangles have been streamed to a sink registered with
+            :meth:`setTriangulationSink` -- the mesh is released rather than stored. Clear the
+            sink before triangulating if you need the stored mesh.
+        """
         return lidar_wrapper.getLiDARTriangleCount(self._cloud_ptr)
 
     def getTriangulationStats(self) -> dict:
@@ -1306,6 +1368,12 @@ class LiDARCloud:
         [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z] per triangle, scan_ids is a (T,)
         int32 array. Avoids the Context round-trip and the per-triangle
         getPrimitiveVertices loop.
+
+        .. warning::
+            Raises once a run's triangles have been streamed to a sink registered with
+            :meth:`setTriangulationSink` -- the mesh is released rather than stored, and the
+            native consumers refuse to operate on an empty mesh. Clear the sink before
+            triangulating if you need the stored mesh.
         """
         return lidar_wrapper.getLiDARTriangleVertices_all(
             self._cloud_ptr, self.getTriangleCount())
@@ -1560,6 +1628,22 @@ class LiDARCloud:
         center_list = lidar_wrapper.getLiDARCellCenter(self._cloud_ptr, index)
         return vec3(*center_list)
 
+    def getCellCenterUnrotated(self, index: int) -> vec3:
+        """Get the UNROTATED (axis-aligned lattice) center position of a grid cell.
+
+        Companion to :meth:`getCellCenter`, which applies the grid's azimuthal rotation.
+        This returns the center on the axis-aligned lattice instead; for an un-rotated
+        grid the two are identical.
+
+        Use this when the caller applies the grid rotation itself (e.g. rotating a whole
+        voxel group about the grid center for display) — passing the rotated center to
+        such code rotates the lattice twice.
+        """
+        if index < 0:
+            raise ValueError("Index must be non-negative")
+        center_list = lidar_wrapper.getLiDARCellCenterUnrotated(self._cloud_ptr, index)
+        return vec3(*center_list)
+
     def getCellSize(self, index: int) -> vec3:
         """Get size of a grid cell"""
         if index < 0:
@@ -1725,6 +1809,42 @@ class LiDARCloud:
             RuntimeError: If the native library predates helios-core v1.3.84
         """
         return lidar_wrapper.getLiDARVirtualMissCount(self._cloud_ptr)
+
+    def getCroppedReturnStats(self) -> dict:
+        """
+        Returns the last :meth:`calculateLeafArea` call inferred from ``target_count``.
+
+        A pulse's returns are ordered by range and a beam crosses the (convex) voxel grid
+        in one contiguous segment. So when a cloud has had returns removed -- cropped to the
+        grid, say -- but its surviving returns still carry the per-pulse ``target_index`` and
+        ``target_count`` the scanner wrote, the inversion places each missing return from the
+        surviving indices alone: indices below the smallest surviving index were before the
+        first surviving return, indices above the largest were beyond the last one, and only
+        indices between two surviving returns cannot be placed. Under the crop-to-grid
+        assumption the second group is counted as transmitted through every voxel the beam
+        pierces, so a cropped beam keeps the transmittance its full record implied; the third
+        is left out and reported as ambiguous. A stand-in miss (a return flagged ``is_miss``
+        sharing the pulse's timestamp) is ignored for counting when the inference applies.
+
+        Returns:
+            dict with integer counts:
+
+            - ``beams_with_hidden_returns`` -- pulses with at least one return recovered
+            - ``hidden_before`` -- removed returns placed before the first surviving return
+              (expected after any near-field culling; changes nothing)
+            - ``hidden_after`` -- removed returns placed beyond the last surviving return
+              (counted as transmitted)
+            - ``hidden_ambiguous`` -- removed returns between two surviving returns (not
+              counted; a non-zero value means the cloud was cropped INSIDE the grid)
+            - ``beams_ambiguous`` -- pulses carrying at least one ambiguous removed return
+            - ``standins_ignored`` -- stand-in misses left out because the count covered them
+
+            All zero before the first inversion and for a cloud whose pulses are complete.
+
+        Raises:
+            RuntimeError: If the native library predates this feature
+        """
+        return lidar_wrapper.getLiDARCroppedReturnStats(self._cloud_ptr)
 
     def hasVirtualMisses(self) -> bool:
         """
@@ -1986,6 +2106,9 @@ class LiDARCloud:
         finally:
             if cancel_flag is not None:
                 lidar_wrapper.setLiDARCancelFlag(self._cloud_ptr, None)
+        # A hit sink runs during the scan above. An exception raised inside it was swallowed
+        # by ctypes and stashed; surface it now rather than reporting a successful scan.
+        self._raise_pending_callback_error()
 
     def _dispatch_synthetic_scan(self, context_ptr, rays_per_pulse,
                                  pulse_distance_threshold, scan_grid_only,
@@ -2022,7 +2145,8 @@ class LiDARCloud:
                 )
 
     def calculateLeafArea(self, context: Context, min_voxel_hits: Optional[int] = None,
-                          element_width: Optional[float] = None, Gtheta: Optional[float] = None):
+                          element_width: Optional[float] = None,
+                          Gtheta: Optional[Union[float, List[float]]] = None):
         """
         Calculate leaf area for each grid cell.
 
@@ -2045,11 +2169,27 @@ class LiDARCloud:
                 :meth:`getGroupLADConfidenceInterval`. ``element_width <= 0`` yields a
                 sampling-only variance.
             Gtheta: Optional caller-supplied mean leaf-projection coefficient G(theta), in (0,1]
-                (0.5 = spherical/random leaf-angle distribution). When provided, leaf area is
-                computed via a beam-based inversion that uses each hit's per-pulse beam origin and
-                does NOT require triangulation — the only supported path for moving-platform scans
-                (see :meth:`addScanMoving`). Requires both ``min_voxel_hits`` and ``element_width``
-                to also be specified.
+                (0.5 = spherical/random leaf-angle distribution). May be a single scalar (broadcast
+                to every voxel) or a sequence of one value per grid cell in grid-cell order — the
+                latter supports a spatially-varying (e.g. vertically-varying) leaf-angle
+                distribution. When provided, leaf area is computed via a beam-based inversion that
+                uses each hit's per-pulse beam origin and does NOT require triangulation — the only
+                supported path for moving-platform scans (see :meth:`addScanMoving`). Requires both
+                ``min_voxel_hits`` and ``element_width`` to also be specified.
+
+                A single float applies one G(theta) to every voxel. A sequence supplies one
+                G(theta) **per grid cell**, in grid-cell order (the order of
+                :meth:`getCellCenter`), for a canopy whose leaf-angle distribution varies in
+                space, typically with height. Its length must equal :meth:`getGridCellCount` and
+                every value must be in (0,1]. The per-cell form requires helios-core v1.3.85.
+
+        Raises:
+            TypeError: If ``context`` is not a Context
+            ValueError: If the argument combination is invalid, a G(theta) value is outside
+                (0,1], or a per-cell sequence is empty or does not match the grid cell count
+            HeliosError: If the native inversion fails (for example, the cloud has no misses)
+            RuntimeError: If a per-cell ``Gtheta`` is given and the native library predates
+                helios-core v1.3.85
 
         Example:
             >>> from pyhelios import Context, LiDARCloud
@@ -2061,13 +2201,34 @@ class LiDARCloud:
         if not isinstance(context, Context):
             raise TypeError("context must be a Context instance")
 
+        # Gtheta may be a scalar (broadcast to every voxel) or a sequence of one value per grid
+        # cell (a spatially-varying leaf-angle distribution). Detect which up front.
+        gtheta_is_sequence = Gtheta is not None and not isinstance(Gtheta, (int, float))
+
         # Validate argument combinations before touching native state (fail-fast).
+        Gtheta_per_cell = None
         if Gtheta is not None:
             if min_voxel_hits is None or element_width is None:
                 raise ValueError(
                     "Gtheta requires both min_voxel_hits and element_width to also be specified "
                     "(the G(theta) overload takes all three)")
-            if Gtheta <= 0:
+            if gtheta_is_sequence:
+                # Validate the sequence itself before any native call, so a malformed Gtheta
+                # is reported even on a cloud that has no grid loaded yet.
+                Gtheta_per_cell = [float(g) for g in Gtheta]
+                if not Gtheta_per_cell:
+                    raise ValueError("A per-cell Gtheta sequence must contain at least one value")
+                bad = [g for g in Gtheta_per_cell if not (0.0 < g <= 1.0)]
+                if bad:
+                    raise ValueError(
+                        f"Every per-cell Gtheta value must be in (0, 1] "
+                        f"(e.g. 0.5 for a spherical leaf-angle distribution); got {bad[0]!r}")
+                cell_count = self.getGridCellCount()
+                if len(Gtheta_per_cell) != cell_count:
+                    raise ValueError(
+                        f"A per-cell Gtheta sequence must have one entry per grid cell: "
+                        f"got {len(Gtheta_per_cell)} values for {cell_count} cells")
+            elif Gtheta <= 0:
                 # The native overload treats Gtheta <= 0 as the "compute from triangulation"
                 # sentinel, which silently disables the supplied-G(theta) path. Reject it here.
                 raise ValueError(
@@ -2078,7 +2239,10 @@ class LiDARCloud:
                 "(the uncertainty overload takes both)")
 
         context_ptr = context.getNativePtr()
-        if Gtheta is not None:
+        if Gtheta_per_cell is not None:
+            lidar_wrapper.calculateLiDARLeafAreaGthetaPerCell(
+                self._cloud_ptr, context_ptr, Gtheta_per_cell, min_voxel_hits, element_width)
+        elif Gtheta is not None:
             lidar_wrapper.calculateLiDARLeafAreaGtheta(
                 self._cloud_ptr, context_ptr, Gtheta, min_voxel_hits, element_width)
         elif element_width is not None:
@@ -2120,13 +2284,23 @@ class LiDARCloud:
         lidar_wrapper.calculateSyntheticLiDARGtheta(self._cloud_ptr, context_ptr)
 
     def exportTriangleNormals(self, filename: str):
-        """Export triangle normal vectors to file"""
+        """Export triangle normal vectors to file
+
+        .. warning::
+            Raises once a run's triangles have been streamed to a sink registered with
+            :meth:`setTriangulationSink` -- the mesh is released rather than stored.
+        """
         if not filename:
             raise ValueError("Filename cannot be empty")
         lidar_wrapper.exportLiDARTriangleNormals(self._cloud_ptr, filename)
 
     def exportTriangleAreas(self, filename: str):
-        """Export triangle areas to file"""
+        """Export triangle areas to file
+
+        .. warning::
+            Raises once a run's triangles have been streamed to a sink registered with
+            :meth:`setTriangulationSink` -- the mesh is released rather than stored.
+        """
         if not filename:
             raise ValueError("Filename cannot be empty")
         lidar_wrapper.exportLiDARTriangleAreas(self._cloud_ptr, filename)
@@ -2155,6 +2329,11 @@ class LiDARCloud:
 
         Converts the triangulated point cloud mesh into Context triangle
         primitives that can be used for further analysis or visualization.
+
+        .. warning::
+            Raises once a run's triangles have been streamed to a sink registered with
+            :meth:`setTriangulationSink` -- the mesh is released rather than stored, so there
+            is nothing to add. Clear the sink before triangulating if you need the stored mesh.
 
         Args:
             context: Helios Context instance
@@ -2241,6 +2420,585 @@ class LiDARCloud:
         if ptr is not None and not isinstance(ptr, ctypes.c_int):
             raise TypeError("ptr must be a ctypes.c_int (or None to clear)")
         lidar_wrapper.setLiDARSyntheticScanProgressPointer(self._cloud_ptr, ptr)
+
+    # ------------------------------------------------------------------
+    # helios-core 1.3.86 additions
+    # ------------------------------------------------------------------
+
+    def createHitDataColumn(self, label: str, column_type: HitDataType) -> None:
+        """
+        Create a per-hit scalar-data column with an explicit storage type.
+
+        Call this *before* adding data carrying ``label`` to fix the column's storage type
+        instead of letting it be inferred from the label name. An explicitly typed column is
+        never widened: an INT32 column rejects a value that is not a 32-bit integer, and a
+        FLOAT32 column stores values at float precision.
+
+        Args:
+            label: Label of the data value (e.g. "intensity")
+            column_type: A :class:`HitDataType` member
+
+        Raises:
+            TypeError: If ``label`` is not a str or ``column_type`` is not a HitDataType
+            ValueError: If ``label`` is empty
+            HeliosError: If the column already exists with a different type
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_label(label)
+        if not isinstance(column_type, HitDataType):
+            raise TypeError(
+                "column_type must be a HitDataType (FLOAT64, FLOAT32 or INT32), "
+                f"got {column_type!r}")
+        lidar_wrapper.createLiDARHitDataColumn(self._cloud_ptr, label, int(column_type))
+
+    def getHitDataType(self, label: str) -> HitDataType:
+        """
+        Storage type of an existing per-hit scalar-data column.
+
+        A column typed implicitly may since have widened to ``FLOAT64``.
+
+        Args:
+            label: Label of the data value
+
+        Returns:
+            The column's current :class:`HitDataType`
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``label`` is empty
+            HeliosError: If no column exists for the label (use
+                :meth:`getHitDataColumnIndex` to test for existence without raising)
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        if not isinstance(label, str):
+            raise TypeError(f"label must be a str, got {type(label).__name__}")
+        if not label:
+            raise ValueError("label cannot be empty")
+        return HitDataType(lidar_wrapper.getLiDARHitDataType(self._cloud_ptr, label))
+
+    def getHitDataColumnFloat32(self, label: str, absent_value: float = -9999.0) -> List[float]:
+        """
+        Bulk-export a named scalar column as 32-bit floats.
+
+        Reads a ``FLOAT32`` column without widening it to 8 bytes per hit; a ``FLOAT64`` or
+        ``INT32`` column is converted element-wise. See :meth:`getHitDataColumn` for the
+        double-precision counterpart.
+
+        Args:
+            label: Label of the data value
+            absent_value: Value reported for hits that lack the label
+
+        Returns:
+            List of floats of length :meth:`getHitCount`
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``label`` is empty
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_label(label)
+        n = self.getHitCount()
+        if n == 0:
+            return []
+        return lidar_wrapper.getLiDARHitDataColumnF32(self._cloud_ptr, label, n, absent_value)
+
+    def getHitDataColumnFloat32Array(self, label: str, absent_value: float = -9999.0):
+        """
+        Bulk-export a named scalar column as a ``(getHitCount(),)`` float32 numpy array.
+
+        See :meth:`getHitDataColumnFloat32`.
+        """
+        import numpy as np
+        self._validate_label(label)
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0,), np.float32)
+        return lidar_wrapper.getLiDARHitDataColumnF32_np(self._cloud_ptr, label, n, absent_value)
+
+    def getHitDataColumnInt32(self, label: str, absent_value: int = -9999) -> List[int]:
+        """
+        Bulk-export a named scalar column as 32-bit signed integers.
+
+        Reads an ``INT32`` column without widening it.
+
+        Args:
+            label: Label of the data value
+            absent_value: Value reported for hits that lack the label
+
+        Returns:
+            List of ints of length :meth:`getHitCount`
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``label`` is empty
+            HeliosError: If any value is not an integer in the 32-bit range (a fractional
+                value, a NaN, or a timestamp) -- read such a label with
+                :meth:`getHitDataColumn` instead
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_label(label)
+        n = self.getHitCount()
+        if n == 0:
+            return []
+        return lidar_wrapper.getLiDARHitDataColumnI32(self._cloud_ptr, label, n, absent_value)
+
+    def getHitDataColumnInt32Array(self, label: str, absent_value: int = -9999):
+        """
+        Bulk-export a named scalar column as a ``(getHitCount(),)`` int32 numpy array.
+
+        See :meth:`getHitDataColumnInt32`.
+        """
+        import numpy as np
+        self._validate_label(label)
+        n = self.getHitCount()
+        if n == 0:
+            return np.empty((0,), np.int32)
+        return lidar_wrapper.getLiDARHitDataColumnI32_np(self._cloud_ptr, label, n, absent_value)
+
+    def _validate_label(self, label: str) -> None:
+        """Validate a scalar-data label argument (shared by the column readers)."""
+        if not isinstance(label, str):
+            raise TypeError(f"label must be a str, got {type(label).__name__}")
+        if not label:
+            raise ValueError("label cannot be empty")
+
+    def addHitPointsBulk(self, scanID: int, xyz, dir_spherical=None,
+                         labels: Optional[List[str]] = None, values=None) -> None:
+        """
+        Bulk-ingest hit points through the native bulk path, with double-precision positions.
+
+        This is the native ``addHitPoints`` entry point, distinct from :meth:`addHitPoints`
+        (a per-point shim taking float positions). It takes float64 coordinates, can derive
+        beam directions automatically, and writes scalar-data columns directly.
+
+        Args:
+            scanID: Scan ID these hits belong to (the scan must already exist)
+            xyz: Hit point coordinates, shape (N, 3) float64
+            dir_spherical: Beam directions, shape (N, 3) as (radius, elevation, azimuth), or
+                ``None`` to derive each direction from the point's position relative to the
+                scan origin (what the ASCII loader does)
+            labels: Optional list of scalar-data column names (length k)
+            values: Required when ``labels`` is given: (N, k) float64 values. A NaN entry
+                leaves that label absent on that point.
+
+        Raises:
+            ValueError: If an array has the wrong shape, row counts disagree, or ``values``
+                is missing while ``labels`` was supplied
+            RuntimeError: If the native library predates helios-core v1.3.86
+
+        Example:
+            >>> import numpy as np
+            >>> lidar.addHitPointsBulk(0, np.zeros((10, 3)),
+            ...                        labels=["intensity"], values=np.ones((10, 1)))
+        """
+        if scanID < 0:
+            raise ValueError("scanID must be non-negative")
+        lidar_wrapper.addLiDARHitPointsBulk(self._cloud_ptr, scanID, xyz, dir_spherical,
+                                            labels, values)
+
+    def deleteHitPoints(self, first: int, count: int) -> None:
+        """
+        Delete a contiguous range of hit points, preserving the order of the rest.
+
+        Removes hits ``[first, first+count)``. Unlike :meth:`deleteHitPoint`, which fills the
+        freed slot with the last hit, this keeps every surviving hit in its relative order --
+        so draining the tail of the cloud (the release step of a streaming
+        :meth:`syntheticScan`, see :meth:`setSyntheticScanHitSink`) costs O(count) and leaves
+        earlier indices unchanged.
+
+        Args:
+            first: Index of the first hit to delete
+            count: Number of hits to delete
+
+        Raises:
+            ValueError: If ``first`` or ``count`` is negative
+            HeliosError: If the range extends past the end of the cloud
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        if first < 0:
+            raise ValueError("first must be non-negative")
+        if count < 0:
+            raise ValueError("count must be non-negative")
+        lidar_wrapper.deleteLiDARHitPoints(self._cloud_ptr, first, count)
+
+    def setTriangulationSink(self, callback) -> None:
+        """
+        Register a sink that receives each scan's triangles as :meth:`triangulateHitPoints` finishes it.
+
+        With a sink set, triangulation hands each scan's finished triangles to ``callback`` and
+        then releases them, keeping only the per-voxel leaf-angle sums the leaf-area inversion
+        needs. Retained memory becomes one scan's triangles at a time, and
+        :meth:`calculateLeafArea` still works and gives the same result.
+
+        ``callback`` is called as ``callback(scanID, vertices, ids)`` where ``vertices`` is a
+        ``(T, 9)`` float32 numpy array laid out ``[v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z]`` per
+        triangle and ``ids`` is a ``(T, 2)`` int32 array of ``[scanID, gridcell]``. Both are
+        copies owned by the caller. Pass ``None`` to clear the sink.
+
+        .. warning::
+            Once a run's triangles have been streamed, the mesh is not retained:
+            :meth:`getTriangleCount` reports zero and :meth:`getTriangleVerticesAll`,
+            :meth:`addTrianglesToContext`, :meth:`exportTriangleNormals` and
+            :meth:`exportTriangleAreas` raise rather than silently operating on an empty mesh.
+            Clear the sink before triangulating if you need the stored mesh.
+
+        .. note::
+            An exception raised inside ``callback`` cannot propagate through the native call
+            (a Python exception in a ctypes callback is swallowed and reported to C++ as
+            success). It is captured and re-raised from the call that triggered it --
+            typically :meth:`triangulateHitPoints`.
+
+        Args:
+            callback: Callable taking ``(scanID, vertices, ids)``, or ``None`` to clear
+
+        Raises:
+            TypeError: If ``callback`` is neither callable nor None
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        import numpy as np
+
+        if callback is None:
+            lidar_wrapper.setLiDARTriangulationSink(self._cloud_ptr, None)
+            self._triangulation_sink_ref = None
+            self._triangulation_sink_error = None
+            return
+
+        if not callable(callback):
+            raise TypeError("callback must be callable or None")
+
+        self._triangulation_sink_error = None
+
+        def _trampoline(scanID, xyz9, ids, triCount, user_data):
+            # A Python exception raised here is swallowed by ctypes (the callback simply
+            # returns, and C++ treats that as success), so stash it and re-raise after the
+            # native call returns. See _raise_pending_callback_error.
+            try:
+                n = int(triCount)
+                if n > 0 and xyz9:
+                    verts = np.ctypeslib.as_array(xyz9, shape=(n, 9)).copy()
+                else:
+                    verts = np.empty((0, 9), np.float32)
+                if n > 0 and ids:
+                    id_arr = np.ctypeslib.as_array(ids, shape=(n, 2)).copy()
+                else:
+                    id_arr = np.empty((0, 2), np.int32)
+                callback(int(scanID), verts, id_arr)
+            except BaseException as exc:
+                if self._triangulation_sink_error is None:
+                    self._triangulation_sink_error = exc
+
+        self._triangulation_sink_ref = lidar_wrapper.LiDARTriangulationSinkCallback(_trampoline)
+        lidar_wrapper.setLiDARTriangulationSink(self._cloud_ptr, self._triangulation_sink_ref)
+
+    def setSyntheticScanHitSink(self, callback) -> None:
+        """
+        Register a sink fired after each chunk of a :meth:`syntheticScan` lands in the cloud.
+
+        Without a sink, every chunk's returns accumulate in the cloud until the scan finishes,
+        so a very large scan holds every return before the caller can read any. With a sink,
+        ``callback(first, count)`` is invoked after each chunk with the index of the first new
+        hit and the number of new hits. Inside the callback the new hits can be read (through
+        the per-scan column readers), written out, and then released with
+        :meth:`deleteHitPoints` -- they are always the tail of the cloud, so the cloud never
+        holds more than one chunk.
+
+        Chunk size is bounded by :meth:`setSyntheticScanMemoryBudget`. Pass ``None`` to clear.
+
+        .. note::
+            An exception raised inside ``callback`` cannot propagate through the native call
+            (a Python exception in a ctypes callback is swallowed and reported to C++ as
+            success, which would let the scan continue as though nothing failed). It is
+            captured and re-raised from the call that triggered it -- typically
+            :meth:`syntheticScan`.
+
+        Args:
+            callback: Callable taking ``(first, count)``, or ``None`` to clear
+
+        Raises:
+            TypeError: If ``callback`` is neither callable nor None
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        if callback is None:
+            lidar_wrapper.setLiDARSyntheticScanHitSink(self._cloud_ptr, None)
+            self._synthetic_hit_sink_ref = None
+            self._synthetic_hit_sink_error = None
+            return
+
+        if not callable(callback):
+            raise TypeError("callback must be callable or None")
+
+        self._synthetic_hit_sink_error = None
+
+        def _trampoline(first, count, user_data):
+            # See setTriangulationSink: a raised exception cannot cross the ctypes boundary.
+            try:
+                callback(int(first), int(count))
+            except BaseException as exc:
+                if self._synthetic_hit_sink_error is None:
+                    self._synthetic_hit_sink_error = exc
+
+        self._synthetic_hit_sink_ref = lidar_wrapper.LiDARSyntheticScanHitSinkCallback(_trampoline)
+        lidar_wrapper.setLiDARSyntheticScanHitSink(self._cloud_ptr, self._synthetic_hit_sink_ref)
+
+    def _raise_pending_callback_error(self) -> None:
+        """Re-raise an exception captured inside a streaming-sink callback, if any.
+
+        A Python exception raised inside a ctypes callback never propagates -- ctypes returns 0
+        and C++ takes that for success -- so the sink trampolines stash the exception and this
+        re-raises it once the native call has returned.
+        """
+        for attr in ('_triangulation_sink_error', '_synthetic_hit_sink_error'):
+            exc = getattr(self, attr, None)
+            if exc is not None:
+                setattr(self, attr, None)
+                raise exc
+
+    def getScanHitCount(self, scanID: int) -> int:
+        """
+        Number of hit points (stored returns plus virtualized misses) belonging to one scan.
+
+        This is the length the per-scan readers fill -- :meth:`getScanHitIndices`,
+        :meth:`getScanHitXYZColumn` and :meth:`getScanHitDataColumn`.
+
+        Args:
+            scanID: Scan index
+
+        Returns:
+            Number of hits in that scan
+
+        Raises:
+            ValueError: If ``scanID`` is negative
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_scan_id(scanID)
+        return lidar_wrapper.getLiDARScanHitCount(self._cloud_ptr, scanID)
+
+    def getScanHitIndices(self, scanID: int) -> List[int]:
+        """
+        Global indices of one scan's hit points, in the order the per-scan readers use.
+
+        A scan's hits need not be contiguous in the global index space (a filter's
+        swap-and-pop deletion reorders the cloud, and gap-filled misses live above every
+        stored return), so the per-scan readers present a scan's hits in their own local
+        order. This maps each local position back to the global index used by
+        :meth:`getHitXYZ` and friends. Stored returns come first, in stored order, followed
+        by the scan's virtualized misses.
+
+        Args:
+            scanID: Scan index
+
+        Returns:
+            List of global hit indices, one per hit in the scan
+
+        Raises:
+            ValueError: If ``scanID`` is negative
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_scan_id(scanID)
+        n = self.getScanHitCount(scanID)
+        return lidar_wrapper.getLiDARScanHitIndices(self._cloud_ptr, scanID, n)
+
+    def getScanHitXYZColumn(self, scanID: int):
+        """
+        Read one scan's hit positions in a single pass.
+
+        Costs O(hits in the scan), not O(hits in the cloud): the scan's stored returns are
+        located through an index built once and kept until the cloud changes, and its
+        virtualized misses are walked in occupancy order rather than resolved one at a time.
+        Prefer this to filtering :meth:`getHitXYZColumn` by scan.
+
+        Args:
+            scanID: Scan index
+
+        Returns:
+            List of (x, y, z) tuples, one per hit in the scan, in local order
+
+        Raises:
+            ValueError: If ``scanID`` is negative
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_scan_id(scanID)
+        n = self.getScanHitCount(scanID)
+        return lidar_wrapper.getLiDARScanHitXYZColumn(self._cloud_ptr, scanID, n)
+
+    def getScanHitDataColumn(self, scanID: int, label: str,
+                             absent_value: float = -9999.0) -> List[float]:
+        """
+        Read one scan's values of a scalar-data label in a single pass, as doubles.
+
+        The per-scan counterpart of :meth:`getHitDataColumn`; see
+        :meth:`getScanHitXYZColumn` for why this is preferred over filtering the whole cloud.
+
+        Args:
+            scanID: Scan index
+            label: Label of the data value
+            absent_value: Value reported for hits that lack the label
+
+        Returns:
+            List of floats, one per hit in the scan, in local order
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``scanID`` is negative or ``label`` is empty
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_scan_id(scanID)
+        self._validate_label(label)
+        n = self.getScanHitCount(scanID)
+        return lidar_wrapper.getLiDARScanHitDataColumn(self._cloud_ptr, scanID, label, n,
+                                                       absent_value)
+
+    def getScanHitDataColumnFloat32(self, scanID: int, label: str,
+                                    absent_value: float = -9999.0) -> List[float]:
+        """
+        Read one scan's values of a scalar-data label as 32-bit floats.
+
+        See :meth:`getScanHitDataColumn` and :meth:`getHitDataColumnFloat32`.
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``scanID`` is negative or ``label`` is empty
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_scan_id(scanID)
+        self._validate_label(label)
+        n = self.getScanHitCount(scanID)
+        return lidar_wrapper.getLiDARScanHitDataColumnF32(self._cloud_ptr, scanID, label, n,
+                                                          absent_value)
+
+    def getScanHitDataColumnInt32(self, scanID: int, label: str,
+                                  absent_value: int = -9999) -> List[int]:
+        """
+        Read one scan's values of a scalar-data label as 32-bit signed integers.
+
+        See :meth:`getScanHitDataColumn` and :meth:`getHitDataColumnInt32`.
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``scanID`` is negative or ``label`` is empty
+            HeliosError: If any value is not an integer in the 32-bit range
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        self._validate_scan_id(scanID)
+        self._validate_label(label)
+        n = self.getScanHitCount(scanID)
+        return lidar_wrapper.getLiDARScanHitDataColumnI32(self._cloud_ptr, scanID, label, n,
+                                                          absent_value)
+
+    def _validate_scan_id(self, scanID: int) -> None:
+        """Validate a scan index argument (shared by the per-scan readers)."""
+        if not isinstance(scanID, int) or isinstance(scanID, bool):
+            raise TypeError(f"scanID must be an int, got {type(scanID).__name__}")
+        if scanID < 0:
+            raise ValueError("scanID must be non-negative")
+
+    def calculateLeafAreaBlock(self, context: Context, ijk_min, ijk_max,
+                               min_voxel_hits: int, element_width: float,
+                               Gtheta: Optional[Union[float, List[float]]] = None) -> None:
+        """
+        Calculate leaf area for only a block of the voxel grid.
+
+        The block form of :meth:`calculateLeafArea`, for inverting a large grid a tile at a
+        time. Requires a regular lattice grid (as built by :meth:`addGrid`); use
+        :meth:`getGridGlobalCount` for the lattice dimensions and :meth:`getCellGlobalIJK` to
+        map a cell index to its lattice coordinate.
+
+        Args:
+            context: Helios Context instance
+            ijk_min: Lattice index (i, j, k) of the block's first cell
+            ijk_max: Lattice index (i, j, k) of the block's last cell, inclusive
+            min_voxel_hits: Minimum number of beams that must have entered a voxel
+            element_width: Characteristic vegetation element width (m); <= 0 yields a
+                sampling-only variance
+            Gtheta: Optional caller-supplied G(theta) in (0,1]. A single float applies one
+                value to every voxel; a sequence supplies one value **per grid cell** (the
+                whole grid, not just the block) in grid-cell order. When omitted,
+                triangulation supplies G(theta) and must have been run.
+
+        Raises:
+            TypeError: If ``context`` is not a Context
+            ValueError: If a lattice index is not 3 elements, or a G(theta) sequence is empty
+            HeliosError: If the grid is not a regular lattice, the block is out of range, or
+                the inversion fails (for example, the cloud has no misses)
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        if not isinstance(context, Context):
+            raise TypeError("context must be a Context instance")
+        context_ptr = context.getNativePtr()
+
+        if Gtheta is None:
+            lidar_wrapper.calculateLiDARLeafAreaBlock(
+                self._cloud_ptr, context_ptr, min_voxel_hits, element_width, ijk_min, ijk_max)
+            return
+
+        if isinstance(Gtheta, (int, float)) and not isinstance(Gtheta, bool):
+            if not (0.0 < float(Gtheta) <= 1.0):
+                raise ValueError(f"Gtheta must be in (0, 1], got {Gtheta}")
+            lidar_wrapper.calculateLiDARLeafAreaGthetaBlock(
+                self._cloud_ptr, context_ptr, Gtheta, min_voxel_hits, element_width,
+                ijk_min, ijk_max)
+            return
+
+        per_cell = [float(g) for g in Gtheta]
+        if not per_cell:
+            raise ValueError("A per-cell Gtheta sequence must contain at least one value")
+        for g in per_cell:
+            if not (0.0 < g <= 1.0):
+                raise ValueError(f"Every Gtheta value must be in (0, 1], got {g}")
+        lidar_wrapper.calculateLiDARLeafAreaGthetaPerCellBlock(
+            self._cloud_ptr, context_ptr, per_cell, min_voxel_hits, element_width,
+            ijk_min, ijk_max)
+
+    def getCellGlobalIJK(self, index: int) -> Tuple[int, int, int]:
+        """
+        Lattice index (i, j, k) of a grid cell along x, y and z.
+
+        For a grid built by :meth:`addGrid` this is the cell's position in the
+        ``ndiv.x`` by ``ndiv.y`` by ``ndiv.z`` lattice; cells are stored in the order
+        ``k*ny*nx + j*nx + i``. It is the coordinate :meth:`calculateLeafAreaBlock` takes.
+
+        Args:
+            index: Index of a grid cell
+
+        Returns:
+            (i, j, k) tuple
+
+        Raises:
+            ValueError: If ``index`` is negative
+            HeliosError: If ``index`` is out of range
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        if index < 0:
+            raise ValueError("index must be non-negative")
+        return lidar_wrapper.getLiDARCellGlobalIJK(self._cloud_ptr, index)
+
+    def getGridGlobalCount(self) -> Tuple[int, int, int]:
+        """
+        Number of lattice cells along x, y and z (the ``ndiv`` passed to :meth:`addGrid`).
+
+        Returns:
+            (nx, ny, nz) tuple
+
+        Raises:
+            HeliosError: If the grid is empty or its cells do not form a regular lattice
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        return lidar_wrapper.getLiDARGridGlobalCount(self._cloud_ptr)
+
+    def getHitPointCapacity(self) -> int:
+        """
+        Number of hit points the cloud can hold before its arrays reallocate.
+
+        The counterpart of :meth:`reserveHitPoints`: use it to confirm a reservation took
+        effect, or to see how much headroom remains before the next growth reallocation.
+
+        Returns:
+            Current hit-point capacity
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.86
+        """
+        return lidar_wrapper.getLiDARHitPointCapacity(self._cloud_ptr)
 
     def setProgressCallback(self, callback):
         """Register a progress callback fired with ``(progress_fraction, message)`` during :meth:`syntheticScan`.

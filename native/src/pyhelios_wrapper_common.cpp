@@ -71,4 +71,41 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void seedGlobalRandomGenerator(unsigned int seed) {
+        clearError();
+        try {
+            helios::seedRandomGenerator(seed);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (seedGlobalRandomGenerator): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (seedGlobalRandomGenerator): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API float globalRandu() {
+        clearError();
+        try {
+            return helios::randu();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (globalRandu): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (globalRandu): Unknown error.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API int globalRanduInt(int imin, int imax) {
+        clearError();
+        try {
+            return helios::randu(imin, imax);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (globalRanduInt): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (globalRanduInt): Unknown error.");
+            return 0;
+        }
+    }
+
 } //extern "C"

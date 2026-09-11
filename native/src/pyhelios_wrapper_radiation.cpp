@@ -89,7 +89,7 @@ inline void applyCameraStringProperties(CameraProperties &props,
 
 namespace pyhelios_radiation_internal {
 
-// Populate a SIFCameraProperties struct from a 10-float camera-properties array
+// Populate a SIFCameraProperties struct from an 11-float camera-properties array
 // (same layout as addRadiationCameraVec3) plus the two SIF-specific fields.
 inline SIFCameraProperties buildSIFCameraProperties(const float* camera_properties,
                                                     float excitation_bin_width_nm,
@@ -107,6 +107,7 @@ inline SIFCameraProperties buildSIFCameraProperties(const float* camera_properti
     props.sensor_width_mm = camera_properties[7];
     props.shutter_speed = camera_properties[8];
     props.camera_zoom = camera_properties[9];
+    props.exposure_target = camera_properties[10]; // exposure_target (v1.3.85+)
 
     applyCameraStringProperties(props, camera_strings, string_count);
 
@@ -2163,7 +2164,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             helios::vec3 lookat(lookat_x, lookat_y, lookat_z);
 
             // Convert camera properties array to CameraProperties struct
-            // Format supports both legacy (6 floats) and extended (10 floats) formats
+            // 11 floats: the v1.3.60 10-float layout plus exposure_target (v1.3.85+)
             // Legacy: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
             // Extended v1.3.58: [+ lens_focal_length, sensor_width_mm, shutter_speed]
             // Extended v1.3.60: [+ camera_zoom] - 10 total elements
@@ -2188,6 +2189,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.sensor_width_mm = camera_properties[7];
             props.shutter_speed = camera_properties[8];
             props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
+            props.exposure_target = camera_properties[10];  // exposure_target (v1.3.85+)
 
             radiation_model->addRadiationCamera(std::string(camera_label), band_vector, position, lookat, props, antialiasing_samples);
 
@@ -2233,7 +2235,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             helios::SphericalCoord viewing_direction = helios::make_SphericalCoord(radius, elevation, azimuth);
 
             // Convert camera properties array to CameraProperties struct
-            // Format supports both legacy (6 floats) and extended (10 floats) formats
+            // 11 floats: the v1.3.60 10-float layout plus exposure_target (v1.3.85+)
             // Legacy: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio]
             // Extended v1.3.58: [+ lens_focal_length, sensor_width_mm, shutter_speed]
             // Extended v1.3.60: [+ camera_zoom] - 10 total elements
@@ -2258,6 +2260,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.sensor_width_mm = camera_properties[7];
             props.shutter_speed = camera_properties[8];
             props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
+            props.exposure_target = camera_properties[10];  // exposure_target (v1.3.85+)
 
             radiation_model->addRadiationCamera(std::string(camera_label), band_vector, position, viewing_direction, props, antialiasing_samples);
 
@@ -2832,7 +2835,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             }
 
             // Convert camera properties array to CameraProperties struct
-            // Same format as addRadiationCamera: 10 floats (v1.3.60+)
+            // Same format as addRadiationCamera: 11 floats (v1.3.85+)
             CameraProperties props;
             props.camera_resolution = helios::make_int2((int)camera_properties[0], (int)camera_properties[1]);
             props.focal_plane_distance = camera_properties[2];
@@ -2843,6 +2846,7 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             props.sensor_width_mm = camera_properties[7];
             props.shutter_speed = camera_properties[8];
             props.camera_zoom = camera_properties[9];  // camera_zoom (v1.3.60+)
+            props.exposure_target = camera_properties[10];  // exposure_target (v1.3.85+)
 
             // String fields use defaults (cannot be updated via this interface),
             // except exposure mode which is plumbed through from CameraProperties.

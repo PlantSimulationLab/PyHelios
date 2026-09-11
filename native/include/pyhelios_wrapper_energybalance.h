@@ -128,6 +128,40 @@ PYHELIOS_API void evaluateAirEnergyBalance(EnergyBalanceModel* energy_model, flo
 PYHELIOS_API void evaluateAirEnergyBalanceForUUIDs(EnergyBalanceModel* energy_model, const unsigned int* uuids, unsigned int uuid_count, float dt_sec, float time_advance_sec);
 
 /**
+ * @brief Enable the canopy airspace model
+ *
+ * Resolves within-canopy air temperature and humidity from a vertically layered
+ * resistance network instead of holding them at a prescribed value. Mutually
+ * exclusive with the air energy balance model, and incompatible with the dynamic
+ * forms of run() that take a timestep.
+ *
+ * @param energy_model Pointer to the EnergyBalanceModel
+ * @param canopy_uuids Array of canopy (leaf) primitive UUIDs
+ * @param canopy_count Number of canopy UUIDs
+ * @param ground_uuids Array of ground primitive UUIDs (may be null when ground_count is 0)
+ * @param ground_count Number of ground UUIDs
+ * @param canopy_height_m Height of the canopy in meters
+ * @param reference_height_m Height at which above-canopy conditions are measured, must exceed canopy height
+ * @param leaf_area_index One-sided leaf area index on a ground-area basis
+ * @param num_layers Number of vertical airspace layers of equal leaf area index
+ */
+PYHELIOS_API void enableCanopyAirspaceModel(EnergyBalanceModel* energy_model, const unsigned int* canopy_uuids, unsigned int canopy_count, const unsigned int* ground_uuids, unsigned int ground_count, float canopy_height_m, float reference_height_m, float leaf_area_index, unsigned int num_layers);
+
+/**
+ * @brief Disable the canopy airspace model
+ * @param energy_model Pointer to the EnergyBalanceModel
+ */
+PYHELIOS_API void disableCanopyAirspaceModel(EnergyBalanceModel* energy_model);
+
+/**
+ * @brief Set convergence criteria for the canopy airspace iteration
+ * @param energy_model Pointer to the EnergyBalanceModel
+ * @param tolerance_K Temperature convergence tolerance in Kelvin (default 0.01)
+ * @param max_iterations Maximum number of coupled iterations (default 50)
+ */
+PYHELIOS_API void setCanopyAirspaceConvergence(EnergyBalanceModel* energy_model, float tolerance_K, unsigned int max_iterations);
+
+/**
  * @brief Add optional output primitive data
  * @param energy_model Pointer to the EnergyBalanceModel
  * @param label Name of the primitive data to add (e.g., "vapor_pressure_deficit")

@@ -664,6 +664,49 @@ if context.doesPrimitiveDataExist(UUID, "emissivity"):
     L = context.getPrimitiveDataSize(UUID, "emissivity")
 ```
 
+### Area Index {#AreaIndex}
+
+The one-sided area index \f$L\f$ is the total one-sided area of a group of primitives divided by
+the ground area over which it is distributed -- the quantity appearing in Beer's law,
+\f$\exp(-GL/\cos\theta)\f$. \ref pyhelios.Context.Context::calculateAreaIndex "calculateAreaIndex()"
+computes it, optionally including woody elements to give a *plant* area index rather than a leaf
+area index.
+
+| Call | Result |
+|------|--------|
+| `calculateAreaIndex(leaf_uuids)` | Leaf area index, ground area taken from the domain bounding box |
+| `calculateAreaIndex(leaf_uuids, ground_area=A)` | Leaf area index over an explicit ground area \f$A\f$ (m<sup>2</sup>) |
+| `calculateAreaIndex(leaf_uuids, wood_uuids)` | Plant area index, ground area from the bounding box |
+| `calculateAreaIndex(leaf_uuids, wood_uuids, ground_area=A)` | Plant area index over an explicit ground area |
+
+When `ground_area` is omitted, the basis is the horizontal (x-y) footprint of the bounding box of
+**all** primitives in the Context. A ground primitive extending beyond the canopy therefore
+enlarges the basis and lowers the reported index, so supply `ground_area` explicitly whenever the
+domain is not cropped tightly to the canopy. Ground primitives should not be listed in
+`leaf_uuids`; they are excluded from the numerator by omission.
+
+Woody area is counted as **one half** of its summed one-sided area, because a tube or cone object
+encloses the branch and so sums to the full cylinder surface (\f$\approx 2\pi rL\f$) rather than
+the projected area Beer's law requires. If woody elements are instead represented by non-enclosing
+planar primitives that are already one-sided silhouettes, this halving underestimates their
+contribution by a factor of two.
+
+Primitives of type voxel are not permitted, because a voxel's area is its total enclosing surface
+area rather than a one-sided area.
+
+```python
+from pyhelios import Context
+
+context = Context()
+context.loadXML("canopy.xml")
+
+leaf_uuids = context.filterPrimitivesByData(context.getAllUUIDs(), "object_label", "leaf")
+wood_uuids = context.filterPrimitivesByData(context.getAllUUIDs(), "object_label", "wood")
+
+LAI = context.calculateAreaIndex(leaf_uuids)
+PAI = context.calculateAreaIndex(leaf_uuids, wood_uuids, ground_area=100.0)
+```
+
 ## Material Data {#MaterialData}
 
 Material data is similar to primitive data, but is attached to a named *material* rather than a UUID. A material is created with `addMaterial(label)` and can then be assigned to one or more primitives via `assignMaterialToPrimitive(uuid, label)`. Setting a data value on the material is reflected for every primitive that references it, which is useful for storing shared physical properties (e.g., a leaf reflectivity that applies to every leaf).

@@ -678,3 +678,130 @@ class TestEnergyBalanceEdgeCases:
                 # Test large air energy balance timestep
                 energy_balance.enableAirEnergyBalance()
                 energy_balance.evaluateAirEnergyBalance(dt_sec=300.0, time_advance_sec=7200.0)  # 5min steps, 2 hour total
+
+@pytest.mark.cross_platform
+class TestCanopyAirspaceValidation:
+    """Argument validation for the canopy airspace model (helios-core 1.3.86).
+
+    Validation is pure Python, so these run in mock mode too.
+    """
+
+    def _model(self):
+        return EnergyBalanceModel.__new__(EnergyBalanceModel)
+
+    def test_empty_canopy_uuids_rejected(self):
+        with pytest.raises(ValueError, match="at least one UUID"):
+            EnergyBalanceModel.enableCanopyAirspaceModel(
+                self._model(), [], canopy_height_m=3.0, reference_height_m=5.0,
+                leaf_area_index=2.0)
+
+    def test_non_positive_canopy_height_rejected(self):
+        with pytest.raises(ValueError, match="[Cc]anopy height must be positive"):
+            EnergyBalanceModel.enableCanopyAirspaceModel(
+                self._model(), [1], canopy_height_m=0.0, reference_height_m=5.0,
+                leaf_area_index=2.0)
+
+    def test_reference_height_must_exceed_canopy_height(self):
+        with pytest.raises(ValueError, match="greater than"):
+            EnergyBalanceModel.enableCanopyAirspaceModel(
+                self._model(), [1], canopy_height_m=5.0, reference_height_m=5.0,
+                leaf_area_index=2.0)
+
+    def test_non_positive_leaf_area_index_rejected(self):
+        with pytest.raises(ValueError, match="[Ll]eaf area index must be positive"):
+            EnergyBalanceModel.enableCanopyAirspaceModel(
+                self._model(), [1], canopy_height_m=3.0, reference_height_m=5.0,
+                leaf_area_index=0.0)
+
+    def test_num_layers_below_one_rejected(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            EnergyBalanceModel.enableCanopyAirspaceModel(
+                self._model(), [1], canopy_height_m=3.0, reference_height_m=5.0,
+                leaf_area_index=2.0, num_layers=0)
+
+    @pytest.mark.parametrize("bad", [0.0, -0.5])
+    def test_non_positive_tolerance_rejected(self, bad):
+        with pytest.raises(ValueError, match="tolerance must be positive"):
+            EnergyBalanceModel.setCanopyAirspaceConvergence(self._model(), tolerance_K=bad)
+
+    def test_max_iterations_below_one_rejected(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            EnergyBalanceModel.setCanopyAirspaceConvergence(
+                self._model(), tolerance_K=0.01, max_iterations=0)
+
+
+@pytest.mark.native_only
+class TestCanopyAirspaceNative:
+    """Canopy airspace model against the native library (helios-core 1.3.86)."""
+
+    def _canopy(self, context, n=3):
+        """A small horizontal canopy plus a ground patch."""
+        leaves = [context.addPatch(center=vec3(0.2 * i, 0.0, 0.5 + 0.2 * i), size=vec2(0.3, 0.3))
+                  for i in range(n)]
+        ground = [context.addPatch(center=vec3(0, 0, 0), size=vec2(2.0, 2.0))]
+        return leaves, ground
+
+    def test_enable_and_disable_canopy_airspace(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        with Context() as context:
+            leaves, ground = self._canopy(context)
+            with EnergyBalanceModel(context) as eb:
+                eb.enableCanopyAirspaceModel(
+                    canopy_UUIDs=leaves, canopy_height_m=1.0, reference_height_m=2.0,
+                    leaf_area_index=1.5, num_layers=2, ground_UUIDs=ground)
+                # Disabling must be accepted whether or not run() has been called.
+                eb.disableCanopyAirspaceModel()
+
+    def test_canopy_airspace_run_reports_global_diagnostics(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        with Context() as context:
+            leaves, ground = self._canopy(context)
+            setup_radiation_for_energy_balance(context, band="SW")
+            with EnergyBalanceModel(context) as eb:
+                eb.addRadiationBand("SW")
+                eb.enableCanopyAirspaceModel(
+                    canopy_UUIDs=leaves, canopy_height_m=1.0, reference_height_m=2.0,
+                    leaf_area_index=1.5, num_layers=2, ground_UUIDs=ground)
+                eb.setCanopyAirspaceConvergence(tolerance_K=0.05, max_iterations=25)
+                eb.run()
+
+                # The airspace solution sets the within-canopy air state on canopy primitives.
+                for label in ("air_temperature", "air_humidity", "wind_speed"):
+                    assert context.doesPrimitiveDataExist(leaves[0], label), \
+                        f"canopy airspace run() should set primitive data '{label}'"
+
+                # Reported airspace diagnostics.
+                assert context.doesGlobalDataExist("canopy_air_temperature")
+                t_air = context.getGlobalDataFloat("canopy_air_temperature")
+                assert 200.0 < t_air < 300.0 + 150.0, f"implausible canopy air temperature {t_air}"
+
+    def test_ground_uuids_optional(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        with Context() as context:
+            leaves, _ = self._canopy(context)
+            with EnergyBalanceModel(context) as eb:
+                # No soil node: ground_UUIDs omitted entirely.
+                eb.enableCanopyAirspaceModel(
+                    canopy_UUIDs=leaves, canopy_height_m=1.0, reference_height_m=2.0,
+                    leaf_area_index=1.5)
+
+    def test_single_layer_accepted(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        with Context() as context:
+            leaves, ground = self._canopy(context)
+            with EnergyBalanceModel(context) as eb:
+                eb.enableCanopyAirspaceModel(
+                    canopy_UUIDs=leaves, canopy_height_m=1.0, reference_height_m=2.0,
+                    leaf_area_index=1.5, num_layers=1, ground_UUIDs=ground)

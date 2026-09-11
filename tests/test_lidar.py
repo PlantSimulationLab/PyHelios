@@ -5,6 +5,7 @@ Tests for LiDAR plugin integration
 import pytest
 import math
 import os
+from unittest.mock import patch
 from pyhelios.types import vec3, vec2, RGBcolor, SphericalCoord
 from pyhelios.plugins.registry import get_plugin_registry
 from pyhelios.exceptions import HeliosError
@@ -768,6 +769,44 @@ class TestLiDARGrid:
             assert abs(c0.x - 0.0) < 1e-4, f"x={c0.x}"
             assert abs(c0.y - (-0.5)) < 1e-4, f"y={c0.y}"
             assert abs(c0.z - 0.5) < 1e-4, f"z={c0.z}"
+
+    def test_get_cell_center_unrotated_returns_the_lattice_center(self):
+        """getCellCenterUnrotated undoes the rotation getCellCenter applies.
+
+        A caller that rotates the voxel lattice itself (rotating a whole voxel group
+        about the grid center for display, or binning points by inverse-rotating the
+        POINTS) needs the axis-aligned center; handing it the rotated one rotates the
+        lattice twice. Uses a rotation whose sin/cos are both non-trivial, so a stub
+        that merely echoed getCellCenter (or dropped the rotation on the floor) fails.
+        """
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            lidar.addGrid(
+                center=vec3(0, 0, 0.5),
+                size=vec3(2, 1, 1),
+                ndiv=[2, 1, 1],
+                rotation=37.0
+            )
+
+            rotated = lidar.getCellCenter(0)
+            lattice = lidar.getCellCenterUnrotated(0)
+
+            # Cell 0's lattice center is (-0.5, 0, 0.5); at 37 deg it is genuinely moved.
+            assert abs(lattice.x - (-0.5)) < 1e-4, f"x={lattice.x}"
+            assert abs(lattice.y - 0.0) < 1e-4, f"y={lattice.y}"
+            assert abs(lattice.z - 0.5) < 1e-4, f"z={lattice.z}"
+            assert abs(rotated.x - lattice.x) > 1e-3, "rotation was not applied by getCellCenter"
+
+    def test_get_cell_center_unrotated_matches_for_an_unrotated_grid(self):
+        """With no rotation the two accessors agree exactly (the short-circuit path)."""
+        from pyhelios import LiDARCloud
+
+        with LiDARCloud() as lidar:
+            lidar.addGrid(center=vec3(0, 0, 0.5), size=vec3(2, 1, 1), ndiv=[2, 1, 1])
+            for i in range(lidar.getGridCellCount()):
+                a, b = lidar.getCellCenter(i), lidar.getCellCenterUnrotated(i)
+                assert abs(a.x - b.x) < 1e-6 and abs(a.y - b.y) < 1e-6 and abs(a.z - b.z) < 1e-6
 
     def test_add_grid_cell(self):
         """Test adding individual grid cells"""
@@ -3237,6 +3276,90 @@ class TestLiDARExactPathLengths:
 
 
 @pytest.mark.native_only
+class TestLiDARCroppedReturnInference:
+    """calculateLeafArea recovers returns removed from a cloud from target_count.
+
+    One scene, one voxel, G(theta) supplied. Pulse A fires along +x through the voxel
+    centre and records 4 returns: one inside the voxel (x=0) and three beyond it
+    (x=2,3,4). Pulse B is a recorded sky miss whose beam also crosses the voxel. Equal
+    weighting gives P = (3/4 + 1)/2 for the full record. Cropping the cloud to the
+    voxel leaves pulse A with its inside return plus a far-field stand-in miss; with
+    target_count still 4 the inversion must reproduce the full cloud's LAD, and
+    without the per-pulse columns it sees a two-return beam (P = (1/2 + 1)/2).
+    """
+
+    ORIGIN = (-5.0, 0.0, 0.5)
+
+    @classmethod
+    def _dirs(cls, xyz):
+        # cart2sphere(xyz - origin): [radius, elevation, azimuth], as loadASCIIFile does.
+        import numpy as np
+        d = np.asarray(xyz, dtype=np.float64) - np.asarray(cls.ORIGIN)
+        r = np.linalg.norm(d, axis=1)
+        return np.column_stack([r, np.arcsin(d[:, 2] / r), np.arctan2(d[:, 0], d[:, 1])])
+
+    @classmethod
+    def _lad(cls, mode):
+        """mode: 'full' | 'cropped' | 'legacy'. Returns (lad, cropped-return stats)."""
+        import numpy as np
+        from pyhelios import Context, LiDARCloud
+        ox, oy, oz = cls.ORIGIN
+        # rows: x, y, z, timestamp, target_index, target_count, is_miss
+        if mode == "full":
+            rows = [(0, 0, 0.5, 1.0, 0, 4, 0), (2, 0, 0.5, 1.0, 1, 4, 0),
+                    (3, 0, 0.5, 1.0, 2, 4, 0), (4, 0, 0.5, 1.0, 3, 4, 0)]
+        else:
+            rows = [(0, 0, 0.5, 1.0, 0, 4, 0), (995, 0, 0.5, 1.0, 1, 4, 1)]
+        d = np.array([5.0, 0.2, 0.0])
+        d /= np.linalg.norm(d)
+        far = np.array(cls.ORIGIN) + 1000.0 * d
+        rows.append((far[0], far[1], far[2], 2.0, 0, 1, 1))
+        arr = np.array(rows, dtype=np.float64)
+        xyz = arr[:, :3]
+        if mode == "legacy":
+            labels = ["timestamp", "is_miss"]
+            vals = arr[:, [3, 6]]
+        else:
+            labels = ["timestamp", "target_index", "target_count", "is_miss"]
+            vals = arr[:, 3:7]
+        with Context() as context:
+            # Collision detection wants a primitive; keep it far from the grid.
+            context.addPatch(center=vec3(0, 0, -50), size=vec2(1, 1))
+            with LiDARCloud() as lidar:
+                lidar.addScan(origin=vec3(ox, oy, oz), Ntheta=10, theta_range=(0, math.pi),
+                              Nphi=10, phi_range=(0, 2 * math.pi), exit_diameter=0,
+                              beam_divergence=0)
+                lidar.addGrid(center=vec3(0, 0, 0.5), size=vec3(1, 1, 1), ndiv=(1, 1, 1))
+                lidar.addHitPointsWithData(0, xyz, cls._dirs(xyz), labels, vals)
+                lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05,
+                                        Gtheta=0.5)
+                return lidar.getCellLeafAreaDensity(0), lidar.getCroppedReturnStats()
+
+    def test_fresh_cloud_reports_zero(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            st = lidar.getCroppedReturnStats()
+            assert set(st) == {"beams_with_hidden_returns", "hidden_before", "hidden_after",
+                               "hidden_ambiguous", "beams_ambiguous", "standins_ignored"}
+            assert all(v == 0 for v in st.values())
+
+    def test_cropped_cloud_inverts_to_the_full_clouds_lad(self):
+        lad_full, st_full = self._lad("full")
+        lad_cropped, st = self._lad("cropped")
+        assert lad_full > 0
+        assert lad_cropped == pytest.approx(lad_full, abs=1e-3)
+        assert st_full["beams_with_hidden_returns"] == 0
+        assert st == {"beams_with_hidden_returns": 1, "hidden_before": 0, "hidden_after": 3,
+                      "hidden_ambiguous": 0, "beams_ambiguous": 0, "standins_ignored": 1}
+
+    def test_without_target_count_the_cropped_beam_reads_as_intercepted(self):
+        lad_full, _ = self._lad("full")
+        lad_legacy, st = self._lad("legacy")
+        # P = 0.75 vs 0.875 -> LAD roughly doubles.
+        assert lad_legacy > 1.5 * lad_full
+        assert st["beams_with_hidden_returns"] == 0
+
+
 class TestLiDARVirtualMisses:
     """helios-core 1.3.84 virtualized gap-filled misses and columnar readers."""
 
@@ -3365,3 +3488,467 @@ class TestLiDARVirtualMisses:
                 assert len(misses) == lidar.getHitCount()
                 for i in (0, lidar.getHitCount() // 2, lidar.getHitCount() - 1):
                     assert bool(misses[i]) == lidar.isHitMiss(i)
+
+
+class TestLiDAR1385Interface:
+    """Cross-platform interface tests for the helios-core 1.3.85 LiDAR additions:
+    isMultiReturnData() and the per-cell G(theta) overload of calculateLeafArea()."""
+
+    @staticmethod
+    def _bare_cloud_and_context():
+        from pyhelios import Context, LiDARCloud
+
+        lidar = LiDARCloud.__new__(LiDARCloud)
+        lidar._cloud_ptr = None
+
+        class _FakeContext(Context):
+            def __init__(self):  # bypass native context creation
+                pass
+
+        return lidar, _FakeContext()
+
+    @pytest.mark.cross_platform
+    def test_methods_exist(self):
+        from pyhelios import LiDARCloud
+        assert callable(getattr(LiDARCloud, "isMultiReturnData"))
+        assert callable(getattr(LiDARCloud, "calculateLeafArea"))
+
+    @pytest.mark.cross_platform
+    def test_per_cell_gtheta_rejects_empty_sequence(self):
+        lidar, context = self._bare_cloud_and_context()
+        with pytest.raises(ValueError, match="at least one value"):
+            lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05, Gtheta=[])
+
+    @pytest.mark.cross_platform
+    def test_per_cell_gtheta_rejects_out_of_range_values(self):
+        lidar, context = self._bare_cloud_and_context()
+        with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+            lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05, Gtheta=[0.5, 0.0])
+        with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+            lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05, Gtheta=[0.5, 1.5])
+
+    @pytest.mark.cross_platform
+    def test_per_cell_gtheta_requires_companion_args(self):
+        lidar, context = self._bare_cloud_and_context()
+        with pytest.raises(ValueError, match="min_voxel_hits and element_width"):
+            lidar.calculateLeafArea(context, Gtheta=[0.5, 0.5])
+
+    @pytest.mark.cross_platform
+    def test_unavailable_library_raises_clear_error(self):
+        from pyhelios.wrappers import ULiDARWrapper as w
+        if w._LIDAR_1385_AVAILABLE:
+            pytest.skip("Native library provides the 1.3.85 LiDAR functions")
+        with pytest.raises(RuntimeError, match="helios-core v1.3.85"):
+            w.lidarIsMultiReturnData(None)
+        with pytest.raises(RuntimeError, match="helios-core v1.3.85"):
+            w.calculateLiDARLeafAreaGthetaPerCell(None, None, [0.5], 1, 0.05)
+
+
+@pytest.mark.native_only
+class TestLiDAR1385Functionality:
+    """Native functional tests for the helios-core 1.3.85 LiDAR additions."""
+
+    @pytest.fixture(autouse=True)
+    def _require(self, check_native_library):
+        from pyhelios.wrappers import ULiDARWrapper as w
+        if not w._LIDAR_FUNCTIONS_AVAILABLE:
+            pytest.skip("LiDAR plugin not available")
+        if not w._LIDAR_1385_AVAILABLE:
+            pytest.skip("Native library predates the helios-core 1.3.85 LiDAR additions")
+
+    @staticmethod
+    def _scan_patch(context, lidar, ndiv, discrete=False):
+        """Scan a single patch from above and lay a grid over it; returns the cell count.
+
+        A full-waveform scan (the default) can record several returns per pulse; pass
+        ``discrete=True`` for a single-return scan.
+        """
+        lidar.disableMessages()
+        if discrete:
+            lidar.addScan(
+                origin=vec3(0, 0, 3),
+                Ntheta=30, theta_range=(2.7, 3.13),
+                Nphi=30, phi_range=(0, 6.28),
+                exit_diameter=0.0, beam_divergence=0.0,
+            )
+            lidar.syntheticScan(context, record_misses=True)
+        else:
+            lidar.addScan(
+                origin=vec3(0, 0, 3),
+                Ntheta=30, theta_range=(2.7, 3.13),
+                Nphi=30, phi_range=(0, 6.28),
+                exit_diameter=0.02, beam_divergence=0.001,
+            )
+            lidar.syntheticScan(context, rays_per_pulse=12,
+                                pulse_distance_threshold=0.05, record_misses=True)
+        lidar.addGrid(center=vec3(0, 0, 0.5), size=vec3(1, 1, 1), ndiv=ndiv, rotation=0.0)
+        lidar.calculateHitGridCell()
+        return lidar.getGridCellCount()
+
+    def test_single_return_scan_is_not_multi_return(self):
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+            with LiDARCloud() as lidar:
+                self._scan_patch(context, lidar, [1, 1, 1], discrete=True)
+                assert lidar.getHitCount() > 0
+                assert lidar.isMultiReturnData() is False
+
+    def test_empty_cloud_is_not_multi_return(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            assert lidar.isMultiReturnData() is False
+
+    def test_full_waveform_scan_of_layered_scene_is_multi_return(self):
+        """A full-waveform scan whose beams straddle a small upper leaf over a large lower
+        one records two returns for the straddling pulses, which is what
+        isMultiReturnData() reports on."""
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.3), size=vec2(1.0, 1.0))
+            context.addPatch(center=vec3(0, 0, 0.6), size=vec2(0.1, 0.1))
+            with LiDARCloud() as lidar:
+                lidar.disableMessages()
+                lidar.addScan(
+                    origin=vec3(0, 0, 3),
+                    Ntheta=40, theta_range=(2.9, 3.14),
+                    Nphi=40, phi_range=(0, 6.28),
+                    exit_diameter=0.05, beam_divergence=0.05,  # wide footprint => straddling pulses
+                )
+                lidar.syntheticScan(context, rays_per_pulse=50, pulse_distance_threshold=0.05)
+                counts = lidar.getHitDataColumn("target_count")
+                assert max(counts) > 1, "scene did not produce a multi-return pulse"
+                assert lidar.isMultiReturnData() is True
+
+    def test_per_cell_gtheta_runs_without_triangulation(self):
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+            with LiDARCloud() as lidar:
+                n = self._scan_patch(context, lidar, [2, 2, 1])
+                assert n == 4
+                # One G(theta) per cell, in grid-cell order; no triangulateHitPoints() call.
+                lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05,
+                                        Gtheta=[0.5, 0.4, 0.6, 0.5])
+                for cell in range(n):
+                    assert isinstance(lidar.getCellLeafArea(cell), float)
+
+    def test_per_cell_gtheta_matches_scalar_when_uniform(self):
+        """A per-cell vector of identical values must reproduce the scalar overload."""
+        from pyhelios import Context, LiDARCloud
+
+        def run(Gtheta):
+            with Context() as context:
+                context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+                with LiDARCloud() as lidar:
+                    context.seedRandomGenerator(11)
+                    n = self._scan_patch(context, lidar, [1, 1, 1])
+                    lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05,
+                                            Gtheta=Gtheta)
+                    return [lidar.getCellLeafArea(i) for i in range(n)]
+
+        scalar = run(0.5)
+        per_cell = run([0.5])
+        assert per_cell == pytest.approx(scalar, rel=1e-6)
+
+    def test_per_cell_gtheta_wrong_length_rejected(self):
+        from pyhelios import Context, LiDARCloud
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0.5), size=vec2(0.3, 0.3))
+            with LiDARCloud() as lidar:
+                n = self._scan_patch(context, lidar, [2, 2, 1])
+                with pytest.raises(ValueError, match="one entry per grid cell"):
+                    lidar.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05,
+                                            Gtheta=[0.5] * (n + 1))
+
+
+@pytest.mark.native_only
+class TestLastHitFilterRegression:
+    """lastHitFilter() kept everything EXCEPT the last returns before helios-core 1.3.86.
+
+    It deleted the last return of every pulse and kept all earlier ones -- the opposite of
+    what it documents -- so a cloud filtered to "last hits only" contained every return but
+    the last. These tests pin the corrected semantics against firstHitFilter().
+    """
+
+    RANGES = (1.0, 2.0, 3.0)
+
+    def _multi_return_cloud(self, lidar):
+        """One pulse direction carrying three returns at increasing range.
+
+        target_index/target_count identify each return's position within its pulse, which
+        is what the first/last hit filters select on. They have to go through
+        addHitPointsWithData(): addHitPoint() takes no per-hit data map.
+        """
+        import numpy as np
+        scan_id = lidar.addScan(origin=vec3(0, 0, 0),
+                                Ntheta=1, theta_range=(0.0, 0.1),
+                                Nphi=1, phi_range=(0.0, 0.1),
+                                exit_diameter=0.01, beam_divergence=0.001)
+        n = len(self.RANGES)
+        xyz = np.array([[r, 0.0, 0.0] for r in self.RANGES], dtype=np.float32)
+        # direction rows are [radius, elevation, azimuth]; the beam points along +x.
+        direction = np.array([[r, 0.0, 0.0] for r in self.RANGES], dtype=np.float32)
+        values = np.array([[float(i), float(n)] for i in range(n)], dtype=np.float64)
+        lidar.addHitPointsWithData(scan_id, xyz, direction,
+                                   data_labels=["target_index", "target_count"],
+                                   data_values=values)
+        return scan_id
+
+    def test_last_hit_filter_keeps_final_return(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._multi_return_cloud(lidar)
+            assert lidar.getHitCount() == len(self.RANGES)
+
+            lidar.lastHitFilter()
+
+            assert lidar.getHitCount() == 1, (
+                "lastHitFilter() must keep exactly the final return of each pulse; before "
+                "helios-core 1.3.86 it deleted that return and kept all the earlier ones")
+            assert lidar.getHitXYZ(0).x == pytest.approx(self.RANGES[-1], abs=1e-3), (
+                f"lastHitFilter() kept the wrong return: x={lidar.getHitXYZ(0).x}, "
+                f"expected the last at {self.RANGES[-1]}")
+
+    def test_first_hit_filter_keeps_initial_return(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._multi_return_cloud(lidar)
+            lidar.firstHitFilter()
+            assert lidar.getHitCount() == 1
+            assert lidar.getHitXYZ(0).x == pytest.approx(self.RANGES[0], abs=1e-3)
+
+    def test_first_and_last_hit_filters_select_opposite_ends(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._multi_return_cloud(lidar)
+            lidar.firstHitFilter()
+            first_x = lidar.getHitXYZ(0).x
+
+        with LiDARCloud() as lidar2:
+            self._multi_return_cloud(lidar2)
+            lidar2.lastHitFilter()
+            last_x = lidar2.getHitXYZ(0).x
+
+        assert last_x > first_x, (
+            f"the last return (x={last_x}) must be farther than the first (x={first_x}); "
+            f"an inverted lastHitFilter() makes these compare the wrong way")
+
+
+@pytest.mark.cross_platform
+class TestLiDAR1386Validation:
+    """Argument validation for the helios-core 1.3.86 LiDAR additions (pure Python)."""
+
+    def _cloud(self):
+        from pyhelios import LiDARCloud
+        return LiDARCloud.__new__(LiDARCloud)
+
+    def test_hit_data_type_values_mirror_native_order(self):
+        from pyhelios.LiDARCloud import HitDataType
+        assert (int(HitDataType.FLOAT64), int(HitDataType.FLOAT32), int(HitDataType.INT32)) == (0, 1, 2)
+
+    def test_wrapper_guard_uses_1386_flag(self):
+        """A wrapper must check the flag set by the block that registered its symbols.
+
+        Checking the wrong flag skips NotImplementedError and calls a function whose
+        argtypes were never set.
+        """
+        from pyhelios.wrappers import ULiDARWrapper as w
+        with patch.object(w, '_LIDAR_1386_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.86"):
+                w._require_lidar_1386()
+
+    @pytest.mark.parametrize("bad", [-1, -5])
+    def test_negative_scan_id_rejected(self, bad):
+        from pyhelios import LiDARCloud
+        with pytest.raises(ValueError, match="(?i)scan.*non-negative"):
+            LiDARCloud.addHitPointsBulk(self._cloud(), bad, [[0.0, 0.0, 0.0]])
+
+    def test_delete_hit_points_rejects_negative(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(ValueError):
+            LiDARCloud.deleteHitPoints(self._cloud(), -1, 2)
+
+    def test_triangulation_sink_rejects_non_callable(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(TypeError, match="callable"):
+            LiDARCloud.setTriangulationSink(self._cloud(), 42)
+
+    def test_synthetic_sink_rejects_non_callable(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(TypeError, match="callable"):
+            LiDARCloud.setSyntheticScanHitSink(self._cloud(), 42)
+
+
+@pytest.mark.native_only
+class TestLiDAR1386Native:
+    """The helios-core 1.3.86 LiDAR additions against the native library."""
+
+    N = 6
+
+    def _cloud_with_hits(self, lidar):
+        """One scan carrying N hits with two explicitly-typed data columns."""
+        import numpy as np
+        from pyhelios.LiDARCloud import HitDataType
+        scan = lidar.addScan(origin=vec3(0, 0, 0), Ntheta=4, theta_range=(0.0, 0.5),
+                             Nphi=4, phi_range=(0.0, 0.5),
+                             exit_diameter=0.01, beam_divergence=0.001)
+        lidar.createHitDataColumn("idx", HitDataType.INT32)
+        lidar.createHitDataColumn("frac", HitDataType.FLOAT32)
+        xyz = np.array([[1.0 + i, 0.0, 0.0] for i in range(self.N)], dtype=np.float64)
+        vals = np.array([[float(i), i * 0.5] for i in range(self.N)], dtype=np.float64)
+        lidar.addHitPointsBulk(scan, xyz, labels=["idx", "frac"], values=vals)
+        return scan
+
+    def test_bulk_ingest_and_typed_columns(self):
+        from pyhelios import LiDARCloud
+        from pyhelios.LiDARCloud import HitDataType
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            assert lidar.getHitCount() == self.N
+            assert lidar.getHitDataType("idx") == HitDataType.INT32
+            assert lidar.getHitDataType("frac") == HitDataType.FLOAT32
+            assert lidar.getHitDataColumnInt32("idx") == list(range(self.N))
+            assert lidar.getHitDataColumnFloat32("frac") == pytest.approx(
+                [i * 0.5 for i in range(self.N)])
+
+    def test_get_hit_data_type_unknown_label_raises(self):
+        """Unknown label must raise, not return a sentinel that reads as FLOAT64."""
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            with pytest.raises(Exception):
+                lidar.getHitDataType("no_such_label")
+
+    def test_delete_hit_points_preserves_order(self):
+        """deleteHitPoints is order-preserving, unlike the single-index swap-and-pop delete."""
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            lidar.deleteHitPoints(2, 2)
+            assert lidar.getHitCount() == self.N - 2
+            assert lidar.getHitDataColumnInt32("idx") == [0, 1, 4, 5]
+
+    def test_per_scan_readers_agree_with_whole_cloud(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            scan = self._cloud_with_hits(lidar)
+            assert lidar.getScanHitCount(scan) == lidar.getHitCount()
+            assert lidar.getScanHitIndices(scan) == list(range(self.N))
+            assert lidar.getScanHitDataColumnInt32(scan, "idx") == list(range(self.N))
+            assert lidar.getScanHitDataColumnFloat32(scan, "frac") == pytest.approx(
+                [i * 0.5 for i in range(self.N)])
+            xyz = lidar.getScanHitXYZColumn(scan)
+            assert len(xyz) == self.N
+
+    def test_hit_point_capacity_at_least_count(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            assert lidar.getHitPointCapacity() >= lidar.getHitCount()
+
+    def test_sinks_can_be_set_and_cleared(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            lidar.setTriangulationSink(lambda scanID, verts, ids: None)
+            lidar.setTriangulationSink(None)
+            lidar.setSyntheticScanHitSink(lambda first, count: None)
+            lidar.setSyntheticScanHitSink(None)
+
+    def _triangulable_cloud(self, lidar):
+        """A grid plus coplanar, non-collinear points that Delaunay can triangulate.
+
+        Two things are required and are easy to miss. The points must not be collinear
+        (the bulk-ingest fixture lays its points along one axis, which yields zero
+        triangles), and every hit must have been assigned to a grid cell: the native
+        gather skips any hit whose gridcell is negative, so without addGrid() plus
+        calculateHitGridCell() the triangulation silently forms nothing and a sink test
+        built on it would pass while never firing.
+        """
+        scan = lidar.addScan(origin=vec3(0.5, 0.5, 5.0),
+                             Ntheta=20, theta_range=(0.0, 0.5),
+                             Nphi=20, phi_range=(0.0, 2 * math.pi),
+                             exit_diameter=0.0, beam_divergence=0.0)
+        step = 0.25
+        n = 5
+        for i in range(n):
+            for j in range(n):
+                lidar.addHitPoint(scan, vec3(i * step, j * step, 0.0), vec3(0, 0, -1))
+        lidar.addGrid(center=vec3(0.5, 0.5, 0.0), size=vec3(2.0, 2.0, 0.5), ndiv=[1, 1, 1])
+        lidar.calculateHitGridCell()
+        return scan
+
+    def test_triangulation_sink_receives_triangles(self):
+        from pyhelios import LiDARCloud
+        seen = []
+        with LiDARCloud() as lidar:
+            self._triangulable_cloud(lidar)
+            lidar.setTriangulationSink(lambda scanID, verts, ids: seen.append((verts, ids)))
+            lidar.triangulateHitPoints(Lmax=2.0, max_aspect_ratio=4.0)
+
+        # Without this the loop below would assert nothing on an empty list.
+        assert seen, "the triangulation sink was never called"
+        total = 0
+        for verts, ids in seen:
+            assert verts.shape[1] == 9, "vertices must be 9 floats per triangle"
+            assert ids.shape[1] == 2, "ids must be [scanID, gridcell] per triangle"
+            assert verts.shape[0] == ids.shape[0]
+            total += verts.shape[0]
+        assert total > 0, "the sink fired but delivered no triangles"
+
+    def test_streamed_triangulation_is_not_retained(self):
+        """With a sink set, the mesh is streamed rather than stored."""
+        from pyhelios import LiDARCloud
+        seen = []
+        with LiDARCloud() as lidar:
+            self._triangulable_cloud(lidar)
+            lidar.setTriangulationSink(lambda scanID, verts, ids: seen.append(verts.shape[0]))
+            lidar.triangulateHitPoints(Lmax=2.0, max_aspect_ratio=4.0)
+            assert seen and sum(seen) > 0, "the sink delivered no triangles"
+            assert lidar.getTriangleCount() == 0, (
+                "a streamed triangulation must not also retain the mesh")
+
+    def test_callback_exception_is_reraised_not_swallowed(self):
+        """A Python exception inside a sink callback must surface, not vanish.
+
+        ctypes swallows exceptions raised in a CFUNCTYPE callback (it returns 0 and C++
+        reads that as success), so the sink stashes it and the triggering call re-raises.
+        Without that relay this test would report a successful triangulation.
+        """
+        from pyhelios import LiDARCloud
+
+        class SinkBoom(RuntimeError):
+            pass
+
+        entered = []
+
+        with LiDARCloud() as lidar:
+            self._triangulable_cloud(lidar)
+
+            def boom(scanID, verts, ids):
+                entered.append(True)
+                raise SinkBoom("sink failed")
+
+            lidar.setTriangulationSink(boom)
+            with pytest.raises(SinkBoom, match="sink failed"):
+                lidar.triangulateHitPoints(Lmax=2.0, max_aspect_ratio=4.0)
+
+        # If the callback never ran, the raises-check above would be meaningless.
+        assert entered, "the sink callback was never invoked, so nothing could be re-raised"
+
+    def test_lattice_coordinates_and_block_inversion(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            lidar.addGrid(center=vec3(2, 0, 0), size=vec3(4, 1, 1), ndiv=(2, 1, 1))
+            nx, ny, nz = lidar.getGridGlobalCount()
+            assert (nx, ny, nz) == (2, 1, 1)
+            assert lidar.getCellGlobalIJK(0) == (0, 0, 0)
+
+    def test_get_grid_global_count_without_grid_raises(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            self._cloud_with_hits(lidar)
+            with pytest.raises(Exception):
+                lidar.getGridGlobalCount()

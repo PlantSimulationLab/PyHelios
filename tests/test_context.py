@@ -6078,3 +6078,64 @@ class TestFunctionAvailabilityGuards:
             for func, args in cases:
                 with pytest.raises((NotImplementedError, RuntimeError), match="not available|rebuilt"):
                     func(*args)
+
+
+@pytest.mark.native_only
+class TestCalculateAreaIndex:
+    """Area index (Beer's law L) from leaf and woody primitives (helios-core 1.3.86)."""
+
+    def _leaf_grid(self, context, n=4, size=0.5, z=1.0):
+        """n*n horizontal patches of area size^2, centered over a 2x2 m footprint."""
+        uuids = []
+        for i in range(n):
+            for j in range(n):
+                uuids.append(context.addPatch(
+                    center=vec3(-1.0 + (i + 0.5) * (2.0 / n), -1.0 + (j + 0.5) * (2.0 / n), z),
+                    size=vec2(size, size)))
+        return uuids
+
+    def test_leaf_area_index_with_explicit_ground_area(self, basic_context):
+        # 16 patches of 0.25 m^2 = 4 m^2 leaf area over 10 m^2 ground => L = 0.4
+        leaves = self._leaf_grid(basic_context)
+        lai = basic_context.calculateAreaIndex(leaves, ground_area=10.0)
+        assert lai == pytest.approx(4.0 / 10.0, rel=1e-4)
+
+    def test_leaf_area_index_scales_inversely_with_ground_area(self, basic_context):
+        leaves = self._leaf_grid(basic_context)
+        assert (basic_context.calculateAreaIndex(leaves, ground_area=5.0)
+                == pytest.approx(2.0 * basic_context.calculateAreaIndex(leaves, ground_area=10.0), rel=1e-4))
+
+    def test_bounding_box_ground_area_used_when_omitted(self, basic_context):
+        # Patches span the full 2x2 m footprint, so the implied basis is 4 m^2.
+        leaves = self._leaf_grid(basic_context)
+        assert (basic_context.calculateAreaIndex(leaves)
+                == pytest.approx(basic_context.calculateAreaIndex(leaves, ground_area=4.0), rel=1e-3))
+
+    def test_wood_counted_as_half_its_one_sided_area(self, basic_context):
+        leaves = self._leaf_grid(basic_context)
+        wood = [basic_context.addPatch(center=vec3(0, 0, 0.5), size=vec2(1.0, 1.0))]
+        wood_area = basic_context.sumPrimitiveSurfaceArea(wood)
+        lai = basic_context.calculateAreaIndex(leaves, ground_area=10.0)
+        pai = basic_context.calculateAreaIndex(leaves, wood, ground_area=10.0)
+        assert pai == pytest.approx(lai + 0.5 * wood_area / 10.0, rel=1e-4)
+
+    def test_empty_wood_list_matches_leaf_only(self, basic_context):
+        leaves = self._leaf_grid(basic_context)
+        assert (basic_context.calculateAreaIndex(leaves, [], ground_area=10.0)
+                == pytest.approx(basic_context.calculateAreaIndex(leaves, ground_area=10.0), rel=1e-6))
+
+
+@pytest.mark.cross_platform
+class TestCalculateAreaIndexValidation:
+    """Argument validation happens in Python, so it runs without native libraries."""
+
+    def test_empty_leaf_list_rejected(self):
+        ctx = Context.__new__(Context)
+        with pytest.raises(ValueError, match="at least one UUID"):
+            Context.calculateAreaIndex(ctx, [])
+
+    @pytest.mark.parametrize("bad", [0.0, -1.0])
+    def test_non_positive_ground_area_rejected(self, bad):
+        ctx = Context.__new__(Context)
+        with pytest.raises(ValueError, match="[Gg]round area must be positive"):
+            Context.calculateAreaIndex(ctx, [1], ground_area=bad)

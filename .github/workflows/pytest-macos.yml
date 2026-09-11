@@ -2,7 +2,10 @@ name: pytest-macos
 
 on:
   push:
-    branches: [ master, main ]
+    # release only. A candidate is force-pushed here and amended until green, then master
+    # is fast-forwarded to that exact SHA - re-running the same commit on master would
+    # duplicate a full 3-platform native build and prove nothing.
+    branches: [ release ]
   pull_request:
     branches: [ master, main ]
 
