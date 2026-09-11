@@ -192,6 +192,49 @@ PYHELIOS_API int setPlantMaxAge(PlantArchitecture* plantarch, unsigned int plant
 PYHELIOS_API float getPlantHeight(PlantArchitecture* plantarch, unsigned int plantID);
 PYHELIOS_API float sumPlantLeafArea(PlantArchitecture* plantarch, unsigned int plantID);
 
+// ---- Reconstruction from measured geometry (helios-core 1.3.85) ----
+// Build a shoot whose internode path follows caller-supplied node positions (a QSM, a digitized
+// skeleton, photogrammetry) instead of being generated from the shoot type's curvature/tortuosity.
+// node_positions is a flat array of 3*node_count floats (x,y,z per node, base first); node_radii has
+// node_count entries. N+1 nodes define N phytomers. parent_shoot_ID = -1 creates a base stem shoot.
+// growth_shoot_type_label selects the two-type overload: NULL or "" grows the shoot with the build type,
+// otherwise the named type governs node caps, apical curvature and the type of shoots its buds produce.
+// Returns the new shoot ID, or 0 with an error set (check getLastErrorCode()).
+PYHELIOS_API unsigned int addShootFromNodePositions(PlantArchitecture* plantarch, unsigned int plantID, int parent_shoot_ID, unsigned int parent_node_index, const float* node_positions, const float* node_radii, int node_count, const char* shoot_type_label, const char* growth_shoot_type_label, unsigned int petiole_index);
+// Prescribe the centerline of one petiole from measured node positions (flat 3*node_count floats, base
+// first) and radii (node_count entries). The first position is snapped onto the parent internode tip.
+// Returns 0 on success, -1 on error.
+PYHELIOS_API int setPetioleNodePositions(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* node_positions, const float* node_radii, int node_count);
+// Prescribe the base position, orientation and size of every leaf on one petiole. leaf_bases is a flat
+// array of 3*leaf_count floats; leaf_rotations is a flat array of 3*leaf_count floats holding
+// (pitch, yaw, roll) in RADIANS in the petiole/internode frame (AxisRotation field order); leaf_sizes has
+// leaf_count entries. leaf_count must equal the number of leaves already on the petiole. Returns 0 on
+// success, -1 on error.
+PYHELIOS_API int setPetioleLeafGeometry(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* leaf_bases, const float* leaf_rotations, const float* leaf_sizes, int leaf_count);
+// 1 if the shoot was built by addShootFromNodePositions(), 0 if its geometry was generated, -1 on error.
+PYHELIOS_API int isShootGeometryPrescribed(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+
+// ---- helios-core 1.3.86 additions ----
+// Change the number of leaves (leaflets) on one petiole of an existing phytomer, rebuilding them
+// procedurally. Call before setPetioleLeafGeometry() for the same petiole. leaf_count must be >= 1.
+// Returns 0 on success, -1 on error.
+PYHELIOS_API int setPetioleLeafCount(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count);
+// Set the target length of internodes grown at the apex of an existing shoot. A shoot built by
+// addShootFromNodePositions() otherwise grows toward the mean of its prescribed internode lengths.
+// NOTE: this value is NOT saved by writePlantStructureXML(), so it must be set again after
+// readPlantStructureXML(). internode_length_max must be > 0. Returns 0 on success, -1 on error.
+PYHELIOS_API int setShootInternodeLengthMax(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, float internode_length_max);
+
+// ---- Built-geometry organ queries (helios-core 1.3.85) ----
+// Measured from the geometry actually built, one entry per organ, visited shoot by shoot and then
+// phytomer by phytomer. All return thread-local static storage; do NOT free.
+// One-sided area (m^2) of each leaf at its present size; leaves without geometry are omitted.
+PYHELIOS_API float* getPlantLeafAreas(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+// Length (m) of each internode measured along its built node positions; one entry per phytomer.
+PYHELIOS_API float* getPlantInternodeLengths(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+// Inclination (degrees, 0 = horizontal, folded to [0,90]) of each leaf from its area-weighted normal.
+PYHELIOS_API float* getPlantLeafInclinations(PlantArchitecture* plantarch, unsigned int plantID, int* count);
+
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 

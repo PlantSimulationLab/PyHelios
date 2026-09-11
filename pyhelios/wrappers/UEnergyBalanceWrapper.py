@@ -115,6 +115,33 @@ try:
     helios_lib.evaluateAirEnergyBalanceForUUIDs.restype = None
     helios_lib.evaluateAirEnergyBalanceForUUIDs.errcheck = _check_error
 
+    # Canopy airspace model
+    helios_lib.enableCanopyAirspaceModel.argtypes = [
+        ctypes.POINTER(UEnergyBalanceModel),
+        ctypes.POINTER(ctypes.c_uint),  # canopy_uuids
+        ctypes.c_uint,                  # canopy_count
+        ctypes.POINTER(ctypes.c_uint),  # ground_uuids
+        ctypes.c_uint,                  # ground_count
+        ctypes.c_float,                 # canopy_height_m
+        ctypes.c_float,                 # reference_height_m
+        ctypes.c_float,                 # leaf_area_index
+        ctypes.c_uint                   # num_layers
+    ]
+    helios_lib.enableCanopyAirspaceModel.restype = None
+    helios_lib.enableCanopyAirspaceModel.errcheck = _check_error
+
+    helios_lib.disableCanopyAirspaceModel.argtypes = [ctypes.POINTER(UEnergyBalanceModel)]
+    helios_lib.disableCanopyAirspaceModel.restype = None
+    helios_lib.disableCanopyAirspaceModel.errcheck = _check_error
+
+    helios_lib.setCanopyAirspaceConvergence.argtypes = [
+        ctypes.POINTER(UEnergyBalanceModel),
+        ctypes.c_float,
+        ctypes.c_uint
+    ]
+    helios_lib.setCanopyAirspaceConvergence.restype = None
+    helios_lib.setCanopyAirspaceConvergence.errcheck = _check_error
+
     # Optional output and reporting
     helios_lib.energyBalanceOptionalOutputPrimitiveData.argtypes = [ctypes.POINTER(UEnergyBalanceModel), ctypes.c_char_p]
     helios_lib.energyBalanceOptionalOutputPrimitiveData.restype = None
@@ -307,7 +334,66 @@ def enableAirEnergyBalanceWithParameters(energy_model: ctypes.POINTER(UEnergyBal
     helios_lib.enableAirEnergyBalanceWithParameters(energy_model, ctypes.c_float(canopy_height_m), ctypes.c_float(reference_height_m))
 
 
-def evaluateAirEnergyBalance(energy_model: ctypes.POINTER(UEnergyBalanceModel), 
+def enableCanopyAirspaceModel(energy_model: ctypes.POINTER(UEnergyBalanceModel),
+                              canopy_UUIDs: List[int], ground_UUIDs: List[int],
+                              canopy_height_m: float, reference_height_m: float,
+                              leaf_area_index: float, num_layers: int) -> None:
+    """Enable the canopy airspace model"""
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("EnergyBalanceModel functions not available. Rebuild with energybalance enabled.")
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+    if not canopy_UUIDs:
+        raise ValueError("Canopy UUIDs cannot be empty.")
+    if canopy_height_m <= 0.0:
+        raise ValueError("Canopy height must be positive.")
+    if reference_height_m <= canopy_height_m:
+        raise ValueError("Reference height must be greater than canopy height.")
+    if leaf_area_index <= 0.0:
+        raise ValueError("Leaf area index must be positive.")
+    if num_layers < 1:
+        raise ValueError("Number of layers must be at least 1.")
+
+    canopy_array = (ctypes.c_uint * len(canopy_UUIDs))(*canopy_UUIDs)
+    ground_list = list(ground_UUIDs) if ground_UUIDs else []
+    if ground_list:
+        ground_array = (ctypes.c_uint * len(ground_list))(*ground_list)
+    else:
+        ground_array = None
+
+    helios_lib.enableCanopyAirspaceModel(
+        energy_model, canopy_array, len(canopy_UUIDs), ground_array, len(ground_list),
+        ctypes.c_float(canopy_height_m), ctypes.c_float(reference_height_m),
+        ctypes.c_float(leaf_area_index), ctypes.c_uint(num_layers))
+
+
+def disableCanopyAirspaceModel(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> None:
+    """Disable the canopy airspace model"""
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("EnergyBalanceModel functions not available. Rebuild with energybalance enabled.")
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+
+    helios_lib.disableCanopyAirspaceModel(energy_model)
+
+
+def setCanopyAirspaceConvergence(energy_model: ctypes.POINTER(UEnergyBalanceModel),
+                                 tolerance_K: float, max_iterations: int) -> None:
+    """Set convergence criteria for the canopy airspace iteration"""
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("EnergyBalanceModel functions not available. Rebuild with energybalance enabled.")
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+    if tolerance_K <= 0.0:
+        raise ValueError("Convergence tolerance must be positive.")
+    if max_iterations < 1:
+        raise ValueError("Maximum iterations must be at least 1.")
+
+    helios_lib.setCanopyAirspaceConvergence(
+        energy_model, ctypes.c_float(tolerance_K), ctypes.c_uint(max_iterations))
+
+
+def evaluateAirEnergyBalance(energy_model: ctypes.POINTER(UEnergyBalanceModel),
                            dt_sec: float, time_advance_sec: float) -> None:
     """Advance air energy balance over time for all primitives"""
     if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE:

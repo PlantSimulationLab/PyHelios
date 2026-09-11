@@ -8423,6 +8423,56 @@ extern "C" {
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
     }
 
+    // Area index
+
+    PYHELIOS_API float calculateAreaIndexLeaf(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count) {
+        clearError();
+        try {
+            if (!context || !leaf_uuids || leaf_count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            std::vector<uint> leaf_vec(leaf_uuids, leaf_uuids + leaf_count);
+            return context->calculateAreaIndex(leaf_vec);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API float calculateAreaIndexLeafGroundArea(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count, float ground_area) {
+        clearError();
+        try {
+            if (!context || !leaf_uuids || leaf_count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            if (ground_area <= 0.f) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Ground area must be positive"); return 0; }
+            std::vector<uint> leaf_vec(leaf_uuids, leaf_uuids + leaf_count);
+            return context->calculateAreaIndex(leaf_vec, ground_area);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API float calculateAreaIndexLeafWood(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count, unsigned int* wood_uuids, unsigned int wood_count) {
+        clearError();
+        try {
+            if (!context || !leaf_uuids || leaf_count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            if (!wood_uuids && wood_count > 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Wood UUIDs array is null but wood count is greater than 0"); return 0; }
+            std::vector<uint> leaf_vec(leaf_uuids, leaf_uuids + leaf_count);
+            std::vector<uint> wood_vec;
+            if (wood_uuids && wood_count > 0) { wood_vec.assign(wood_uuids, wood_uuids + wood_count); }
+            return context->calculateAreaIndex(leaf_vec, wood_vec);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
+    PYHELIOS_API float calculateAreaIndexLeafWoodGroundArea(helios::Context* context, unsigned int* leaf_uuids, unsigned int leaf_count, unsigned int* wood_uuids, unsigned int wood_count, float ground_area) {
+        clearError();
+        try {
+            if (!context || !leaf_uuids || leaf_count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid parameters"); return 0; }
+            if (!wood_uuids && wood_count > 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Wood UUIDs array is null but wood count is greater than 0"); return 0; }
+            if (ground_area <= 0.f) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Ground area must be positive"); return 0; }
+            std::vector<uint> leaf_vec(leaf_uuids, leaf_uuids + leaf_count);
+            std::vector<uint> wood_vec;
+            if (wood_uuids && wood_count > 0) { wood_vec.assign(wood_uuids, wood_uuids + wood_count); }
+            return context->calculateAreaIndex(leaf_vec, wood_vec, ground_area);
+        } catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR: ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "Unknown error"); return 0; }
+    }
+
     // Filter
 
     PYHELIOS_API unsigned int* filterPrimitivesByDataFloat(helios::Context* context, unsigned int* uuids, unsigned int count, const char* label, float value, const char* comparator, unsigned int* result_count) {

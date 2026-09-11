@@ -2095,7 +2095,7 @@ class TestCameraPropertiesManufacturer:
         # to_array() carries only numeric fields; manufacturer must not alter its length.
         from pyhelios import CameraProperties
         props = CameraProperties(manufacturer="Nikon")
-        assert len(props.to_array()) == 10
+        assert len(props.to_array()) == 11
 
 
 @pytest.mark.native_only
@@ -3580,3 +3580,73 @@ class TestCameraFluxSmoothing:
                 assert radiation.isCameraFluxSmoothingEnabled() is True
                 radiation.disableCameraFluxSmoothing()
                 assert radiation.isCameraFluxSmoothingEnabled() is False
+
+
+@pytest.mark.cross_platform
+class TestCameraExposureTarget:
+    """CameraProperties.exposure_target (helios-core v1.3.85): the target median scene
+    luminance for "auto" exposure, travelling as the 11th float of the camera array."""
+
+    def test_default_is_middle_grey(self):
+        from pyhelios import CameraProperties
+        props = CameraProperties()
+        assert props.exposure_target == pytest.approx(0.18)
+
+    def test_is_last_entry_of_to_array(self):
+        from pyhelios import CameraProperties
+        props = CameraProperties(exposure_target=0.09)
+        arr = props.to_array()
+        assert len(arr) == 11
+        assert arr[10] == pytest.approx(0.09)
+        assert arr[9] == pytest.approx(props.camera_zoom)
+
+    def test_rejects_non_positive(self):
+        from pyhelios import CameraProperties
+        with pytest.raises(ValueError, match="exposure_target must be greater than 0"):
+            CameraProperties(exposure_target=0.0)
+        with pytest.raises(ValueError, match="exposure_target must be greater than 0"):
+            CameraProperties(exposure_target=-0.18)
+
+    def test_sif_camera_inherits_field(self):
+        from pyhelios import SIFCameraProperties
+        props = SIFCameraProperties(exposure_target=0.25)
+        assert props.exposure_target == pytest.approx(0.25)
+        assert len(props.to_array()) == 11
+
+    def test_repr_includes_field(self):
+        from pyhelios import CameraProperties
+        assert "exposure_target=0.18" in repr(CameraProperties())
+
+    def test_wrapper_rejects_legacy_ten_element_array(self):
+        """A 10-float list would leave exposure_target reading past the array in C."""
+        from pyhelios.wrappers import URadiationModelWrapper as w
+        if not w._RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+            pytest.skip("radiation wrapper functions not available")
+        ten = [512, 512, 1.0, 0.05, 20.0, 0.0, 0.05, 35.0, 0.008, 1.0]
+        # The length check precedes every native call, so a placeholder model suffices.
+        model = object()
+        with pytest.raises(ValueError, match="exactly 11 values"):
+            w.addRadiationCameraVec3(model, "cam", ["SW"], 0, 0, 1, 0, 0, 0, ten, 1)
+        with pytest.raises(ValueError, match="exactly 11 values"):
+            w.addRadiationCameraSpherical(model, "cam", ["SW"], 0, 0, 1, 1, 0, 0, ten, 1)
+        with pytest.raises(ValueError, match="11 elements"):
+            w.updateCameraParameters(model, "cam", ten)
+
+
+@pytest.mark.native_only
+class TestCameraExposureTargetNative:
+    def test_camera_accepts_exposure_target_through_add_and_update(self):
+        """The 11-float array must round-trip through addRadiationCamera and
+        updateCameraParameters without a marshalling error."""
+        from pyhelios import Context, CameraProperties
+        from pyhelios.wrappers.DataTypes import vec3, vec2
+        with Context() as context:
+            context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            radiation = radiation_model_or_skip(context)
+            with radiation:
+                radiation.addRadiationBand("SW")
+                props = CameraProperties(camera_resolution=(16, 16), HFOV=40.0, exposure_target=0.12)
+                radiation.addRadiationCamera("cam", ["SW"], vec3(0, 0, 2), vec3(0, 0, 0), props, 1)
+                props.exposure_target = 0.3
+                radiation.updateCameraParameters("cam", props)
+                assert "cam" in radiation.getAllCameraLabels()

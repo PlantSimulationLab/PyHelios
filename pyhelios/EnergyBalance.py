@@ -317,6 +317,123 @@ class EnergyBalanceModel:
         except Exception as e:
             raise EnergyBalanceModelError(f"Failed to enable air energy balance: {e}")
     
+    def enableCanopyAirspaceModel(self, canopy_UUIDs: List[int], canopy_height_m: float,
+                                  reference_height_m: float, leaf_area_index: float,
+                                  num_layers: int = 1,
+                                  ground_UUIDs: Optional[List[int]] = None) -> None:
+        """
+        Enable the canopy airspace model.
+
+        Resolves the within-canopy air temperature and humidity surrounding leaves from a
+        vertically layered resistance network, instead of holding them at a prescribed
+        value, so the canopy feeds back on the air driving its own transpiration. The
+        airspace is divided into vertical layers of equal leaf area index, each exchanging
+        sensible heat and water vapor with its leaves, its neighboring layers and -- for
+        the outermost layers -- the soil surface and the above-canopy reference air.
+
+        Unlike :meth:`enableAirEnergyBalance`, which evolves a prognostic boundary layer
+        and thereby assumes a horizontally infinite canopy, this model suits canopies of
+        limited extent subject to advection, such as an orchard block. The two determine
+        the same air state and **may not both be enabled**.
+
+        Because it solves for a steady state, it cannot be combined with the form of
+        :meth:`run` that takes a timestep.
+
+        The above-canopy boundary condition is read from global data
+        ``air_temperature_reference``, ``air_humidity_reference`` and
+        ``wind_speed_reference`` when present, otherwise from this model's defaults. Set
+        them with :meth:`Context.setGlobalData` before calling :meth:`run`.
+
+        After :meth:`run`, primitive data ``air_temperature``, ``air_humidity`` and
+        ``wind_speed`` are set on the canopy primitives, and global data
+        ``canopy_air_temperature``, ``canopy_air_humidity``, their per-layer counterparts,
+        ``aerodynamic_resistance`` and ``canopy_airspace_iterations`` are reported.
+
+        Args:
+            canopy_UUIDs: Canopy (leaf) primitives exchanging heat and moisture with the airspace.
+            canopy_height_m: Height of the canopy in meters.
+            reference_height_m: Height at which above-canopy conditions are measured, in
+                meters. Must be greater than ``canopy_height_m``.
+            leaf_area_index: One-sided leaf area index on a ground-area basis.
+            num_layers: Number of vertical layers of equal leaf area index. 1 gives a
+                single within-canopy node.
+            ground_UUIDs: Ground primitives forming the soil node beneath the canopy. When
+                omitted there is no exchange with the soil surface.
+
+        Raises:
+            ValueError: If parameters are invalid.
+            EnergyBalanceModelError: If the operation fails.
+
+        Example:
+            >>> energy_balance.enableCanopyAirspaceModel(
+            ...     canopy_UUIDs=leaf_uuids, canopy_height_m=3.0, reference_height_m=5.0,
+            ...     leaf_area_index=2.5, num_layers=5, ground_UUIDs=ground_uuids)
+            >>> energy_balance.run()
+        """
+        if not canopy_UUIDs:
+            raise ValueError("canopy_UUIDs must contain at least one UUID")
+        if canopy_height_m <= 0:
+            raise ValueError(f"Canopy height must be positive, got {canopy_height_m}")
+        if reference_height_m <= canopy_height_m:
+            raise ValueError(
+                f"Reference height ({reference_height_m}) must be greater than "
+                f"canopy height ({canopy_height_m})")
+        if leaf_area_index <= 0:
+            raise ValueError(f"Leaf area index must be positive, got {leaf_area_index}")
+        if num_layers < 1:
+            raise ValueError(f"Number of layers must be at least 1, got {num_layers}")
+
+        self._check_context_alive()
+        try:
+            energy_wrapper.enableCanopyAirspaceModel(
+                self.energy_model, canopy_UUIDs, ground_UUIDs or [],
+                canopy_height_m, reference_height_m, leaf_area_index, num_layers)
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to enable canopy airspace model: {e}")
+
+    def disableCanopyAirspaceModel(self) -> None:
+        """
+        Disable the canopy airspace model.
+
+        Subsequent calls to :meth:`run` perform a single surface energy balance pass using
+        whatever ``air_temperature`` and ``air_humidity`` primitive data are currently set.
+
+        Raises:
+            EnergyBalanceModelError: If the operation fails.
+        """
+        self._check_context_alive()
+        try:
+            energy_wrapper.disableCanopyAirspaceModel(self.energy_model)
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to disable canopy airspace model: {e}")
+
+    def setCanopyAirspaceConvergence(self, tolerance_K: float = 0.01,
+                                     max_iterations: int = 50) -> None:
+        """
+        Set convergence criteria for the canopy airspace iteration.
+
+        Args:
+            tolerance_K: Temperature convergence tolerance in Kelvin. Iteration stops when
+                the maximum change in any layer's air temperature falls below this value.
+            max_iterations: Maximum number of coupled surface-energy-balance and airspace
+                iterations.
+
+        Raises:
+            ValueError: If parameters are invalid.
+            EnergyBalanceModelError: If the operation fails.
+        """
+        if tolerance_K <= 0:
+            raise ValueError(f"Convergence tolerance must be positive, got {tolerance_K}")
+        if max_iterations < 1:
+            raise ValueError(f"Maximum iterations must be at least 1, got {max_iterations}")
+
+        self._check_context_alive()
+        try:
+            energy_wrapper.setCanopyAirspaceConvergence(
+                self.energy_model, tolerance_K, max_iterations)
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to set canopy airspace convergence: {e}")
+
     @validate_evaluate_air_energy_params
     def evaluateAirEnergyBalance(self, dt_sec: float, time_advance_sec: float,
                                UUIDs: Optional[List[int]] = None) -> None:

@@ -158,6 +158,13 @@ shoot type's branching topology. One case still cannot be expressed: an explicit
 list, which the native `defineChildShootTypes()` rejects, leaves whatever the shoot type
 being replaced already carried.
 
+`InflorescenceParameters.inflorescence_maturity_period` (helios-core 1.3.85) sets how many
+days an inflorescence takes to expand from its initial quarter size to full size. Its default of
+`-1` defers to the plant-level fruit-maturity threshold from `setPlantPhenologicalThresholds()`,
+which is the right clock for a fruit but not for an inflorescence that finishes elongating long
+before the fruit it subtends even sets: the maize library model gives its tassel 6 days, roughly
+two months ahead of the ear's grain fill.
+
 `getCurrentShootParameters()` returns a plain nested `dict` by default; pass
 `return_typed=True` to get a `ShootParameters` object. The returned structure
 surfaces the full `phytomer_parameters` sub-structure (internode, petiole, leaf,
@@ -641,6 +648,139 @@ iterating:
 ```python
 live = [s for s in plantarch.getAllShootIDs(plant_id)
         if not plantarch.isShootPruned(plant_id, s)]
+```
+
+### Reconstruction from Measured Geometry
+
+A shoot built with `addBaseStemShoot()`, `appendShoot()` or `addChildShoot()` is extrapolated from
+its base rotation and the shoot type's curvature and tortuosity, so it cannot follow a measured
+path. helios-core 1.3.85 adds three methods that build organs from caller-supplied geometry
+instead, for reconstructing a plant from a QSM, a digitized skeleton, photogrammetry, or a
+segmented point cloud.
+
+| Method | Effect |
+|---|---|
+| `addShootFromNodePositions(plant_id, parent_shoot_id, parent_node_index, node_positions, node_radii, shoot_type_label, growth_shoot_type_label=None, petiole_index=0)` | Build one continuous shoot through the supplied internode node positions; `parent_shoot_id=-1` starts a base stem |
+| `setPetioleNodePositions(plant_id, shoot_id, node_index, petiole_index, node_positions, node_radii)` | Prescribe the centerline of one petiole on an existing phytomer |
+| `setPetioleLeafGeometry(plant_id, shoot_id, node_index, petiole_index, leaf_bases, leaf_rotations, leaf_sizes)` | Prescribe the base position, orientation and size of every leaf on a petiole |
+| `setPetioleLeafCount(plant_id, shoot_id, node_index, petiole_index, leaf_count)` | Change the number of leaves (leaflets) on one petiole, rebuilding them procedurally |
+| `setShootInternodeLengthMax(plant_id, shoot_id, internode_length_max)` | Target length of internodes grown at the apex of an existing shoot |
+| `isShootGeometryPrescribed(plant_id, shoot_id)` | Whether a shoot was built from prescribed node positions |
+
+`setPetioleLeafCount()` exists because the leaflet count is otherwise fixed by the shoot type's
+`leaf.leaves_per_petiole` for every phytomer, so a measured compound leaf with a different number
+of leaflets could not be prescribed. Call it **before** `setPetioleLeafGeometry()` for the same
+petiole, whose `leaf_count` must match the number of leaves on the petiole.
+
+`setShootInternodeLengthMax()` governs how a shoot grows *after* its prescribed portion: a shoot
+built by `addShootFromNodePositions()` otherwise grows toward the mean of its prescribed internode
+lengths, which is wrong for a measured seedling whose stem is mostly hypocotyl. Note that this
+value is **not saved by `writePlantStructureXML()`**, so it must be set again after
+`readPlantStructureXML()`.
+
+\note **Leaf rotations changed in helios-core 1.3.86.** `setPetioleLeafGeometry()` now applies
+roll, pitch and yaw as intrinsic rotations in the leaf's rest frame on its petiole, the same way
+for every leaf. Previously they went through the procedural placement chain, so a single leaf's
+roll flipped sign on alternate nodes, a lateral leaflet's roll was mirrored by side, a terminal
+leaflet ignored its roll and yaw, and yaw turned about the world vertical. Angles fitted or tuned
+against an earlier release must be re-derived.
+
+N+1 node positions define N phytomers, rendered as a single tube, with the usual buds, petioles
+and leaves. Prescribed geometry is created fully elongated and is left alone by `advanceTime()`:
+measured internodes are not re-scaled or re-curved, prescribed petioles are not stretched, and
+prescribed leaves are exempt from expansion and from self-weight droop. Growth continues normally
+from the tip of the last measured internode, and prescribed radii act as a lower bound that the
+pipe model may thicken but never thins.
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.types import vec3
+from pyhelios.wrappers.DataTypes import AxisRotation
+
+with Context() as context:
+    with PlantArchitecture(context) as plantarch:
+        plantarch.loadPlantModelFromLibrary("bean")
+        # Age 10, not 0: see the note on phytomer-creation hooks below.
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+
+        # A measured stem: four nodes, three internodes, base first.
+        path = [vec3(0, 0, 0), vec3(0, 0, 0.1), vec3(0.02, 0, 0.198), vec3(0.05, 0.01, 0.293)]
+        radii = [0.006, 0.005, 0.004, 0.003]
+        stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, path, radii, "trifoliate")
+
+        # A measured branch off node 1, translated onto the parent's surface.
+        branch = plantarch.addShootFromNodePositions(
+            plant_id, stem, 1,
+            [vec3(0.02, 0, 0.198), vec3(0.08, 0, 0.22), vec3(0.14, 0, 0.25)],
+            [0.003, 0.0025, 0.002], "trifoliate")
+
+        # Petiole path first, then the leaves on it (leaf placement reads the petiole axis).
+        tip = path[1]
+        plantarch.setPetioleNodePositions(plant_id, stem, 0, 0,
+            [tip, vec3(tip.x + 0.03, tip.y, tip.z + 0.01), vec3(tip.x + 0.06, tip.y, tip.z + 0.015)],
+            [0.0012, 0.0011, 0.001])
+        plantarch.setPetioleLeafGeometry(plant_id, stem, 0, 0,
+            leaf_bases=[vec3(0.08, 0.0, 0.12), vec3(0.09, 0.01, 0.12), vec3(0.09, -0.01, 0.12)],
+            leaf_rotations=[AxisRotation(0.2, 0.0, 0.0)] * 3,   # radians, petiole/internode frame
+            leaf_sizes=[0.08, 0.07, 0.07])
+
+        assert plantarch.isShootGeometryPrescribed(plant_id, stem)
+        plantarch.breakPlantDormancy(plant_id)   # manually added shoots start dormant
+        plantarch.advanceTime(10)
+```
+
+**Separate growth type.** Building measured wood calls for zero curvature and tortuosity, a node
+cap at least as large as the longest measured branch, and often a girth area factor of zero so the
+measured radii are kept. None of those describe how the plant should grow afterwards: a shoot
+inheriting them extends perfectly straight and never reaches its node cap. Pass
+`growth_shoot_type_label` to take the node caps, the gravitropic curvature of new phytomers, and
+the type of the shoots the buds produce from a different shoot type. `girth_area_factor` and
+bud-break probability are deliberately still read from the build type, which also remains the label
+the shoot reports. The XML round trip carries the growth type across.
+
+**Library species scale young phytomers.** The prescribed geometry is protected from the growth
+model, not from the shoot type's phytomer-creation hook, which runs on every phytomer after it is
+built. Bean's hook, for example, scales each new internode by `min(1, 0.2 + 0.8 * age / 10)`, so
+a reconstruction on a plant created at age 0 comes out at a fifth of its measured size. Create
+the plant instance at an age where the hook's scale is 1 (10 days for bean), or build on a shoot
+type of your own defined with `defineShootType()`, which carries no hook.
+
+**XML round trip (helios-core 1.3.85).** `writePlantStructureXML()` records the prescribed node
+positions and radii, and `readPlantStructureXML()` rebuilds the shoot from them, so the measured
+*shape* is reproduced exactly. The phytomer *count* is not: the writer emits the subdivided node
+list (one node per `internode.length_segments`), and the reader creates one phytomer per written
+segment, so a reloaded shoot has `length_segments` times as many phytomers, each correspondingly
+shorter, and a prescribed child shoot fails to reload because its saved `parent_node_index` no
+longer names the node it was attached to. The two coincide only when `length_segments` is 1.
+
+**Units and frames.** `leaf_rotations` are `AxisRotation(pitch, yaw, roll)` in **radians**,
+relative to the petiole and internode axes rather than to world axes. The chain that places a
+leaf includes the petiole's own azimuth and a size-dependent correction and is not invertible, so
+there is no exact conversion from a world-frame blade orientation; fit by forward evaluation,
+reading the built geometry back from the Context. The number of leaves on a petiole is fixed when
+the phytomer is created (`leaves_per_petiole` on the shoot type); supplying a different number
+raises an error rather than adding or removing leaves. Rebuilding a leaf discards primitive data
+attached to it, except the object label and material.
+
+### Built-Geometry Organ Queries
+
+`getCurrentShootParameters()` reports a shoot *type*: the distributions a parameter is drawn
+from. These queries report what the plant was actually built with, one entry per organ, measured
+from the geometry in the Context. The distinction matters for calibration because a random
+parameter caches its first draw and a shoot holds a copy of its type's parameters, so a plant can
+be built with no variation at all while its parameters describe a wide spread.
+
+| Method | Returns |
+|---|---|
+| `getPlantLeafAreas(plant_id)` | Present one-sided area (m²) of each leaf, shoot by shoot then phytomer by phytomer (the order of `getPlantLeafObjectIDs()`); leaves without geometry are omitted |
+| `getPlantInternodeLengths(plant_id)` | Length (m) of each internode along its built node positions, one per phytomer |
+| `getPlantLeafInclinations(plant_id)` | Angle (degrees) between each blade and the horizontal from its area-weighted normal, folded to [0, 90]; blades whose facet normals cancel are omitted |
+
+```python
+areas = plantarch.getPlantLeafAreas(plant_id)
+inclinations = plantarch.getPlantLeafInclinations(plant_id)
+print(f"mean leaf area {sum(areas)/len(areas):.4f} m2, "
+      f"mean inclination {sum(inclinations)/len(inclinations):.1f} deg")
 ```
 
 ### Bulk Pruning

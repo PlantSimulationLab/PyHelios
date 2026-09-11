@@ -785,7 +785,9 @@ PYHELIOS_API const char* autoCalibrateCameraImage(RadiationModel* radiation_mode
  * @param lookat_x Lookat point X coordinate
  * @param lookat_y Lookat point Y coordinate
  * @param lookat_z Lookat point Z coordinate
- * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
+ * @param camera_properties Camera properties array of 11 floats: [resolution_x, resolution_y, focal_distance, lens_diameter,
+ *        HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+),
+ *        exposure_target (v1.3.85+; target median scene luminance for "auto" exposure, default 0.18)]
  * @param antialiasing_samples Number of antialiasing samples
  * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto".
  *        Superseded by camera_strings[0] when that entry is non-NULL.
@@ -815,7 +817,9 @@ PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const 
  * @param radius Spherical coordinate radius
  * @param elevation Spherical coordinate elevation
  * @param azimuth Spherical coordinate azimuth
- * @param camera_properties Camera properties array [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed] (9 floats; v1.3.58+)
+ * @param camera_properties Camera properties array of 11 floats: [resolution_x, resolution_y, focal_distance, lens_diameter,
+ *        HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+),
+ *        exposure_target (v1.3.85+; target median scene luminance for "auto" exposure, default 0.18)]
  * @param antialiasing_samples Number of antialiasing samples
  * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
  */
@@ -845,7 +849,7 @@ PYHELIOS_API void addRadiationCameraSpherical(RadiationModel* radiation_model, c
  * @param lookat_x Lookat point X coordinate
  * @param lookat_y Lookat point Y coordinate
  * @param lookat_z Lookat point Z coordinate
- * @param camera_properties Camera properties array of 10 floats (same format as addRadiationCameraVec3)
+ * @param camera_properties Camera properties array of 11 floats (same format as addRadiationCameraVec3)
  * @param excitation_bin_width_nm Excitation wavelength bin width in nm (must be > 0)
  * @param excitation_scattering_depth Scattering depth for excitation bands (0 = no scatter)
  * @param antialiasing_samples Number of antialiasing samples (>= 1)
@@ -871,7 +875,7 @@ PYHELIOS_API void addSIFCameraVec3(RadiationModel* radiation_model, const char* 
  * @param radius Spherical viewing radius
  * @param elevation Spherical viewing elevation
  * @param azimuth Spherical viewing azimuth
- * @param camera_properties Camera properties array of 10 floats
+ * @param camera_properties Camera properties array of 11 floats (same format as addRadiationCameraVec3)
  * @param excitation_bin_width_nm Excitation wavelength bin width in nm (must be > 0)
  * @param excitation_scattering_depth Scattering depth for excitation bands (0 = no scatter)
  * @param antialiasing_samples Number of antialiasing samples (>= 1)
@@ -1068,9 +1072,9 @@ PYHELIOS_API void addRadiationCameraFromLibraryWithBands(RadiationModel* radiati
  * @brief Update camera parameters for an existing camera
  * @param radiation_model Pointer to the RadiationModel
  * @param camera_label Label for the camera to update
- * @param camera_properties Camera properties array (10 floats): resolution x, resolution y,
+ * @param camera_properties Camera properties array (11 floats): resolution x, resolution y,
  *        focal_plane_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length,
- *        sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+)
+ *        sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+), exposure_target (v1.3.85+)
  * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
  * @note Changing the resolution discards the camera's existing image data
  *       (helios-core v1.3.79+), because the per-pixel buffers are sized to the resolution

@@ -341,6 +341,7 @@ nlohmann::json phytomerParametersToJSON(const PhytomerParameters& pp) {
     inf["fruit_prototype_scale"] = randomParameterFloatToJSON(pp.inflorescence.fruit_prototype_scale);
     inf["fruit_gravity_factor_fraction"] = randomParameterFloatToJSON(pp.inflorescence.fruit_gravity_factor_fraction);
     inf["unique_prototypes"] = pp.inflorescence.unique_prototypes;
+    inf["inflorescence_maturity_period"] = randomParameterFloatToJSON(pp.inflorescence.inflorescence_maturity_period);
     inf["flower_prototype_function"] = prototypeFunctionName(flowerPrototypeRegistry(), pp.inflorescence.flower_prototype_function);
     inf["fruit_prototype_function"] = prototypeFunctionName(fruitPrototypeRegistry(), pp.inflorescence.fruit_prototype_function);
     j["inflorescence"] = inf;
@@ -405,6 +406,7 @@ void jsonToPhytomerParameters(PhytomerParameters& pp, const nlohmann::json& j, s
         if (inf.contains("fruit_prototype_scale")) pp.inflorescence.fruit_prototype_scale = jsonToRandomParameterFloat(inf["fruit_prototype_scale"], generator);
         if (inf.contains("fruit_gravity_factor_fraction")) pp.inflorescence.fruit_gravity_factor_fraction = jsonToRandomParameterFloat(inf["fruit_gravity_factor_fraction"], generator);
         if (inf.contains("unique_prototypes")) pp.inflorescence.unique_prototypes = inf["unique_prototypes"];
+        if (inf.contains("inflorescence_maturity_period")) pp.inflorescence.inflorescence_maturity_period = jsonToRandomParameterFloat(inf["inflorescence_maturity_period"], generator);
         resolvePrototypeFunction(flowerPrototypeRegistry(), inf, "flower_prototype_function", pp.inflorescence.flower_prototype_function, "flower");
         resolvePrototypeFunction(fruitPrototypeRegistry(), inf, "fruit_prototype_function", pp.inflorescence.fruit_prototype_function, "fruit");
     }
@@ -3240,6 +3242,225 @@ extern "C" {
             if (count) *count = 0;
             return nullptr;
         }
+    }
+
+    // =========================================================================
+    // Reconstruction from measured geometry (helios-core 1.3.85)
+    // =========================================================================
+
+    // Shared marshalling for a flat (x,y,z)*n position array plus n radii.
+    static bool unpackNodesAndRadii(const float* positions, const float* radii, int count, const char* fn,
+                                    std::vector<helios::vec3>& out_positions, std::vector<float>& out_radii) {
+        if (!positions || !radii) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (PlantArchitecture::") + fn + "): Node position or radius array is null");
+            return false;
+        }
+        if (count < 2) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (PlantArchitecture::") + fn + "): At least two node positions are required");
+            return false;
+        }
+        out_positions.clear();
+        out_positions.reserve(count);
+        out_radii.assign(radii, radii + count);
+        for (int i = 0; i < count; ++i) {
+            out_positions.push_back(helios::make_vec3(positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]));
+        }
+        return true;
+    }
+
+    PYHELIOS_API unsigned int addShootFromNodePositions(PlantArchitecture* plantarch, unsigned int plantID, int parent_shoot_ID, unsigned int parent_node_index, const float* node_positions, const float* node_radii, int node_count, const char* shoot_type_label, const char* growth_shoot_type_label, unsigned int petiole_index) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return 0;
+            }
+            if (!shoot_type_label || std::strlen(shoot_type_label) == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Shoot type label cannot be empty");
+                return 0;
+            }
+            std::vector<helios::vec3> positions;
+            std::vector<float> radii;
+            if (!unpackNodesAndRadii(node_positions, node_radii, node_count, "addShootFromNodePositions", positions, radii)) {
+                return 0;
+            }
+            if (growth_shoot_type_label && std::strlen(growth_shoot_type_label) > 0) {
+                return plantarch->addShootFromNodePositions(plantID, parent_shoot_ID, parent_node_index, positions, radii, std::string(shoot_type_label), std::string(growth_shoot_type_label), petiole_index);
+            }
+            return plantarch->addShootFromNodePositions(plantID, parent_shoot_ID, parent_node_index, positions, radii, std::string(shoot_type_label), petiole_index);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::addShootFromNodePositions): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::addShootFromNodePositions): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API int setPetioleNodePositions(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* node_positions, const float* node_radii, int node_count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            std::vector<helios::vec3> positions;
+            std::vector<float> radii;
+            if (!unpackNodesAndRadii(node_positions, node_radii, node_count, "setPetioleNodePositions", positions, radii)) {
+                return -1;
+            }
+            plantarch->setPetioleNodePositions(plantID, shootID, node_index, petiole_index, positions, radii);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleNodePositions): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleNodePositions): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleLeafGeometry(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* leaf_bases, const float* leaf_rotations, const float* leaf_sizes, int leaf_count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!leaf_bases || !leaf_rotations || !leaf_sizes) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPetioleLeafGeometry): Leaf base, rotation or size array is null");
+                return -1;
+            }
+            if (leaf_count < 1) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPetioleLeafGeometry): At least one leaf is required");
+                return -1;
+            }
+            std::vector<helios::vec3> bases;
+            std::vector<AxisRotation> rotations;
+            bases.reserve(leaf_count);
+            rotations.reserve(leaf_count);
+            for (int i = 0; i < leaf_count; ++i) {
+                bases.push_back(helios::make_vec3(leaf_bases[3 * i], leaf_bases[3 * i + 1], leaf_bases[3 * i + 2]));
+                // (pitch, yaw, roll) in radians, matching the AxisRotation constructor order.
+                rotations.emplace_back(leaf_rotations[3 * i], leaf_rotations[3 * i + 1], leaf_rotations[3 * i + 2]);
+            }
+            std::vector<float> sizes(leaf_sizes, leaf_sizes + leaf_count);
+            plantarch->setPetioleLeafGeometry(plantID, shootID, node_index, petiole_index, bases, rotations, sizes);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeafGeometry): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeafGeometry): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int isShootGeometryPrescribed(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            return plantarch->isShootGeometryPrescribed(plantID, shootID) ? 1 : 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::isShootGeometryPrescribed): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::isShootGeometryPrescribed): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleLeafCount(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (leaf_count < 1) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPetioleLeafCount): Leaf count must be at least 1");
+                return -1;
+            }
+            plantarch->setPetioleLeafCount(plantID, shootID, node_index, petiole_index, leaf_count);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeafCount): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeafCount): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setShootInternodeLengthMax(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, float internode_length_max) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (internode_length_max <= 0.f) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setShootInternodeLengthMax): Internode length must be positive");
+                return -1;
+            }
+            plantarch->setShootInternodeLengthMax(plantID, shootID, internode_length_max);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setShootInternodeLengthMax): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setShootInternodeLengthMax): Unknown error.");
+            return -1;
+        }
+    }
+
+    // =========================================================================
+    // Built-geometry organ queries (helios-core 1.3.85)
+    // =========================================================================
+
+    // Shared body for the three per-organ float-vector queries; only the member function differs.
+    // A member-function pointer rather than a template: templates cannot appear inside extern "C".
+    typedef std::vector<float> (PlantArchitecture::*PlantFloatVectorGetter)(unsigned int) const;
+    static float* returnPlantFloatVector(PlantArchitecture* plantarch, unsigned int plantID, int* count, const char* fn, PlantFloatVectorGetter getter) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                if (count) *count = 0;
+                return nullptr;
+            }
+            if (!count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count pointer is null");
+                return nullptr;
+            }
+            static thread_local std::vector<float> static_values;
+            static_values = (plantarch->*getter)(plantID);
+            *count = static_cast<int>(static_values.size());
+            return static_values.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::") + fn + "): " + e.what());
+            if (count) *count = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, std::string("ERROR (PlantArchitecture::") + fn + "): Unknown error.");
+            if (count) *count = 0;
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API float* getPlantLeafAreas(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        return returnPlantFloatVector(plantarch, plantID, count, "getPlantLeafAreas", &PlantArchitecture::getPlantLeafAreas);
+    }
+
+    PYHELIOS_API float* getPlantInternodeLengths(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        return returnPlantFloatVector(plantarch, plantID, count, "getPlantInternodeLengths", &PlantArchitecture::getPlantInternodeLengths);
+    }
+
+    PYHELIOS_API float* getPlantLeafInclinations(PlantArchitecture* plantarch, unsigned int plantID, int* count) {
+        return returnPlantFloatVector(plantarch, plantID, count, "getPlantLeafInclinations", &PlantArchitecture::getPlantLeafInclinations);
     }
 
 } // extern "C"

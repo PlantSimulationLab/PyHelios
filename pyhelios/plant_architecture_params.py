@@ -449,6 +449,11 @@ class InflorescenceParameters:
     fruit_prototype_scale: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0075))
     fruit_gravity_factor_fraction: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     unique_prototypes: int = 1
+    #: Days for the inflorescence to expand from its initial quarter size to full size (helios-core
+    #: 1.3.85+). A non-positive value (the default, -1) defers to the plant-level fruit-maturity
+    #: threshold set by ``setPlantPhenologicalThresholds()``. Set it where the inflorescence finishes
+    #: elongating on a different schedule from the fruit, as a maize tassel does (6 days).
+    inflorescence_maturity_period: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(-1.0))
     flower_prototype_function: Optional[str] = None
     fruit_prototype_function: Optional[str] = None
 
@@ -462,6 +467,7 @@ class InflorescenceParameters:
             "fruit_prototype_scale": self.fruit_prototype_scale.to_dict(),
             "fruit_gravity_factor_fraction": self.fruit_gravity_factor_fraction.to_dict(),
             "unique_prototypes": int(self.unique_prototypes),
+            "inflorescence_maturity_period": self.inflorescence_maturity_period.to_dict(),
             "flower_prototype_function": self.flower_prototype_function or "",
             "fruit_prototype_function": self.fruit_prototype_function or "",
         }
@@ -478,6 +484,7 @@ class InflorescenceParameters:
             fruit_prototype_scale=_rpf(d, "fruit_prototype_scale", base.fruit_prototype_scale),
             fruit_gravity_factor_fraction=_rpf(d, "fruit_gravity_factor_fraction", base.fruit_gravity_factor_fraction),
             unique_prototypes=int(d.get("unique_prototypes", base.unique_prototypes)),
+            inflorescence_maturity_period=_rpf(d, "inflorescence_maturity_period", base.inflorescence_maturity_period),
             flower_prototype_function=(d.get("flower_prototype_function") or None),
             fruit_prototype_function=(d.get("fruit_prototype_function") or None),
         )

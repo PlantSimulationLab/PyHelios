@@ -907,6 +907,22 @@ PYHELIOS_API unsigned int getLiDARGridCellCount(LiDARcloud* cloud);
 PYHELIOS_API void getLiDARCellCenter(LiDARcloud* cloud, unsigned int index, float* center_out);
 
 /**
+ * @brief Get the UNROTATED (axis-aligned lattice) center position of a grid cell
+ *
+ * Companion to getLiDARCellCenter(): returns the center on the axis-aligned lattice, WITHOUT the
+ * grid's azimuthal rotation applied. For an unrotated grid the two are identical.
+ *
+ * This is the accessor a caller wants when it applies the grid rotation itself (e.g. rotating the
+ * whole voxel group about the grid center for display); using the rotated center there would
+ * rotate the lattice twice.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Grid cell index
+ * @param center_out Output array for center [x, y, z]
+ */
+PYHELIOS_API void getLiDARCellCenterUnrotated(LiDARcloud* cloud, unsigned int index, float* center_out);
+
+/**
  * @brief Get the size of a grid cell
  * @param cloud Pointer to the LiDARcloud instance
  * @param index Grid cell index
@@ -1196,6 +1212,21 @@ PYHELIOS_API unsigned long long gapfillLiDARMissesCountScan(LiDARcloud* cloud, u
  * @return Number of virtualized misses across all scans
  */
 PYHELIOS_API unsigned long long getLiDARVirtualMissCount(LiDARcloud* cloud);
+
+/**
+ * @brief Returns the last leaf-area inversion inferred from target_count rather than read from the cloud
+ *
+ * When a cloud has had returns removed (cropped to the voxel grid, say) but its surviving
+ * returns still carry the per-pulse target_index / target_count the scanner wrote,
+ * calculateLiDARLeafArea() places the missing returns before or beyond the grid from the
+ * surviving indices and counts the latter as transmitted. This reports what that inference
+ * did. All zero before the first inversion and for a cloud whose pulses are complete.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param out_stats Caller-provided array of 6 values, filled in order: beams_with_hidden_returns,
+ *        hidden_before, hidden_after, hidden_ambiguous, beams_ambiguous, standins_ignored
+ */
+PYHELIOS_API void getLiDARCroppedReturnStats(LiDARcloud* cloud, unsigned long long* out_stats);
 
 /**
  * @brief Whether any gap-filled miss is currently held in virtualized form
@@ -1503,6 +1534,351 @@ PYHELIOS_API void lidarDisableMessages(LiDARcloud* cloud);
  * @param cloud Pointer to the LiDARcloud instance
  */
 PYHELIOS_API void lidarEnableMessages(LiDARcloud* cloud);
+
+//=============================================================================
+// helios-core 1.3.85 additions
+//=============================================================================
+
+/**
+ * @brief Determine whether the point cloud contains multi-return data
+ *
+ * Multi-return data is data in which a single laser pulse produced more than one recorded
+ * return. This is a behavioral switch, not just a descriptive property: triangulateHitPoints()
+ * branches on it, triangulating first returns only (with an adaptive separation filter) for
+ * multi-return data and treating every return as an independent single return otherwise. The
+ * two branches can differ substantially in reconstructed surface area, so a caller that
+ * assembles a cloud itself can use this to confirm which one will run.
+ *
+ * Multi-return data must also carry the `timestamp` and `target_index` hit-data fields. If
+ * `target_count > 1` is found but either field is absent, an error is reported rather than an
+ * answer the rest of the pipeline cannot act on.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return 1 if any hit has `target_count` greater than 1, 0 otherwise (or on error; check getLastErrorCode())
+ */
+PYHELIOS_API int lidarIsMultiReturnData(LiDARcloud* cloud);
+
+/**
+ * @brief Calculate leaf area using one caller-supplied G(theta) per grid cell, without requiring triangulation
+ *
+ * Identical to calculateLiDARLeafAreaGtheta() but takes one G(theta) per grid cell, in grid-cell order
+ * (the order of getLiDARCellCenter()), instead of a single value applied everywhere. Supports a
+ * vertically- or otherwise spatially-varying leaf-angle distribution without triangulating. Like the
+ * scalar overload it inverts Beer's law from each beam's own origin and does NOT require
+ * triangulateLiDARHitPoints(). Requires miss points like the other overloads.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context
+ * @param Gtheta_per_cell Array of G(theta) values, one per grid cell; every value must be in (0,1]
+ * @param cell_count Number of entries in Gtheta_per_cell; must equal getLiDARGridCellCount()
+ * @param min_voxel_hits Minimum number of hits required per voxel
+ * @param element_width Characteristic vegetation element width (m); <= 0 reports sampling-only uncertainty
+ */
+PYHELIOS_API void calculateLiDARLeafAreaGthetaPerCell(LiDARcloud* cloud, helios::Context* context,
+                                                      const float* Gtheta_per_cell, unsigned int cell_count,
+                                                      int min_voxel_hits, float element_width);
+
+//=============================================================================
+// helios-core 1.3.86 additions
+//=============================================================================
+
+/**
+ * @brief Streaming sink for per-scan triangulation results.
+ *
+ * Invoked once per scan by triangulateLiDARHitPoints() when registered via
+ * setLiDARTriangulationSink(). xyz9 is row-major triCount x 9 floats laid out
+ * [v0x,v0y,v0z, v1x,v1y,v1z, v2x,v2y,v2z] per triangle -- the same layout
+ * getLiDARTriangleVertices_all() exports. triIDs is row-major triCount x 2 ints
+ * [scanID, gridcell] per triangle -- the provenance the leaf-area inversion consumes.
+ * Both pointers are only valid for the duration of the call; copy anything that must
+ * outlive it.
+ */
+typedef void (*LiDARTriangulationSinkCallback)(unsigned int scanID, const float* xyz9,
+                                               const int* triIDs, unsigned int triCount,
+                                               void* user_data);
+
+/**
+ * @brief Streaming sink fired after each chunk of a synthetic scan lands in the cloud.
+ *
+ * Receives the index of the first new hit and the number of new hits. Registered via
+ * setLiDARSyntheticScanHitSink().
+ */
+typedef void (*LiDARSyntheticScanHitSinkCallback)(size_t first, size_t count, void* user_data);
+
+/**
+ * @brief Create a per-hit scalar-data column with an explicit storage type
+ *
+ * Fixes the column's storage type instead of letting it be inferred from the label name on first
+ * use. An explicit INT32 column rejects a value that is not a 32-bit integer; an explicit FLOAT32
+ * column stores at float precision. Neither is ever widened.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Label of the data value
+ * @param type Storage type: 0 = FLOAT64, 1 = FLOAT32, 2 = INT32 (helios::HitDataType order)
+ */
+PYHELIOS_API void createLiDARHitDataColumn(LiDARcloud* cloud, const char* label, int type);
+
+/**
+ * @brief Storage type of an existing per-hit scalar-data column
+ *
+ * Reports an error (no column exists for the label) rather than returning a sentinel, so the
+ * caller must check getLastErrorCode(); the returned value is meaningless on error.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Label of the data value
+ * @return 0 = FLOAT64, 1 = FLOAT32, 2 = INT32
+ */
+PYHELIOS_API int getLiDARHitDataType(LiDARcloud* cloud, const char* label);
+
+/**
+ * @brief Bulk-export a named scalar data column as 32-bit floats
+ *
+ * The float counterpart of getLiDARHitDataColumn(): reads a FLOAT32 column without widening it to
+ * 8 bytes per hit. A FLOAT64 or INT32 column is converted element-wise.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Data label to retrieve
+ * @param out Caller-allocated float array of length n; absent entries set to absent_value
+ * @param n Capacity of the output array (export is clamped to min(n, hit count))
+ * @param absent_value Value written where the label is absent for a hit
+ */
+PYHELIOS_API void getLiDARHitDataColumnF32(LiDARcloud* cloud, const char* label, float* out,
+                                           unsigned int n, float absent_value);
+
+/**
+ * @brief Bulk-export a named scalar data column as 32-bit signed integers
+ *
+ * Reads an INT32 column without widening it. A value that is not an integer in the 32-bit range
+ * (a fractional value, a NaN, or a timestamp) is an error naming the label -- read such a label
+ * through getLiDARHitDataColumn() instead.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Data label to retrieve
+ * @param out Caller-allocated int32 array of length n; absent entries set to absent_value
+ * @param n Capacity of the output array (export is clamped to min(n, hit count))
+ * @param absent_value Value written where the label is absent for a hit
+ */
+PYHELIOS_API void getLiDARHitDataColumnI32(LiDARcloud* cloud, const char* label, int* out,
+                                           unsigned int n, int absent_value);
+
+/**
+ * @brief Add many hit points to the cloud in one call, with double-precision positions
+ *
+ * The native bulk-ingestion path (LiDARcloud::addHitPoints). Distinct from addLiDARHitPoints(),
+ * which is a per-point shim taking float positions: this takes row-major double xyz, supports a
+ * NULL direction array (each direction is then derived from the point's position relative to the
+ * scan origin, as the ASCII loader does), and writes scalar data columns directly.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan ID these hits belong to (the scan must already exist)
+ * @param n Number of hit points to add
+ * @param xyz Row-major n x 3 doubles [x, y, z]
+ * @param dir_spherical Row-major n x 3 floats (radius, elevation, azimuth), or NULL to derive
+ *                      each direction from the point's position relative to the scan origin
+ * @param labels nLabels C-strings naming the scalar-data columns, or NULL when nLabels is 0
+ * @param nLabels Number of scalar-data columns (0 for none)
+ * @param values Row-major n x nLabels doubles, or NULL when nLabels is 0. A NaN entry leaves that
+ *               label absent on that point.
+ */
+PYHELIOS_API void addLiDARHitPointsBulk(LiDARcloud* cloud, unsigned int scanID, size_t n,
+                                        const double* xyz, const float* dir_spherical,
+                                        const char** labels, unsigned int nLabels,
+                                        const double* values);
+
+/**
+ * @brief Delete a contiguous range of hit points, preserving the order of the rest
+ *
+ * Removes hits [first, first+count). Unlike deleteLiDARHitPoint(), which fills the freed slot with
+ * the last hit, this keeps every surviving hit in its relative order, so draining the tail of the
+ * cloud costs O(count) and leaves earlier indices unchanged.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param first Index of the first hit to delete
+ * @param count Number of hits to delete
+ */
+PYHELIOS_API void deleteLiDARHitPoints(LiDARcloud* cloud, size_t first, size_t count);
+
+/**
+ * @brief Register a streaming sink for per-scan triangulation results
+ *
+ * With a sink set, triangulateLiDARHitPoints() calls it once per scan with that scan's finished
+ * triangles and then releases them, keeping only the per-voxel leaf-angle sums the leaf-area
+ * inversion needs. Retained memory becomes one scan's triangles at a time.
+ *
+ * IMPORTANT: while a run's triangles have been streamed, getLiDARTriangleCount() reports zero and
+ * the mesh consumers -- getLiDARTriangleVertices_all(), addLiDARTrianglesToContext() and the
+ * exportLiDARTriangle*() functions -- report an error rather than operating on an empty mesh.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param cb Sink callback, or NULL to clear it
+ * @param user_data Opaque pointer passed back to the callback
+ */
+PYHELIOS_API void setLiDARTriangulationSink(LiDARcloud* cloud, LiDARTriangulationSinkCallback cb,
+                                            void* user_data);
+
+/**
+ * @brief Register a streaming sink fired after each chunk of a synthetic scan lands in the cloud
+ *
+ * Without a sink, every chunk's returns accumulate until the scan finishes. With one, the callback
+ * is invoked after each chunk with the index of the first new hit and the number of new hits; the
+ * caller can read them through the per-scan column readers, write them out, then release them with
+ * deleteLiDARHitPoints(). The new hits are always the tail of the cloud.
+ *
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param cb Sink callback, or NULL to clear it
+ * @param user_data Opaque pointer passed back to the callback
+ */
+PYHELIOS_API void setLiDARSyntheticScanHitSink(LiDARcloud* cloud,
+                                               LiDARSyntheticScanHitSinkCallback cb,
+                                               void* user_data);
+
+/**
+ * @brief Number of hit points (stored returns plus virtualized misses) belonging to one scan
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @return Number of hits in that scan, i.e. the length the per-scan readers fill
+ */
+PYHELIOS_API size_t getLiDARScanHitCount(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Global indices of one scan's hit points, in the order the per-scan readers use
+ *
+ * A scan's hits need not be contiguous in the global index space, so this maps each local
+ * position back to the global index used by getLiDARHitXYZ() and friends.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @param out Caller-allocated unsigned array of length n
+ * @param n Capacity of the output array (clamped to min(n, getLiDARScanHitCount()))
+ */
+PYHELIOS_API void getLiDARScanHitIndices(LiDARcloud* cloud, unsigned int scanID,
+                                         unsigned int* out, unsigned int n);
+
+/**
+ * @brief Read one scan's hit positions in a single pass
+ *
+ * Costs O(hits in the scan), not O(hits in the cloud).
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @param out Caller-allocated float array of length 3*n (x,y,z per hit)
+ * @param n Capacity in hits (clamped to min(n, getLiDARScanHitCount()))
+ */
+PYHELIOS_API void getLiDARScanHitXYZColumn(LiDARcloud* cloud, unsigned int scanID,
+                                           float* out, unsigned int n);
+
+/**
+ * @brief Read one scan's values of a scalar-data label in a single pass (doubles)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @param label Label of the data value
+ * @param out Caller-allocated double array of length n
+ * @param n Capacity in hits (clamped to min(n, getLiDARScanHitCount()))
+ * @param absent_value Value written for hits that lack the label
+ */
+PYHELIOS_API void getLiDARScanHitDataColumn(LiDARcloud* cloud, unsigned int scanID,
+                                            const char* label, double* out, unsigned int n,
+                                            double absent_value);
+
+/**
+ * @brief Read one scan's values of a scalar-data label in a single pass (32-bit floats)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @param label Label of the data value
+ * @param out Caller-allocated float array of length n
+ * @param n Capacity in hits (clamped to min(n, getLiDARScanHitCount()))
+ * @param absent_value Value written for hits that lack the label
+ */
+PYHELIOS_API void getLiDARScanHitDataColumnF32(LiDARcloud* cloud, unsigned int scanID,
+                                               const char* label, float* out, unsigned int n,
+                                               float absent_value);
+
+/**
+ * @brief Read one scan's values of a scalar-data label in a single pass (32-bit integers)
+ *
+ * A value that is not an integer in the 32-bit range is an error naming the label.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index
+ * @param label Label of the data value
+ * @param out Caller-allocated int32 array of length n
+ * @param n Capacity in hits (clamped to min(n, getLiDARScanHitCount()))
+ * @param absent_value Value written for hits that lack the label
+ */
+PYHELIOS_API void getLiDARScanHitDataColumnI32(LiDARcloud* cloud, unsigned int scanID,
+                                               const char* label, int* out, unsigned int n,
+                                               int absent_value);
+
+/**
+ * @brief Calculate leaf area for only a block of the voxel grid
+ *
+ * The block form of calculateLiDARLeafAreaMinHits(): requires a regular lattice grid (as built by
+ * addGrid()), and triangulation supplies G(theta).
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context
+ * @param min_voxel_hits Minimum number of beams that must have entered a voxel
+ * @param element_width Characteristic vegetation element width (m)
+ * @param ijk_min Lattice index of the block's first cell, [i, j, k]
+ * @param ijk_max Lattice index of the block's last cell (inclusive), [i, j, k]
+ */
+PYHELIOS_API void calculateLiDARLeafAreaBlock(LiDARcloud* cloud, helios::Context* context,
+                                              int min_voxel_hits, float element_width,
+                                              const int* ijk_min, const int* ijk_max);
+
+/**
+ * @brief Calculate leaf area for a block of the voxel grid with a caller-supplied G(theta)
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context
+ * @param Gtheta Mean leaf-projection coefficient applied to every voxel, in (0,1]
+ * @param min_voxel_hits Minimum number of beams that must have entered a voxel
+ * @param element_width Characteristic vegetation element width (m)
+ * @param ijk_min Lattice index of the block's first cell, [i, j, k]
+ * @param ijk_max Lattice index of the block's last cell (inclusive), [i, j, k]
+ */
+PYHELIOS_API void calculateLiDARLeafAreaGthetaBlock(LiDARcloud* cloud, helios::Context* context,
+                                                    float Gtheta, int min_voxel_hits,
+                                                    float element_width,
+                                                    const int* ijk_min, const int* ijk_max);
+
+/**
+ * @brief Calculate leaf area for a block of the voxel grid with a per-cell G(theta)
+ *
+ * Gtheta_per_cell still has one entry per grid cell (the whole grid, not just the block), in
+ * grid-cell order.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param context Pointer to the Helios context
+ * @param Gtheta_per_cell Array of G(theta) values, one per grid cell; every value in (0,1]
+ * @param cell_count Number of entries in Gtheta_per_cell; must equal getLiDARGridCellCount()
+ * @param min_voxel_hits Minimum number of beams that must have entered a voxel
+ * @param element_width Characteristic vegetation element width (m)
+ * @param ijk_min Lattice index of the block's first cell, [i, j, k]
+ * @param ijk_max Lattice index of the block's last cell (inclusive), [i, j, k]
+ */
+PYHELIOS_API void calculateLiDARLeafAreaGthetaPerCellBlock(LiDARcloud* cloud, helios::Context* context,
+                                                           const float* Gtheta_per_cell,
+                                                           unsigned int cell_count,
+                                                           int min_voxel_hits, float element_width,
+                                                           const int* ijk_min, const int* ijk_max);
+
+/**
+ * @brief Lattice index of a grid cell along x, y and z
+ *
+ * For a grid built by addGrid() this is the cell's position in the ndiv.x by ndiv.y by ndiv.z
+ * lattice; cells are stored in the order k*ny*nx + j*nx + i. It is the coordinate the block
+ * overloads of calculateLeafArea() take.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param index Index of a grid cell
+ * @param ijk_out Caller-allocated int array of 3, filled with (i, j, k)
+ */
+PYHELIOS_API void getLiDARCellGlobalIJK(LiDARcloud* cloud, unsigned int index, int* ijk_out);
+
+/**
+ * @brief Number of lattice cells along x, y and z of the grid (the ndiv passed to addGrid())
+ *
+ * Reports an error if the grid is empty or its cells do not form a regular lattice.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param ijk_out Caller-allocated int array of 3, filled with (nx, ny, nz)
+ */
+PYHELIOS_API void getLiDARGridGlobalCount(LiDARcloud* cloud, int* ijk_out);
+
+/**
+ * @brief Number of hit points the cloud can hold before its arrays reallocate
+ * @param cloud Pointer to the LiDARcloud instance
+ * @return Current hit-point capacity (see reserveLiDARHitPoints)
+ */
+PYHELIOS_API size_t getLiDARHitPointCapacity(LiDARcloud* cloud);
 
 #ifdef __cplusplus
 }

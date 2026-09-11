@@ -498,3 +498,53 @@ class TestChildShootTypeRoundTrip:
             after = pa.getCurrentShootParameters("trunk_copy")["child_shoot_types"]
             assert after["labels"] == before["labels"]
             assert after["probabilities"] == pytest.approx(before["probabilities"])
+
+
+@pytest.mark.cross_platform
+class TestInflorescenceMaturityPeriod:
+    """InflorescenceParameters.inflorescence_maturity_period (helios-core 1.3.85)."""
+
+    def test_default_defers_to_plant_threshold(self):
+        from pyhelios.plant_architecture_params import InflorescenceParameters
+        ip = InflorescenceParameters()
+        assert ip.inflorescence_maturity_period.to_dict() == {"distribution": "constant", "parameters": [-1.0]}
+
+    def test_dict_round_trip(self):
+        from pyhelios.plant_architecture_params import InflorescenceParameters, RandomParameterFloat
+        ip = InflorescenceParameters()
+        ip.inflorescence_maturity_period = RandomParameterFloat.uniform(5.0, 7.0)
+        d = ip.to_dict()
+        assert d["inflorescence_maturity_period"] == {"distribution": "uniform", "parameters": [5.0, 7.0]}
+        back = InflorescenceParameters.from_dict(d)
+        assert back.inflorescence_maturity_period.to_dict() == d["inflorescence_maturity_period"]
+
+    def test_missing_key_keeps_default(self):
+        from pyhelios.plant_architecture_params import InflorescenceParameters
+        back = InflorescenceParameters.from_dict({})
+        assert back.inflorescence_maturity_period.to_dict()["parameters"] == [-1.0]
+
+
+@pytest.mark.native_only
+class TestInflorescenceMaturityPeriodNative(TestNativeParameterRoundTrip):
+    def test_maize_tassel_period_is_reported(self, context):
+        """helios-core 1.3.85 gives the maize tassel a 6-day maturity period of its own."""
+        pa = PlantArchitecture(context)
+        try:
+            pa.loadPlantModelFromLibrary("maize")
+            labels = pa.listShootTypeLabels()
+            assert labels, "maize model defines no shoot types"
+            periods = {lbl: pa.getCurrentShootParameters(lbl)["phytomer_parameters"]["inflorescence"]
+                       .get("inflorescence_maturity_period") for lbl in labels}
+            assert all(v is not None for v in periods.values()), periods
+            assert any(v["parameters"] == [6.0] for v in periods.values()), periods
+        finally:
+            pa.__exit__(None, None, None)
+
+    def test_field_round_trips_through_native_json(self, plantarch):
+        label = self._first_shoot_label(plantarch)
+        sp = plantarch.getCurrentShootParameters(label, return_typed=True)
+        sp.phytomer_parameters.inflorescence.inflorescence_maturity_period = RandomParameterFloat.uniform(5, 7)
+        plantarch.defineShootType("custom_maturity", sp)
+        out = plantarch.getCurrentShootParameters("custom_maturity")
+        assert out["phytomer_parameters"]["inflorescence"]["inflorescence_maturity_period"] == {
+            "distribution": "uniform", "parameters": [5.0, 7.0]}

@@ -13,7 +13,7 @@
 ## Known Issues {#LiDARissues}
 
 - The LiDAR plugin requires the Visualizer plugin to be loaded in the build (it is a build-time dependency).
-- The current version of `calculateLeafArea()` handles both single-return and multi-return data automatically.
+- The current version of `calculateLeafArea()` handles both single-return and multi-return data automatically. `isMultiReturnData()` (helios-core 1.3.85) reports which kind the cloud holds: True if any hit has `target_count` greater than 1. This is a behavioral switch, not just a descriptive property — `triangulateHitPoints()` triangulates first returns only (with an adaptive separation filter) for multi-return data and treats every return independently otherwise, and the two can differ substantially in reconstructed surface area — so a cloud assembled by hand (for example through `addHitPoints()`) can confirm which branch will run. Multi-return data must also carry the `timestamp` and `target_index` fields; if `target_count > 1` is present but either is missing, `isMultiReturnData()` raises rather than reporting an answer the rest of the pipeline cannot act on.
 
 ## Introduction {#LiDARintro}
 
@@ -652,6 +652,15 @@ In PyHelios, uncertainty is computed by passing both a `min_voxel_hits` value an
 
 \note **Triangulation-free inversion (`Gtheta`).** The standard inversion uses triangulation only to estimate the per-voxel mean leaf-projection coefficient \f$G(\theta)\f$. For scans that cannot be triangulated — chiefly moving-platform scans (\ref LiDARmoving) — pass an explicit `Gtheta` (in \f$(0,1]\f$; use 0.5 for a spherical/random leaf-angle distribution) to `calculateLeafArea()` along with `min_voxel_hits` and `element_width`. This selects a beam-origin-aware inversion that does **not** require `triangulateHitPoints()` and is geometrically correct for a scanner that moved during acquisition. It still requires miss points like the other overloads.
 
+\note **Per-cell G(theta) (helios-core 1.3.85).** `Gtheta` also accepts a sequence with one value per grid cell, in grid-cell order (the order of `getCellCenter()`), for a canopy whose leaf-angle distribution varies in space — typically with height. Its length must equal `getGridCellCount()` and every value must be in \f$(0,1]\f$; both are checked before the inversion runs. Like the single-value form it needs no triangulation and still requires miss points.
+
+```python
+n = pointcloud.getGridCellCount()
+# e.g. more erect leaves in the upper cells, spherical below
+G_per_cell = [0.4 if pointcloud.getCellCenter(i).z > 1.0 else 0.5 for i in range(n)]
+pointcloud.calculateLeafArea(context, min_voxel_hits=1, element_width=0.05, Gtheta=G_per_cell)
+```
+
 Single-voxel confidence intervals are routinely \f$\pm 50\f$–\f$100\%\f$ and are only valid in specific \f$(L, L_1, N)\f$ ranges (Pimont et al. 2018, Table 3); the accessors refuse to emit an interval outside that envelope (the `valid` flag is then False). The **recommended path is the group-scale interval** (`getGroupLADConfidenceInterval()`), which aggregates over a set of voxels (a vertical slice, a whole plant) and yields much tighter intervals (\f$\pm 5\f$–\f$10\%\f$).
 
 ```python
@@ -1038,6 +1047,32 @@ scan_ids = pointcloud.getHitScanIDColumn()
 | [getScanGridDirection(scanID, row, column)](pyhelios.LiDARCloud.LiDARCloud.getScanGridDirection) | Beam direction at a grid cell, from the fitted model |
 
 \note `getScanGridDirection()` requires that `gapfillMisses()` has already run on the scan through the row/column path, since that is what fits the angular model. It raises otherwise.
+
+## Cropped Clouds and target_count {#LiDARcroppedreturns}
+
+The equal-weighting inversion counts, per pulse, the returns inside and beyond each voxel it pierces. Those counts come from the returns *present in the cloud*, so deleting a pulse's later returns (cropping to the voxel grid, removing the ground, keeping one class of points) leaves its surviving in-voxel return as the whole beam: a pulse that was three-quarters transmitted reads as fully intercepted, and LAD comes out high.
+
+`calculateLeafArea()` closes that gap when the surviving returns still carry the per-pulse `target_index` and `target_count` the scanner wrote. A pulse's returns are ordered by range and a beam crosses the (convex) grid in one contiguous segment, so the removed returns can be placed from the surviving indices alone:
+
+- indices **below** the smallest surviving index were before the first surviving return -- before the grid, no effect;
+- indices **above** the largest surviving index were beyond the last surviving return -- beyond the grid, counted as transmitted through every voxel the beam pierces;
+- indices **between** two surviving returns cannot be placed. They are left out and reported as ambiguous.
+
+The placement is exact when the cloud was cropped to the grid's extent. A cloud cropped *inside* the grid (a class filter, say) produces ambiguous returns, and a removed return that actually sat inside the same voxel as the last survivor is placed beyond it -- the inversion cannot tell, so check the tally. A stand-in miss (a return flagged `is_miss` sharing the pulse's timestamp, which a cropping tool may emit for the removed energy) is ignored for counting when the inference applies; its geometry still sets the beam direction.
+
+Pulses whose returns lack either column, or whose declared count matches the returns present, are untouched. Misses grouped alone -- gap-filled or recorded -- are unaffected.
+
+```python
+pointcloud.calculateLeafArea(context, min_voxel_hits=5, element_width=0.05)
+st = pointcloud.getCroppedReturnStats()
+print(st["hidden_after"], "returns placed beyond the grid and counted as transmitted")
+if st["hidden_ambiguous"]:
+    print(st["beams_ambiguous"], "pulses had returns removed between surviving returns")
+```
+
+| Method | Description |
+|---|---|
+| [getCroppedReturnStats()](pyhelios.LiDARCloud.LiDARCloud.getCroppedReturnStats) | What the last inversion inferred from `target_count`: returns placed before / beyond the grid, or unplaceable |
 
 ## Exact Path Lengths {#LiDARexactpaths}
 

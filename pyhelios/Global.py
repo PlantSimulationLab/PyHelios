@@ -1,25 +1,15 @@
 import os
+from typing import Optional
 
 from .wrappers import UGlobalWrapper as global_wrapper
-from .validation.files import validate_directory_path
 
 class Global:
+    """Process-wide helios-core functions that belong to no Context or plug-in model.
 
-    @staticmethod
-    def set_build_plugin_root_directory(directory:str) -> None:
-        # Validate directory path
-        validated_path = validate_directory_path(
-            directory, 
-            must_exist=True, 
-            create_if_missing=False,
-            param_name="directory", 
-            function_name="set_build_plugin_root_directory"
-        )
-        global_wrapper.setBuildPluginRootDirectory(validated_path)
-
-    @staticmethod
-    def get_build_plugin_root_directory() -> str:
-        return global_wrapper.getBuildPluginRootDirectory()
+    The plug-in build root used to locate runtime assets is not settable here: it is a
+    per-model construction argument (see ``WeberPennTree(context, build_directory)``),
+    and helios-core exposes no global setter for it.
+    """
 
     # =========================================================================
     # GPU Environment (helios-core v1.3.79+)
@@ -89,3 +79,75 @@ class Global:
         """
         global_wrapper.requireGPUOrFail(context_message)
 
+    # =========================================================================
+    # Process-wide random number generator (helios-core v1.3.85+)
+    # =========================================================================
+
+    @staticmethod
+    def seedRandomGenerator(seed: int) -> None:
+        """Seed the process-wide random number generator so a run can be reproduced.
+
+        helios-core has two generators. Each ``Context`` owns one, seeded with
+        :meth:`Context.seedRandomGenerator`, and it drives everything drawn through
+        the Context: primitive placement helpers, ``Context.randu()``, LiDAR
+        synthetic-scan noise, and the plant-architecture library's parameter
+        sampling. The other is a single process-wide generator behind the free
+        function ``helios::randu()``, which plug-in code uses where no Context is at
+        hand: the LiDAR leaf-group and triangle index draws in
+        ``calculateLeafArea()``, and the placement of berries within a grape
+        cluster in PlantArchitecture. This method seeds that second generator.
+
+        By default it is seeded from ``std::random_device`` and every run differs.
+        Seeding it from Python makes those draws repeatable; seed the Context too
+        if the rest of the simulation must repeat as well.
+
+        The generator is shared by all threads and access to it is synchronized, so
+        a seed set from any thread applies to every subsequent draw. Seeding fixes
+        the sequence of values drawn, not which thread draws which value, so a
+        parallel region that draws from it is still scheduling-dependent.
+
+        Args:
+            seed: Value used to seed the generator (unsigned 32-bit)
+
+        Raises:
+            ValueError: If ``seed`` is not an int in ``[0, 2**32 - 1]``
+            RuntimeError: If the native library predates helios-core v1.3.85
+
+        Example:
+            >>> from pyhelios import Global
+            >>> Global.seedRandomGenerator(42)
+            >>> a = [Global.randu() for _ in range(3)]
+            >>> Global.seedRandomGenerator(42)
+            >>> assert a == [Global.randu() for _ in range(3)]
+        """
+        global_wrapper.seedGlobalRandomGenerator(seed)
+
+    @staticmethod
+    def randu(imin: Optional[int] = None, imax: Optional[int] = None):
+        """Draw from the process-wide random number generator.
+
+        With no arguments, returns a uniform float in ``[0, 1)``. With ``imin`` and
+        ``imax``, returns a uniform integer over the **inclusive** range
+        ``[imin, imax]``; every value, endpoints included, is equally likely, and if
+        ``imin >= imax`` then ``imin`` is returned.
+
+        This draws from the same generator that :meth:`seedRandomGenerator` seeds,
+        not from any Context's generator; use :meth:`Context.randu` for that one.
+
+        Args:
+            imin: Lower bound of the integer range (inclusive). Must be given with ``imax``.
+            imax: Upper bound of the integer range (inclusive). Must be given with ``imin``.
+
+        Returns:
+            A float in ``[0, 1)`` when called without arguments, otherwise an int in
+            ``[imin, imax]``.
+
+        Raises:
+            ValueError: If exactly one of ``imin``/``imax`` is given, or either is not an int
+            RuntimeError: If the native library predates helios-core v1.3.85
+        """
+        if imin is None and imax is None:
+            return global_wrapper.globalRandu()
+        if imin is None or imax is None:
+            raise ValueError("randu() takes either no arguments or both imin and imax")
+        return global_wrapper.globalRanduInt(imin, imax)

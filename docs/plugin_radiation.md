@@ -1488,6 +1488,13 @@ props.exposure = "manual"   # disable per-frame auto-exposure scaling
 radiation.addRadiationCamera("fixed_exposure_cam", ["red", "green", "blue"], position, lookat, props)
 ```
 
+`CameraProperties.exposure_target` (helios-core 1.3.85) is the target median scene luminance that `"auto"` exposure scales every band toward, as a fraction of full scale. The default of 0.18 is the middle-grey convention, which assumes a scene whose average reflectance is that of a grey card. A canopy imaged from above is darker than that, so matching a real camera's output may need a lower value; conversely a bright scene may need a higher one. It is ignored for `"manual"` and `"ISOXXX"` exposure, and a non-positive value is rejected.
+
+```python
+props = CameraProperties(exposure="auto", exposure_target=0.10)   # darker target for a nadir canopy view
+radiation.addRadiationCamera("nadir_cam", ["red", "green", "blue"], position, lookat, props)
+```
+
 ### Auto-Calibrated Camera Images
 
 Automatic color correction for realistic imagery:

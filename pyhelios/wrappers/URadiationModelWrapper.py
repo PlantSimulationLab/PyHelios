@@ -1783,7 +1783,7 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     Args:
         radiation_model: RadiationModel instance
         camera_label: Label for the camera to update
-        camera_properties: CameraProperties instance or list of 10 floats
+        camera_properties: CameraProperties instance or list of 11 floats
 
     Raises:
         RuntimeError: If RadiationModel functions not available or operation fails
@@ -1812,14 +1812,14 @@ def updateCameraParameters(radiation_model, camera_label: str, camera_properties
     else:
         props_array = camera_properties
 
-    if len(props_array) != 10:
-        raise ValueError(f"Camera properties must have 10 elements, got {len(props_array)}")
+    if len(props_array) != 11:
+        raise ValueError(f"Camera properties must have 11 elements, got {len(props_array)}")
 
     # Exposure mode is a string, so it travels separately from the numeric array.
     # Read it from the CameraProperties object; list callers default to "auto".
     exposure = getattr(camera_properties, 'exposure', 'auto')
 
-    props_c = (ctypes.c_float * 10)(*props_array)
+    props_c = (ctypes.c_float * 11)(*props_array)
     helios_lib.updateCameraParameters(radiation_model, camera_encoded, props_c,
                                       (exposure or "auto").encode('utf-8'),
                                       *_build_camera_string_array(camera_properties))
@@ -2234,8 +2234,8 @@ def addRadiationCameraVec3(radiation_model, camera_label: str, band_labels: List
 
     if not band_labels:
         raise ValueError("At least one band label is required")
-    if len(camera_properties) != 10:
-        raise ValueError("camera_properties must contain exactly 10 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]")
+    if len(camera_properties) != 11:
+        raise ValueError("camera_properties must contain exactly 11 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom, exposure_target]")
 
     # Encode camera label
     camera_encoded = camera_label.encode('utf-8')
@@ -2271,8 +2271,8 @@ def addRadiationCameraSpherical(radiation_model, camera_label: str, band_labels:
 
     if not band_labels:
         raise ValueError("At least one band label is required")
-    if len(camera_properties) != 10:
-        raise ValueError("camera_properties must contain exactly 10 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]")
+    if len(camera_properties) != 11:
+        raise ValueError("camera_properties must contain exactly 11 values: [resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom, exposure_target]")
 
     # Encode camera label
     camera_encoded = camera_label.encode('utf-8')
@@ -2311,7 +2311,7 @@ def addSIFCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
                      antialiasing_samples: int, camera_properties_obj=None):
     """Add a SIF camera with position and lookat vectors.
 
-    ``camera_properties`` uses the same 10-float layout as ``addRadiationCameraVec3``.
+    ``camera_properties`` uses the same 11-float layout as ``addRadiationCameraVec3``.
     Each emission band in ``band_labels`` must already exist via ``addRadiationBand``.
     """
     _require_sif_camera_available()
@@ -2319,11 +2319,11 @@ def addSIFCameraVec3(radiation_model, camera_label: str, band_labels: List[str],
         raise ValueError("RadiationModel instance is None. Cannot add SIF camera.")
     if not band_labels:
         raise ValueError("At least one emission band label is required")
-    if len(camera_properties) != 10:
+    if len(camera_properties) != 11:
         raise ValueError(
-            "camera_properties must contain exactly 10 values: "
+            "camera_properties must contain exactly 11 values: "
             "[resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, "
-            "FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]"
+            "FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom, exposure_target]"
         )
     if excitation_bin_width_nm <= 0.0:
         raise ValueError("excitation_bin_width_nm must be > 0")
@@ -2359,11 +2359,11 @@ def addSIFCameraSpherical(radiation_model, camera_label: str, band_labels: List[
         raise ValueError("RadiationModel instance is None. Cannot add SIF camera.")
     if not band_labels:
         raise ValueError("At least one emission band label is required")
-    if len(camera_properties) != 10:
+    if len(camera_properties) != 11:
         raise ValueError(
-            "camera_properties must contain exactly 10 values: "
+            "camera_properties must contain exactly 11 values: "
             "[resolution_x, resolution_y, focal_distance, lens_diameter, HFOV, "
-            "FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom]"
+            "FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, zoom, exposure_target]"
         )
     if excitation_bin_width_nm <= 0.0:
         raise ValueError("excitation_bin_width_nm must be > 0")
