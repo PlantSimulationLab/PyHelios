@@ -54,11 +54,37 @@ except AttributeError:
     _GLOBAL_RNG_FUNCTIONS_AVAILABLE = False
 
 
+# Leaf angle distribution CDFs from core/global.h (helios-core v1.3.87+), probed
+# separately for the same reason as the block above.
+_LEAF_ANGLE_CDF_FUNCTIONS_AVAILABLE = False
+try:
+    for _fn in ("evaluateBetaDistributionCDF", "invertBetaDistributionCDF",
+                "evaluateEllipsoidalAzimuthCDF", "invertEllipsoidalAzimuthCDF"):
+        _f = getattr(helios_lib, _fn)
+        _f.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_float]
+        _f.restype = ctypes.c_float
+        _f.errcheck = _check_error
+    del _fn, _f
+
+    _LEAF_ANGLE_CDF_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _LEAF_ANGLE_CDF_FUNCTIONS_AVAILABLE = False
+
+
 def _require_global_rng_functions(name: str) -> None:
     if not _GLOBAL_RNG_FUNCTIONS_AVAILABLE:
         raise RuntimeError(
             f"{name} is not available in the current native library. It requires "
             "helios-core v1.3.85 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def _require_leaf_angle_cdf_functions(name: str) -> None:
+    if not _LEAF_ANGLE_CDF_FUNCTIONS_AVAILABLE:
+        raise RuntimeError(
+            f"{name} is not available in the current native library. It requires "
+            "helios-core v1.3.87 or newer; rebuild with "
             "'build_scripts/build_helios --clean'."
         )
 
@@ -145,3 +171,31 @@ def globalRanduInt(imin: int, imax: int) -> int:
         if not isinstance(v, int) or isinstance(v, bool):
             raise ValueError(f"{name} must be an int, got {type(v).__name__}")
     return int(helios_lib.globalRanduInt(ctypes.c_int(imin), ctypes.c_int(imax)))
+
+
+def evaluateBetaDistributionCDF(theta: float, mu: float, nu: float) -> float:
+    """Cumulative probability of a Beta-distributed leaf inclination at or below ``theta``."""
+    _require_leaf_angle_cdf_functions("evaluateBetaDistributionCDF")
+    return float(helios_lib.evaluateBetaDistributionCDF(
+        ctypes.c_float(theta), ctypes.c_float(mu), ctypes.c_float(nu)))
+
+
+def invertBetaDistributionCDF(probability: float, mu: float, nu: float) -> float:
+    """Leaf inclination (radians) at a given cumulative probability of the Beta distribution."""
+    _require_leaf_angle_cdf_functions("invertBetaDistributionCDF")
+    return float(helios_lib.invertBetaDistributionCDF(
+        ctypes.c_float(probability), ctypes.c_float(mu), ctypes.c_float(nu)))
+
+
+def evaluateEllipsoidalAzimuthCDF(phi: float, e: float, phi0_degrees: float) -> float:
+    """Cumulative probability of an ellipsoidally distributed leaf azimuth at or below ``phi``."""
+    _require_leaf_angle_cdf_functions("evaluateEllipsoidalAzimuthCDF")
+    return float(helios_lib.evaluateEllipsoidalAzimuthCDF(
+        ctypes.c_float(phi), ctypes.c_float(e), ctypes.c_float(phi0_degrees)))
+
+
+def invertEllipsoidalAzimuthCDF(probability: float, e: float, phi0_degrees: float) -> float:
+    """Leaf azimuth (radians) at a given cumulative probability of the ellipsoidal distribution."""
+    _require_leaf_angle_cdf_functions("invertEllipsoidalAzimuthCDF")
+    return float(helios_lib.invertEllipsoidalAzimuthCDF(
+        ctypes.c_float(probability), ctypes.c_float(e), ctypes.c_float(phi0_degrees)))

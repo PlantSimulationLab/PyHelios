@@ -36,9 +36,11 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import Any, Dict, List, Optional, Tuple
 
 __all__ = [
+    "BudState",
     "RandomParameterFloat",
     "RandomParameterInt",
     "RandomParameter",
@@ -52,7 +54,39 @@ __all__ = [
     "ShootParameters",
     "CarbohydrateParameters",
     "NitrogenParameters",
+    "LEAF_EXPANSION_RATE_UNSET",
 ]
+
+
+#: Sentinel value of :attr:`ShootParameters.leaf_expansion_rate_max` meaning "expand leaves at
+#: the shoot's internode elongation rate". The native comparison is against zero rather than
+#: this exact value, so any negative rate is treated as unset; a rate is a non-negative
+#: quantity, so no negative value can be confused with one a user intended.
+LEAF_EXPANSION_RATE_UNSET = -1.0
+
+
+# --------------------------------------------------------------------------- #
+# Bud state
+# --------------------------------------------------------------------------- #
+class BudState(IntEnum):
+    """State of a vegetative or floral bud, mirroring the C++ ``BudState`` enum.
+
+    The values are the wire format passed to the native library, so they match the
+    C++ enumerators (``BUD_DORMANT`` through ``BUD_DEAD``) one for one.
+
+    ``DEAD`` means the bud will produce nothing further. It is set both when a bud is
+    killed -- by :meth:`~pyhelios.PlantArchitecture.PlantArchitecture.removeShootVegetativeBuds`
+    or by a failed bud-break draw -- and when a bud has *already broken into a child
+    shoot*. A count of dead buds is therefore not a count of killed buds; to test
+    whether a shoot can still grow, count the live states instead.
+    """
+
+    DORMANT = 0
+    ACTIVE = 1
+    FLOWER_CLOSED = 2
+    FLOWER_OPEN = 3
+    FRUITING = 4
+    DEAD = 5
 
 
 # --------------------------------------------------------------------------- #
@@ -333,6 +367,15 @@ class PetioleParameters:
     color: Color = (0.0, 0.0, 0.0)
     length_segments: int = 1
     radial_subdivisions: int = 7
+    #: Dimensionless bending compliance: the petiole arches toward the ground under its
+    #: leaflets' weight as the leaf grows and the petiole ages. Normalized so a straight,
+    #: horizontal, untapered petiole carrying its full-grown leaf weight at the tip bends
+    #: by this many radians there, independent of length. Zero keeps the petiole rigid.
+    flexibility: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Timescale in days over which the compliance grows with age: the effective compliance
+    #: is ``flexibility * (1 + age / flexibility_aging)``, so a petiole goes on lowering
+    #: after its leaf has stopped growing. Zero disables ageing.
+    flexibility_aging: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -345,6 +388,8 @@ class PetioleParameters:
             "color": _color_to_dict(self.color),
             "length_segments": int(self.length_segments),
             "radial_subdivisions": int(self.radial_subdivisions),
+            "flexibility": self.flexibility.to_dict(),
+            "flexibility_aging": self.flexibility_aging.to_dict(),
         }
 
     @classmethod
@@ -360,6 +405,8 @@ class PetioleParameters:
             color=_color_from_dict(d["color"], base.color) if "color" in d else base.color,
             length_segments=int(d.get("length_segments", base.length_segments)),
             radial_subdivisions=int(d.get("radial_subdivisions", base.radial_subdivisions)),
+            flexibility=_rpf(d, "flexibility", base.flexibility),
+            flexibility_aging=_rpf(d, "flexibility_aging", base.flexibility_aging),
         )
 
 
@@ -371,6 +418,10 @@ class LeafParameters:
     roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     leaflet_offset: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     leaflet_scale: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(1.0))
+    #: Relative size of the intercalary leaflets of an interruptedly pinnate compound leaf,
+    #: as a fraction of the major leaflet just distal to them. Zero gives a simply pinnate
+    #: leaf whose leaflets shrink monotonically from the tip.
+    intercalary_leaflet_scale: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     prototype_scale: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.05))
     prototype: LeafPrototype = field(default_factory=LeafPrototype)
 
@@ -382,6 +433,7 @@ class LeafParameters:
             "roll": self.roll.to_dict(),
             "leaflet_offset": self.leaflet_offset.to_dict(),
             "leaflet_scale": self.leaflet_scale.to_dict(),
+            "intercalary_leaflet_scale": self.intercalary_leaflet_scale.to_dict(),
             "prototype_scale": self.prototype_scale.to_dict(),
             "prototype": self.prototype.to_dict(),
         }
@@ -396,6 +448,7 @@ class LeafParameters:
             roll=_rpf(d, "roll", base.roll),
             leaflet_offset=_rpf(d, "leaflet_offset", base.leaflet_offset),
             leaflet_scale=_rpf(d, "leaflet_scale", base.leaflet_scale),
+            intercalary_leaflet_scale=_rpf(d, "intercalary_leaflet_scale", base.intercalary_leaflet_scale),
             prototype_scale=_rpf(d, "prototype_scale", base.prototype_scale),
             prototype=LeafPrototype.from_dict(d["prototype"]) if "prototype" in d else base.prototype,
         )
@@ -537,6 +590,7 @@ _SHOOT_RPF_FIELDS = (
     ("tortuosity", 0.0),
     ("phyllochron_min", 2.0),
     ("elongation_rate_max", 0.2),
+    ("leaf_expansion_rate_max", LEAF_EXPANSION_RATE_UNSET),
     ("vegetative_bud_break_probability_min", 0.0),
     ("vegetative_bud_break_probability_max", 1.0),
     ("vegetative_bud_break_probability_decay_rate", -0.5),
@@ -573,6 +627,15 @@ class ShootParameters:
     tortuosity: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     phyllochron_min: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(2.0))
     elongation_rate_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.2))
+    #: Maximum relative expansion rate of the shoot's leaves and petioles
+    #: (m * m^-1 * day^-1), in the same form as ``elongation_rate_max``, so 0.1 expands a
+    #: leaf from nothing to full size in ten days regardless of that leaf's size. Setting it
+    #: decouples leaf expansion from internode elongation, which a species whose leaves
+    #: finish expanding before its internodes stop elongating needs. Any negative value --
+    #: the default :data:`LEAF_EXPANSION_RATE_UNSET` -- means leaves expand at the shoot's
+    #: own ``elongation_rate_max``, reproducing the historical single-rate growth. Zero is a
+    #: real rate meaning "leaves never expand", so it differs from the unset sentinel.
+    leaf_expansion_rate_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(LEAF_EXPANSION_RATE_UNSET))
     vegetative_bud_break_probability_min: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     vegetative_bud_break_probability_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(1.0))
     vegetative_bud_break_probability_decay_rate: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(-0.5))

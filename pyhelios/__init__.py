@@ -138,6 +138,7 @@ except (AttributeError, ImportError):
 
 # Typed plant architecture parameter model (pure Python, always importable)
 from .plant_architecture_params import (
+    BudState,
     RandomParameter,
     RandomParameterFloat,
     RandomParameterInt,
@@ -151,6 +152,7 @@ from .plant_architecture_params import (
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
+    LEAF_EXPANSION_RATE_UNSET,
 )
 
 try:

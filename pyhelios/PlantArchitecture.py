@@ -45,6 +45,7 @@ except ImportError:
 from .validation.core import validate_positive_value
 from .assets import get_asset_manager
 from .plant_architecture_params import (
+    BudState,
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
@@ -2445,11 +2446,19 @@ class PlantArchitecture:
 
     def removeShootVegetativeBuds(self, plant_id: int, shoot_id: int) -> None:
         """
-        Kill all vegetative buds on a single shoot.
+        Mark every vegetative bud on a single shoot as dead.
 
-        The shoot keeps its existing structure but can no longer produce new lateral
-        shoots from those buds -- the standard way to stop a trained axis from
-        throwing new canes.
+        Despite the name, nothing is removed: each axillary vegetative bud on the shoot
+        is set to ``BudState.DEAD`` and the bud entries themselves stay in place, so
+        :meth:`getShootVegetativeBudCount` still sees them and the unfiltered count is
+        unchanged. Dead buds are skipped when dormancy breaks, so the shoot keeps its
+        existing structure but produces no new lateral shoots -- the standard way to stop
+        a trained axis from throwing new canes, and to stop the old wood of a
+        reconstructed tree re-growing.
+
+        This is exactly equivalent to setting every bud on the shoot to
+        ``BudState.DEAD``; the shoot's own apex is unaffected, so pair it with
+        :meth:`terminateApicalBud` to stop the shoot extending as well.
 
         Args:
             plant_id: ID of the plant instance
@@ -2458,6 +2467,10 @@ class PlantArchitecture:
         Raises:
             ValueError: If either identifier is negative
             PlantArchitectureError: If the plant or shoot does not exist
+
+        See Also:
+            :meth:`getShootVegetativeBudCount`, to confirm the buds are dead rather than
+            gone, and :meth:`terminateApicalBud`, for the shoot's apex.
 
         Example:
             >>> plantarch.removeShootVegetativeBuds(plant_id, shoot_id=1)
@@ -4253,6 +4266,702 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to set shoot internode length max (plant {plant_id}, "
                 f"shoot {shoot_id}): {e}")
+
+    # Bud and apex control
+    def terminateApicalBud(self, plant_id: int, shoot_id: int) -> None:
+        """
+        Stop a shoot's apex from adding any further phytomers.
+
+        The shoot keeps everything it already has, and its vegetative buds keep whatever
+        state they are in -- this kills only the apical meristem. The shoot therefore stops
+        extending at its tip but can still throw laterals; to stop those as well, pair this
+        with :meth:`removeShootVegetativeBuds`.
+
+        This is the standard way to freeze the old wood of a reconstructed tree before
+        growing it forward with :meth:`advanceTime`.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+
+        Raises:
+            ValueError: If either identifier is not a non-negative int
+            PlantArchitectureError: If the plant or shoot does not exist
+
+        Example:
+            >>> # Freeze the measured scaffold so only last year's growth extends
+            >>> for shoot_id in plantarch.getTerminalShootIDs(plant_id):
+            ...     plantarch.terminateApicalBud(plant_id, shoot_id)
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.terminateShootApicalBud(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to terminate the apical bud of shoot {shoot_id} "
+                f"of plant {plant_id}: {e}")
+
+    def getShootVegetativeBudCount(self, plant_id: int, shoot_id: int,
+                                   state: Optional[BudState] = None) -> int:
+        """
+        Count a shoot's axillary vegetative buds, summed over all phytomers and petioles.
+
+        Buds are never removed from a shoot -- only their state changes -- so the
+        unfiltered count is stable over the shoot's life and makes a useful denominator.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`)
+            state: Count only buds in this :class:`~pyhelios.BudState`. ``None``
+                (the default) counts buds in every state.
+
+        Returns:
+            The number of matching vegetative buds.
+
+        Raises:
+            ValueError: If an identifier is negative, or ``state`` is not a BudState
+            PlantArchitectureError: If the plant or shoot does not exist
+
+        Note:
+            ``BudState.DEAD`` means "will produce nothing further", which covers both buds
+            that were killed and buds that have **already broken into a child shoot**. A
+            dead-bud count is therefore not a count of killed buds. To test whether a shoot
+            can still grow, count the live states instead -- for example the unfiltered
+            total minus the dead count.
+
+        Example:
+            >>> from pyhelios import BudState
+            >>> total = plantarch.getShootVegetativeBudCount(plant_id, 0)
+            >>> dead = plantarch.getShootVegetativeBudCount(plant_id, 0, BudState.DEAD)
+            >>> print(f"{total - dead} buds can still break")
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        bud_state = -1 if state is None else int(self._validateBudState(state))
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getShootVegetativeBudCount(
+                self._plantarch_ptr, plant_id, shoot_id, bud_state)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to count the vegetative buds of shoot {shoot_id} "
+                f"of plant {plant_id}: {e}")
+
+    def getPlantLeafCount(self, plant_id: int) -> int:
+        """
+        Get the number of leaf objects on a plant.
+
+        Counts compound leaf objects, not primitives -- a leaf built from many triangles
+        counts once, and a compound leaf contributes one per leaflet. Equivalent to
+        ``len(getPlantLeafObjectIDs(plant_id))`` without materializing the ID list.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            The number of leaf objects.
+
+        Raises:
+            ValueError: If plant_id is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+
+        Example:
+            >>> print(f"{plantarch.getPlantLeafCount(plant_id)} leaves")
+        """
+        if isinstance(plant_id, bool) or not isinstance(plant_id, int):
+            raise ValueError(f"Plant ID must be a non-negative int, got {type(plant_id).__name__}")
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantLeafCount(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the leaf count of plant {plant_id}: {e}")
+
+    @staticmethod
+    def _validateShootIdentifiers(plant_id: int, shoot_id: int) -> None:
+        """Reject non-int and negative plant/shoot identifiers.
+
+        bool is excluded explicitly: it is an int subclass, so True would otherwise pass
+        as shoot 1.
+        """
+        for name, value in (("Plant ID", plant_id), ("Shoot ID", shoot_id)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"{name} must be a non-negative int, got {type(value).__name__}")
+        if plant_id < 0 or shoot_id < 0:
+            raise ValueError("Plant ID and shoot ID must be non-negative")
+
+    @staticmethod
+    def _validateBudState(state) -> BudState:
+        """Coerce a BudState (or its int value) and reject anything else.
+
+        A bare int is accepted because BudState is an IntEnum, but it still has to name a
+        real state -- an out-of-range value would be cast onto the C++ enum, which is
+        undefined behavior.
+        """
+        if isinstance(state, bool) or not isinstance(state, int):
+            raise ValueError(f"State must be a BudState, got {type(state).__name__}")
+        try:
+            return BudState(int(state))
+        except ValueError:
+            raise ValueError(
+                f"State must be a BudState value in 0..5, got {int(state)}")
+
+    def enableLeafAngleDistributionTracking(self, plant_ids, beta_mu_inclination: float,
+                                            beta_nu_inclination: float, eccentricity: float,
+                                            ellipse_rotation_degrees: float,
+                                            lambda_degrees: float) -> None:
+        """
+        Steer leaf inclination and azimuth toward a prescribed distribution as the plant grows.
+
+        Each leaf is given a target angle as it emerges and turns onto it while it expands,
+        so a fully grown leaf never moves again: the plant matches the distribution at every
+        stage without leaves shifting from one timestep to the next. Targets are not drawn
+        independently per leaf, which would reproduce the distribution while destroying the
+        arrangement the model generated -- each emerging leaf takes the bin that best trades
+        closeness to the angle the model gave it against how far that bin is below its share
+        of the plant's leaf area.
+
+        Pass a list of plant IDs to realize the distribution over a canopy as a whole, in
+        which case an individual plant need not follow the distribution on its own.
+
+        Enabling tracking on an already-tracked plant replaces its target, so the target may
+        be varied over the plant's life.
+
+        Args:
+            plant_ids: A single plant ID, or a sequence of plant IDs to steer together
+            beta_mu_inclination: Mean parameter of the Beta inclination distribution
+            beta_nu_inclination: Shape parameter of the Beta inclination distribution
+            eccentricity: Eccentricity of the ellipse defining the azimuth distribution
+            ellipse_rotation_degrees: Rotation of that ellipse (degrees)
+            lambda_degrees: How strongly to favour filling the distribution over keeping each
+                leaf near the angle the model gave it. Zero leaves the plant unchanged; values
+                of order 180 match the distribution as closely as the growing plant allows.
+
+        Raises:
+            ValueError: If any plant ID is not a non-negative int, or the list is empty
+            PlantArchitectureError: If a plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+
+        Example:
+            >>> plantarch.enableLeafAngleDistributionTracking(
+            ...     plant_id, 2.0, 1.5, 0.5, 0.0, 180.0)
+            >>> plantarch.advanceTime(plant_id, 20)
+        """
+        multi = not isinstance(plant_ids, int) or isinstance(plant_ids, bool)
+        ids = self._validatePlantIdList(plant_ids) if multi else [
+            self._validatePlantIdentifier(plant_ids)]
+
+        self._check_context_alive()
+        try:
+            if multi:
+                plantarch_wrapper.enablePlantLeafAngleDistributionTrackingMulti(
+                    self._plantarch_ptr, ids, beta_mu_inclination, beta_nu_inclination,
+                    eccentricity, ellipse_rotation_degrees, lambda_degrees)
+            else:
+                plantarch_wrapper.enablePlantLeafAngleDistributionTracking(
+                    self._plantarch_ptr, ids[0], beta_mu_inclination, beta_nu_inclination,
+                    eccentricity, ellipse_rotation_degrees, lambda_degrees)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to enable leaf angle distribution tracking for {ids}: {e}")
+
+    def enableLeafElevationAngleDistributionTracking(self, plant_id: int,
+                                                     beta_mu_inclination: float,
+                                                     beta_nu_inclination: float,
+                                                     lambda_degrees: float) -> None:
+        """
+        Steer leaf inclination toward a Beta distribution as the plant grows, leaving azimuth
+        to the procedural model.
+
+        The inclination-only counterpart of :meth:`enableLeafAngleDistributionTracking`.
+
+        Args:
+            plant_id: ID of the plant instance
+            beta_mu_inclination: Mean parameter of the Beta inclination distribution
+            beta_nu_inclination: Shape parameter of the Beta inclination distribution
+            lambda_degrees: How strongly to favour filling the distribution over keeping each
+                leaf near the angle the model gave it
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.enablePlantLeafElevationAngleDistributionTracking(
+                self._plantarch_ptr, plant_id, beta_mu_inclination, beta_nu_inclination,
+                lambda_degrees)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to enable leaf elevation angle distribution tracking for "
+                f"plant {plant_id}: {e}")
+
+    def enableLeafAzimuthAngleDistributionTracking(self, plant_id: int, eccentricity: float,
+                                                   ellipse_rotation_degrees: float,
+                                                   lambda_degrees: float) -> None:
+        """
+        Steer leaf azimuth toward an ellipsoidal distribution as the plant grows, leaving
+        inclination to the procedural model.
+
+        The azimuth-only counterpart of :meth:`enableLeafAngleDistributionTracking`.
+
+        Args:
+            plant_id: ID of the plant instance
+            eccentricity: Eccentricity of the ellipse defining the azimuth distribution
+            ellipse_rotation_degrees: Rotation of that ellipse (degrees)
+            lambda_degrees: How strongly to favour filling the distribution over keeping each
+                leaf near the angle the model gave it
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.enablePlantLeafAzimuthAngleDistributionTracking(
+                self._plantarch_ptr, plant_id, eccentricity, ellipse_rotation_degrees,
+                lambda_degrees)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to enable leaf azimuth angle distribution tracking for "
+                f"plant {plant_id}: {e}")
+
+    def disableLeafAngleDistributionTracking(self, plant_id: int) -> None:
+        """
+        Stop steering a plant's leaf angles toward a prescribed distribution.
+
+        Leaves already steered keep the orientation they have reached; leaves emerging
+        afterward are left where the procedural model puts them.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.disablePlantLeafAngleDistributionTracking(
+                self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to disable leaf angle distribution tracking for "
+                f"plant {plant_id}: {e}")
+
+    def isLeafAngleDistributionTrackingEnabled(self, plant_id: int) -> bool:
+        """
+        Whether a plant's leaf angles are being steered toward a prescribed distribution.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            True if tracking is in effect for this plant
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.isPlantLeafAngleDistributionTrackingEnabled(
+                self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to query leaf angle distribution tracking for "
+                f"plant {plant_id}: {e}")
+
+    def getPetioleLength(self, plant_id: int, shoot_id: int, node_index: int,
+                         petiole_index: Optional[int] = None) -> float:
+        """
+        Current length of a phytomer's petioles, measured along the centerline.
+
+        This is the length right now, not the mature length the petiole is growing toward,
+        so it rises as the petiole elongates. Contrast the leaf readers, which report the
+        size a leaf is expanding toward. The length is an arclength rather than a
+        base-to-tip distance, so a petiole drooping under its leaves reports the same
+        length as a rigid one of the same age.
+
+        With ``petiole_index`` omitted, returns the mean over every petiole on the
+        phytomer. Petioles at one node are parallel structures rather than segments in
+        series, so their lengths are not additive and the mean is the meaningful summary.
+        A phytomer with no petiole -- a leafless woody type, or one whose leaf has been
+        shed -- reports 0.0.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            petiole_index: Petiole within the phytomer; ``None`` for the phytomer mean
+
+        Returns:
+            Current petiole arclength in meters
+
+        Raises:
+            ValueError: If any identifier is not a non-negative int
+            PlantArchitectureError: If the plant, shoot, node or petiole does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        if petiole_index is not None:
+            petiole_index = self._validatePetioleIndex(petiole_index)
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPetioleLength(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the petiole length of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
+
+    def scalePetioleMaxLength(self, plant_id: int, shoot_id: int, node_index: int,
+                              scale_factor: float) -> None:
+        """
+        Scale the fully-elongated length every petiole on a phytomer is growing toward.
+
+        The petiole counterpart of internode max-length scaling. The petiole's present
+        length is left where it is and only its target changes, so a phytomer creation
+        function can give a leaf born on a young plant a shorter final petiole without
+        moving the petiole that is already there.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            scale_factor: Factor to scale the fully-elongated length by; must be positive
+
+        Raises:
+            ValueError: If an identifier is invalid or ``scale_factor`` is not positive
+            PlantArchitectureError: If the plant, shoot or node does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        scale_factor = self._validateScaleFactor(scale_factor)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.scalePetioleMaxLength(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, scale_factor)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to scale the petiole max length of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
+
+    def setPetioleScaleFraction(self, plant_id: int, shoot_id: int, node_index: int,
+                                petiole_index: int,
+                                petiole_scale_factor_fraction: float) -> None:
+        """
+        Set one petiole's current length as a fraction of its fully-elongated length,
+        leaving the leaves it carries at the size they are.
+
+        A petiole is a stem segment rather than part of the blade and goes on extending
+        after the blade has finished expanding, which is why its growth is driven by the
+        shoot's internode rate rather than the leaf expansion rate. The leaves ride out
+        along the petiole as it lengthens without changing size.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            petiole_index: Petiole within the phytomer
+            petiole_scale_factor_fraction: Fraction of the fully-elongated length
+                (1.0 for a fully-elongated petiole)
+
+        Raises:
+            ValueError: If any identifier is not a non-negative int
+            PlantArchitectureError: If the plant, shoot, node or petiole does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPetioleScaleFraction(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                petiole_scale_factor_fraction)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the petiole scale fraction of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
+
+    def setPetioleAndLeafScaleFraction(self, plant_id: int, shoot_id: int, node_index: int,
+                                       petiole_index: int,
+                                       petiole_scale_factor_fraction: float,
+                                       leaf_scale_factor_fraction: float) -> None:
+        """
+        Set a petiole's length and its leaves' size together, each as a fraction of its own
+        fully-elongated value.
+
+        The two fractions are applied in one pass, so the leaves are scaled, re-seated
+        along the rescaled petiole and bent under their new weight once rather than twice.
+        Use this rather than the two single-fraction calls when advancing both.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            petiole_index: Petiole within the phytomer
+            petiole_scale_factor_fraction: Fraction of the fully-elongated petiole length
+            leaf_scale_factor_fraction: Fraction of the fully-elongated leaf scale factor
+
+        Raises:
+            ValueError: If any identifier is not a non-negative int
+            PlantArchitectureError: If the plant, shoot, node or petiole does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPetioleAndLeafScaleFraction(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                petiole_scale_factor_fraction, leaf_scale_factor_fraction)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the petiole and leaf scale fractions of node {node_index} "
+                f"of shoot {shoot_id} of plant {plant_id}: {e}")
+
+    def scaleLeafSizeMax(self, plant_id: int, shoot_id: int, node_index: int,
+                         scale_factor: float) -> None:
+        """
+        Scale the size every leaf on a phytomer is expanding toward, leaving the blades
+        where they are.
+
+        The blade's present size is untouched and only its target changes, so the expansion
+        fraction moves the other way: a fully-expanded leaf given a larger target becomes a
+        partly-expanded leaf of the same size and goes on growing on the next
+        :meth:`advanceTime`. This is what hands a leaf built from measured geometry back to
+        the growth model still the size it was measured.
+
+        A factor small enough to put the target below the leaf's present size is the one
+        case in which the blade does move: the leaf is taken down to the new target, and the
+        leaflets of a compound leaf are then re-seated along the petiole, discarding a
+        placement prescribed by :meth:`setPetioleLeafGeometry`.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            scale_factor: Factor to scale the mature leaf size by; must be positive
+
+        Raises:
+            ValueError: If an identifier is invalid or ``scale_factor`` is not positive
+            PlantArchitectureError: If the plant, shoot or node does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        scale_factor = self._validateScaleFactor(scale_factor)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.scaleLeafSizeMax(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, scale_factor)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to scale the max leaf size of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
+
+    def setLeafNormal(self, plant_id: int, shoot_id: int, node_index: int,
+                      petiole_index: int, leaf_index: int, target_normal: vec3) -> None:
+        """
+        Re-aim one leaf so its blade faces a given direction.
+
+        The roll and pitch that carry the blade onto ``target_normal`` are applied as a
+        single rotation about the leaf's own base, so the leaf stays attached to its petiole
+        and keeps the azimuth of the petiole it hangs from. The angles are recorded on the
+        phytomer, which is what makes the new orientation survive a
+        :meth:`writePlantStructureXML` / :meth:`readPlantStructureXML` round trip --
+        rotating the leaf object directly through the Context changes the geometry without
+        changing the record and is silently lost on reload.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            petiole_index: Petiole within the phytomer
+            leaf_index: Leaf within the petiole
+            target_normal: Direction the blade should face, in world coordinates. Need not
+                be normalized.
+
+        Raises:
+            ValueError: If an identifier is invalid, or ``target_normal`` is not a vec3
+            PlantArchitectureError: If the leaf has no geometry, the blade's facet normals
+                cancel, or the target cannot be reached by a roll-pitch pair
+            RuntimeError: If the native library predates helios-core v1.3.87
+
+        Example:
+            >>> from pyhelios.types import vec3
+            >>> plantarch.setLeafNormal(plant_id, 0, 3, 0, 0, vec3(0, 0, 1))
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+        leaf_index = self._validatePetioleIndex(leaf_index, name="Leaf index")
+        if not isinstance(target_normal, vec3):
+            raise ValueError(
+                f"Target normal must be a vec3, got {type(target_normal).__name__}")
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setLeafNormal(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                leaf_index, target_normal.x, target_normal.y, target_normal.z)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the normal of leaf {leaf_index} on petiole "
+                f"{petiole_index} of node {node_index} of shoot {shoot_id} "
+                f"of plant {plant_id}: {e}")
+
+    def bendPetioleUnderLeafWeight(self, plant_id: int, shoot_id: int, node_index: int,
+                                   petiole_index: int) -> None:
+        """
+        Bend one petiole, and the leaves it carries, under the weight of its leaflets.
+
+        The petiole is bent as a tapered cantilever clamped at its insertion, for the leaf's
+        current size and the petiole's age. The bent shape is always computed from the
+        recorded undeformed rest shape rather than the current shape, so repeated calls do
+        not accumulate and creep the petiole downward. The insertion stays clamped, so the
+        petiole keeps leaving the stem at its generated pitch and the droop appears beyond it
+        as curvature along the length.
+
+        This is normally driven by the growth model from
+        ``PhytomerParameters.petiole.flexibility``; call it directly only to re-bend a petiole
+        after changing its geometry yourself. It does nothing for a rigid petiole (flexibility
+        left at zero), a petiole whose centerline was prescribed, one carrying a prescribed
+        leaf, or when neither the load nor the compliance has changed since the last call.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            petiole_index: Petiole within the phytomer
+
+        Raises:
+            ValueError: If any identifier is not a non-negative int
+            PlantArchitectureError: If the plant, shoot, node or petiole does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.bendPetioleUnderLeafWeight(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to bend petiole {petiole_index} of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
+
+    def recordPetioleRestShape(self, plant_id: int, shoot_id: int, node_index: int,
+                               petiole_index: int) -> None:
+        """
+        Record one petiole's current centerline as its undeformed rest shape.
+
+        :meth:`bendPetioleUnderLeafWeight` always bends from the recorded rest shape, so a
+        petiole whose centerline has been replaced wholesale -- by
+        :meth:`setPetioleNodePositions`, for instance -- must have its new shape recorded
+        before it will droop from it. This also marks the petiole as needing to be bent
+        again, so the next bend is not skipped as redundant.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            petiole_index: Petiole within the phytomer
+
+        Raises:
+            ValueError: If any identifier is not a non-negative int
+            PlantArchitectureError: If the plant, shoot, node or petiole does not exist
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.recordPetioleRestShape(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to record the rest shape of petiole {petiole_index} of node "
+                f"{node_index} of shoot {shoot_id} of plant {plant_id}: {e}")
+
+    @staticmethod
+    def _validatePlantIdentifier(plant_id) -> int:
+        """Reject a non-int or negative plant ID, returning it as a plain int."""
+        if isinstance(plant_id, bool) or not isinstance(plant_id, int):
+            raise ValueError(
+                f"Plant ID must be a non-negative int, got {type(plant_id).__name__}")
+        if plant_id < 0:
+            raise ValueError("Plant ID must be non-negative")
+        return int(plant_id)
+
+    @classmethod
+    def _validatePlantIdList(cls, plant_ids) -> List[int]:
+        """Coerce a sequence of plant IDs, rejecting an empty or malformed one."""
+        if isinstance(plant_ids, (str, bytes)) or not hasattr(plant_ids, '__iter__'):
+            raise ValueError(
+                f"Plant IDs must be an int or a sequence of ints, got "
+                f"{type(plant_ids).__name__}")
+        ids = [cls._validatePlantIdentifier(p) for p in plant_ids]
+        if not ids:
+            raise ValueError("Plant ID list must not be empty")
+        return ids
+
+    @staticmethod
+    def _validateNodeIndex(node_index, name: str = "Node index") -> int:
+        """Reject a non-int or negative phytomer index."""
+        if isinstance(node_index, bool) or not isinstance(node_index, int):
+            raise ValueError(
+                f"{name} must be a non-negative int, got {type(node_index).__name__}")
+        if node_index < 0:
+            raise ValueError(f"{name} must be non-negative")
+        return int(node_index)
+
+    @classmethod
+    def _validatePetioleIndex(cls, petiole_index, name: str = "Petiole index") -> int:
+        """Reject a non-int or negative petiole/leaf index."""
+        return cls._validateNodeIndex(petiole_index, name=name)
+
+    @staticmethod
+    def _validateScaleFactor(scale_factor, name: str = "Scale factor") -> float:
+        """Reject a non-numeric or non-positive scale factor."""
+        if isinstance(scale_factor, bool) or not isinstance(scale_factor, (int, float)):
+            raise ValueError(
+                f"{name} must be a positive number, got {type(scale_factor).__name__}")
+        if not scale_factor > 0:
+            raise ValueError(f"{name} must be positive, got {scale_factor}")
+        return float(scale_factor)
 
     def is_available(self) -> bool:
         """

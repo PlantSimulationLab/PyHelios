@@ -207,6 +207,49 @@ leaf.flexibility_taper = RandomParameterFloat.constant(40.0)
 plant.defineShootType("trunk_droopy", sp)
 ```
 
+### Petiole droop
+
+The petiole (including the rachis of a compound leaf) is bent as a tapered cantilever
+clamped at its insertion, loaded by the weight of the leaflets attached along it. Two
+`PetioleParameters` fields control it, and they are independent of the `LeafPrototype`
+parameters above: those bend the blade under its own weight, these bend the stalk that
+carries it.
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `flexibility` | 0.0 | Dimensionless bending compliance. 0 keeps the petiole at the shape it was created with; larger values arch it further toward the ground for the same leaflet load. Normalized so that a straight, horizontal, untapered petiole carrying its full-grown leaf weight at the tip turns through this many radians from base to tip, independent of its length. |
+| `flexibility_aging` | 0.0 | Timescale in days over which the compliance grows with the phytomer's age: the effective compliance is `flexibility * (1 + age / flexibility_aging)`. A petiole therefore goes on lowering after its leaf has stopped growing, bounded only by the geometry of hanging straight down. 0 disables ageing. |
+
+```python
+from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
+
+sp = plant.getCurrentShootParameters("trifoliate", return_typed=True)
+sp.phytomer_parameters.petiole.flexibility = RandomParameterFloat.constant(1.5)
+sp.phytomer_parameters.petiole.flexibility_aging = RandomParameterFloat.constant(20.0)
+plant.defineShootType("trifoliate", sp)
+```
+
+The insertion stays clamped, so the petiole keeps leaving the stem at its generated pitch
+and the droop appears beyond it as curvature along the length. Bending is inextensible: it
+shortens the base-to-tip chord but leaves the centerline arclength alone, so
+`getPetioleLength()` reports the same value for a drooping petiole as for a rigid one of
+the same age.
+
+Growth drives the bend automatically. Call it yourself only after changing a petiole's
+geometry by hand:
+
+| Method | Purpose |
+|---|---|
+| `bendPetioleUnderLeafWeight(plant_id, shoot_id, node_index, petiole_index)` | Re-bend one petiole for its leaves' current size and its own age |
+| `recordPetioleRestShape(plant_id, shoot_id, node_index, petiole_index)` | Record the petiole's current centerline as the undeformed shape the bend starts from |
+
+The bend is always computed from the recorded rest shape rather than the current shape, so
+repeated calls cannot accumulate and creep the petiole downward. A petiole whose centerline
+was replaced wholesale — by `setPetioleNodePositions()`, for instance — therefore needs
+`recordPetioleRestShape()` before it will droop from its new shape. Both are no-ops for a
+rigid petiole, one whose centerline was prescribed, or one carrying a leaf posed by
+`setPetioleLeafGeometry()`.
+
 \note `leaf_buckle_length` and `leaf_buckle_angle` are **deprecated** as of
 helios-core 1.3.84. They bent a leaf by a fixed angle at a fixed station along its
 length to approximate the same self-weight droop that is now modelled directly.
@@ -548,8 +591,10 @@ such as VSP grapevine and espalier apple. Pruned plants keep growing normally wh
 | `harvestPlant(plant_id)` | Remove all flowers and fruit from a plant. Leaves are **not** removed |
 | `removePlantLeaves(plant_id)` | Remove all leaves from every shoot on a plant |
 | `removeShootLeaves(plant_id, shoot_id)` | Remove all leaves from one shoot |
-| `removeShootVegetativeBuds(plant_id, shoot_id)` | Kill a shoot's vegetative buds, so it can no longer throw new laterals |
+| `removeShootVegetativeBuds(plant_id, shoot_id)` | Mark a shoot's vegetative buds dead, so it can no longer throw new laterals. Despite the name nothing is removed -- the buds stay in place with `BudState.DEAD` |
 | `removeShootFloralBuds(plant_id, shoot_id)` | Kill a shoot's floral buds, deleting its flower and fruit geometry |
+| `terminateApicalBud(plant_id, shoot_id)` | Stop a shoot's apex adding phytomers. Its vegetative buds are unaffected |
+| `getShootVegetativeBudCount(plant_id, shoot_id, state=None)` | Count a shoot's vegetative buds, optionally filtered by `BudState` |
 
 ### Cutting a Branch
 
@@ -610,6 +655,47 @@ plantarch.removeShootVegetativeBuds(plant_id, 0)
 plantarch.removeShootFloralBuds(plant_id, 0)
 ```
 
+### Freezing Old Wood Before Growing Forward
+
+A plant rebuilt from measured geometry -- a QSM, a digitized skeleton -- carries buds on every
+node of every branch. Growing it forward without intervention breaks all of them at once, so a
+fresh flush appears along the whole interior of the tree instead of only at last year's growth.
+
+Two independent operations control this, and both are needed:
+
+```python
+from pyhelios import BudState
+
+terminal = set(plantarch.getTerminalShootIDs(plant_id))
+for shoot_id in plantarch.getAllShootIDs(plant_id):
+    if shoot_id in terminal:
+        continue                                          # last year's growth: leave it alone
+    plantarch.terminateApicalBud(plant_id, shoot_id)      # stop the apex extending
+    plantarch.removeShootVegetativeBuds(plant_id, shoot_id)  # stop it throwing laterals
+
+plantarch.advanceTime(365.0, plant_id=plant_id)
+```
+
+`terminateApicalBud()` kills only the apical meristem, so the shoot stops adding nodes at its tip
+but its axillary buds are untouched. `removeShootVegetativeBuds()` does the reverse: it marks
+every vegetative bud `BudState.DEAD` -- dead buds are skipped when dormancy breaks -- while
+leaving the apex free to extend. Neither implies the other.
+
+Before relying on the result, check that some live buds survived, or the plant cannot grow at all:
+
+```python
+live = sum(plantarch.getShootVegetativeBudCount(plant_id, s)
+           - plantarch.getShootVegetativeBudCount(plant_id, s, BudState.DEAD)
+           for s in plantarch.getAllShootIDs(plant_id))
+if live == 0:
+    raise RuntimeError("no live vegetative buds remain, so the plant cannot grow")
+```
+
+**Count live buds, not dead ones.** `BudState.DEAD` marks both buds that were killed and buds
+that have *already broken into a child shoot*, so a dead-bud count is not a count of what you
+killed. Buds are never erased from a shoot -- only their state changes -- so the unfiltered
+count stays constant and makes a stable denominator.
+
 ### Shoot Hierarchy Queries
 
 These queries walk a plant's branching structure. All of them omit shoots that have been
@@ -666,6 +752,56 @@ segmented point cloud.
 | `setPetioleLeafCount(plant_id, shoot_id, node_index, petiole_index, leaf_count)` | Change the number of leaves (leaflets) on one petiole, rebuilding them procedurally |
 | `setShootInternodeLengthMax(plant_id, shoot_id, internode_length_max)` | Target length of internodes grown at the apex of an existing shoot |
 | `isShootGeometryPrescribed(plant_id, shoot_id)` | Whether a shoot was built from prescribed node positions |
+
+helios-core 1.3.87 adds per-phytomer control over what an organ is growing *toward*, which is
+what hands an organ built from measured geometry back to the growth model at the size it was
+measured.
+
+| Method | Effect |
+|---|---|
+| `getPetioleLength(plant_id, shoot_id, node_index, petiole_index=None)` | Current petiole arclength (m); the phytomer mean when `petiole_index` is omitted |
+| `scalePetioleMaxLength(plant_id, shoot_id, node_index, scale_factor)` | Scale the fully-elongated length every petiole on the phytomer grows toward, leaving present lengths alone |
+| `setPetioleScaleFraction(plant_id, shoot_id, node_index, petiole_index, fraction)` | Set one petiole's length as a fraction of fully elongated, leaving its leaves' size alone |
+| `setPetioleAndLeafScaleFraction(plant_id, shoot_id, node_index, petiole_index, petiole_fraction, leaf_fraction)` | Set petiole length and leaf size together, each as its own fraction, in one pass |
+| `scaleLeafSizeMax(plant_id, shoot_id, node_index, scale_factor)` | Scale the size every leaf on the phytomer is expanding toward, leaving the blades where they are |
+| `setLeafNormal(plant_id, shoot_id, node_index, petiole_index, leaf_index, target_normal)` | Re-aim one leaf's blade at a world-space direction |
+
+`getPetioleLength()` reports the length **right now**, not the mature length the petiole is
+growing toward, so it rises as the petiole elongates — the opposite convention to the leaf
+readers, which report the size a leaf is expanding toward. It is an arclength rather than a
+base-to-tip distance. Petioles at one node are parallel structures rather than segments in
+series, so their lengths are not additive and the no-index form returns their mean; a phytomer
+with no petiole reports `0.0`.
+
+A petiole elongates on its shoot's internode rate rather than the leaf expansion rate, which is
+why `setPetioleScaleFraction()` and the leaf scale fraction are separate knobs. Use
+`setPetioleAndLeafScaleFraction()` when advancing both, so the leaves are scaled, re-seated
+along the rescaled petiole and re-bent once rather than twice.
+
+`scaleLeafSizeMax()` moves the target and leaves the blade alone, so the expansion fraction
+moves the other way: a fully-expanded leaf given a larger target becomes a partly-expanded leaf
+of the same size and goes on growing on the next `advanceTime()`. It differs from
+`scaleLeafPrototypeScale()`, which rescales the blade itself and leaves the fraction alone.
+
+\note A factor small enough to put the target **below** a leaf's present size is the one case in
+which `scaleLeafSizeMax()` does move the blade: the leaf is taken down to the new target, and a
+compound leaf's leaflets are then re-seated along the petiole, discarding a placement prescribed
+by `setPetioleLeafGeometry()`. Raising the target — the case the method exists for — never
+re-seats anything.
+
+`setLeafNormal()` records the roll and pitch it solved for on the phytomer, which is what makes
+the new orientation survive a `writePlantStructureXML()` / `readPlantStructureXML()` round trip.
+Rotating the leaf object directly through the Context changes the geometry without changing that
+record, and is silently lost on reload.
+
+```python
+from pyhelios.types import vec3
+
+# Hand a measured leaf back to the growth model still the size it was measured
+plantarch.scaleLeafSizeMax(plant_id, shoot_id, node_index=0, scale_factor=2.0)
+plantarch.setLeafNormal(plant_id, shoot_id, 0, 0, 0, vec3(0, 0, 1))
+plantarch.advanceTime(10.0, plant_id=plant_id)
+```
 
 `setPetioleLeafCount()` exists because the leaflet count is otherwise fixed by the shoot type's
 `leaf.leaves_per_petiole` for every phytomer, so a measured compound leaf with a different number
@@ -782,6 +918,79 @@ inclinations = plantarch.getPlantLeafInclinations(plant_id)
 print(f"mean leaf area {sum(areas)/len(areas):.4f} m2, "
       f"mean inclination {sum(inclinations)/len(inclinations):.1f} deg")
 ```
+
+### Leaf Angle Distribution Tracking
+
+helios-core 1.3.87 steers a plant's leaf angles toward a prescribed distribution *as it grows*.
+Each leaf is given a target as it emerges and turns onto it while it expands, so a fully grown
+leaf never moves again: the plant matches the distribution at every stage without the leaves
+shifting about from one timestep to the next.
+
+| Method | Effect |
+|---|---|
+| `enableLeafAngleDistributionTracking(plant_ids, beta_mu, beta_nu, eccentricity, ellipse_rotation_degrees, lambda_degrees)` | Steer both inclination and azimuth; accepts one plant ID or a sequence |
+| `enableLeafElevationAngleDistributionTracking(plant_id, beta_mu, beta_nu, lambda_degrees)` | Steer inclination only, leaving azimuth to the model |
+| `enableLeafAzimuthAngleDistributionTracking(plant_id, eccentricity, ellipse_rotation_degrees, lambda_degrees)` | Steer azimuth only, leaving inclination to the model |
+| `disableLeafAngleDistributionTracking(plant_id)` | Stop steering |
+| `isLeafAngleDistributionTrackingEnabled(plant_id)` | Whether a plant is being steered |
+
+Inclination follows a Beta distribution whose mean is `(pi/2) * beta_nu / (beta_mu + beta_nu)`,
+so a large `beta_nu` gives an erectophile canopy and a large `beta_mu` a planophile one. Azimuth
+follows an ellipsoidal distribution set by `eccentricity` (0 is uniform) and the ellipse's
+rotation.
+
+`lambda_degrees` trades filling the distribution against keeping each leaf near the angle the
+procedural model gave it. Targets are deliberately **not** drawn independently per leaf, which
+would reproduce the distribution while destroying the arrangement the model generated: each
+emerging leaf takes the bin that minimizes its angular distance from the model's angle, minus
+`lambda_degrees` times how far that bin sits below its share of the plant's leaf area. Zero
+leaves the plant unchanged; values of order 180 match the distribution as closely as the growing
+plant allows.
+
+```python
+plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 5.0)
+
+# Erectophile canopy: nu > mu puts the mass near vertical
+plantarch.enableLeafElevationAngleDistributionTracking(
+    plant_id, beta_mu_inclination=1.0, beta_nu_inclination=5.0, lambda_degrees=180.0)
+plantarch.advanceTime(15.0, plant_id=plant_id)
+```
+
+Passing a list realizes the distribution over the canopy as a whole, so an individual plant
+within it need not follow the distribution on its own:
+
+```python
+plantarch.enableLeafAngleDistributionTracking(
+    plant_ids, 2.0, 1.5, 0.5, 0.0, 180.0)
+```
+
+\note Tracking follows the distribution through growth, where `setPlantLeafAngleDistribution()`
+re-aims every leaf of a finished plant in one shot. Enabling tracking on a plant already being
+tracked **replaces** the target, so the target may be varied over the plant's life. Disabling it
+leaves already-steered leaves at the orientation they reached; leaves emerging afterward are left
+where the procedural model puts them.
+
+The matching CDFs are available from `pyhelios.Global` for laying out a prescribed distribution
+yourself, or for checking one a canopy actually realized:
+
+| Function | Returns |
+|---|---|
+| `Global.evaluateBetaDistributionCDF(theta, mu, nu)` | Probability that a Beta-distributed inclination is at most `theta` (radians from vertical) |
+| `Global.invertBetaDistributionCDF(probability, mu, nu)` | Inclination (radians, in `[0, pi/2]`) at a given cumulative probability |
+| `Global.evaluateEllipsoidalAzimuthCDF(phi, e, phi0_degrees)` | Probability that an ellipsoidal azimuth is at most `phi` |
+| `Global.invertEllipsoidalAzimuthCDF(probability, e, phi0_degrees)` | Azimuth (radians, in `[0, 2*pi)`) at a given cumulative probability |
+
+```python
+import math
+from pyhelios import Global
+
+# Inclinations that split a spherical-ish distribution into 10 equal-area classes
+edges = [Global.invertBetaDistributionCDF(i / 10, 2.0, 3.0) for i in range(11)]
+print([round(math.degrees(e), 1) for e in edges])
+```
+
+`theta` saturates outside `[0, pi/2]` rather than erroring, while `mu`/`nu` must be positive and
+`probability`/`e` must lie in `[0, 1]`.
 
 ### Bulk Pruning
 

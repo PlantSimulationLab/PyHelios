@@ -1,5 +1,34 @@
 # Changelog
 
+# [v0.1.33] 2026-09-19
+
+- Updated helios-core to v1.3.87
+
+## Plant Architecture
+- Added `PlantArchitecture.enableLeafAngleDistributionTracking(plant_ids, ...)`, steering leaf inclination and azimuth toward a prescribed distribution as the plant grows; accepts one plant ID or a sequence to realize the distribution over a canopy
+- Added `PlantArchitecture.enableLeafElevationAngleDistributionTracking()` and `enableLeafAzimuthAngleDistributionTracking()`, steering one of the two angles and leaving the other to the procedural model
+- Added `PlantArchitecture.disableLeafAngleDistributionTracking()` and `isLeafAngleDistributionTrackingEnabled()`
+- Added `PlantArchitecture.getPetioleLength(plant_id, shoot_id, node_index, petiole_index=None)`, returning one petiole's current centerline arclength or the phytomer mean
+- Added `PlantArchitecture.scalePetioleMaxLength()` and `scaleLeafSizeMax()`, scaling the fully-elongated petiole length and mature leaf size an organ grows toward while leaving its present size alone
+- Added `PlantArchitecture.setPetioleScaleFraction()` and `setPetioleAndLeafScaleFraction()`, advancing a petiole's length and its leaves' size as independent fractions of fully elongated
+- Added `PlantArchitecture.setLeafNormal(plant_id, shoot_id, node_index, petiole_index, leaf_index, target_normal)`, re-aiming one leaf's blade and recording the angles so the orientation survives an XML round trip
+- Added `PlantArchitecture.bendPetioleUnderLeafWeight()` and `recordPetioleRestShape()`, re-bending one petiole under its leaflets' weight and recording the rest shape the bend starts from
+- Added the `PetioleParameters` parameters `flexibility` and `flexibility_aging`, bending the petiole toward the ground under its leaflets' weight as the leaf grows and the petiole ages
+- Added the `LeafParameters` parameter `intercalary_leaflet_scale`, sizing the intercalary leaflets of an interruptedly pinnate compound leaf
+- Added the `ShootParameters` parameter `leaf_expansion_rate_max` and the sentinel `LEAF_EXPANSION_RATE_UNSET`, decoupling leaf and petiole expansion from internode elongation
+- Added `PlantArchitecture.terminateApicalBud(plant_id, shoot_id)`, stopping a shoot's apex from adding further phytomers while leaving its vegetative buds untouched
+- Added `PlantArchitecture.getShootVegetativeBudCount(plant_id, shoot_id, state=None)`, counting a shoot's axillary vegetative buds, optionally filtered by state
+- Added `PlantArchitecture.getPlantLeafCount(plant_id)`, returning the number of leaf objects on a plant without materializing the object-ID list
+- Added `BudState`, the state of a vegetative or floral bud
+- Corrected the documentation of `removeShootVegetativeBuds()`, which marks a shoot's vegetative buds `BudState.DEAD` rather than removing them; the bud entries stay in place and remain countable
+
+## Radiation
+- Camera `white_balance="auto"` now balances against the light reaching the surfaces in view rather than the camera's integrated spectral response, so a scene lit by a spectrally flat source is left unchanged where it was previously tinted; the image is also left unbalanced, with a warning, when the camera sees no light in one of its first three bands
+
+## Core
+- Added `Global.evaluateBetaDistributionCDF()` and `invertBetaDistributionCDF()`, the CDF of the Beta leaf-inclination distribution and its inverse
+- Added `Global.evaluateEllipsoidalAzimuthCDF()` and `invertEllipsoidalAzimuthCDF()`, the CDF of the ellipsoidal leaf-azimuth distribution and its inverse
+
 # [v0.1.32] 2026-09-11
 
 - Updated helios-core to v1.3.86

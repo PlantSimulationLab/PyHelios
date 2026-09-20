@@ -3356,6 +3356,14 @@ class TestCameraStringPropertiesArePlumbed:
         if not camera_library.is_file():
             pytest.skip("camera spectral library not present in build")
 
+        # Flux deliberately uneven across the three bands. As of helios-core 1.3.87,
+        # "auto" balances against the light actually reaching the surfaces in view
+        # (white_reference_band_totals) rather than against the camera's integrated
+        # spectral response. Its gains are max(white_ref)/white_ref per band, so a
+        # spectrally flat source would give unit gains in every band and "auto" would be
+        # indistinguishable from "off" no matter how well the setting is plumbed.
+        FLUX = {"red": 200.0, "green": 500.0, "blue": 800.0}
+
         def render(white_balance):
             with Context() as context:
                 context.loadXML(str(camera_library), True)
@@ -3372,7 +3380,7 @@ class TestCameraStringPropertiesArePlumbed:
                         radiation.setScatteringDepth(band, 1)
                     source = radiation.addCollimatedRadiationSource(DataTypes.vec3(0, 0, 1))
                     for band in ("red", "green", "blue"):
-                        radiation.setSourceFlux(source, band, 500.0)
+                        radiation.setSourceFlux(source, band, FLUX[band])
                     props = CameraProperties(camera_resolution=(64, 64), HFOV=60.0,
                                              white_balance=white_balance)
                     radiation.addRadiationCamera(
@@ -3399,14 +3407,15 @@ class TestCameraStringPropertiesArePlumbed:
         auto_ratio = ratio(auto)
         off_ratio = ratio(off)
 
-        # Spectral white balance divides each channel by its integrated response,
-        # which boosts red ~2.1x relative to green. Turning it off must remove
-        # that boost, so the two ratios cannot match.
+        # "auto" divides out the source's colour cast, so the red-starved illumination
+        # above comes back up toward neutral; "off" leaves the cast in the pixels and so
+        # reports a markedly lower R/G. Matching ratios mean the setting never reached
+        # the camera.
         assert abs(auto_ratio - off_ratio) > 0.1 * max(auto_ratio, off_ratio), (
             f"white_balance had no effect: auto R/G={auto_ratio:.3f}, "
             f"off R/G={off_ratio:.3f} -- the setting is not reaching the camera")
         assert off_ratio < auto_ratio, (
-            f"disabling white balance should reduce the red boost, got "
+            f"white balance should lift red toward neutral under red-poor light, got "
             f"auto={auto_ratio:.3f} off={off_ratio:.3f}")
 
     @pytest.mark.native_only

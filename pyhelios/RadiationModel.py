@@ -135,7 +135,13 @@ class CameraProperties:
             lens_specification: Lens specification (e.g., "50mm f/1.8"). Default: ""
             exposure: Exposure mode - "auto", "ISOXXX" (e.g., "ISO100"), or "manual". Default: "auto"
             shutter_speed: Camera shutter speed in seconds (e.g., 0.008 for 1/125s). Default: 0.008 (1/125s)
-            white_balance: White balance mode - "auto" or "off". Default: "auto"
+            white_balance: White balance mode - "auto" or "off". Default: "auto".
+                "auto" scales the camera's first three bands (red, green, blue) so that a
+                spectrally flat surface renders neutral under the light actually reaching the
+                surfaces in view, keeping the brightest band at unit gain. A scene lit by a
+                spectrally flat source is therefore left unchanged. If the camera sees no
+                light in one of those bands -- only sky, for instance -- the image is left
+                unbalanced and the reason is reported as a warning.
             camera_zoom: Camera optical zoom multiplier. 1.0 = no zoom, 2.0 = 2x zoom.
                         Scales effective HFOV: effective_HFOV = HFOV / camera_zoom. Default: 1.0
             exposure_target: Target median scene luminance for ``"auto"`` exposure, as a

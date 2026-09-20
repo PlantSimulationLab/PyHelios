@@ -18,10 +18,13 @@ from pyhelios.plant_architecture_params import (
     RandomParameterInt,
     LeafPrototype,
     InternodeParameters,
+    PetioleParameters,
+    LeafParameters,
     PhytomerParameters,
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
+    LEAF_EXPANSION_RATE_UNSET,
 )
 
 
@@ -548,3 +551,187 @@ class TestInflorescenceMaturityPeriodNative(TestNativeParameterRoundTrip):
         out = plantarch.getCurrentShootParameters("custom_maturity")
         assert out["phytomer_parameters"]["inflorescence"]["inflorescence_maturity_period"] == {
             "distribution": "uniform", "parameters": [5.0, 7.0]}
+
+
+# --------------------------------------------------------------------------- #
+# Cross-platform: BudState enum
+# --------------------------------------------------------------------------- #
+@pytest.mark.cross_platform
+class TestBudState:
+    """The BudState enum mirrors the C++ ``BudState`` and is always importable."""
+
+    def test_values_match_cpp_enum(self):
+        """Values are the wire format, so they must match PlantArchitecture.h:316 exactly."""
+        from pyhelios.plant_architecture_params import BudState
+
+        assert [int(s) for s in BudState] == [0, 1, 2, 3, 4, 5]
+        assert BudState.DORMANT == 0
+        assert BudState.ACTIVE == 1
+        assert BudState.FLOWER_CLOSED == 2
+        assert BudState.FLOWER_OPEN == 3
+        assert BudState.FRUITING == 4
+        assert BudState.DEAD == 5
+
+    def test_exported_from_package_root_even_without_native_library(self):
+        """``pyhelios.BudState`` must be a real enum in mock mode.
+
+        It is declared in this module rather than in PlantArchitecture.py precisely
+        so the plugin-gated import in __init__.py cannot turn it into None.
+        """
+        import pyhelios
+        from pyhelios.plant_architecture_params import BudState
+
+        assert pyhelios.BudState is BudState
+        assert pyhelios.BudState.DEAD == 5
+
+
+@pytest.mark.cross_platform
+class TestPetioleFlexibilityParams:
+    """PetioleParameters gained flexibility/flexibility_aging in helios-core 1.3.87.
+
+    These are distinct from the LeafPrototype flexibility parameters of 1.3.86: those
+    droop the blade under its own weight, these bend the petiole under its leaflets'.
+    """
+
+    NEW_FIELDS = ("flexibility", "flexibility_aging")
+
+    def test_fields_exist_and_default_to_rigid(self):
+        petiole = PetioleParameters()
+        for name in self.NEW_FIELDS:
+            assert hasattr(petiole, name), f"PetioleParameters is missing {name}"
+            assert getattr(petiole, name).parameters == pytest.approx([0.0]), (
+                f"{name} must default to 0 so petioles stay rigid unless asked otherwise")
+
+    def test_fields_round_trip_through_dict(self):
+        petiole = PetioleParameters()
+        petiole.flexibility = RandomParameterFloat.constant(1.25)
+        petiole.flexibility_aging = RandomParameterFloat.constant(20.0)
+
+        back = PetioleParameters.from_dict(petiole.to_dict())
+
+        assert back.flexibility.parameters == pytest.approx([1.25])
+        assert back.flexibility_aging.parameters == pytest.approx([20.0])
+
+    def test_fields_present_in_serialized_dict(self):
+        d = PetioleParameters().to_dict()
+        for name in self.NEW_FIELDS:
+            assert name in d, f"{name} missing from PetioleParameters.to_dict()"
+
+    def test_from_dict_without_new_fields_keeps_defaults(self):
+        """An older saved dict must still load, defaulting the new fields."""
+        d = PetioleParameters().to_dict()
+        for name in self.NEW_FIELDS:
+            d.pop(name)
+
+        back = PetioleParameters.from_dict(d)
+
+        assert back.flexibility.parameters == pytest.approx([0.0])
+        assert back.flexibility_aging.parameters == pytest.approx([0.0])
+
+
+@pytest.mark.cross_platform
+class TestIntercalaryLeafletScaleParams:
+    """LeafParameters gained intercalary_leaflet_scale in helios-core 1.3.87."""
+
+    def test_field_exists_and_defaults_to_simply_pinnate(self):
+        leaf = LeafParameters()
+        assert hasattr(leaf, "intercalary_leaflet_scale")
+        assert leaf.intercalary_leaflet_scale.parameters == pytest.approx([0.0]), (
+            "0 must mean a simply pinnate leaf, the historical behavior")
+
+    def test_field_round_trips_through_dict(self):
+        leaf = LeafParameters()
+        leaf.intercalary_leaflet_scale = RandomParameterFloat.constant(0.4)
+
+        back = LeafParameters.from_dict(leaf.to_dict())
+
+        assert back.intercalary_leaflet_scale.parameters == pytest.approx([0.4])
+
+    def test_from_dict_without_field_keeps_default(self):
+        d = LeafParameters().to_dict()
+        d.pop("intercalary_leaflet_scale")
+        assert LeafParameters.from_dict(d).intercalary_leaflet_scale.parameters == \
+            pytest.approx([0.0])
+
+
+@pytest.mark.cross_platform
+class TestLeafExpansionRateParams:
+    """ShootParameters gained leaf_expansion_rate_max in helios-core 1.3.87."""
+
+    def test_default_is_the_unset_sentinel(self):
+        assert LEAF_EXPANSION_RATE_UNSET < 0, "the sentinel must be negative"
+        assert ShootParameters().leaf_expansion_rate_max.parameters == pytest.approx(
+            [LEAF_EXPANSION_RATE_UNSET])
+
+    def test_zero_is_a_real_rate_distinct_from_unset(self):
+        """Zero means 'leaves never expand', which is not the same as deferring."""
+        shoot = ShootParameters()
+        shoot.leaf_expansion_rate_max = RandomParameterFloat.constant(0.0)
+
+        back = ShootParameters.from_dict(shoot.to_dict())
+
+        assert back.leaf_expansion_rate_max.parameters == pytest.approx([0.0])
+        assert back.leaf_expansion_rate_max.parameters != pytest.approx(
+            [LEAF_EXPANSION_RATE_UNSET])
+
+    def test_field_round_trips_through_dict(self):
+        shoot = ShootParameters()
+        shoot.leaf_expansion_rate_max = RandomParameterFloat.constant(0.15)
+
+        back = ShootParameters.from_dict(shoot.to_dict())
+
+        assert back.leaf_expansion_rate_max.parameters == pytest.approx([0.15])
+
+    def test_from_dict_without_field_keeps_the_sentinel(self):
+        d = ShootParameters().to_dict()
+        d.pop("leaf_expansion_rate_max")
+        assert ShootParameters.from_dict(d).leaf_expansion_rate_max.parameters == \
+            pytest.approx([LEAF_EXPANSION_RATE_UNSET])
+
+
+@pytest.mark.native_only
+class TestPetioleAndLeafExpansion1387NativeRoundTrip:
+    """The 1.3.87 parameter fields must survive a real trip through the C++ JSON bridge."""
+
+    def _shoot_params(self, pa, label="trunk"):
+        return ShootParameters.from_dict(pa.getCurrentShootParameters(label))
+
+    def test_native_defaults_match_the_python_defaults(self):
+        """A Python default that disagrees with C++ silently changes plant behavior."""
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            sp = self._shoot_params(pa)
+
+            assert sp.leaf_expansion_rate_max.parameters[0] < 0, (
+                "native leaf_expansion_rate_max must default to the unset sentinel")
+            assert sp.phytomer_parameters.petiole.flexibility.parameters == \
+                pytest.approx([0.0])
+            assert sp.phytomer_parameters.petiole.flexibility_aging.parameters == \
+                pytest.approx([0.0])
+            assert sp.phytomer_parameters.leaf.intercalary_leaflet_scale.parameters == \
+                pytest.approx([0.0])
+
+    def test_all_1387_fields_survive_define_shoot_type(self):
+        with Context() as ctx:
+            pa = PlantArchitecture(ctx)
+            pa.loadPlantModelFromLibrary("almond")
+            sp = self._shoot_params(pa)
+
+            sp.leaf_expansion_rate_max = RandomParameterFloat.constant(0.35)
+            sp.phytomer_parameters.petiole.flexibility = RandomParameterFloat.constant(0.7)
+            sp.phytomer_parameters.petiole.flexibility_aging = \
+                RandomParameterFloat.constant(12.0)
+            sp.phytomer_parameters.leaf.intercalary_leaflet_scale = \
+                RandomParameterFloat.constant(0.45)
+            pa.defineShootType("trunk_1387", sp)
+
+            back = self._shoot_params(pa, "trunk_1387")
+
+            assert back.leaf_expansion_rate_max.parameters == pytest.approx([0.35])
+            assert back.phytomer_parameters.petiole.flexibility.parameters == \
+                pytest.approx([0.7])
+            assert back.phytomer_parameters.petiole.flexibility_aging.parameters == \
+                pytest.approx([12.0])
+            assert back.phytomer_parameters.leaf.intercalary_leaflet_scale.parameters == \
+                pytest.approx([0.45])

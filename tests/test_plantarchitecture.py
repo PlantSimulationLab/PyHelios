@@ -13,7 +13,7 @@ import math
 from typing import List
 
 import pyhelios
-from pyhelios import Context, PlantArchitecture, PlantArchitectureError
+from pyhelios import BudState, Context, PlantArchitecture, PlantArchitectureError
 from pyhelios.types import vec3, vec2, int2
 from pyhelios.wrappers.DataTypes import AxisRotation  # Import directly from DataTypes to avoid Windows import issues
 from pyhelios.wrappers import UPlantArchitectureWrapper as plantarch_wrapper
@@ -3878,6 +3878,204 @@ class TestPlantArchitectureMaxAge:
             plantarch.getPlantMaxAge(-1)
 
 
+@pytest.mark.native_only
+class TestPlantArchitectureBudControl:
+    """Bud and apex control: terminateApicalBud, getShootVegetativeBudCount,
+    getPlantLeafCount, and the BUD_DEAD semantics of removeShootVegetativeBuds.
+
+    These pin the contract a QSM reconstruction relies on when it freezes old wood
+    before growing the plant forward.
+    """
+
+    MODEL = "apple"
+    AGE = 365.0
+    # Apple at age 365 is dormant and gains no nodes over a 90-day step, so the growth
+    # comparison needs a full year to see the next season's extension. Apple is still the
+    # right fixture: it is the cheapest library model that carries dormant vegetative
+    # buds at all (bean at any age reports every bud already BUD_DEAD).
+    GROWTH_DAYS = 365.0
+
+    @pytest.fixture
+    def context(self, check_native_library):
+        context = Context()
+        yield context
+        context.__exit__(None, None, None)
+
+    @pytest.fixture
+    def plantarch(self, context):
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture plugin not available")
+        instance = PlantArchitecture(context)
+        try:
+            instance.disableMessages()
+            yield instance
+        finally:
+            instance.__exit__(None, None, None)
+
+    def test_bud_control_symbols_are_present(self):
+        """A symbol-name typo would make every test below skip instead of fail.
+
+        The behavioral tests all guard on this flag, so without this assertion a
+        misspelled export between the header, the .cpp and the ctypes block would show
+        up as a clean green run.
+        """
+        assert plantarch_wrapper._PLANTARCHITECTURE_BUDSTATE_AVAILABLE is True, (
+            "bud-control symbols missing from the native library; rebuild with "
+            "'build_scripts/build_helios --clean'")
+
+    def _build_plant(self, plantarch):
+        models = plantarch.getAvailablePlantModels()
+        if self.MODEL not in models:
+            pytest.skip(f"{self.MODEL} model not available")
+        plantarch.loadPlantModelFromLibrary(self.MODEL)
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), self.AGE)
+
+    def _shoot_with_buds(self, plantarch, plant_id):
+        """A shoot carrying at least one dormant vegetative bud, or skip."""
+        for shoot_id in plantarch.getAllShootIDs(plant_id):
+            if plantarch.getShootVegetativeBudCount(
+                    plant_id, shoot_id, BudState.DORMANT) > 0:
+                return shoot_id
+        pytest.skip("no shoot on this plant carries a dormant vegetative bud")
+
+    def test_terminate_apical_bud_stops_node_addition(self, plantarch):
+        """A terminated apex adds no nodes while an untouched shoot keeps extending.
+
+        The control assertion is the load-bearing half: a shoot that has already reached
+        its node cap terminates its own apex, so without checking that the control grew
+        this would pass on a plant that simply stopped growing.
+
+        A full year is needed, not a season: apple at age 365 is dormant, and a 90-day
+        step adds no nodes to any shoot at all, which trips the control assertion below.
+        """
+        plant_id = self._build_plant(plantarch)
+
+        shoot_ids = [s for s in plantarch.getAllShootIDs(plant_id)
+                     if plantarch.getShoot(plant_id, s)["node_count"] > 0]
+        if len(shoot_ids) < 2:
+            pytest.skip("need two live shoots to compare a terminated apex against a control")
+
+        # Growth is sampled per shoot, so compare the terminated shoot against every other
+        # shoot on the plant rather than against one guessed control.
+        before = {s: plantarch.getShoot(plant_id, s)["node_count"] for s in shoot_ids}
+        target = shoot_ids[0]
+        plantarch.terminateApicalBud(plant_id, target)
+
+        plantarch.advanceTime(self.GROWTH_DAYS, plant_id=plant_id)
+
+        after = {s: plantarch.getShoot(plant_id, s)["node_count"] for s in shoot_ids}
+        grew = [s for s in shoot_ids if s != target and after[s] > before[s]]
+        assert grew, (
+            "no untouched shoot gained a node in 90 days, so this cannot distinguish a "
+            "working terminateApicalBud from a plant that stopped growing on its own")
+        assert after[target] == before[target], (
+            f"shoot {target} gained nodes after its apical bud was terminated")
+
+    def test_terminate_apical_bud_leaves_vegetative_buds_alone(self, plantarch):
+        """Terminating the apex must not touch bud state.
+
+        The two operations are separate in the C++ (terminateApicalBud sets only
+        meristem_is_alive), and a reconstruction relies on being able to freeze an apex
+        while leaving last year's buds able to break.
+        """
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._shoot_with_buds(plantarch, plant_id)
+
+        dormant_before = plantarch.getShootVegetativeBudCount(
+            plant_id, shoot_id, BudState.DORMANT)
+        assert dormant_before > 0, "shoot has no dormant buds; the assertion would be vacuous"
+
+        plantarch.terminateApicalBud(plant_id, shoot_id)
+
+        assert plantarch.getShootVegetativeBudCount(
+            plant_id, shoot_id, BudState.DORMANT) == dormant_before
+
+    def test_remove_shoot_vegetative_buds_marks_dead_without_erasing(self, plantarch):
+        """removeShootVegetativeBuds sets BUD_DEAD and keeps the bud entries in place.
+
+        This is the contract a QSM reconstruction depends on: dead buds are skipped when
+        dormancy breaks, and because they are never erased they stay countable. The name
+        says "remove", so pin the real behavior.
+        """
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._shoot_with_buds(plantarch, plant_id)
+
+        total_before = plantarch.getShootVegetativeBudCount(plant_id, shoot_id)
+        dormant_before = plantarch.getShootVegetativeBudCount(
+            plant_id, shoot_id, BudState.DORMANT)
+        dead_before = plantarch.getShootVegetativeBudCount(
+            plant_id, shoot_id, BudState.DEAD)
+        assert total_before > 0 and dormant_before > 0, "assertions would be vacuous"
+
+        plantarch.removeShootVegetativeBuds(plant_id, shoot_id)
+
+        assert plantarch.getShootVegetativeBudCount(plant_id, shoot_id) == total_before, (
+            "bud entries were erased; the count is supposed to be state-only")
+        assert plantarch.getShootVegetativeBudCount(
+            plant_id, shoot_id, BudState.DORMANT) == 0
+        # >= not ==: buds that had already broken into child shoots were BUD_DEAD before
+        # this call, so the dead count is not simply the dormant count that was killed.
+        assert plantarch.getShootVegetativeBudCount(
+            plant_id, shoot_id, BudState.DEAD) >= dead_before + dormant_before
+
+    def test_bud_count_filters_by_state(self, plantarch):
+        """The per-state counts partition the unfiltered total."""
+        plant_id = self._build_plant(plantarch)
+        shoot_id = self._shoot_with_buds(plantarch, plant_id)
+
+        total = plantarch.getShootVegetativeBudCount(plant_id, shoot_id)
+        assert total > 0, "shoot carries no buds; the partition check would be vacuous"
+
+        by_state = sum(plantarch.getShootVegetativeBudCount(plant_id, shoot_id, state)
+                       for state in BudState)
+        assert by_state == total, (
+            f"per-state counts sum to {by_state} but the unfiltered count is {total}")
+
+    def test_bud_count_rejects_unknown_shoot(self, plantarch):
+        """A bad shoot ID surfaces the native message, which proves errcheck is wired.
+
+        Matching the native prefix rather than the wrapper's own text is the point: a
+        missing errcheck shows up as a doubled generic message that fails this regex.
+        """
+        plant_id = self._build_plant(plantarch)
+
+        with pytest.raises(PlantArchitectureError,
+                           match=r"PlantArchitecture::getShootVegetativeBudCount"):
+            plantarch.getShootVegetativeBudCount(plant_id, 99999)
+
+    def test_terminate_apical_bud_rejects_unknown_shoot(self, plantarch):
+        plant_id = self._build_plant(plantarch)
+
+        with pytest.raises(PlantArchitectureError,
+                           match=r"PlantArchitecture::terminateShootApicalBud"):
+            plantarch.terminateApicalBud(plant_id, 99999)
+
+    def test_plant_leaf_count_tracks_leaf_objects(self, plantarch):
+        """The count agrees with the object-ID list and follows live state.
+
+        The equality alone is tautological in the C++ (getPlantLeafCount is defined as
+        getPlantLeafObjectIDs().size()), so it only pins the marshalling; the drop after
+        removePlantLeaves is what shows the binding reads live state.
+        """
+        plant_id = self._build_plant(plantarch)
+
+        count = plantarch.getPlantLeafCount(plant_id)
+        assert isinstance(count, int) and not isinstance(count, bool)
+        assert count > 0, f"{self.MODEL} at age {self.AGE} produced no leaves; vacuous"
+        assert count == len(plantarch.getPlantLeafObjectIDs(plant_id))
+
+        plantarch.removePlantLeaves(plant_id)
+
+        assert plantarch.getPlantLeafCount(plant_id) < count
+
+    def test_plant_leaf_count_rejects_unknown_plant(self, plantarch):
+        self._build_plant(plantarch)
+
+        with pytest.raises(PlantArchitectureError,
+                           match=r"PlantArchitecture::getPlantLeafCount"):
+            plantarch.getPlantLeafCount(99999)
+
+
 @pytest.mark.cross_platform
 class TestPlantArchitecturePruningValidation:
     """Argument validation for the pruning API, which runs without a native library."""
@@ -3897,6 +4095,7 @@ class TestPlantArchitecturePruningValidation:
         "getTerminalShootIDs",
         "getShootHierarchyMap",
         "getPlantMaxAge",
+        "getPlantLeafCount",
     ])
     def test_plant_only_methods_reject_negative_plant_id(self, plantarch, method_name):
         with pytest.raises(ValueError, match="non-negative"):
@@ -3917,6 +4116,8 @@ class TestPlantArchitecturePruningValidation:
         "getPathToRoot",
         "getChildShootIDs",
         "pruneShootSubtree",
+        "terminateApicalBud",
+        "getShootVegetativeBudCount",
     ])
     def test_shoot_methods_reject_negative_ids(self, plantarch, method_name):
         method = getattr(plantarch, method_name)
@@ -3927,6 +4128,67 @@ class TestPlantArchitecturePruningValidation:
             method(0, -1)
         with pytest.raises(ValueError, match="non-negative"):
             method(plant_id=0, shoot_id=-1)
+
+    def test_bud_count_rejects_non_bud_state(self, plantarch):
+        """The state filter must name a real BudState, positionally or by keyword.
+
+        An out-of-range int would be cast onto the C++ enum, which is undefined behavior,
+        so it is rejected here rather than passed through.
+        """
+        from pyhelios import BudState
+
+        with pytest.raises(ValueError, match="BudState"):
+            plantarch.getShootVegetativeBudCount(0, 0, "dead")
+        with pytest.raises(ValueError, match="BudState"):
+            plantarch.getShootVegetativeBudCount(0, 0, 99)
+        with pytest.raises(ValueError, match="BudState"):
+            plantarch.getShootVegetativeBudCount(0, 0, state=-1)
+        with pytest.raises(ValueError, match="BudState"):
+            plantarch.getShootVegetativeBudCount(0, 0, state=1.5)
+        # bool is an int subclass, so True would otherwise silently mean ACTIVE.
+        with pytest.raises(ValueError, match="BudState"):
+            plantarch.getShootVegetativeBudCount(0, 0, True)
+
+        # A real BudState gets past argument validation; this fixture then trips the
+        # context liveness check, which proves the ValueErrors above came from the state
+        # filter rather than from something rejecting every call.
+        with pytest.raises(RuntimeError, match="Context"):
+            plantarch.getShootVegetativeBudCount(0, 0, BudState.DEAD)
+
+    @pytest.mark.parametrize("method_name", [
+        "terminateApicalBud",
+        "getShootVegetativeBudCount",
+    ])
+    def test_shoot_methods_reject_non_int_ids(self, plantarch, method_name):
+        method = getattr(plantarch, method_name)
+
+        with pytest.raises(ValueError, match="int"):
+            method("0", 0)
+        with pytest.raises(ValueError, match="int"):
+            method(0, 1.5)
+        with pytest.raises(ValueError, match="int"):
+            method(True, 0)
+
+    def test_plant_leaf_count_rejects_non_int_plant_id(self, plantarch):
+        with pytest.raises(ValueError, match="int"):
+            plantarch.getPlantLeafCount("0")
+        with pytest.raises(ValueError, match="int"):
+            plantarch.getPlantLeafCount(1.5)
+
+    def test_new_wrappers_guard_on_their_own_registration_block(self):
+        """Each new wrapper must call the guard for the block that registered its prototype.
+
+        Using another block's flag compiles, imports and passes on a build where every
+        symbol exists, then calls into an older library with no argtypes. Only source
+        inspection can catch it.
+        """
+        import inspect
+
+        for fn_name in ("terminateShootApicalBud", "getShootVegetativeBudCount",
+                        "getPlantLeafCount"):
+            source = inspect.getsource(getattr(plantarch_wrapper, fn_name))
+            assert "_require_plantarch_budstate()" in source, (
+                f"{fn_name} does not guard on the flag of the block that registered it")
 
     def test_prune_branch_rejects_negative_ids(self, plantarch):
         with pytest.raises(ValueError, match="non-negative"):
@@ -5159,3 +5421,539 @@ class TestPlantArchitecture1386Native:
                 assert reloaded, "readPlantStructureXML returned no plants"
                 # Re-setting after reload must be accepted (the value itself is not restored).
                 plantarch2.setShootInternodeLengthMax(reloaded[0], 0, 0.07)
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitecture1387Validation:
+    """Argument validation for the helios-core 1.3.87 additions (pure Python)."""
+
+    def _pa(self):
+        return PlantArchitecture.__new__(PlantArchitecture)
+
+    # ---- leaf angle distribution tracking ----
+
+    @pytest.mark.parametrize("bad", [-1, "x", True, 1.5, None])
+    def test_tracking_rejects_bad_plant_id(self, bad):
+        with pytest.raises(ValueError, match="(?i)plant id"):
+            PlantArchitecture.isLeafAngleDistributionTrackingEnabled(self._pa(), bad)
+
+    def test_tracking_rejects_empty_plant_id_list(self):
+        with pytest.raises(ValueError, match="(?i)must not be empty"):
+            PlantArchitecture.enableLeafAngleDistributionTracking(
+                self._pa(), [], 2.0, 1.5, 0.5, 0.0, 180.0)
+
+    def test_tracking_rejects_negative_id_in_list(self):
+        with pytest.raises(ValueError, match="(?i)non-negative"):
+            PlantArchitecture.enableLeafAngleDistributionTracking(
+                self._pa(), [0, -1], 2.0, 1.5, 0.5, 0.0, 180.0)
+
+    def test_tracking_rejects_string_as_id_sequence(self):
+        """A str is iterable, so it must be rejected explicitly rather than iterated."""
+        with pytest.raises(ValueError, match="(?i)int or a sequence"):
+            PlantArchitecture.enableLeafAngleDistributionTracking(
+                self._pa(), "01", 2.0, 1.5, 0.5, 0.0, 180.0)
+
+    @pytest.mark.parametrize("method", [
+        "enableLeafElevationAngleDistributionTracking",
+        "enableLeafAzimuthAngleDistributionTracking",
+        "disableLeafAngleDistributionTracking",
+    ])
+    def test_single_plant_tracking_methods_reject_negative_id(self, method):
+        fn = getattr(PlantArchitecture, method)
+        args = (-1,) if method == "disableLeafAngleDistributionTracking" else (-1, 1.0, 1.0, 90.0)
+        with pytest.raises(ValueError, match="(?i)non-negative"):
+            fn(self._pa(), *args)
+
+    # ---- per-phytomer petiole and leaf scaling ----
+
+    @pytest.mark.parametrize("kwargs", [
+        dict(plant_id=-1, shoot_id=0, node_index=0),
+        dict(plant_id=0, shoot_id=-1, node_index=0),
+        dict(plant_id=0, shoot_id=0, node_index=-1),
+    ])
+    def test_getPetioleLength_rejects_negative_indices(self, kwargs):
+        with pytest.raises(ValueError, match="(?i)non-negative"):
+            PlantArchitecture.getPetioleLength(self._pa(), **kwargs)
+
+    def test_getPetioleLength_rejects_negative_petiole_index(self):
+        with pytest.raises(ValueError, match="(?i)petiole index"):
+            PlantArchitecture.getPetioleLength(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, petiole_index=-1)
+
+    @pytest.mark.parametrize("method", ["scalePetioleMaxLength", "scaleLeafSizeMax"])
+    @pytest.mark.parametrize("bad", [0.0, -1.0])
+    def test_scale_methods_reject_non_positive_factor(self, method, bad):
+        with pytest.raises(ValueError, match="(?i)must be positive"):
+            getattr(PlantArchitecture, method)(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, scale_factor=bad)
+
+    @pytest.mark.parametrize("method", ["scalePetioleMaxLength", "scaleLeafSizeMax"])
+    def test_scale_methods_reject_non_numeric_factor(self, method):
+        with pytest.raises(ValueError, match="(?i)positive number"):
+            getattr(PlantArchitecture, method)(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, scale_factor="big")
+
+    @pytest.mark.parametrize("bad", [(0, 0, 1), [0, 0, 1], None, 1.0])
+    def test_setLeafNormal_rejects_non_vec3_target(self, bad):
+        with pytest.raises(ValueError, match="(?i)must be a vec3"):
+            PlantArchitecture.setLeafNormal(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, petiole_index=0,
+                leaf_index=0, target_normal=bad)
+
+    def test_setLeafNormal_rejects_negative_leaf_index(self):
+        with pytest.raises(ValueError, match="(?i)leaf index"):
+            PlantArchitecture.setLeafNormal(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, petiole_index=0,
+                leaf_index=-1, target_normal=vec3(0, 0, 1))
+
+    @pytest.mark.parametrize("method", ["bendPetioleUnderLeafWeight", "recordPetioleRestShape"])
+    def test_petiole_bend_methods_reject_negative_petiole_index(self, method):
+        with pytest.raises(ValueError, match="(?i)petiole index"):
+            getattr(PlantArchitecture, method)(
+                self._pa(), plant_id=0, shoot_id=0, node_index=0, petiole_index=-1)
+
+    # ---- availability guards must match their registration blocks ----
+
+    def test_tracking_guard_uses_tracking_flag(self):
+        """A wrapper checking the wrong flag would call a function with no argtypes set."""
+        with patch.object(plantarch_wrapper,
+                          '_PLANTARCHITECTURE_LEAFANGLETRACKING_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.enablePlantLeafAngleDistributionTracking(
+                    None, 0, 2.0, 1.5, 0.5, 0.0, 180.0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.enablePlantLeafAngleDistributionTrackingMulti(
+                    None, [0], 2.0, 1.5, 0.5, 0.0, 180.0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.enablePlantLeafElevationAngleDistributionTracking(
+                    None, 0, 2.0, 1.5, 90.0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.enablePlantLeafAzimuthAngleDistributionTracking(
+                    None, 0, 0.5, 0.0, 90.0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.disablePlantLeafAngleDistributionTracking(None, 0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.isPlantLeafAngleDistributionTrackingEnabled(None, 0)
+
+    def test_petiole_scale_guard_uses_petiolescale_flag(self):
+        with patch.object(plantarch_wrapper,
+                          '_PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.getPetioleLength(None, 0, 0, 0, 0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.scalePetioleMaxLength(None, 0, 0, 0, 1.5)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.setPetioleScaleFraction(None, 0, 0, 0, 0, 0.5)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.setPetioleAndLeafScaleFraction(None, 0, 0, 0, 0, 0.5, 0.5)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.scaleLeafSizeMax(None, 0, 0, 0, 1.2)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.setLeafNormal(None, 0, 0, 0, 0, 0, 0.0, 0.0, 1.0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.bendPetioleUnderLeafWeight(None, 0, 0, 0, 0)
+            with pytest.raises(RuntimeError, match="1.3.87"):
+                plantarch_wrapper.recordPetioleRestShape(None, 0, 0, 0, 0)
+
+    def test_expected_1387_symbols_are_registered(self):
+        """Every 1.3.87 symbol this module binds must exist on the native library."""
+        if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
+            pytest.skip("PlantArchitecture native functions not available")
+        for name in ("enablePlantLeafAngleDistributionTracking",
+                     "enablePlantLeafAngleDistributionTrackingMulti",
+                     "enablePlantLeafElevationAngleDistributionTracking",
+                     "enablePlantLeafAzimuthAngleDistributionTracking",
+                     "disablePlantLeafAngleDistributionTracking",
+                     "isPlantLeafAngleDistributionTrackingEnabled",
+                     "getPetioleLengthAt", "getPhytomerPetioleLength",
+                     "scalePetioleMaxLength", "setPetioleScaleFraction",
+                     "setPetioleAndLeafScaleFraction", "scaleLeafSizeMax",
+                     "setLeafNormal", "bendPetioleUnderLeafWeight",
+                     "recordPetioleRestShape"):
+            assert hasattr(plantarch_wrapper.helios_lib, name), (
+                f"native library is missing {name}")
+
+
+@pytest.mark.native_only
+class TestPlantArchitecture1387LeafAngleTracking:
+    """Leaf angle distribution tracking against the native library."""
+
+    def _plant(self, plantarch, age=10.0, position=None):
+        plantarch.loadPlantModelFromLibrary("bean")
+        return plantarch.buildPlantInstanceFromLibrary(
+            position if position is not None else vec3(0, 0, 0), age)
+
+    def test_tracking_starts_disabled_and_toggles(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id = self._plant(plantarch)
+
+                assert plantarch.isLeafAngleDistributionTrackingEnabled(plant_id) is False
+                plantarch.enableLeafAngleDistributionTracking(
+                    plant_id, 2.0, 1.5, 0.5, 0.0, 180.0)
+                assert plantarch.isLeafAngleDistributionTrackingEnabled(plant_id) is True
+                plantarch.disableLeafAngleDistributionTracking(plant_id)
+                assert plantarch.isLeafAngleDistributionTrackingEnabled(plant_id) is False
+
+    @pytest.mark.parametrize("method,args", [
+        ("enableLeafElevationAngleDistributionTracking", (2.0, 1.5, 90.0)),
+        ("enableLeafAzimuthAngleDistributionTracking", (0.4, 15.0, 90.0)),
+    ])
+    def test_single_axis_tracking_enables(self, method, args):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id = self._plant(plantarch)
+                getattr(plantarch, method)(plant_id, *args)
+                assert plantarch.isLeafAngleDistributionTrackingEnabled(plant_id) is True
+
+    def test_multi_plant_tracking_enables_every_plant(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plantarch.loadPlantModelFromLibrary("bean")
+                plant_ids = [
+                    plantarch.buildPlantInstanceFromLibrary(vec3(i * 0.5, 0, 0), 10.0)
+                    for i in range(3)]
+
+                plantarch.enableLeafAngleDistributionTracking(
+                    plant_ids, 2.0, 1.5, 0.5, 0.0, 180.0)
+
+                assert all(plantarch.isLeafAngleDistributionTrackingEnabled(p)
+                           for p in plant_ids)
+
+    def test_tracking_steers_inclination_toward_the_target(self):
+        """lambda>0 with an erectophile target must raise mean inclination vs untracked.
+
+        Beta(mu=1, nu=5) puts its mass near vertical, so tracking should leave the leaves
+        measurably more upright than the procedural model does.
+
+        Averaged over several builds rather than compared on one: a library build is
+        stochastic, and a single plant's mean inclination carries a spread of about 3.5
+        degrees either way. The steering effect is about 9.4 degrees, so the means separate
+        decisively while any single pair of draws can overlap.
+
+        Sized from measurement, not guesswork: over 12 builds per arm the untracked mean is
+        47.8 deg (sd 3.6) and the tracked mean 57.2 deg (sd 2.2). At 3 builds per arm a
+        4-degree threshold sits near the 1st percentile of the difference and so fails about
+        1 run in 80 -- which is exactly how it failed the v0.1.33 wheel build (untracked
+        50.67, tracked 54.46). Five builds per arm against a 3-degree threshold puts the
+        false-failure rate near 0.04% while still demanding a real, directional effect.
+        """
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        def mean_inclination(track):
+            with Context() as context:
+                with PlantArchitecture(context) as plantarch:
+                    plantarch.disableMessages()
+                    plant_id = self._plant(plantarch, age=5.0)
+                    if track:
+                        plantarch.enableLeafElevationAngleDistributionTracking(
+                            plant_id, 1.0, 5.0, 180.0)
+                    plantarch.advanceTime(15.0, plant_id=plant_id)
+                    inclinations = plantarch.getPlantLeafInclinations(plant_id)
+                    assert len(inclinations) > 0
+                    return sum(inclinations) / len(inclinations)
+
+        n = 5
+        untracked = sum(mean_inclination(False) for _ in range(n)) / n
+        tracked = sum(mean_inclination(True) for _ in range(n)) / n
+        # getPlantLeafInclinations reports degrees from horizontal, so more upright is larger.
+        assert tracked > untracked + 3.0, (
+            f"erectophile tracking did not steer inclination: "
+            f"untracked={untracked:.2f} deg, tracked={tracked:.2f} deg (mean of {n})")
+
+    def test_disable_after_growth_leaves_plant_usable(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id = self._plant(plantarch)
+                plantarch.enableLeafAngleDistributionTracking(
+                    plant_id, 2.0, 1.5, 0.5, 0.0, 180.0)
+                plantarch.advanceTime(5.0, plant_id=plant_id)
+                plantarch.disableLeafAngleDistributionTracking(plant_id)
+                plantarch.advanceTime(5.0, plant_id=plant_id)
+
+                assert plantarch.getPlantLeafCount(plant_id) > 0
+
+    def test_tracking_unknown_plant_raises(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                with pytest.raises(PlantArchitectureError, match="(?i)does not exist|9999"):
+                    plantarch.enableLeafAngleDistributionTracking(
+                        9999, 2.0, 1.5, 0.5, 0.0, 180.0)
+
+
+@pytest.mark.native_only
+class TestPlantArchitecture1387PetioleAndLeafScaling:
+    """Per-phytomer petiole/leaf growth targets against the native library."""
+
+    def _plant(self, plantarch, age=10.0):
+        plantarch.loadPlantModelFromLibrary("bean")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age)
+        return plant_id, plantarch.getAllShootIDs(plant_id)[0]
+
+    def test_getPetioleLength_mean_matches_single_petiole(self):
+        """Every petiole on a phytomer is built from one draw, so mean == the individual."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                mean = plantarch.getPetioleLength(plant_id, shoot_id, 0)
+                single = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+
+                assert mean > 0.0
+                assert mean == pytest.approx(single, rel=1e-6)
+
+    def test_setPetioleScaleFraction_scales_current_length(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                plantarch.setPetioleScaleFraction(plant_id, shoot_id, 0, 0, 1.0)
+                full = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                plantarch.setPetioleScaleFraction(plant_id, shoot_id, 0, 0, 0.5)
+                half = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+
+                assert half == pytest.approx(0.5 * full, rel=1e-4), (
+                    f"fraction 0.5 should halve the length: {full} -> {half}")
+
+    def test_scalePetioleMaxLength_moves_the_target_not_the_present_length(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                before = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                plantarch.scalePetioleMaxLength(plant_id, shoot_id, 0, 2.0)
+                after = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                assert after == pytest.approx(before, rel=1e-6), (
+                    "scalePetioleMaxLength must leave the present length alone")
+
+                # Only on being taken to full elongation does the new target show up.
+                plantarch.setPetioleScaleFraction(plant_id, shoot_id, 0, 0, 1.0)
+                full = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                assert full > before, (
+                    f"doubled target should lengthen at fraction 1.0: {before} -> {full}")
+
+    def test_setPetioleAndLeafScaleFraction_applies_both(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                plantarch.setPetioleAndLeafScaleFraction(plant_id, shoot_id, 0, 0, 1.0, 1.0)
+                full_petiole = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                full_leaf = sum(plantarch.getPlantLeafAreas(plant_id))
+
+                plantarch.setPetioleAndLeafScaleFraction(plant_id, shoot_id, 0, 0, 0.5, 0.5)
+                half_petiole = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                half_leaf = sum(plantarch.getPlantLeafAreas(plant_id))
+
+                assert half_petiole < full_petiole
+                assert half_leaf < full_leaf
+
+    def test_scaleLeafSizeMax_raises_the_target_without_moving_the_blade(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                before = sum(plantarch.getPlantLeafAreas(plant_id))
+                plantarch.scaleLeafSizeMax(plant_id, shoot_id, 0, 2.0)
+                after = sum(plantarch.getPlantLeafAreas(plant_id))
+
+                assert after == pytest.approx(before, rel=1e-4), (
+                    "raising the target must leave the present blade size alone")
+
+    def test_setLeafNormal_reorients_the_blade(self):
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                before = plantarch.getPlantLeafInclinations(plant_id)
+                plantarch.setLeafNormal(plant_id, shoot_id, 0, 0, 0, vec3(0, 0, 1))
+                after = plantarch.getPlantLeafInclinations(plant_id)
+
+                assert len(after) == len(before)
+                assert after != before, "setLeafNormal did not change any leaf inclination"
+
+    def test_petiole_bend_and_record_are_callable_on_a_rigid_petiole(self):
+        """Both are no-ops for a rigid petiole (flexibility 0), and must not raise."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                before = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+                plantarch.recordPetioleRestShape(plant_id, shoot_id, 0, 0)
+                plantarch.bendPetioleUnderLeafWeight(plant_id, shoot_id, 0, 0)
+                after = plantarch.getPetioleLength(plant_id, shoot_id, 0, 0)
+
+                # Bending is inextensible: it never changes the centerline arclength.
+                assert after == pytest.approx(before, rel=1e-6)
+
+    def test_out_of_range_node_index_raises_instead_of_reading_out_of_bounds(self):
+        """The C wrapper bounds-checks node_index; without it this is undefined behavior."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plant_id, shoot_id = self._plant(plantarch)
+
+                with pytest.raises(PlantArchitectureError, match="(?i)out of range"):
+                    plantarch.getPetioleLength(plant_id, shoot_id, 9999)
+                with pytest.raises(PlantArchitectureError, match="(?i)out of range"):
+                    plantarch.scaleLeafSizeMax(plant_id, shoot_id, 9999, 1.5)
+
+
+@pytest.mark.native_only
+class TestPlantArchitecture1387PetioleFlexibility:
+    """PetioleParameters.flexibility makes petioles droop under their leaflets' weight."""
+
+    def _min_leaf_height(self, flexibility):
+        from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
+
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.disableMessages()
+                plantarch.loadPlantModelFromLibrary("bean")
+                for label in ("trifoliate", "unifoliate"):
+                    params = ShootParameters.from_dict(
+                        plantarch.getCurrentShootParameters(label))
+                    params.phytomer_parameters.petiole.flexibility = \
+                        RandomParameterFloat.constant(flexibility)
+                    plantarch.defineShootType(label, params)
+
+                plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 15.0)
+                heights = [context.getObjectCenter(objID).z
+                           for objID in plantarch.getPlantLeafObjectIDs(plant_id)]
+                assert heights
+                return min(heights)
+
+    def test_flexibility_lowers_the_lowest_leaf(self):
+        """Compare over several builds: a library build is stochastic run to run.
+
+        The droop is far larger than that spread -- every flexible build sits below every
+        rigid one -- so the two samples are required to separate completely rather than
+        merely to differ on one draw.
+        """
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        rigid = [self._min_leaf_height(0.0) for _ in range(3)]
+        flexible = [self._min_leaf_height(1.5) for _ in range(3)]
+
+        assert max(flexible) < min(rigid), (
+            f"petiole flexibility did not droop the canopy: "
+            f"rigid min z={rigid}, flexible min z={flexible}")
+
+
+@pytest.mark.native_only
+class TestPlantArchitecture1387LeafExpansionRate:
+    """ShootParameters.leaf_expansion_rate_max decouples leaf growth from internode growth."""
+
+    def _leaf_area_after_growth(self, rate, builds=2):
+        """Grow a hand-built shoot for 4 days and report its mean total leaf area.
+
+        Hand-built rather than library-built: the library builders use the species' own
+        shoot types and would ignore the type defined here.
+        """
+        from pyhelios.plant_architecture_params import ShootParameters, RandomParameterFloat
+
+        areas = []
+        for _ in range(builds):
+            with Context() as context:
+                with PlantArchitecture(context) as plantarch:
+                    plantarch.disableMessages()
+                    plantarch.loadPlantModelFromLibrary("bean")
+                    params = ShootParameters.from_dict(
+                        plantarch.getCurrentShootParameters("trifoliate"))
+                    params.leaf_expansion_rate_max = RandomParameterFloat.constant(rate)
+                    # The type must exist before the plant instance that uses it.
+                    plantarch.defineShootType("expansion_probe", params)
+
+                    plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+                    plantarch.addBaseStemShoot(
+                        plant_id=plant_id, current_node_number=4,
+                        base_rotation=AxisRotation(0, 0, 0), internode_radius=0.004,
+                        internode_length_max=0.03,
+                        internode_length_scale_factor_fraction=0.2,
+                        leaf_scale_factor_fraction=0.2, radius_taper=0.9,
+                        shoot_type_label="expansion_probe")
+                    plantarch.advanceTime(4.0, plant_id=plant_id)
+                    leaf_areas = plantarch.getPlantLeafAreas(plant_id)
+                    areas.append(sum(leaf_areas) if leaf_areas else 0.0)
+        return sum(areas) / len(areas)
+
+    def test_a_faster_rate_expands_leaves_further(self):
+        """The parameter must actually drive expansion, not just round-trip through JSON."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+
+        slow = self._leaf_area_after_growth(0.01)
+        fast = self._leaf_area_after_growth(1.0)
+
+        assert fast > 2.0 * slow, (
+            f"leaf_expansion_rate_max did not change leaf expansion: "
+            f"rate=0.01 gave {slow:.6f} m2, rate=1.0 gave {fast:.6f} m2")

@@ -225,6 +225,87 @@ PYHELIOS_API int setPetioleLeafCount(PlantArchitecture* plantarch, unsigned int 
 // readPlantStructureXML(). internode_length_max must be > 0. Returns 0 on success, -1 on error.
 PYHELIOS_API int setShootInternodeLengthMax(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, float internode_length_max);
 
+// ---- Bud and apex control ----
+// Stop a shoot's apical meristem adding further phytomers, so the shoot no longer extends at its tip.
+// This does NOT change the state of any vegetative bud, so the shoot can still throw laterals; pair it
+// with removeShootVegetativeBuds() to stop both. Returns 0 on success, -1 on error.
+PYHELIOS_API int terminateShootApicalBud(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+// Number of axillary vegetative buds on a shoot, summed over every phytomer and every petiole.
+// bud_state filters to buds in that BudState (0=DORMANT, 1=ACTIVE, 2=FLOWER_CLOSED, 3=FLOWER_OPEN,
+// 4=FRUITING, 5=DEAD); -1 counts buds in any state. Buds are never erased from a shoot -- only their
+// state changes -- so the unfiltered count is stable over the life of the shoot.
+// Returns -1 on error, which is why callers must check getLastErrorCode() rather than the sign of the
+// result: a count of 0 is a legitimate answer.
+PYHELIOS_API int getShootVegetativeBudCount(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, int bud_state);
+// Number of leaf compound objects on a plant (NOT primitives -- a leaf built from many triangles counts
+// once, and a compound leaf contributes one per leaflet). Returns -1 on error.
+PYHELIOS_API int getPlantLeafCount(PlantArchitecture* plantarch, unsigned int plantID);
+
+// ---- helios-core 1.3.87 additions ----
+// Leaf angle distribution tracking. Where setPlantLeafAngleDistribution() re-aims every leaf of a
+// finished plant in one shot, these steer the distribution through growth: each leaf is given a target
+// as it emerges and turns onto it while it expands, so a fully grown leaf never moves again.
+//
+// lambda_degrees trades filling the distribution against keeping each leaf near the angle the model
+// gave it: 0 leaves the plant unchanged, and values of order 180 match the distribution as closely as
+// the growing plant allows. Enabling tracking on an already-tracked plant replaces the target, so the
+// target may be varied over the plant's life.
+//
+// All return 0 on success, -1 on error.
+PYHELIOS_API int enablePlantLeafAngleDistributionTracking(PlantArchitecture* plantarch, unsigned int plantID, float Beta_mu_inclination, float Beta_nu_inclination, float eccentricity,
+                                                          float ellipse_rotation_degrees, float lambda_degrees);
+// Multi-plant form of the above. plantIDs holds count entries.
+PYHELIOS_API int enablePlantLeafAngleDistributionTrackingMulti(PlantArchitecture* plantarch, const unsigned int* plantIDs, int count, float Beta_mu_inclination, float Beta_nu_inclination,
+                                                               float eccentricity, float ellipse_rotation_degrees, float lambda_degrees);
+// Steer inclination only, leaving azimuth to the procedural model.
+PYHELIOS_API int enablePlantLeafElevationAngleDistributionTracking(PlantArchitecture* plantarch, unsigned int plantID, float Beta_mu_inclination, float Beta_nu_inclination, float lambda_degrees);
+// Steer azimuth only, leaving inclination to the procedural model.
+PYHELIOS_API int enablePlantLeafAzimuthAngleDistributionTracking(PlantArchitecture* plantarch, unsigned int plantID, float eccentricity, float ellipse_rotation_degrees, float lambda_degrees);
+// Stop steering. Leaves already steered keep the orientation they reached; leaves emerging afterward
+// are left where the procedural model puts them.
+PYHELIOS_API int disablePlantLeafAngleDistributionTracking(PlantArchitecture* plantarch, unsigned int plantID);
+// 1 if tracking is in effect for this plant, 0 if not, -1 on error.
+PYHELIOS_API int isPlantLeafAngleDistributionTrackingEnabled(PlantArchitecture* plantarch, unsigned int plantID);
+
+// Per-phytomer petiole and leaf growth-target control. node_index selects the phytomer within the
+// shoot and petiole_index the petiole within that phytomer. All return 0 on success, -1 on error,
+// except getPetioleLengthAt(), which returns a negative value on error.
+//
+// Current arclength (m) of one petiole's centerline. This is the length right now, not the mature
+// length it is growing toward, and bending does not change it. Returns -1 on error.
+PYHELIOS_API float getPetioleLengthAt(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index);
+// Mean current arclength (m) over every petiole on the phytomer; 0 if it has none. Returns -1 on error.
+PYHELIOS_API float getPhytomerPetioleLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index);
+// Scale the fully-elongated length every petiole on the phytomer is growing toward, leaving their
+// present lengths where they are. scale_factor must be > 0.
+PYHELIOS_API int scalePetioleMaxLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float scale_factor);
+// Set one petiole's current length as a fraction of its fully-elongated length, leaving the leaves it
+// carries at the size they are. The leaves ride out along the petiole as it lengthens.
+PYHELIOS_API int setPetioleScaleFraction(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float petiole_scale_factor_fraction);
+// Set one petiole's length and its leaves' size together, each as a fraction of its own fully-elongated
+// value, in a single pass.
+PYHELIOS_API int setPetioleAndLeafScaleFraction(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index,
+                                                float petiole_scale_factor_fraction, float leaf_scale_factor_fraction);
+// Scale the size every leaf on the phytomer is expanding toward, leaving the blades where they are:
+// the expansion fraction moves the other way, so a full-grown leaf given a larger target becomes a
+// partly-expanded leaf of the same size. scale_factor must be > 0.
+PYHELIOS_API int scaleLeafSizeMax(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float scale_factor);
+// Re-aim one leaf's blade onto target_normal (world coordinates, need not be normalized), writing the
+// angles back onto the phytomer so the new orientation survives a writePlantStructureXML() /
+// readPlantStructureXML() round trip. The leaf must have geometry in the Context.
+PYHELIOS_API int setLeafNormal(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index,
+                               float nx, float ny, float nz);
+// Bend one petiole, and the leaves it carries, under its leaflets' weight for the leaf's current size
+// and the petiole's age. Always computed from the recorded rest shape rather than the current shape, so
+// repeated calls do not accumulate. A no-op for a rigid petiole (petiole.flexibility unset), a petiole
+// whose centerline was prescribed, one carrying a prescribed leaf, or when neither the load nor the
+// compliance has changed since the last call.
+PYHELIOS_API int bendPetioleUnderLeafWeight(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index);
+// Record one petiole's current centerline as its undeformed rest shape, and mark it as needing to be
+// bent again. Call after replacing a centerline wholesale so bendPetioleUnderLeafWeight() bends from
+// the new shape.
+PYHELIOS_API int recordPetioleRestShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index);
+
 // ---- Built-geometry organ queries (helios-core 1.3.85) ----
 // Measured from the geometry actually built, one entry per organ, visited shoot by shoot and then
 // phytomer by phytomer. All return thread-local static storage; do NOT free.

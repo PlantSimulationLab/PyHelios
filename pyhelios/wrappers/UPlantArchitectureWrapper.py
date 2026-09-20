@@ -805,6 +805,173 @@ try:
 except AttributeError:
     _PLANTARCHITECTURE_1386_AVAILABLE = False
 
+# Bud and apex control, probed separately for the same reason as the blocks above: the main
+# registration block is one long try, so a single missing symbol there disables the whole API.
+_PLANTARCHITECTURE_BUDSTATE_AVAILABLE = False
+try:
+    helios_lib.terminateShootApicalBud.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint,     # plantID, shootID
+    ]
+    helios_lib.terminateShootApicalBud.restype = ctypes.c_int
+    helios_lib.terminateShootApicalBud.errcheck = _check_error
+
+    # -1 is the error sentinel, but 0 is a legitimate count, so success is decided by the
+    # native error code through errcheck -- never by the sign of the return value alone.
+    helios_lib.getShootVegetativeBudCount.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint,     # plantID, shootID
+        ctypes.c_int,                     # bud_state (-1 = any state)
+    ]
+    helios_lib.getShootVegetativeBudCount.restype = ctypes.c_int
+    helios_lib.getShootVegetativeBudCount.errcheck = _check_error
+
+    helios_lib.getPlantLeafCount.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+    ]
+    helios_lib.getPlantLeafCount.restype = ctypes.c_int
+    helios_lib.getPlantLeafCount.errcheck = _check_error
+
+    _PLANTARCHITECTURE_BUDSTATE_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_BUDSTATE_AVAILABLE = False
+
+# Leaf angle distribution tracking (helios-core 1.3.87), probed separately for the same reason as
+# the blocks above.
+_PLANTARCHITECTURE_LEAFANGLETRACKING_AVAILABLE = False
+try:
+    helios_lib.enablePlantLeafAngleDistributionTracking.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+        ctypes.c_float, ctypes.c_float,   # Beta_mu_inclination, Beta_nu_inclination
+        ctypes.c_float, ctypes.c_float,   # eccentricity, ellipse_rotation_degrees
+        ctypes.c_float,                   # lambda_degrees
+    ]
+    helios_lib.enablePlantLeafAngleDistributionTracking.restype = ctypes.c_int
+    helios_lib.enablePlantLeafAngleDistributionTracking.errcheck = _check_error
+
+    helios_lib.enablePlantLeafAngleDistributionTrackingMulti.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_int,  # plantIDs, count
+        ctypes.c_float, ctypes.c_float,   # Beta_mu_inclination, Beta_nu_inclination
+        ctypes.c_float, ctypes.c_float,   # eccentricity, ellipse_rotation_degrees
+        ctypes.c_float,                   # lambda_degrees
+    ]
+    helios_lib.enablePlantLeafAngleDistributionTrackingMulti.restype = ctypes.c_int
+    helios_lib.enablePlantLeafAngleDistributionTrackingMulti.errcheck = _check_error
+
+    helios_lib.enablePlantLeafElevationAngleDistributionTracking.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+        ctypes.c_float, ctypes.c_float,   # Beta_mu_inclination, Beta_nu_inclination
+        ctypes.c_float,                   # lambda_degrees
+    ]
+    helios_lib.enablePlantLeafElevationAngleDistributionTracking.restype = ctypes.c_int
+    helios_lib.enablePlantLeafElevationAngleDistributionTracking.errcheck = _check_error
+
+    helios_lib.enablePlantLeafAzimuthAngleDistributionTracking.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+        ctypes.c_float, ctypes.c_float,   # eccentricity, ellipse_rotation_degrees
+        ctypes.c_float,                   # lambda_degrees
+    ]
+    helios_lib.enablePlantLeafAzimuthAngleDistributionTracking.restype = ctypes.c_int
+    helios_lib.enablePlantLeafAzimuthAngleDistributionTracking.errcheck = _check_error
+
+    helios_lib.disablePlantLeafAngleDistributionTracking.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+    ]
+    helios_lib.disablePlantLeafAngleDistributionTracking.restype = ctypes.c_int
+    helios_lib.disablePlantLeafAngleDistributionTracking.errcheck = _check_error
+
+    # Returns 1/0, with -1 the error sentinel; errcheck decides success from the native error code.
+    helios_lib.isPlantLeafAngleDistributionTrackingEnabled.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+    ]
+    helios_lib.isPlantLeafAngleDistributionTrackingEnabled.restype = ctypes.c_int
+    helios_lib.isPlantLeafAngleDistributionTrackingEnabled.errcheck = _check_error
+
+    _PLANTARCHITECTURE_LEAFANGLETRACKING_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_LEAFANGLETRACKING_AVAILABLE = False
+
+# Per-phytomer petiole and leaf growth targets (helios-core 1.3.87).
+_PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE = False
+try:
+    # -1 is the error sentinel for both length readers; 0 is a legitimate length (a phytomer with
+    # no petiole), so success is decided through errcheck, not the sign of the result.
+    helios_lib.getPetioleLengthAt.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+    ]
+    helios_lib.getPetioleLengthAt.restype = ctypes.c_float
+    helios_lib.getPetioleLengthAt.errcheck = _check_error
+
+    helios_lib.getPhytomerPetioleLength.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index
+    ]
+    helios_lib.getPhytomerPetioleLength.restype = ctypes.c_float
+    helios_lib.getPhytomerPetioleLength.errcheck = _check_error
+
+    helios_lib.scalePetioleMaxLength.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index
+        ctypes.c_float,                   # scale_factor
+    ]
+    helios_lib.scalePetioleMaxLength.restype = ctypes.c_int
+    helios_lib.scalePetioleMaxLength.errcheck = _check_error
+
+    helios_lib.setPetioleScaleFraction.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+        ctypes.c_float,                   # petiole_scale_factor_fraction
+    ]
+    helios_lib.setPetioleScaleFraction.restype = ctypes.c_int
+    helios_lib.setPetioleScaleFraction.errcheck = _check_error
+
+    helios_lib.setPetioleAndLeafScaleFraction.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+        ctypes.c_float, ctypes.c_float,   # petiole_scale_factor_fraction, leaf_scale_factor_fraction
+    ]
+    helios_lib.setPetioleAndLeafScaleFraction.restype = ctypes.c_int
+    helios_lib.setPetioleAndLeafScaleFraction.errcheck = _check_error
+
+    helios_lib.scaleLeafSizeMax.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index
+        ctypes.c_float,                   # scale_factor
+    ]
+    helios_lib.scaleLeafSizeMax.restype = ctypes.c_int
+    helios_lib.scaleLeafSizeMax.errcheck = _check_error
+
+    helios_lib.setLeafNormal.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index
+        ctypes.c_uint, ctypes.c_uint,     # petiole_index, leaf_index
+        ctypes.c_float, ctypes.c_float, ctypes.c_float,  # nx, ny, nz
+    ]
+    helios_lib.setLeafNormal.restype = ctypes.c_int
+    helios_lib.setLeafNormal.errcheck = _check_error
+
+    for _fn in ("bendPetioleUnderLeafWeight", "recordPetioleRestShape"):
+        _f = getattr(helios_lib, _fn)
+        _f.argtypes = [
+            ctypes.POINTER(UPlantArchitecture),
+            ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+        ]
+        _f.restype = ctypes.c_int
+        _f.errcheck = _check_error
+    del _fn, _f
+
+    _PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE = False
+
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
     """Create PlantArchitecture instance"""
@@ -2771,3 +2938,286 @@ def getPlantInternodeLengths(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), 
 def getPlantLeafInclinations(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> List[float]:
     """Inclination (degrees from horizontal) of every leaf on the plant."""
     return _plantFloatVector("getPlantLeafInclinations", plantarch_ptr, plant_id)
+
+
+# ---------------------------------------------------------------------------
+# Bud and apex control
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_budstate() -> None:
+    """Raise if the native library lacks the bud and apex control functions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_BUDSTATE_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires a library built from this PyHelios revision; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def terminateShootApicalBud(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                            plant_id: int, shoot_id: int) -> None:
+    """Stop a shoot's apex adding further phytomers. Does not change any bud state."""
+    _require_plantarch_budstate()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+
+    result = helios_lib.terminateShootApicalBud(plantarch_ptr, plant_id, shoot_id)
+
+    if result != 0:
+        raise RuntimeError(
+            f"Failed to terminate the apical bud of shoot {shoot_id} of plant {plant_id}")
+
+
+def getShootVegetativeBudCount(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                               plant_id: int, shoot_id: int, bud_state: int = -1) -> int:
+    """Count a shoot's axillary vegetative buds; bud_state -1 counts any state."""
+    _require_plantarch_budstate()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+
+    result = int(helios_lib.getShootVegetativeBudCount(
+        plantarch_ptr, plant_id, shoot_id, int(bud_state)))
+
+    if result < 0:
+        raise RuntimeError(
+            f"Failed to count the vegetative buds of shoot {shoot_id} of plant {plant_id}")
+    return result
+
+
+def getPlantLeafCount(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int) -> int:
+    """Number of leaf objects on a plant."""
+    _require_plantarch_budstate()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = int(helios_lib.getPlantLeafCount(plantarch_ptr, plant_id))
+
+    if result < 0:
+        raise RuntimeError(f"Failed to get the leaf count of plant {plant_id}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.87: leaf angle distribution tracking
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_leafangletracking() -> None:
+    """Raise if the native library predates the helios-core 1.3.87 leaf angle tracking API."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_LEAFANGLETRACKING_AVAILABLE:
+        raise RuntimeError(
+            "Leaf angle distribution tracking is not available in the current native library. "
+            "It requires helios-core v1.3.87 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def enablePlantLeafAngleDistributionTracking(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                             plant_id: int, beta_mu_inclination: float,
+                                             beta_nu_inclination: float, eccentricity: float,
+                                             ellipse_rotation_degrees: float,
+                                             lambda_degrees: float) -> None:
+    """Steer one plant's leaf inclination and azimuth toward a distribution as it grows."""
+    _require_plantarch_leafangletracking()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    helios_lib.enablePlantLeafAngleDistributionTracking(
+        plantarch_ptr, plant_id, ctypes.c_float(beta_mu_inclination),
+        ctypes.c_float(beta_nu_inclination), ctypes.c_float(eccentricity),
+        ctypes.c_float(ellipse_rotation_degrees), ctypes.c_float(lambda_degrees))
+
+
+def enablePlantLeafAngleDistributionTrackingMulti(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                                  plant_ids, beta_mu_inclination: float,
+                                                  beta_nu_inclination: float, eccentricity: float,
+                                                  ellipse_rotation_degrees: float,
+                                                  lambda_degrees: float) -> None:
+    """Steer several plants' leaf angles toward a distribution realized over the canopy."""
+    _require_plantarch_leafangletracking()
+    ids = [int(p) for p in plant_ids]
+    if not ids:
+        raise ValueError("Plant ID list must not be empty")
+    if any(p < 0 for p in ids):
+        raise ValueError("Plant IDs must be non-negative")
+    arr = (ctypes.c_uint * len(ids))(*ids)
+    helios_lib.enablePlantLeafAngleDistributionTrackingMulti(
+        plantarch_ptr, arr, len(ids), ctypes.c_float(beta_mu_inclination),
+        ctypes.c_float(beta_nu_inclination), ctypes.c_float(eccentricity),
+        ctypes.c_float(ellipse_rotation_degrees), ctypes.c_float(lambda_degrees))
+
+
+def enablePlantLeafElevationAngleDistributionTracking(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                                      plant_id: int, beta_mu_inclination: float,
+                                                      beta_nu_inclination: float,
+                                                      lambda_degrees: float) -> None:
+    """Steer inclination only, leaving azimuth to the procedural model."""
+    _require_plantarch_leafangletracking()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    helios_lib.enablePlantLeafElevationAngleDistributionTracking(
+        plantarch_ptr, plant_id, ctypes.c_float(beta_mu_inclination),
+        ctypes.c_float(beta_nu_inclination), ctypes.c_float(lambda_degrees))
+
+
+def enablePlantLeafAzimuthAngleDistributionTracking(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                                    plant_id: int, eccentricity: float,
+                                                    ellipse_rotation_degrees: float,
+                                                    lambda_degrees: float) -> None:
+    """Steer azimuth only, leaving inclination to the procedural model."""
+    _require_plantarch_leafangletracking()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    helios_lib.enablePlantLeafAzimuthAngleDistributionTracking(
+        plantarch_ptr, plant_id, ctypes.c_float(eccentricity),
+        ctypes.c_float(ellipse_rotation_degrees), ctypes.c_float(lambda_degrees))
+
+
+def disablePlantLeafAngleDistributionTracking(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                              plant_id: int) -> None:
+    """Stop steering a plant's leaf angles."""
+    _require_plantarch_leafangletracking()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    helios_lib.disablePlantLeafAngleDistributionTracking(plantarch_ptr, plant_id)
+
+
+def isPlantLeafAngleDistributionTrackingEnabled(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                                plant_id: int) -> bool:
+    """Whether a plant's leaf angles are being steered toward a distribution."""
+    _require_plantarch_leafangletracking()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+    result = int(helios_lib.isPlantLeafAngleDistributionTrackingEnabled(plantarch_ptr, plant_id))
+
+    if result < 0:
+        raise RuntimeError(
+            f"Failed to query leaf angle distribution tracking for plant {plant_id}")
+    return result != 0
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.87: per-phytomer petiole and leaf growth targets
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_petiolescale() -> None:
+    """Raise if the native library predates the helios-core 1.3.87 petiole/leaf scaling API."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE:
+        raise RuntimeError(
+            "Per-phytomer petiole and leaf scaling is not available in the current native "
+            "library. It requires helios-core v1.3.87 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def _validate_phytomer_indices(plant_id: int, shoot_id: int, node_index: int) -> None:
+    """Reject negative plant, shoot or node identifiers before they reach the C ABI."""
+    for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id), ("Node index", node_index)):
+        if v < 0:
+            raise ValueError(f"{name} must be non-negative")
+
+
+def getPetioleLength(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                     shoot_id: int, node_index: int, petiole_index: int = None) -> float:
+    """Current petiole arclength (m): one petiole, or the phytomer mean when petiole_index is None."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+
+    if petiole_index is None:
+        result = float(helios_lib.getPhytomerPetioleLength(
+            plantarch_ptr, plant_id, shoot_id, node_index))
+    else:
+        if petiole_index < 0:
+            raise ValueError("Petiole index must be non-negative")
+        result = float(helios_lib.getPetioleLengthAt(
+            plantarch_ptr, plant_id, shoot_id, node_index, petiole_index))
+
+    if result < 0:
+        raise RuntimeError(
+            f"Failed to get the petiole length of node {node_index} of shoot {shoot_id} "
+            f"of plant {plant_id}")
+    return result
+
+
+def scalePetioleMaxLength(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                          shoot_id: int, node_index: int, scale_factor: float) -> None:
+    """Scale the fully-elongated length every petiole on a phytomer grows toward."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if scale_factor <= 0:
+        raise ValueError(f"Scale factor must be positive, got {scale_factor}")
+    helios_lib.scalePetioleMaxLength(plantarch_ptr, plant_id, shoot_id, node_index,
+                                     ctypes.c_float(scale_factor))
+
+
+def setPetioleScaleFraction(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                            shoot_id: int, node_index: int, petiole_index: int,
+                            petiole_scale_factor_fraction: float) -> None:
+    """Set one petiole's length as a fraction of fully elongated, leaving its leaves' size alone."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    helios_lib.setPetioleScaleFraction(plantarch_ptr, plant_id, shoot_id, node_index,
+                                       petiole_index,
+                                       ctypes.c_float(petiole_scale_factor_fraction))
+
+
+def setPetioleAndLeafScaleFraction(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                                   shoot_id: int, node_index: int, petiole_index: int,
+                                   petiole_scale_factor_fraction: float,
+                                   leaf_scale_factor_fraction: float) -> None:
+    """Set a petiole's length and its leaves' size together, each as its own fraction."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    helios_lib.setPetioleAndLeafScaleFraction(
+        plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+        ctypes.c_float(petiole_scale_factor_fraction),
+        ctypes.c_float(leaf_scale_factor_fraction))
+
+
+def scaleLeafSizeMax(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                     shoot_id: int, node_index: int, scale_factor: float) -> None:
+    """Scale the size every leaf on a phytomer is expanding toward, leaving the blades where they are."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if scale_factor <= 0:
+        raise ValueError(f"Scale factor must be positive, got {scale_factor}")
+    helios_lib.scaleLeafSizeMax(plantarch_ptr, plant_id, shoot_id, node_index,
+                                ctypes.c_float(scale_factor))
+
+
+def setLeafNormal(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int, shoot_id: int,
+                  node_index: int, petiole_index: int, leaf_index: int,
+                  nx: float, ny: float, nz: float) -> None:
+    """Re-aim one leaf's blade onto a target normal, recording the angles on the phytomer."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    for name, v in (("Petiole index", petiole_index), ("Leaf index", leaf_index)):
+        if v < 0:
+            raise ValueError(f"{name} must be non-negative")
+    helios_lib.setLeafNormal(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                             leaf_index, ctypes.c_float(nx), ctypes.c_float(ny),
+                             ctypes.c_float(nz))
+
+
+def bendPetioleUnderLeafWeight(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                               shoot_id: int, node_index: int, petiole_index: int) -> None:
+    """Bend one petiole and its leaves under the leaflets' weight, from the recorded rest shape."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    helios_lib.bendPetioleUnderLeafWeight(plantarch_ptr, plant_id, shoot_id, node_index,
+                                          petiole_index)
+
+
+def recordPetioleRestShape(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                           shoot_id: int, node_index: int, petiole_index: int) -> None:
+    """Record one petiole's current centerline as its undeformed rest shape."""
+    _require_plantarch_petiolescale()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    helios_lib.recordPetioleRestShape(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)

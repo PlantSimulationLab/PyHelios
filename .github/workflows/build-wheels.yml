@@ -16,6 +16,10 @@ jobs:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    # Validation jobs run on the release branch (and testing-v* dry runs) only -- never on a
+    # v* tag. The tag run is publish-only: it reuses the artifacts this run produced rather
+    # than rebuilding them, so the bytes that were tested are exactly the bytes uploaded.
+    if: github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/testing-v')
     strategy:
       matrix:
         include:
@@ -27,25 +31,6 @@ jobs:
             arch: arm64
 
     steps:
-      # Only for tag builds: force setuptools-scm to use the tag's version. A release-branch
-      # validation run deliberately falls through to setuptools-scm's own derivation, which
-      # yields a dev version like 0.1.31.post1.devN+g<sha> -- a candidate wheel is then
-      # visibly not the release wheel, and cannot be mistaken for one.
-      - name: Set package version from tag
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          # Strip the testing- prefix first: testing-v* tags are dry runs that build and
-          # test wheels but never publish, and must still yield a valid PEP 440 version.
-          VERSION="${GITHUB_REF_NAME#testing-}"
-          VERSION="${VERSION#v}"
-          # PyPI permanently reserves filenames for deleted releases.
-          # Use .postN suffix for versions whose files were previously uploaded and deleted.
-          case "$VERSION" in
-            0.1.16) VERSION="0.1.16.post2" ;;
-          esac
-          echo "SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}" >> "$GITHUB_ENV"
-
       - name: Checkout PyHelios
         uses: actions/checkout@v4
         with:
@@ -53,6 +38,47 @@ jobs:
           fetch-depth: 0  # Required for setuptools-scm
           # Ensure all tags are fetched
           fetch-tags: true
+
+      # Pin the package version for EVERY wheel build, tag or release branch.
+      #
+      # The release-branch run is the one whose artifacts get published (the v* tag run does
+      # not rebuild; it republishes them). So the release branch must already stamp the real
+      # release version -- letting it fall through to setuptools-scm produced
+      # pyhelios3d-0.1.32.dev1-*.whl, which would reach PyPI as a dev release.
+      #
+      # Tag refs take the version from the tag name. The release branch takes it from the
+      # newest docs/CHANGELOG.md heading, which is also the value the release commit's subject
+      # must match -- so a changelog/tag mismatch shows up as a wheel filename that does not
+      # match the tag, rather than silently publishing the wrong version.
+      #
+      # Must run AFTER checkout: the release-branch path reads docs/CHANGELOG.md from the
+      # working tree, which does not exist before the repo is checked out.
+      - name: Set package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # Strip the testing- prefix first: testing-v* tags are dry runs that build and
+            # test wheels but never publish, and must still yield a valid PEP 440 version.
+            VERSION="${GITHUB_REF_NAME#testing-}"
+            VERSION="${VERSION#v}"
+            SOURCE="tag ${GITHUB_REF_NAME}"
+          else
+            VERSION="$(grep -m1 -oE '^# \[v[0-9]+\.[0-9]+\.[0-9]+\]' docs/CHANGELOG.md \
+                       | tr -d '#[] v')"
+            SOURCE="docs/CHANGELOG.md heading"
+            if [ -z "${VERSION}" ]; then
+              echo "::error::Could not parse a version from the newest docs/CHANGELOG.md heading."
+              exit 1
+            fi
+          fi
+          # PyPI permanently reserves filenames for deleted releases.
+          # Use .postN suffix for versions whose files were previously uploaded and deleted.
+          case "$VERSION" in
+            0.1.16) VERSION="0.1.16.post2" ;;
+          esac
+          echo "Package version ${VERSION} (from ${SOURCE})"
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Debug version detection
         shell: bash
@@ -789,6 +815,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: build_wheels
+    # Validation jobs run on the release branch (and testing-v* dry runs) only -- never on a
+    # v* tag. The tag run is publish-only: it reuses the artifacts this run produced rather
+    # than rebuilding them, so the bytes that were tested are exactly the bytes uploaded.
+    if: github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/testing-v')
     strategy:
       fail-fast: false
       matrix:
@@ -856,6 +886,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     needs: build_wheels
+    # Validation jobs run on the release branch (and testing-v* dry runs) only -- never on a
+    # v* tag. The tag run is publish-only: it reuses the artifacts this run produced rather
+    # than rebuilding them, so the bytes that were tested are exactly the bytes uploaded.
+    if: github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/testing-v')
     strategy:
       fail-fast: false
       matrix:
@@ -964,11 +998,10 @@ jobs:
     name: Test GPU wheels on GitHub-hosted GPU runner
     runs-on: linux-x64-gpu-githubhosted
     needs: build_wheels
-    # Runs on the release branch (pre-promotion validation), on release tags, and on
-    # testing-v* dry runs, so the GPU path is never the thing that first fails at tag time.
-    # publish keeps the narrower refs/tags/v* gate, so none of these can upload; its needs on
-    # this job keeps GPU tests gating a release.
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/testing-v') || github.ref == 'refs/heads/release')
+    # Validation-only, like the other test jobs: release branch and testing-v* dry runs.
+    # A v* tag does not re-run the GPU suite; publish instead requires that a successful
+    # release-branch run already exercised it on this exact commit.
+    if: github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/testing-v')
     steps:
       - name: Checkout PyHelios for tests
         uses: actions/checkout@v4
@@ -1488,21 +1521,54 @@ jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [build_wheels, test_wheels, test_wheels_slim_container, test_gpu_wheels]
+    # No needs: the validation jobs are gated off on a v* tag, so depending on them would
+    # mean depending on skipped jobs -- which GitHub treats as satisfied. The real gate is
+    # the "Locate validating release run" step below, which fails hard unless a successful
+    # release-branch run exists for this exact commit.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     environment:
       name: pypi
       url: https://pypi.org/p/pyhelios3d
     permissions:
       id-token: write  # Required for trusted publishing
+      actions: read    # Required to list and download another run's artifacts
 
     steps:
-      - name: Download all wheels
+      - name: Locate validating release run for this commit
+        id: locate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          echo "Tagged commit: ${SHA}"
+          # The wheels are built and tested once, on the release branch. This tag run does not
+          # rebuild them; it republishes that run's artifacts. Require a SUCCESSFUL Build Wheels
+          # run on the release branch for this exact SHA -- no fallback to building here, because
+          # a silent rebuild would publish bytes nothing in this pipeline ever tested.
+          RUN_ID=$(gh run list \
+            --workflow build-wheels.yml --branch release --limit 50 \
+            --json databaseId,headSha,conclusion,status \
+            -q "[.[] | select(.headSha == \"${SHA}\" and .conclusion == \"success\")] | first | .databaseId" \
+            -R "${GITHUB_REPOSITORY}")
+          if [ -z "${RUN_ID}" ] || [ "${RUN_ID}" = "null" ]; then
+            echo "::error::No successful release-branch Build Wheels run found for ${SHA}."
+            echo "::error::Publishing requires that this exact commit was validated on the"
+            echo "::error::release branch first. Push it to 'release', wait for green, then re-tag."
+            exit 1
+          fi
+          echo "Validating run: ${RUN_ID}"
+          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Download the validated wheels from that run
         uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
           merge-multiple: true
           path: wheelhouse
+          run-id: ${{ steps.locate.outputs.run_id }}
+          github-token: ${{ github.token }}
 
       - name: List wheel sizes
         run: |
@@ -1511,6 +1577,31 @@ jobs:
           echo ""
           echo "=== Wheels exceeding 100MB ==="
           find wheelhouse/ -name "*.whl" -size +100M -exec ls -lh {} \; || echo "None found"
+
+      - name: Verify the fetched wheels import on a bare image
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The artifacts came from another workflow run, so nothing in THIS run has yet
+          # touched them. Prove the bytes about to be uploaded actually load, on a bare
+          # image with only the documented Linux prerequisites -- the same check
+          # test_wheels_slim_container makes during validation.
+          test -n "$(find wheelhouse -name '*.whl' -print -quit)" || {
+            echo "::error::No wheels were downloaded from the validating run."; exit 1; }
+          docker run --rm -v "${PWD}/wheelhouse:/wheelhouse:ro" python:3.12-slim bash -eo pipefail -c '
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends \
+              libgl1 libegl1 libsm6 libice6 libx11-6 libxext6 >/dev/null
+            python3 -m pip install -q --find-links /wheelhouse pyhelios3d
+            python3 -c "
+          from pyhelios import Context
+          from pyhelios.plugins import get_plugin_info
+          info = get_plugin_info()
+          assert not info.get(\"is_mock\", True), \
+              \"Wheel fell back to mock mode; native library failed to load\"
+          print(\"OK: fetched wheel loads its native library\")
+          "
+          '
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

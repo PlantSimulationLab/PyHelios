@@ -143,6 +143,61 @@ PYHELIOS_API float globalRandu();
 PYHELIOS_API int globalRanduInt(int imin, int imax);
 
 //=============================================================================
+// Leaf Angle Distribution CDFs (core/global.h; helios-core v1.3.87+)
+//=============================================================================
+
+/**
+ * @brief Cumulative distribution function of the Beta leaf-inclination distribution
+ *
+ * Gives the probability that a leaf inclination drawn from the Beta distribution is
+ * no greater than theta. Shares its parameterization with the sampler, in which nu is
+ * the first shape parameter of the underlying Beta variate and mu the second, so the
+ * mean inclination is (pi/2)*nu/(mu+nu).
+ *
+ * theta is measured from vertical and saturates outside [0, pi/2]: a negative angle
+ * returns 0 and an angle at or above pi/2 returns 1.
+ *
+ * @param theta Leaf inclination angle (radians)
+ * @param mu First parameter of the beta distribution; must be positive
+ * @param nu Second parameter of the beta distribution; must be positive
+ * @return Cumulative probability in [0,1]; 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float evaluateBetaDistributionCDF(float theta, float mu, float nu);
+
+/**
+ * @brief Inverse of evaluateBetaDistributionCDF(): the inclination at a given probability
+ *
+ * @param probability Cumulative probability; must be in [0,1]
+ * @param mu First parameter of the beta distribution; must be positive
+ * @param nu Second parameter of the beta distribution; must be positive
+ * @return Leaf inclination angle (radians) in [0, pi/2]; 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float invertBetaDistributionCDF(float probability, float mu, float nu);
+
+/**
+ * @brief Cumulative distribution function of the ellipsoidal leaf-azimuth distribution
+ *
+ * The probability is measured from the ellipse rotation phi0_degrees, and phi is wrapped
+ * into [0, 2*pi).
+ *
+ * @param phi Azimuth angle (radians)
+ * @param e Eccentricity of the ellipsoidal distribution; must be in [0,1]
+ * @param phi0_degrees Azimuthal rotation of the ellipse (degrees)
+ * @return Cumulative probability in [0,1]; 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float evaluateEllipsoidalAzimuthCDF(float phi, float e, float phi0_degrees);
+
+/**
+ * @brief Inverse of evaluateEllipsoidalAzimuthCDF(): the azimuth at a given probability
+ *
+ * @param probability Cumulative probability; must be in [0,1]
+ * @param e Eccentricity of the ellipsoidal distribution; must be in [0,1]
+ * @param phi0_degrees Azimuthal rotation of the ellipse (degrees)
+ * @return Azimuth angle (radians) in [0, 2*pi); 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float invertEllipsoidalAzimuthCDF(float probability, float e, float phi0_degrees);
+
+//=============================================================================
 // Internal Helper Functions (for use by other wrapper modules)
 //=============================================================================
 

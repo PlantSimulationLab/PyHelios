@@ -151,3 +151,98 @@ class Global:
         if imin is None or imax is None:
             raise ValueError("randu() takes either no arguments or both imin and imax")
         return global_wrapper.globalRanduInt(imin, imax)
+
+    @staticmethod
+    def evaluateBetaDistributionCDF(theta: float, mu: float, nu: float) -> float:
+        """Cumulative probability that a Beta-distributed leaf inclination is at most ``theta``.
+
+        This is the CDF of the same Beta leaf-inclination distribution that
+        PlantArchitecture's leaf angle distribution methods sample, in the same
+        parameterization: ``nu`` is the first shape parameter of the underlying Beta
+        variate and ``mu`` the second, so the mean inclination is
+        ``(pi/2) * nu / (mu + nu)``.
+
+        ``theta`` is measured from vertical and saturates outside ``[0, pi/2]``: a
+        negative angle gives 0 and an angle at or above ``pi/2`` gives 1.
+
+        Args:
+            theta: Leaf inclination angle (radians)
+            mu: First parameter of the Beta distribution; must be positive
+            nu: Second parameter of the Beta distribution; must be positive
+
+        Returns:
+            Cumulative probability in ``[0, 1]``
+
+        Raises:
+            HeliosError: If ``mu`` or ``nu`` is not positive
+            RuntimeError: If the native library predates helios-core v1.3.87
+
+        Example:
+            >>> from pyhelios import Global
+            >>> import math
+            >>> Global.evaluateBetaDistributionCDF(math.pi / 2, 1.0, 1.0)
+            1.0
+        """
+        return global_wrapper.evaluateBetaDistributionCDF(theta, mu, nu)
+
+    @staticmethod
+    def invertBetaDistributionCDF(probability: float, mu: float, nu: float) -> float:
+        """Leaf inclination angle at a given cumulative probability of the Beta distribution.
+
+        The inverse of :meth:`evaluateBetaDistributionCDF`, useful for laying out a
+        prescribed inclination distribution over a known number of leaves.
+
+        Args:
+            probability: Cumulative probability; must be in ``[0, 1]``
+            mu: First parameter of the Beta distribution; must be positive
+            nu: Second parameter of the Beta distribution; must be positive
+
+        Returns:
+            Leaf inclination angle (radians) in ``[0, pi/2]``
+
+        Raises:
+            HeliosError: If ``probability`` is outside ``[0, 1]``, or ``mu``/``nu`` is not positive
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        return global_wrapper.invertBetaDistributionCDF(probability, mu, nu)
+
+    @staticmethod
+    def evaluateEllipsoidalAzimuthCDF(phi: float, e: float, phi0_degrees: float) -> float:
+        """Cumulative probability that an ellipsoidally distributed leaf azimuth is at most ``phi``.
+
+        The probability is measured from the ellipse rotation ``phi0_degrees``, and
+        ``phi`` is wrapped into ``[0, 2*pi)``.
+
+        Args:
+            phi: Azimuth angle (radians)
+            e: Eccentricity of the ellipsoidal distribution; must be in ``[0, 1]``
+            phi0_degrees: Azimuthal rotation of the ellipse (degrees)
+
+        Returns:
+            Cumulative probability in ``[0, 1]``
+
+        Raises:
+            HeliosError: If ``e`` is outside ``[0, 1]``
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        return global_wrapper.evaluateEllipsoidalAzimuthCDF(phi, e, phi0_degrees)
+
+    @staticmethod
+    def invertEllipsoidalAzimuthCDF(probability: float, e: float, phi0_degrees: float) -> float:
+        """Leaf azimuth angle at a given cumulative probability of the ellipsoidal distribution.
+
+        The inverse of :meth:`evaluateEllipsoidalAzimuthCDF`.
+
+        Args:
+            probability: Cumulative probability; must be in ``[0, 1]``
+            e: Eccentricity of the ellipsoidal distribution; must be in ``[0, 1]``
+            phi0_degrees: Azimuthal rotation of the ellipse (degrees)
+
+        Returns:
+            Azimuth angle (radians) in ``[0, 2*pi)``
+
+        Raises:
+            HeliosError: If ``probability`` or ``e`` is outside ``[0, 1]``
+            RuntimeError: If the native library predates helios-core v1.3.87
+        """
+        return global_wrapper.invertEllipsoidalAzimuthCDF(probability, e, phi0_degrees)
