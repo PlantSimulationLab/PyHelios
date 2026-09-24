@@ -1610,3 +1610,45 @@ jobs:
           verify-metadata: false  # Skip metadata verification due to dynamic versioning
           skip-existing: true  # Allow re-runs without failing on already-uploaded wheels
           verbose: true  # Show full PyPI error details on upload failure
+
+      # A successful upload action is NOT proof of a complete release. PyPI uploads file by
+      # file, so a mid-flight rejection -- hitting the 10 GB per-project storage limit is the
+      # one that actually happened, in v0.1.33 -- leaves SOME wheels live and aborts the rest.
+      # That published 6 of 15 files: pip install worked on Python 3.10-3.11 and failed on
+      # 3.12-3.14, which is worse than either publishing or not publishing.
+      #
+      # Compare what is live on the index against what this run built, and fail loudly on a
+      # partial release so it is fixed before master is promoted. Re-running publish after
+      # freeing space uploads only the missing files (skip-existing), so recovery is cheap --
+      # but only if the gap is noticed.
+      - name: Verify every built wheel is live on PyPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          EXPECTED=$(find wheelhouse -name '*.whl' -exec basename {} \; | sort -u)
+          EXPECTED_N=$(printf '%s\n' "$EXPECTED" | grep -c . || true)
+          echo "Built ${EXPECTED_N} wheel(s) for ${VERSION}"
+
+          # The JSON API (/pypi/<pkg>/json) is cached and has served deleted releases as
+          # still present, so read the simple index, which reflects reality.
+          for attempt in 1 2 3 4 5; do
+            LIVE=$(curl -sS --fail --max-time 30 -H 'Cache-Control: no-cache' \
+                     https://pypi.org/simple/pyhelios3d/ \
+                   | grep -oE 'pyhelios3d-[^"#<>]+\.whl' | sort -u || true)
+            MISSING=$(comm -23 <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$LIVE") | grep . || true)
+            [ -z "$MISSING" ] && break
+            echo "Attempt ${attempt}: ${MISSING//$'\n'/ } not visible yet; the index can lag. Retrying..."
+            sleep 20
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::PARTIAL RELEASE: $(printf '%s\n' "$MISSING" | grep -c .) of ${EXPECTED_N} wheels are missing from PyPI."
+            printf '::error::  missing: %s\n' $MISSING
+            echo "::error::Users on those Python versions cannot install ${VERSION}."
+            echo "::error::Most likely the 10 GB project storage limit was hit mid-upload."
+            echo "::error::Free space on PyPI, then re-run this job: skip-existing means only"
+            echo "::error::the missing files upload. Do NOT promote master until this is green."
+            exit 1
+          fi
+          echo "All ${EXPECTED_N} wheels for ${VERSION} are live on PyPI."

@@ -355,6 +355,13 @@ the C++ default-constructed template (a flat `dict`, or a typed object with
 `setPlantCarbohydrateParameters()` / `setPlantNitrogenParameters()`. The native
 API has no per-plant getter for these, so the get methods return the default
 template rather than the values currently in effect on a specific plant.
+`getPlantAvailableNitrogen(plant_id)` reports the nitrogen (g N) in a plant's available pool.
+
+helios-core 1.3.88 reworked leaf senescence and remobilization: `remobilization_age_threshold` was
+removed, and `leaf_remobilization_rate`, `leaf_senescence_duration_fraction` and
+`stress_senescence_advance_fraction` were added. `setPlantNitrogenParameters()` rejects a dict with
+a key that is not a nitrogen parameter, so a dict written for an earlier release fails instead of
+silently losing the removed field.
 
 ```python
 from pyhelios.plant_architecture_params import CarbohydrateParameters
@@ -878,8 +885,9 @@ the shoot reports. The XML round trip carries the growth type across.
 model, not from the shoot type's phytomer-creation hook, which runs on every phytomer after it is
 built. Bean's hook, for example, scales each new internode by `min(1, 0.2 + 0.8 * age / 10)`, so
 a reconstruction on a plant created at age 0 comes out at a fifth of its measured size. Create
-the plant instance at an age where the hook's scale is 1 (10 days for bean), or build on a shoot
-type of your own defined with `defineShootType()`, which carries no hook.
+the plant instance at an age where the hook's scale is 1 (10 days for bean), build on a shoot
+type of your own defined with `defineShootType()`, which carries no hook, or remove the hook with
+`setPhytomerCreationFunction(label, None)` (see Phytomer Creation Functions below).
 
 **XML round trip (helios-core 1.3.85).** `writePlantStructureXML()` records the prescribed node
 positions and radii, and `readPlantStructureXML()` rebuilds the shoot from them, so the measured
@@ -897,6 +905,94 @@ reading the built geometry back from the Context. The number of leaves on a peti
 the phytomer is created (`leaves_per_petiole` on the shoot type); supplying a different number
 raises an error rather than adding or removing leaves. Rebuilding a leaf discards primitive data
 attached to it, except the object label and material.
+
+### Phytomer Creation Functions
+
+A C++ shoot type can carry a *phytomer creation function*, which the plugin calls once for every
+new phytomer; library species use one to make the organs of young plants smaller. helios-core
+1.3.88 lets a Python function play that role, which is how a model varies a phytomer's growth
+targets with its rank on the plant.
+
+```python
+def rank_scaling(plant_id, shoot_id, node_index, shoot_node_index,
+                 parent_shoot_node_index, shoot_max_nodes, plant_age):
+    scale = min(1.0, 0.85 + 0.15 * node_index)       # the first leaf is smaller
+    plantarch.scaleLeafPrototypeScale(plant_id, shoot_id, node_index, scale)
+    plantarch.scalePetioleMaxLength(plant_id, shoot_id, node_index, scale)
+
+plantarch.setPhytomerCreationFunction("my_stem", rank_scaling)
+```
+
+The function runs after the phytomer is attached to its shoot, so `(plant_id, shoot_id,
+node_index)` addresses it through every per-phytomer method. It runs for phytomers built by
+`addBaseStemShoot()`, `appendShoot()` and `addChildShoot()` as well as during `advanceTime()`.
+`shoot_node_index` is the value a C++ creation function receives, kept for porting C++ models:
+during growth it equals `node_index`, but while a shoot's initial phytomers are built it is the
+shoot's initial node count.
+
+- An exception raised in the function propagates out of the call that created the phytomer, with
+  its original type; no further callbacks run in that call, and the plant is left partly grown.
+- `None` removes the creation function, including a library one. The library `tomato` model's
+  `mainstem`, for example, rescales every new phytomer by plant age, overriding sizes set through
+  the shoot parameters.
+- Each shoot copies its type's parameters when it is created, so shoots created before the call
+  keep whatever function they had. Shoots created with a Python function installed look it up by
+  label each time, so replacing or clearing it also takes effect for them.
+- Redefining an existing label with `defineShootType()` keeps its creation function. A **new**
+  label defined from another type's parameters starts with none, because the parameter dict
+  carries no functions.
+
+### Per-Phytomer Growth Targets, Phyllotaxy and Readouts
+
+helios-core 1.3.88 exposes the phytomer-level state a C++ model reads and writes while it grows a
+plant, addressed like the petiole methods above by `(plant_id, shoot_id, node_index[,
+petiole_index[, leaf_index]])`. An index past the end of its range raises `ValueError` naming the
+valid range.
+
+| Method | Effect / returns |
+|---|---|
+| `setInternodeMaxLength(plant_id, shoot_id, node_index, length)` | Fully-elongated length (m) of one existing internode; `setShootInternodeLengthMax()` instead sets it for internodes not yet grown |
+| `scaleInternodeMaxLength(plant_id, shoot_id, node_index, scale_factor)` | Scale that target |
+| `scaleLeafPrototypeScale(plant_id, shoot_id, node_index, scale_factor, petiole_index=None)` | Rescale the phytomer's leaves now, both blades and target, keeping their expansion fraction |
+| `setShootPhyllotacticAngle(plant_id, shoot_id, mean_deg, sd_deg=None)` | Phyllotactic angle the shoot's next phytomers are created with |
+| `getPhytomerAge(plant_id, shoot_id, node_index)` | Age (days) since the phytomer was created |
+| `getInternodeLength(...)`, `getInternodeRadius(...)` | Present internode length (m) and base radius (m) |
+| `getInternodeNodePositions(...)` | Internode node positions, base to tip |
+| `getInternodeAxisVector(..., stem_fraction)` | Unit internode direction at a fraction of its length |
+| `getPetioleAxisVector(..., stem_fraction, petiole_index)` | Unit petiole direction at a fraction of its length |
+| `getPetioleVertices(..., petiole_index)`, `getPetioleRadii(..., petiole_index)` | Petiole centerline and its radius at each vertex |
+| `getPhytomerLeafObjectIDs(...)` | Leaf object IDs, one list per petiole |
+| `getLeafBasePosition(..., petiole_index, leaf_index)` | Where a leaf (leaflet) attaches to its petiole |
+
+A shrinking target takes effect at once and a growing one on later `advanceTime()` calls:
+`setInternodeMaxLength()` below an internode's present length shortens it immediately, while a
+larger target leaves it where it is to grow toward. `scaleLeafPrototypeScale()` is the leaf
+counterpart that moves the blades immediately; `scaleLeafSizeMax()` moves only the target.
+
+Each new phytomer draws its phyllotactic angle from its shoot's own copy of the shoot parameters,
+so `setShootPhyllotacticAngle()` before a time step sets the angle of the phytomers created in that
+step, touching no existing phytomer, other shoot or shoot type. Calling it before every short step
+drives a node-by-node angle sequence the shoot parameters cannot express. With `sd_deg` given the
+angle is drawn from a normal distribution, which consumes a draw from the Context random generator
+for every new phytomer even when `sd_deg` is 0, as C++ `normalDistribution(mean, 0)` does; omit it
+for a constant angle.
+
+```python
+main_stem = plantarch.appendShoot(plant_id, cotyledon_shoot, 1, AxisRotation(0, 0, math.pi / 2),
+                                  0.001, 0.04, 0.01, 0.01, 0.0, "my_stem")
+plantarch.setInternodeMaxLength(plant_id, main_stem, 0, 0.02)     # first internode
+for step in range(40):
+    next_node = plantarch.getShoot(plant_id, main_stem)["node_count"]
+    plantarch.setShootPhyllotacticAngle(plant_id, main_stem, 154.0 if next_node == 1 else 137.5)
+    plantarch.advanceTime(0.5, plant_id=plant_id)
+```
+
+`docs/examples/plantarch_tomato_calibrated_sample.py` uses all of these to grow a calibrated tomato
+from seed and measure every leaf, porting a C++ calibration program.
+
+\note A shoot type defined from a parameter dict consumes a different number of draws from the
+Context random generator than the same type built by copying C++ structs, so a Python port of a
+C++ model grows statistically equivalent plants, not the same plant for the same seed.
 
 ### Built-Geometry Organ Queries
 
@@ -969,6 +1065,17 @@ re-aims every leaf of a finished plant in one shot. Enabling tracking on a plant
 tracked **replaces** the target, so the target may be varied over the plant's life. Disabling it
 leaves already-steered leaves at the orientation they reached; leaves emerging afterward are left
 where the procedural model puts them.
+
+**Library distributions (helios-core 1.3.88).** A library plant model may declare a leaf
+inclination distribution, and plants built from it are then steered toward it automatically:
+`cowpea` (mu 1.398, nu 1.574) and `easternredbud` (mu 1.00, nu 2.20) do, so their leaf angles
+differ from earlier releases.
+
+| Method | Effect |
+|---|---|
+| `getPlantModelLeafInclinationDistribution(plant_model_name)` | `(mu, nu)` the model declares, `(0.0, 0.0)` if none |
+| `setPlantModelLeafInclinationDistribution(plant_model_name, beta_mu, beta_nu)` | Set it for plants built afterwards; `(0, 0)` clears it, restoring the unsteered angles |
+| `doesPlantModelDeclareLeafInclinationDistribution(plant_model_name)` | Whether the model declares one |
 
 The matching CDFs are available from `pyhelios.Global` for laying out a prescribed distribution
 yourself, or for checking one a canopy actually realized:

@@ -5,13 +5,17 @@ This module provides a user-friendly interface to the plant architecture modelin
 capabilities with graceful plugin handling and informative error messages.
 """
 
+import functools
 import logging
+import math
 import os
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Any
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .Context import Context, check_context_alive
+from .exceptions import HeliosInvalidArgumentError
 from .plugins.registry import get_plugin_registry, require_plugin
 from .wrappers import UPlantArchitectureWrapper as plantarch_wrapper
 from .wrappers.DataTypes import vec3, vec2, int2, AxisRotation
@@ -251,6 +255,26 @@ def is_plantarchitecture_available():
         return False
 
 
+def _surfaces_phytomer_creation_errors(method):
+    """Re-raise an exception from a Python phytomer creation function out of the call that grew the phytomer.
+
+    ctypes cannot propagate an exception out of a callback, so the trampoline built by
+    :meth:`PlantArchitecture.setPhytomerCreationFunction` stores it and makes the native call fail; this
+    decorator then raises the stored exception in place of the resulting native error.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        self._pending_callback_error = None
+        try:
+            result = method(self, *args, **kwargs)
+        except Exception as native_error:
+            self._raise_pending_callback_error(native_error)
+            raise
+        self._raise_pending_callback_error()
+        return result
+    return wrapper
+
+
 class PlantArchitecture:
     """
     High-level interface for plant architecture modeling and procedural plant generation.
@@ -377,6 +401,7 @@ class PlantArchitecture:
 
         self._current_plant_model = plant_label.strip()
 
+    @_surfaces_phytomer_creation_errors
     def buildPlantInstanceFromLibrary(self, base_position: vec3, age: float,
                                      build_parameters: Optional[dict] = None) -> int:
         """
@@ -434,6 +459,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant instance: {e}")
 
+    @_surfaces_phytomer_creation_errors
     def buildPlantCanopyFromLibrary(self, canopy_center: vec3,
                                   plant_spacing: vec2,
                                   plant_count: int2, age: float,
@@ -521,6 +547,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant canopy: {e}")
 
+    @_surfaces_phytomer_creation_errors
     def advanceTime(self, dt: float, plant_id: Optional[int] = None,
                     plant_ids: Optional[List[int]] = None,
                     years: Optional[int] = None) -> None:
@@ -989,7 +1016,8 @@ class PlantArchitecture:
             parameters: A flat dict or a NitrogenParameters object.
 
         Raises:
-            ValueError: If parameters is not a dict or NitrogenParameters
+            ValueError: If parameters is not a dict or NitrogenParameters, or the dict
+                contains a key that is not a nitrogen parameter
             PlantArchitectureError: If the operation fails
         """
         if isinstance(parameters, NitrogenParameters):
@@ -997,6 +1025,13 @@ class PlantArchitecture:
         elif not isinstance(parameters, dict):
             raise ValueError(
                 f"Parameters must be a dict or NitrogenParameters, got {type(parameters).__name__}"
+            )
+        unknown = sorted(set(parameters) - set(NitrogenParameters().to_dict()))
+        if unknown:
+            raise ValueError(
+                f"Unknown nitrogen parameter(s) {unknown}; valid keys are "
+                f"{sorted(NitrogenParameters().to_dict())}. remobilization_age_threshold was removed "
+                f"in helios-core 1.3.88 (see leaf_remobilization_rate and leaf_senescence_duration_fraction)."
             )
         self._check_context_alive()
         try:
@@ -3424,6 +3459,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get growth frame count for plant {plant_id}: {e}")
 
+    @_surfaces_phytomer_creation_errors
     def readPlantStructureXML(self, filename: Union[str, Path], quiet: bool = False) -> List[int]:
         """
         Load plant structure from XML file.
@@ -3557,6 +3593,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to delete plant instance {plant_id}: {e}")
 
+    @_surfaces_phytomer_creation_errors
     def addBaseStemShoot(self,
                         plant_id: int,
                         current_node_number: int,
@@ -3656,6 +3693,7 @@ class PlantArchitecture:
                 )
             raise PlantArchitectureError(f"Failed to add base stem shoot: {e}")
 
+    @_surfaces_phytomer_creation_errors
     def appendShoot(self,
                    plant_id: int,
                    parent_shoot_id: int,
@@ -3751,6 +3789,7 @@ class PlantArchitecture:
                 )
             raise PlantArchitectureError(f"Failed to append shoot: {e}")
 
+    @_surfaces_phytomer_creation_errors
     def addChildShoot(self,
                      plant_id: int,
                      parent_shoot_id: int,
@@ -3895,6 +3934,7 @@ class PlantArchitecture:
             radii.append(float(r))
         return positions, radii
 
+    @_surfaces_phytomer_creation_errors
     def addShootFromNodePositions(self,
                                   plant_id: int,
                                   parent_shoot_id: int,
@@ -4915,6 +4955,532 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to record the rest shape of petiole {petiole_index} of node "
                 f"{node_index} of shoot {shoot_id} of plant {plant_id}: {e}")
+
+    # ------------------------------------------------------------------
+    # Phytomer creation function (helios-core 1.3.88)
+    # ------------------------------------------------------------------
+
+    def setPhytomerCreationFunction(self, shoot_type_label: str,
+                                    callback: Optional[Callable[[int, int, int, int, int, int, float], None]]) -> None:
+        """
+        Install a Python function that the plugin calls once for every new phytomer of a shoot type.
+
+        This is the Python counterpart of assigning
+        ``phytomer_parameters.phytomer_creation_function`` in C++. It is how a model varies a
+        phytomer's growth targets with its position on the plant -- for example scaling leaf and
+        petiole size with node rank -- using the per-phytomer methods such as
+        :meth:`scaleLeafPrototypeScale`, :meth:`scalePetioleMaxLength` and
+        :meth:`scaleInternodeMaxLength`.
+
+        The callback is called as::
+
+            callback(plant_id, shoot_id, node_index, shoot_node_index,
+                     parent_shoot_node_index, shoot_max_nodes, plant_age)
+
+        after the plugin has attached the new phytomer to its shoot, so
+        ``(plant_id, shoot_id, node_index)`` addresses it through any per-phytomer method.
+        ``node_index`` is the phytomer's index on its shoot. ``shoot_node_index`` is the value the
+        plugin passes to a C++ creation function, kept for porting C++ models: during growth it
+        equals ``node_index``, but while a shoot's initial phytomers are built by
+        :meth:`addBaseStemShoot`, :meth:`appendShoot` or :meth:`addChildShoot` it is the shoot's
+        initial node count (a one-node base stem passes 1 for phytomer 0).
+        ``parent_shoot_node_index`` is the node of the parent shoot this shoot grows from,
+        ``shoot_max_nodes`` the shoot's node limit and ``plant_age`` the plant's age in days.
+        The return value is ignored.
+
+        The callback fires for phytomers created while building shoots as well as during
+        :meth:`advanceTime`. If it raises, the exception propagates out of the call that created
+        the phytomer (``advanceTime``, ``addBaseStemShoot``, ...) with its original type, and no
+        further callbacks run during that call; the plant is left as it was when the exception was
+        raised, partly grown. Changes the callback makes to the length of an internode prescribed
+        by :meth:`addShootFromNodePositions` are undone by the plugin.
+
+        Which shoots are affected:
+
+        - The function is stored on the shoot type, and each shoot copies its type's parameters
+          when it is created, so shoots created before this call keep whatever function they had.
+        - Shoots created while a Python callback is installed look it up by label each time, so
+          replacing the callback or clearing it with ``None`` also takes effect for them.
+        - ``None`` removes any creation function, including a library one: the library ``tomato``
+          model's ``mainstem`` rescales every new phytomer's leaves and internode by plant age,
+          which overrides sizes set through the shoot parameters.
+        - Redefining an existing label with :meth:`defineShootType` keeps its creation function.
+          A new label defined from another type's parameters (for example
+          ``defineShootType("my_stem", getCurrentShootParameters("mainstem"))``) starts with
+          none, because the parameter dict carries no functions: it inherits neither a Python
+          callback nor a library function.
+
+        Args:
+            shoot_type_label: An existing shoot type label
+            callback: A callable taking the seven arguments above, or ``None`` to remove the creation function
+
+        Raises:
+            ValueError: If the label is not a non-empty str or the callback is not callable
+            PlantArchitectureError: If the shoot type does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        if not isinstance(shoot_type_label, str) or not shoot_type_label:
+            raise ValueError(
+                f"Shoot type label must be a non-empty str, got {type(shoot_type_label).__name__}")
+        if callback is not None and not callable(callback):
+            raise ValueError(
+                f"Phytomer creation callback must be callable or None, got {type(callback).__name__}")
+
+        native_callback = None if callback is None else self._makePhytomerCreationTrampoline(callback)
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPhytomerCreationFunction(self._plantarch_ptr, shoot_type_label, native_callback)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the phytomer creation function of shoot type '{shoot_type_label}': {e}")
+
+        # The native registry now holds native_callback (or nothing), so this is the reference that must stay alive.
+        callbacks = self.__dict__.setdefault('_phytomer_creation_callbacks', {})
+        if native_callback is None:
+            callbacks.pop(shoot_type_label, None)
+        else:
+            callbacks[shoot_type_label] = native_callback
+
+    def _makePhytomerCreationTrampoline(self, callback):
+        """Wrap callback so an exception is stored for re-raising instead of being lost inside ctypes."""
+        owner = weakref.ref(self)
+
+        def trampoline(plant_id, shoot_id, node_index, shoot_node_index, parent_shoot_node_index,
+                       shoot_max_nodes, plant_age):
+            plantarch = owner()
+            if plantarch is None or getattr(plantarch, '_pending_callback_error', None) is not None:
+                return 1
+            try:
+                callback(int(plant_id), int(shoot_id), int(node_index), int(shoot_node_index),
+                         int(parent_shoot_node_index), int(shoot_max_nodes), float(plant_age))
+            except BaseException as e:
+                plantarch._pending_callback_error = e
+                return 1
+            return 0
+
+        return plantarch_wrapper.PHYTOMER_CREATION_CALLBACK(trampoline)
+
+    def _raise_pending_callback_error(self, native_error: Optional[BaseException] = None) -> None:
+        """Raise, and clear, an exception stored by a phytomer creation callback."""
+        pending = getattr(self, '_pending_callback_error', None)
+        if pending is None:
+            return
+        self._pending_callback_error = None
+        raise pending from native_error
+
+    # ------------------------------------------------------------------
+    # Per-phytomer growth targets and live phyllotaxy (helios-core 1.3.88)
+    # ------------------------------------------------------------------
+
+    def _phytomerCall(self, description: str, plant_id: int, shoot_id: int, node_index: int, fn, *args):
+        """Call a per-phytomer wrapper, turning an out-of-range index into ValueError."""
+        self._check_context_alive()
+        try:
+            return fn(self._plantarch_ptr, plant_id, shoot_id, node_index, *args)
+        except HeliosInvalidArgumentError as e:
+            raise ValueError(str(e)) from None
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to {description} of node {node_index} of shoot {shoot_id} of plant {plant_id}: {e}")
+
+    def setInternodeMaxLength(self, plant_id: int, shoot_id: int, node_index: int, length: float) -> None:
+        """
+        Set the fully-elongated length of one existing internode.
+
+        Only this phytomer's target changes; compare :meth:`setShootInternodeLengthMax`, which
+        sets the target for internodes the shoot has yet to produce. A target below the
+        internode's present length shortens it immediately; a larger target leaves the present
+        length alone and the internode grows toward it on later :meth:`advanceTime` calls.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            length: Fully-elongated internode length in meters; must be positive and finite
+
+        Raises:
+            ValueError: If an identifier is invalid, ``length`` is not positive and finite, or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        if isinstance(length, bool) or not isinstance(length, (int, float)) or not math.isfinite(length) \
+                or not length > 0:
+            raise ValueError(f"Internode max length must be a positive, finite number, got {length!r}")
+        self._phytomerCall("set the internode max length", plant_id, shoot_id, node_index,
+                           plantarch_wrapper.setInternodeMaxLength, float(length))
+
+    def scaleInternodeMaxLength(self, plant_id: int, shoot_id: int, node_index: int, scale_factor: float) -> None:
+        """
+        Scale the fully-elongated length of one existing internode.
+
+        As :meth:`setInternodeMaxLength`, relative to the current target: a factor below one
+        shortens an internode that is already longer than its new target, and a factor above one
+        lets it grow further.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            scale_factor: Factor to scale the fully-elongated length by; must be positive
+
+        Raises:
+            ValueError: If an identifier is invalid, ``scale_factor`` is not positive, or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        scale_factor = self._validateScaleFactor(scale_factor)
+        self._phytomerCall("scale the internode max length", plant_id, shoot_id, node_index,
+                           plantarch_wrapper.scaleInternodeMaxLength, scale_factor)
+
+    def scaleLeafPrototypeScale(self, plant_id: int, shoot_id: int, node_index: int, scale_factor: float,
+                                petiole_index: Optional[int] = None) -> None:
+        """
+        Scale a phytomer's leaves now: both the blades' present size and the size they grow toward.
+
+        The leaves are rescaled about their bases immediately and keep their expansion fraction,
+        so a half-expanded leaf stays half-expanded toward a proportionally larger or smaller
+        mature size. This is what a C++ phytomer creation function does to size a new leaf by its
+        position on the plant. Contrast :meth:`scaleLeafSizeMax`, which moves only the target and
+        leaves the blades as they are.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            scale_factor: Factor to scale the leaves by; must be positive
+            petiole_index: Scale only the leaves of this petiole; ``None`` for every petiole
+
+        Raises:
+            ValueError: If an identifier is invalid, ``scale_factor`` is not positive, or an index is out of range
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        scale_factor = self._validateScaleFactor(scale_factor)
+        if petiole_index is not None:
+            petiole_index = self._validatePetioleIndex(petiole_index)
+        self._phytomerCall("scale the leaf prototype", plant_id, shoot_id, node_index,
+                           plantarch_wrapper.scaleLeafPrototypeScale, scale_factor, petiole_index)
+
+    def setShootPhyllotacticAngle(self, plant_id: int, shoot_id: int, mean_deg: float,
+                                  sd_deg: Optional[float] = None) -> None:
+        """
+        Set the phyllotactic angle that one shoot's next phytomers are created with.
+
+        Each new phytomer draws its angle from its shoot's own copy of the shoot parameters, so
+        calling this before a time step sets the angle of the phytomers produced during that step
+        without touching any phytomer already built, any other shoot, or the shoot type. Calling
+        it before every step drives a node-by-node angle sequence.
+
+        With ``sd_deg`` omitted the angle is the constant ``mean_deg``. With ``sd_deg`` given the
+        angle is drawn from a normal distribution, which draws from the Context random generator
+        for every new phytomer even when ``sd_deg`` is 0 -- matching a C++ caller of
+        ``phyllotactic_angle.normalDistribution(mean, sd)``, which matters when reproducing a C++
+        run draw for draw.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            mean_deg: Phyllotactic angle, or its mean, in degrees
+            sd_deg: Standard deviation in degrees (non-negative), or ``None`` for a constant
+
+        Raises:
+            ValueError: If an identifier is invalid or an angle is not finite, or ``sd_deg`` is negative
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        if isinstance(mean_deg, bool) or not isinstance(mean_deg, (int, float)) or not math.isfinite(mean_deg):
+            raise ValueError(f"Mean phyllotactic angle must be a finite number, got {mean_deg!r}")
+        if sd_deg is not None and (isinstance(sd_deg, bool) or not isinstance(sd_deg, (int, float))
+                                   or not math.isfinite(sd_deg) or sd_deg < 0):
+            raise ValueError(
+                f"Phyllotactic angle standard deviation must be a finite, non-negative number or None, got {sd_deg!r}")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setShootPhyllotacticAngle(
+                self._plantarch_ptr, plant_id, shoot_id, float(mean_deg), None if sd_deg is None else float(sd_deg))
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the phyllotactic angle of shoot {shoot_id} of plant {plant_id}: {e}")
+
+    # ------------------------------------------------------------------
+    # Per-phytomer readouts (helios-core 1.3.88)
+    # ------------------------------------------------------------------
+
+    def getPhytomerAge(self, plant_id: int, shoot_id: int, node_index: int) -> float:
+        """
+        Age of one phytomer in days, counted from its creation.
+
+        Raises:
+            ValueError: If an identifier is invalid or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        return self._phytomerCall("get the age", plant_id, shoot_id, node_index, plantarch_wrapper.getPhytomerAge)
+
+    def getInternodeLength(self, plant_id: int, shoot_id: int, node_index: int) -> float:
+        """
+        Present length of one internode in meters, measured along its node positions.
+
+        Raises:
+            ValueError: If an identifier is invalid or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        return self._phytomerCall("get the internode length", plant_id, shoot_id, node_index,
+                                  plantarch_wrapper.getInternodeLength)
+
+    def getInternodeRadius(self, plant_id: int, shoot_id: int, node_index: int) -> float:
+        """
+        Radius in meters at the base of one internode.
+
+        Raises:
+            ValueError: If an identifier is invalid or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        return self._phytomerCall("get the internode radius", plant_id, shoot_id, node_index,
+                                  plantarch_wrapper.getInternodeRadius)
+
+    def getInternodeNodePositions(self, plant_id: int, shoot_id: int, node_index: int) -> List[vec3]:
+        """
+        Positions of one internode's nodes, from its base to its tip.
+
+        The first position is the tip of the previous internode on the shoot.
+
+        Raises:
+            ValueError: If an identifier is invalid or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        points = self._phytomerCall("get the internode node positions", plant_id, shoot_id, node_index,
+                                    plantarch_wrapper.getInternodeNodePositions)
+        return [vec3(*p) for p in points]
+
+    def getInternodeAxisVector(self, plant_id: int, shoot_id: int, node_index: int, stem_fraction: float) -> vec3:
+        """
+        Unit direction of one internode at a fraction of its length.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            stem_fraction: Position along the internode, 0 at its base and 1 at its tip
+
+        Raises:
+            ValueError: If an identifier is invalid, ``stem_fraction`` is outside [0, 1], or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        stem_fraction = self._validateStemFraction(stem_fraction)
+        return vec3(*self._phytomerCall("get the internode axis", plant_id, shoot_id, node_index,
+                                        plantarch_wrapper.getInternodeAxisVector, stem_fraction))
+
+    def getPetioleAxisVector(self, plant_id: int, shoot_id: int, node_index: int, stem_fraction: float,
+                             petiole_index: int) -> vec3:
+        """
+        Unit direction of one petiole at a fraction of its length.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            stem_fraction: Position along the petiole, 0 at its base and 1 at its tip
+            petiole_index: Petiole within the phytomer
+
+        Raises:
+            ValueError: If an identifier is invalid, ``stem_fraction`` is outside [0, 1], or an index is out of range (a phytomer whose leaf was shed has no petioles)
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        stem_fraction = self._validateStemFraction(stem_fraction)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+        return vec3(*self._phytomerCall("get the petiole axis", plant_id, shoot_id, node_index,
+                                        plantarch_wrapper.getPetioleAxisVector, stem_fraction, petiole_index))
+
+    def getPetioleVertices(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int) -> List[vec3]:
+        """
+        Centerline vertices of one petiole, from its base at the node to its tip.
+
+        Raises:
+            ValueError: If an identifier is invalid or an index is out of range
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+        points = self._phytomerCall("get the petiole vertices", plant_id, shoot_id, node_index,
+                                    plantarch_wrapper.getPetioleVertices, petiole_index)
+        return [vec3(*p) for p in points]
+
+    def getPetioleRadii(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int) -> List[float]:
+        """
+        Radius in meters of one petiole at each of its centerline vertices (see :meth:`getPetioleVertices`).
+
+        Raises:
+            ValueError: If an identifier is invalid or an index is out of range
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+        return self._phytomerCall("get the petiole radii", plant_id, shoot_id, node_index,
+                                  plantarch_wrapper.getPetioleRadii, petiole_index)
+
+    def getPhytomerLeafObjectIDs(self, plant_id: int, shoot_id: int, node_index: int) -> List[List[int]]:
+        """
+        Object IDs of one phytomer's leaves, grouped by petiole.
+
+        Returns one list per petiole with one object ID per leaf (leaflet) on that petiole, in the
+        order :meth:`getLeafBasePosition` indexes them. A phytomer whose leaves were shed returns
+        empty lists.
+
+        Raises:
+            ValueError: If an identifier is invalid or ``node_index`` is past the end of the shoot
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        return self._phytomerCall("get the leaf object IDs", plant_id, shoot_id, node_index,
+                                  plantarch_wrapper.getPhytomerLeafObjectIDs)
+
+    def getLeafBasePosition(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                            leaf_index: int) -> vec3:
+        """
+        Position where one leaf (leaflet) attaches to its petiole.
+
+        Raises:
+            ValueError: If an identifier is invalid or an index is out of range
+            PlantArchitectureError: If the plant or shoot does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        petiole_index = self._validatePetioleIndex(petiole_index)
+        leaf_index = self._validatePetioleIndex(leaf_index, name="Leaf index")
+        return vec3(*self._phytomerCall("get the leaf base position", plant_id, shoot_id, node_index,
+                                        plantarch_wrapper.getLeafBasePosition, petiole_index, leaf_index))
+
+    # ------------------------------------------------------------------
+    # Per-model leaf inclination distribution and plant nitrogen (helios-core 1.3.88)
+    # ------------------------------------------------------------------
+
+    def getPlantModelLeafInclinationDistribution(self, plant_model_name: str) -> tuple:
+        """
+        Beta leaf inclination distribution ``(mu, nu)`` that a library plant model declares.
+
+        Plants built from a model that declares a distribution have their leaf inclinations
+        steered toward it automatically. Returns ``(0.0, 0.0)`` when the model declares none.
+
+        Raises:
+            ValueError: If ``plant_model_name`` is not a non-empty str
+            PlantArchitectureError: If the model is not in the library
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validatePlantModelName(plant_model_name)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantModelLeafInclinationDistribution(self._plantarch_ptr, plant_model_name)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the leaf inclination distribution of plant model '{plant_model_name}': {e}")
+
+    def setPlantModelLeafInclinationDistribution(self, plant_model_name: str, beta_mu: float,
+                                                 beta_nu: float) -> None:
+        """
+        Set or clear the Beta leaf inclination distribution of a library plant model.
+
+        Plants built from the model afterwards are steered toward the distribution. Two positive
+        values set it; ``(0, 0)`` clears it, restoring the model's unsteered leaf angles.
+
+        Raises:
+            ValueError: If the name is not a non-empty str, or the Beta parameters are not both positive or both zero
+            PlantArchitectureError: If the model is not in the library
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validatePlantModelName(plant_model_name)
+        for name, v in (("beta_mu", beta_mu), ("beta_nu", beta_nu)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+                raise ValueError(f"Beta parameter {name} must be a finite, non-negative number, got {v!r}")
+        if (beta_mu > 0) != (beta_nu > 0):
+            raise ValueError(
+                f"Beta parameters must both be positive to set a distribution or both zero to clear it, "
+                f"got ({beta_mu}, {beta_nu})")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPlantModelLeafInclinationDistribution(
+                self._plantarch_ptr, plant_model_name, float(beta_mu), float(beta_nu))
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the leaf inclination distribution of plant model '{plant_model_name}': {e}")
+
+    def doesPlantModelDeclareLeafInclinationDistribution(self, plant_model_name: str) -> bool:
+        """
+        Whether a library plant model declares a leaf inclination distribution.
+
+        Raises:
+            ValueError: If ``plant_model_name`` is not a non-empty str
+            PlantArchitectureError: If the model is not in the library
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        self._validatePlantModelName(plant_model_name)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.doesPlantModelDeclareLeafInclinationDistribution(
+                self._plantarch_ptr, plant_model_name)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to query the leaf inclination distribution of plant model '{plant_model_name}': {e}")
+
+    def getPlantAvailableNitrogen(self, plant_id: int) -> float:
+        """
+        Nitrogen (g N) in a plant's available pool, awaiting allocation to its organs.
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.88
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantAvailableNitrogen(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the available nitrogen of plant {plant_id}: {e}")
+
+    @staticmethod
+    def _validateStemFraction(stem_fraction) -> float:
+        if isinstance(stem_fraction, bool) or not isinstance(stem_fraction, (int, float)) \
+                or not 0.0 <= stem_fraction <= 1.0:
+            raise ValueError(f"Stem fraction must be a number in [0, 1], got {stem_fraction!r}")
+        return float(stem_fraction)
+
+    @staticmethod
+    def _validatePlantModelName(plant_model_name) -> None:
+        if not isinstance(plant_model_name, str) or not plant_model_name:
+            raise ValueError(
+                f"Plant model name must be a non-empty str, got {type(plant_model_name).__name__}")
 
     @staticmethod
     def _validatePlantIdentifier(plant_id) -> int:

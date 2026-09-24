@@ -316,6 +316,64 @@ PYHELIOS_API float* getPlantInternodeLengths(PlantArchitecture* plantarch, unsig
 // Inclination (degrees, 0 = horizontal, folded to [0,90]) of each leaf from its area-weighted normal.
 PYHELIOS_API float* getPlantLeafInclinations(PlantArchitecture* plantarch, unsigned int plantID, int* count);
 
+// ---- Phytomer creation callback (helios-core 1.3.88) ----
+// Called once for each new phytomer, after the plugin has attached it to its shoot, so the callback may address it
+// through the per-phytomer functions below. node_index is the phytomer's index on its shoot; shoot_node_index is the
+// plugin's own argument, which at initial build is the shoot's node count rather than the index. Return 0 on
+// success; any other value makes the enclosing native call fail.
+typedef int (*PyheliosPhytomerCreationCallback)(unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int shoot_node_index, unsigned int parent_shoot_node_index,
+                                                unsigned int shoot_max_nodes, float plant_age);
+// Install callback as the creation function of an existing shoot type, replacing any function it had (including a
+// library one); NULL removes it. Shoots created earlier keep the function they were created with, except that one
+// created with a callback installed looks the callback up by label when called, so replacing or clearing it takes
+// effect for those shoots too.
+PYHELIOS_API int setPhytomerCreationFunction(PlantArchitecture* plantarch, const char* shoot_type_label, PyheliosPhytomerCreationCallback callback);
+
+// ---- Per-phytomer growth targets (helios-core 1.3.88) ----
+// Out-of-range node, petiole and leaf indices set PYHELIOS_ERROR_INVALID_PARAMETER. Return 0 on success, -1 on error.
+// Set the fully-elongated length (m) of one internode; the present length is rescaled only if it exceeds the new target.
+PYHELIOS_API int setInternodeMaxLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float length);
+// Scale the fully-elongated length of one internode; the present length is rescaled only if it exceeds the new target.
+PYHELIOS_API int scaleInternodeMaxLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float scale_factor);
+// Scale every leaf on the phytomer, both its present geometry and the size it is expanding toward.
+PYHELIOS_API int scaleLeafPrototypeScale(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float scale_factor);
+// As above, for the leaves of one petiole.
+PYHELIOS_API int scaleLeafPrototypeScaleAt(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float scale_factor);
+
+// ---- Live phyllotaxy (helios-core 1.3.88) ----
+// Set the phyllotactic angle (degrees) the shoot's next phytomers draw from: a constant when use_normal is 0,
+// otherwise normal(mean, std_dev), which draws from the Context generator even when std_dev is 0.
+PYHELIOS_API int setShootPhyllotacticAngle(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, float mean_degrees, float std_dev_degrees, int use_normal);
+
+// ---- Per-phytomer readouts (helios-core 1.3.88) ----
+// Scalars return -1 on error. Arrays return thread-local static storage (do NOT free) with *count set; vec3 arrays
+// are flattened x,y,z and *count is the number of vec3 values.
+PYHELIOS_API float getPhytomerAge(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index);
+PYHELIOS_API float getInternodeLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index);
+// Radius (m) at the base of the internode.
+PYHELIOS_API float getInternodeRadius(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index);
+PYHELIOS_API float* getInternodeNodePositions(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, int* count);
+// Unit axis at stem_fraction (0 = base, 1 = tip) written to axis[3].
+PYHELIOS_API int getInternodeAxisVector(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float stem_fraction, float* axis);
+PYHELIOS_API int getPetioleAxisVector(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float stem_fraction, unsigned int petiole_index,
+                                      float* axis);
+PYHELIOS_API float* getPetioleVertices(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, int* count);
+PYHELIOS_API float* getPetioleRadii(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, int* count);
+// Layout: [petiole_count, leaves_on_petiole_0, ..., leaves_on_petiole_{n-1}, objID...]; *count is the total length.
+PYHELIOS_API unsigned int* getPhytomerLeafObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, int* count);
+PYHELIOS_API int getLeafBasePosition(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index,
+                                     float* position);
+
+// ---- Per-model leaf inclination distribution and plant nitrogen (helios-core 1.3.88) ----
+// Writes (mu, nu) to mu_nu[2]; (0, 0) when the model declares none.
+PYHELIOS_API int getPlantModelLeafInclinationDistribution(PlantArchitecture* plantarch, const char* plant_model_name, float* mu_nu);
+// Both positive sets the distribution, both zero clears it.
+PYHELIOS_API int setPlantModelLeafInclinationDistribution(PlantArchitecture* plantarch, const char* plant_model_name, float Beta_mu_inclination, float Beta_nu_inclination);
+// 1 if declared, 0 if not, -1 on error.
+PYHELIOS_API int doesPlantModelDeclareLeafInclinationDistribution(PlantArchitecture* plantarch, const char* plant_model_name);
+// Nitrogen (g N) in the plant's available pool; -1 on error.
+PYHELIOS_API float getPlantAvailableNitrogen(PlantArchitecture* plantarch, unsigned int plantID);
+
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 

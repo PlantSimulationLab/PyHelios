@@ -776,8 +776,8 @@ class CarbohydrateParameters:
 
 _NITROGEN_FIELDS = (
     "target_leaf_N_area", "minimum_leaf_N_area", "root_allocation_fraction",
-    "max_N_accumulation_rate", "leaf_remobilization_efficiency",
-    "remobilization_age_threshold", "fruit_N_area",
+    "max_N_accumulation_rate", "leaf_remobilization_rate", "leaf_remobilization_efficiency",
+    "leaf_senescence_duration_fraction", "stress_senescence_advance_fraction", "fruit_N_area",
 )
 
 
@@ -790,8 +790,10 @@ class NitrogenParameters:
     minimum_leaf_N_area: float = 0.5
     root_allocation_fraction: float = 0.15
     max_N_accumulation_rate: float = 0.1
+    leaf_remobilization_rate: float = 0.03
     leaf_remobilization_efficiency: float = 0.70
-    remobilization_age_threshold: float = 0.70
+    leaf_senescence_duration_fraction: float = 0.25
+    stress_senescence_advance_fraction: float = 0.30
     fruit_N_area: float = 1.0
 
     def to_dict(self) -> Dict[str, float]:

@@ -71,8 +71,51 @@ filenames will not match the tag.
    git submodule status helios-core
    grep -n "helios-core to" docs/CHANGELOG.md | head -1
    ```
+   Also confirm the submodule is **on its `master` branch, not a detached HEAD**. Moving the
+   pin with `git -C helios-core checkout <sha|tag>` detaches it, and PyCharm then reports a
+   detached HEAD and drops helios-core from its Git log. Every release through v0.1.33
+   advanced it on-branch instead. The superproject pointer is the same either way, so if you
+   find it detached, reattach it in place (no PyHelios commit needed):
+   ```bash
+   git -C helios-core status -sb | head -1      # must read "## master...origin/master"
+   git -C helios-core checkout master && git -C helios-core merge --ff-only <pinned sha>
+   ```
+   To move the pin to a new core release, do it on-branch the same way:
+   `git -C helios-core fetch && git -C helios-core checkout master && git -C helios-core merge --ff-only origin/master`.
 2. Set the date on the newest `docs/CHANGELOG.md` entry to today; make the commit date match.
 3. Squash all commits for this version into one, message matching the changelog entry.
+4. Check that PyPI has room for this release. The project has a **10 GB storage limit**, and
+   an over-quota upload fails *mid-flight*, leaving a partial release live (v0.1.33 published
+   6 of 15 wheels this way). A limit increase was requested and PyPI never answered, so treat
+   the cap as fixed. Measure rather than guess:
+
+   ```bash
+   python3 - <<'EOF'
+   import json, urllib.request, collections
+   idx = urllib.request.urlopen("https://pypi.org/simple/pyhelios3d/").read().decode()
+   meta = json.load(urllib.request.urlopen("https://pypi.org/pypi/pyhelios3d/json"))
+   import re
+   live = {re.match(r'(pyhelios3d-[0-9.]+)-', f).group(1)
+           for f in set(re.findall(r'pyhelios3d-[^"#<>]+\.whl', idx))}
+   # The JSON API caches deletions, so size only the versions the simple index still lists.
+   sizes = {v: sum(f["size"] for f in fs)
+            for v, fs in meta["releases"].items() if f"pyhelios3d-{v}" in live}
+   used = sum(sizes.values())
+   recent = [s for v, s in sorted(sizes.items())[-3:]]
+   need = max(recent) if recent else 1.2e9
+   print(f"used    {used/1e9:6.2f} GB of 10 GB")
+   print(f"free    {(10e9-used)/1e9:6.2f} GB")
+   print(f"need   ~{need/1e9:6.2f} GB (largest of the last 3 releases)")
+   print("VERDICT:", "OK" if 10e9-used > need*1.15 else "INSUFFICIENT - free space before tagging")
+   EOF
+   ```
+
+   Flag this to the user **only when the estimate says it will not fit** (free space under
+   ~1.15x the expected release size). Do not warn on every release; at ~1.2 GB per release
+   there is usually headroom, and a standing warning is noise. If it will not fit, say how
+   much is short and that the options are deleting old releases (reclaims ~0.86-1.2 GB each,
+   but PyPI **permanently reserves those filenames**) or shrinking the wheels — then let the
+   user decide. Deleting releases is theirs to approve, never automatic.
 
 If the commit touches `native/src/*`, `native/include/*`, ctypes wrappers, or core
 functionality, CLAUDE.md's **Full Verification Protocol** applies before anything is pushed:

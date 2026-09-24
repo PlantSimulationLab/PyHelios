@@ -258,6 +258,9 @@ setup(
     author='Brian Bailey',
     author_email='bnbailey@ucdavis.edu',
     url='https://github.com/PlantSimulationLab/PyHelios',
+    # PyHelios itself is MIT; the native Helios library bundled in the wheel is LGPL-2.1-or-later.
+    license_expression='MIT AND LGPL-2.1-or-later',
+    license_files=['LICENSE', 'helios-core/LICENSE'],
     packages=find_packages(exclude=('tests', 'docs', 'build_scripts', 'pyhelios_build*')),
     package_data=package_data,
     include_package_data=True,
@@ -270,7 +273,6 @@ setup(
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
         'Operating System :: Microsoft :: Windows',
         'Operating System :: POSIX :: Linux', 
         'Operating System :: MacOS',

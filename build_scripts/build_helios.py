@@ -727,9 +727,8 @@ class HeliosBuilder:
             config_content.extend([
                 "",
                 "# ParameterOptimization plugin configuration",
-                "# NLopt's L-BFGS comes from the LGPL-2.1 Luksan sources; disabling them keeps",
-                "# the distributed library entirely MIT-licensed. L-BFGS is then unavailable and",
-                "# the plugin says so explicitly -- Adam (gradient-based) and BOBYQA",
+                "# NLopt's L-BFGS comes from the LGPL-2.1 Luksan sources, which are left out.",
+                "# L-BFGS is then unavailable and the plugin says so explicitly -- Adam (gradient-based) and BOBYQA",
                 "# (derivative-free) remain as local-optimization alternatives.",
                 "set(HELIOS_NLOPT_LUKSAN OFF CACHE BOOL \"\" FORCE)"
             ])

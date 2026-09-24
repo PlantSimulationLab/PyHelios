@@ -126,7 +126,7 @@ class TestPhysiologyParams:
     def test_nitrogen_field_count_and_roundtrip(self):
         npar = NitrogenParameters()
         d = npar.to_dict()
-        assert len(d) == 7
+        assert len(d) == 9
         assert NitrogenParameters.from_dict(d).to_dict() == d
 
     def test_partial_carbohydrate_from_dict(self):
@@ -225,7 +225,7 @@ class TestNativeParameterRoundTrip:
 
     def test_nitrogen_defaults_and_set(self, plantarch):
         defaults = plantarch.getDefaultNitrogenParameters()
-        assert isinstance(defaults, dict) and len(defaults) == 7
+        assert isinstance(defaults, dict) and len(defaults) == 9
         npar = NitrogenParameters.from_dict(defaults)
         npar.target_leaf_N_area = 2.0
         plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0.0, 0.0, 0.0), 1.0)

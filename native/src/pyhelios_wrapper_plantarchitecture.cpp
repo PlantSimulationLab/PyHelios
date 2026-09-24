@@ -9,6 +9,8 @@
 #include <map>
 #include <exception>
 #include <cstring>
+#include <cmath>
+#include <stdexcept>
 
 #ifdef PLANTARCHITECTURE_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_plantarchitecture.h"
@@ -128,9 +130,9 @@ helios::vec3 jsonToVec3(const nlohmann::json& j, helios::vec3 fallback) {
 
 // ---- Prototype-function registries (name <-> built-in function pointer) ----
 // Function pointers cannot cross the ctypes boundary, so the built-in prototype
-// functions declared in Assets.h are referenced by name. shared_ptr<Phytomer>
-// callbacks (phytomer_creation_function/phytomer_callback_function) are not bindable
-// and are intentionally not exposed.
+// functions declared in Assets.h are referenced by name. The phytomer creation function
+// is bound separately through a trampoline (see phytomerCreationTrampoline below);
+// phytomer_callback_function is not exposed.
 typedef uint (*LeafPrototypeFn)(helios::Context*, LeafPrototype*, int);
 typedef uint (*FlowerPrototypeFn)(helios::Context*, uint, bool);
 typedef uint (*FruitPrototypeFn)(helios::Context*, uint);
@@ -478,8 +480,10 @@ nlohmann::json nitrogenParametersToJSON(const NitrogenParameters& n) {
         {"minimum_leaf_N_area", n.minimum_leaf_N_area},
         {"root_allocation_fraction", n.root_allocation_fraction},
         {"max_N_accumulation_rate", n.max_N_accumulation_rate},
+        {"leaf_remobilization_rate", n.leaf_remobilization_rate},
         {"leaf_remobilization_efficiency", n.leaf_remobilization_efficiency},
-        {"remobilization_age_threshold", n.remobilization_age_threshold},
+        {"leaf_senescence_duration_fraction", n.leaf_senescence_duration_fraction},
+        {"stress_senescence_advance_fraction", n.stress_senescence_advance_fraction},
         {"fruit_N_area", n.fruit_N_area},
     };
 }
@@ -488,8 +492,8 @@ NitrogenParameters jsonToNitrogenParameters(const nlohmann::json& j) {
     NitrogenParameters n;
     #define PYH_N(field) if (j.contains(#field)) n.field = j[#field];
     PYH_N(target_leaf_N_area) PYH_N(minimum_leaf_N_area) PYH_N(root_allocation_fraction)
-    PYH_N(max_N_accumulation_rate) PYH_N(leaf_remobilization_efficiency)
-    PYH_N(remobilization_age_threshold) PYH_N(fruit_N_area)
+    PYH_N(max_N_accumulation_rate) PYH_N(leaf_remobilization_rate) PYH_N(leaf_remobilization_efficiency)
+    PYH_N(leaf_senescence_duration_fraction) PYH_N(stress_senescence_advance_fraction) PYH_N(fruit_N_area)
     #undef PYH_N
     return n;
 }
@@ -625,6 +629,117 @@ std::shared_ptr<Phytomer> resolvePhytomer(PlantArchitecture* plantarch, uint pla
     return shoot->phytomers.at(node_index);
 }
 
+//! An out-of-range node, petiole or leaf index, reported as PYHELIOS_ERROR_INVALID_PARAMETER so Python raises ValueError.
+struct PhytomerIndexError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+//! Like resolvePhytomer(), but an out-of-range node index throws PhytomerIndexError.
+std::shared_ptr<Phytomer> resolvePhytomerIndexed(PlantArchitecture* plantarch, uint plantID, uint shootID, uint node_index) {
+    const std::shared_ptr<Shoot>& shoot = plantarch->getPlantShoot(plantID, shootID);
+    if (node_index >= shoot->phytomers.size()) {
+        throw PhytomerIndexError("Node index " + std::to_string(node_index) + " is out of range for shoot " + std::to_string(shootID) + " of plant " + std::to_string(plantID) +
+                                 ", which has " + std::to_string(shoot->phytomers.size()) + " phytomers (valid indices 0 to " + std::to_string(shoot->phytomers.size()) + " - 1).");
+    }
+    return shoot->phytomers.at(node_index);
+}
+
+void checkPetioleIndex(size_t petiole_count, uint petiole_index, uint node_index) {
+    if (petiole_index >= petiole_count) {
+        throw PhytomerIndexError("Petiole index " + std::to_string(petiole_index) + " is out of range for node " + std::to_string(node_index) + ", which has " + std::to_string(petiole_count) +
+                                 " petiole(s) (valid indices 0 to " + std::to_string(petiole_count) + " - 1).");
+    }
+}
+
+void checkLeafIndex(size_t leaf_count, uint leaf_index, uint petiole_index) {
+    if (leaf_index >= leaf_count) {
+        throw PhytomerIndexError("Leaf index " + std::to_string(leaf_index) + " is out of range for petiole " + std::to_string(petiole_index) + ", which has " + std::to_string(leaf_count) +
+                                 " leaves (valid indices 0 to " + std::to_string(leaf_count) + " - 1).");
+    }
+}
+
+//! Run body() under the standard error protocol, mapping PhytomerIndexError and std::invalid_argument to PYHELIOS_ERROR_INVALID_PARAMETER.
+template<typename R, typename F>
+R guardedPhytomerCall(PlantArchitecture* plantarch, const char* function_name, R error_value, F&& body) {
+    try {
+        clearError();
+        if (!plantarch) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+            return error_value;
+        }
+        return body();
+    } catch (const PhytomerIndexError& e) {
+        setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (PlantArchitecture::") + function_name + "): " + e.what());
+    } catch (const std::invalid_argument& e) {
+        setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (PlantArchitecture::") + function_name + "): " + e.what());
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::") + function_name + "): " + e.what());
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, std::string("ERROR (PlantArchitecture::") + function_name + "): Unknown error.");
+    }
+    return error_value;
+}
+
+float* flattenVec3(const std::vector<helios::vec3>& points, int* count) {
+    // Flattened as x,y,z triples; *count is the number of vec3 values, not floats.
+    static thread_local std::vector<float> static_result;
+    static_result.clear();
+    static_result.reserve(points.size() * 3);
+    for (const helios::vec3& point : points) {
+        static_result.push_back(point.x);
+        static_result.push_back(point.y);
+        static_result.push_back(point.z);
+    }
+    *count = static_cast<int>(points.size());
+    return static_result.data();
+}
+
+// ---- Phytomer creation function trampoline ----
+// PhytomerParameters::phytomer_creation_function is a plain function pointer with no user data, so one static
+// trampoline is installed on every shoot type that has a Python callback. It recovers the owning
+// PlantArchitecture and shoot type label from the phytomer and looks the Python callback up in this registry.
+// A null entry means the callback was cleared: shoots built while it was set still carry the trampoline, and it
+// then does nothing for them.
+using PhytomerCreationCallback = PyheliosPhytomerCreationCallback;
+
+std::map<const PlantArchitecture*, std::map<std::string, PhytomerCreationCallback>>& phytomerCreationCallbacks() {
+    static std::map<const PlantArchitecture*, std::map<std::string, PhytomerCreationCallback>> registry;
+    return registry;
+}
+
+void phytomerCreationTrampoline(std::shared_ptr<Phytomer> phytomer, uint shoot_node_index, uint parent_shoot_node_index, uint shoot_max_nodes, float plant_age) {
+    const Shoot* shoot = phytomer->parent_shoot_ptr;
+    if (shoot == nullptr) {
+        throw std::runtime_error("Phytomer creation function was called for a phytomer with no parent shoot.");
+    }
+    const auto& registry = phytomerCreationCallbacks();
+    const auto instance = registry.find(shoot->plantarchitecture_ptr);
+    if (instance == registry.end() || instance->second.find(shoot->shoot_type_label) == instance->second.end()) {
+        throw std::runtime_error("No Python phytomer creation function is registered for shoot type '" + shoot->shoot_type_label + "'.");
+    }
+    const PhytomerCreationCallback callback = instance->second.at(shoot->shoot_type_label);
+    if (callback == nullptr) {
+        return;
+    }
+
+    // The plugin has already appended the new phytomer when it calls the creation function.
+    size_t node_index = shoot->phytomers.size();
+    for (size_t i = shoot->phytomers.size(); i-- > 0;) {
+        if (shoot->phytomers.at(i).get() == phytomer.get()) {
+            node_index = i;
+            break;
+        }
+    }
+    if (node_index == shoot->phytomers.size()) {
+        throw std::runtime_error("Phytomer creation function was called for a phytomer not yet attached to shoot " + std::to_string(shoot->ID) + ".");
+    }
+
+    if (callback(phytomer->plantID, phytomer->parent_shoot_ID, static_cast<unsigned int>(node_index), shoot_node_index, parent_shoot_node_index, shoot_max_nodes, plant_age) != 0) {
+        throw std::runtime_error("The Python phytomer creation function for shoot type '" + shoot->shoot_type_label + "' raised an exception (node " + std::to_string(node_index) + " of shoot " +
+                                 std::to_string(phytomer->parent_shoot_ID) + " of plant " + std::to_string(phytomer->plantID) + ").");
+    }
+}
+
 } // anonymous namespace
 
 extern "C" {
@@ -648,6 +763,7 @@ extern "C" {
     }
 
     PYHELIOS_API void destroyPlantArchitecture(PlantArchitecture* plantarch) {
+        phytomerCreationCallbacks().erase(plantarch);
         delete plantarch;
     }
 
@@ -3856,6 +3972,239 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::recordPetioleRestShape): Unknown error.");
             return -1;
         }
+    }
+
+    //=============================================================================
+    // Phytomer creation callback, per-phytomer growth targets and readouts, live
+    // phyllotaxy, per-model leaf inclination distributions (helios-core 1.3.88)
+    //=============================================================================
+
+    PYHELIOS_API int setPhytomerCreationFunction(PlantArchitecture* plantarch, const char* shoot_type_label, PhytomerCreationCallback callback) {
+        return guardedPhytomerCall(plantarch, "setPhytomerCreationFunction", -1, [&]() {
+            if (!shoot_type_label) {
+                throw std::invalid_argument("Shoot type label is null");
+            }
+            const std::string label(shoot_type_label);
+            ShootParameters params = plantarch->getCurrentShootParameters(label);
+            params.phytomer_parameters.phytomer_creation_function = callback ? &phytomerCreationTrampoline : nullptr;
+            plantarch->defineShootType(label, params);
+            phytomerCreationCallbacks()[plantarch][label] = callback;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setInternodeMaxLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float length) {
+        return guardedPhytomerCall(plantarch, "setInternodeMaxLength", -1, [&]() {
+            if (!(length > 0.f) || !std::isfinite(length)) {
+                throw std::invalid_argument("Internode max length must be positive and finite, got " + std::to_string(length));
+            }
+            resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->setInternodeMaxLength(length);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int scaleInternodeMaxLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float scale_factor) {
+        return guardedPhytomerCall(plantarch, "scaleInternodeMaxLength", -1, [&]() {
+            if (!(scale_factor > 0.f)) {
+                throw std::invalid_argument("Scale factor must be positive, got " + std::to_string(scale_factor));
+            }
+            resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->scaleInternodeMaxLength(scale_factor);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int scaleLeafPrototypeScale(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float scale_factor) {
+        return guardedPhytomerCall(plantarch, "scaleLeafPrototypeScale", -1, [&]() {
+            if (!(scale_factor > 0.f)) {
+                throw std::invalid_argument("Scale factor must be positive, got " + std::to_string(scale_factor));
+            }
+            resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->scaleLeafPrototypeScale(scale_factor);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int scaleLeafPrototypeScaleAt(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float scale_factor) {
+        return guardedPhytomerCall(plantarch, "scaleLeafPrototypeScale", -1, [&]() {
+            if (!(scale_factor > 0.f)) {
+                throw std::invalid_argument("Scale factor must be positive, got " + std::to_string(scale_factor));
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->leaf_objIDs.size(), petiole_index, node_index);
+            phytomer->scaleLeafPrototypeScale(petiole_index, scale_factor);
+            return 0;
+        });
+    }
+
+    // use_normal = 0 sets a constant angle; otherwise normal(mean, std_dev), which draws from the Context generator for
+    // every new phytomer even when std_dev is 0 (as a C++ caller of normalDistribution() does).
+    PYHELIOS_API int setShootPhyllotacticAngle(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, float mean_degrees, float std_dev_degrees, int use_normal) {
+        return guardedPhytomerCall(plantarch, "setShootPhyllotacticAngle", -1, [&]() {
+            if (!std::isfinite(mean_degrees)) {
+                throw std::invalid_argument("Mean phyllotactic angle must be finite");
+            }
+            if (use_normal && (!std::isfinite(std_dev_degrees) || std_dev_degrees < 0.f)) {
+                throw std::invalid_argument("Phyllotactic angle standard deviation must be finite and non-negative");
+            }
+            RandomParameter_float& angle = plantarch->getPlantShoot(plantID, shootID)->shoot_parameters.phytomer_parameters.internode.phyllotactic_angle;
+            if (use_normal) {
+                angle.normalDistribution(mean_degrees, std_dev_degrees);
+            } else {
+                angle = mean_degrees;
+            }
+            return 0;
+        });
+    }
+
+    PYHELIOS_API float getPhytomerAge(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index) {
+        return guardedPhytomerCall(plantarch, "getPhytomerAge", -1.f, [&]() { return resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->age; });
+    }
+
+    PYHELIOS_API float getInternodeLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index) {
+        return guardedPhytomerCall(plantarch, "getInternodeLength", -1.f, [&]() { return resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->getInternodeLength(); });
+    }
+
+    PYHELIOS_API float getInternodeRadius(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index) {
+        return guardedPhytomerCall(plantarch, "getInternodeRadius", -1.f, [&]() { return resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->getInternodeRadius(); });
+    }
+
+    PYHELIOS_API float* getInternodeNodePositions(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getInternodeNodePositions", static_cast<float*>(nullptr), [&]() {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            return flattenVec3(resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->getInternodeNodePositions(), count);
+        });
+    }
+
+    PYHELIOS_API int getInternodeAxisVector(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float stem_fraction, float* axis) {
+        return guardedPhytomerCall(plantarch, "getInternodeAxisVector", -1, [&]() {
+            if (!axis) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            const helios::vec3 v = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index)->getInternodeAxisVector(stem_fraction);
+            axis[0] = v.x;
+            axis[1] = v.y;
+            axis[2] = v.z;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int getPetioleAxisVector(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float stem_fraction, unsigned int petiole_index,
+                                          float* axis) {
+        return guardedPhytomerCall(plantarch, "getPetioleAxisVector", -1, [&]() {
+            if (!axis) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->petiole_vertices.size(), petiole_index, node_index);
+            const helios::vec3 v = phytomer->getPetioleAxisVector(stem_fraction, petiole_index);
+            axis[0] = v.x;
+            axis[1] = v.y;
+            axis[2] = v.z;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API float* getPetioleVertices(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getPetioleVertices", static_cast<float*>(nullptr), [&]() {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->petiole_vertices.size(), petiole_index, node_index);
+            return flattenVec3(phytomer->petiole_vertices.at(petiole_index), count);
+        });
+    }
+
+    PYHELIOS_API float* getPetioleRadii(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getPetioleRadii", static_cast<float*>(nullptr), [&]() {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->petiole_radii.size(), petiole_index, node_index);
+            static thread_local std::vector<float> static_result;
+            static_result = phytomer->petiole_radii.at(petiole_index);
+            *count = static_cast<int>(static_result.size());
+            return static_result.data();
+        });
+    }
+
+    // Layout: [petiole_count, leaves_on_petiole_0, ..., leaves_on_petiole_{n-1}, objID...]; *count is the total length.
+    PYHELIOS_API unsigned int* getPhytomerLeafObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getPhytomerLeafObjectIDs", static_cast<unsigned int*>(nullptr), [&]() {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            static thread_local std::vector<unsigned int> static_result;
+            static_result.clear();
+            static_result.push_back(static_cast<unsigned int>(phytomer->leaf_objIDs.size()));
+            for (const auto& petiole : phytomer->leaf_objIDs) {
+                static_result.push_back(static_cast<unsigned int>(petiole.size()));
+            }
+            for (const auto& petiole : phytomer->leaf_objIDs) {
+                static_result.insert(static_result.end(), petiole.begin(), petiole.end());
+            }
+            *count = static_cast<int>(static_result.size());
+            return static_result.data();
+        });
+    }
+
+    PYHELIOS_API int getLeafBasePosition(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index,
+                                         float* position) {
+        return guardedPhytomerCall(plantarch, "getLeafBasePosition", -1, [&]() {
+            if (!position) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->leaf_bases.size(), petiole_index, node_index);
+            checkLeafIndex(phytomer->leaf_bases.at(petiole_index).size(), leaf_index, petiole_index);
+            const helios::vec3 v = phytomer->getLeafBasePosition(petiole_index, leaf_index);
+            position[0] = v.x;
+            position[1] = v.y;
+            position[2] = v.z;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int getPlantModelLeafInclinationDistribution(PlantArchitecture* plantarch, const char* plant_model_name, float* mu_nu) {
+        return guardedPhytomerCall(plantarch, "getPlantModelLeafInclinationDistribution", -1, [&]() {
+            if (!plant_model_name || !mu_nu) {
+                throw std::invalid_argument("Null argument");
+            }
+            const helios::vec2 beta = plantarch->getPlantModelLeafInclinationDistribution(plant_model_name);
+            mu_nu[0] = beta.x;
+            mu_nu[1] = beta.y;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPlantModelLeafInclinationDistribution(PlantArchitecture* plantarch, const char* plant_model_name, float Beta_mu_inclination, float Beta_nu_inclination) {
+        return guardedPhytomerCall(plantarch, "setPlantModelLeafInclinationDistribution", -1, [&]() {
+            if (!plant_model_name) {
+                throw std::invalid_argument("Plant model name is null");
+            }
+            plantarch->setPlantModelLeafInclinationDistribution(plant_model_name, Beta_mu_inclination, Beta_nu_inclination);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int doesPlantModelDeclareLeafInclinationDistribution(PlantArchitecture* plantarch, const char* plant_model_name) {
+        return guardedPhytomerCall(plantarch, "doesPlantModelDeclareLeafInclinationDistribution", -1, [&]() {
+            if (!plant_model_name) {
+                throw std::invalid_argument("Plant model name is null");
+            }
+            return plantarch->doesPlantModelDeclareLeafInclinationDistribution(plant_model_name) ? 1 : 0;
+        });
+    }
+
+    PYHELIOS_API float getPlantAvailableNitrogen(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "getPlantAvailableNitrogen", -1.f, [&]() { return plantarch->getPlantAvailableNitrogen(plantID); });
     }
 
 } // extern "C"

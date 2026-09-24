@@ -22,6 +22,13 @@ from .UContextWrapper import UContext
 # Callback type for progress reporting
 PROGRESS_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_float, ctypes.c_char_p)
 
+# Phytomer creation callback: (plant_id, shoot_id, node_index, shoot_node_index,
+# parent_shoot_node_index, shoot_max_nodes, plant_age) -> 0 on success, nonzero if the
+# Python function raised. CFUNCTYPE (not PYFUNCTYPE) so the GIL is acquired on entry.
+PHYTOMER_CREATION_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+    ctypes.c_uint, ctypes.c_float)
+
 # Function prototypes with availability detection
 try:
     # PlantArchitecture management functions
@@ -971,6 +978,54 @@ try:
     _PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE = True
 except AttributeError:
     _PLANTARCHITECTURE_PETIOLESCALE_AVAILABLE = False
+
+# Phytomer creation callback, per-phytomer growth targets and readouts, live phyllotaxy,
+# per-model leaf inclination distributions and the plant nitrogen pool (helios-core 1.3.88).
+_PLANTARCHITECTURE_1388_AVAILABLE = False
+try:
+    _PA = ctypes.POINTER(UPlantArchitecture)
+    _PHYTOMER = [ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]  # plantID, shootID, node_index
+
+    def _register(name, argtypes, restype):
+        f = getattr(helios_lib, name)
+        f.argtypes = [_PA] + argtypes
+        f.restype = restype
+        f.errcheck = _check_error
+
+    _register("setPhytomerCreationFunction", [ctypes.c_char_p, PHYTOMER_CREATION_CALLBACK], ctypes.c_int)
+    _register("setInternodeMaxLength", _PHYTOMER + [ctypes.c_float], ctypes.c_int)
+    _register("scaleInternodeMaxLength", _PHYTOMER + [ctypes.c_float], ctypes.c_int)
+    _register("scaleLeafPrototypeScale", _PHYTOMER + [ctypes.c_float], ctypes.c_int)
+    _register("scaleLeafPrototypeScaleAt", _PHYTOMER + [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    # plantID, shootID, mean_degrees, std_dev_degrees, use_normal
+    _register("setShootPhyllotacticAngle",
+              [ctypes.c_uint, ctypes.c_uint, ctypes.c_float, ctypes.c_float, ctypes.c_int], ctypes.c_int)
+    for _name in ("getPhytomerAge", "getInternodeLength", "getInternodeRadius"):
+        _register(_name, list(_PHYTOMER), ctypes.c_float)
+    _register("getInternodeNodePositions", _PHYTOMER + [ctypes.POINTER(ctypes.c_int)],
+              ctypes.POINTER(ctypes.c_float))
+    _register("getInternodeAxisVector", _PHYTOMER + [ctypes.c_float, ctypes.POINTER(ctypes.c_float)],
+              ctypes.c_int)
+    _register("getPetioleAxisVector",
+              _PHYTOMER + [ctypes.c_float, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)], ctypes.c_int)
+    for _name in ("getPetioleVertices", "getPetioleRadii"):
+        _register(_name, _PHYTOMER + [ctypes.c_uint, ctypes.POINTER(ctypes.c_int)],
+                  ctypes.POINTER(ctypes.c_float))
+    _register("getPhytomerLeafObjectIDs", _PHYTOMER + [ctypes.POINTER(ctypes.c_int)],
+              ctypes.POINTER(ctypes.c_uint))
+    _register("getLeafBasePosition",
+              _PHYTOMER + [ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)], ctypes.c_int)
+    _register("getPlantModelLeafInclinationDistribution",
+              [ctypes.c_char_p, ctypes.POINTER(ctypes.c_float)], ctypes.c_int)
+    _register("setPlantModelLeafInclinationDistribution",
+              [ctypes.c_char_p, ctypes.c_float, ctypes.c_float], ctypes.c_int)
+    _register("doesPlantModelDeclareLeafInclinationDistribution", [ctypes.c_char_p], ctypes.c_int)
+    _register("getPlantAvailableNitrogen", [ctypes.c_uint], ctypes.c_float)
+    del _name
+
+    _PLANTARCHITECTURE_1388_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1388_AVAILABLE = False
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -3221,3 +3276,204 @@ def recordPetioleRestShape(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), pl
     if petiole_index < 0:
         raise ValueError("Petiole index must be non-negative")
     helios_lib.recordPetioleRestShape(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.88: phytomer creation callback, per-phytomer growth targets and
+# readouts, live phyllotaxy, leaf inclination distributions, plant nitrogen pool
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_1388() -> None:
+    """Raise if the native library predates the helios-core 1.3.88 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1388_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.88 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def setPhytomerCreationFunction(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), shoot_type_label: str,
+                                callback) -> None:
+    """Install a PHYTOMER_CREATION_CALLBACK on a shoot type, or clear it with None.
+
+    The caller must keep ``callback`` alive for as long as any shoot may call it.
+    """
+    _require_plantarch_1388()
+    native_callback = PHYTOMER_CREATION_CALLBACK(0) if callback is None else callback
+    helios_lib.setPhytomerCreationFunction(plantarch_ptr, shoot_type_label.encode('utf-8'),
+                                           native_callback)
+
+
+def setInternodeMaxLength(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, length: float) -> None:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    helios_lib.setInternodeMaxLength(plantarch_ptr, plant_id, shoot_id, node_index, ctypes.c_float(length))
+
+
+def scaleInternodeMaxLength(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                            scale_factor: float) -> None:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    helios_lib.scaleInternodeMaxLength(plantarch_ptr, plant_id, shoot_id, node_index,
+                                       ctypes.c_float(scale_factor))
+
+
+def scaleLeafPrototypeScale(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                            scale_factor: float, petiole_index: Optional[int] = None) -> None:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index is None:
+        helios_lib.scaleLeafPrototypeScale(plantarch_ptr, plant_id, shoot_id, node_index,
+                                           ctypes.c_float(scale_factor))
+    else:
+        if petiole_index < 0:
+            raise ValueError("Petiole index must be non-negative")
+        helios_lib.scaleLeafPrototypeScaleAt(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                             ctypes.c_float(scale_factor))
+
+
+def setShootPhyllotacticAngle(plantarch_ptr, plant_id: int, shoot_id: int, mean_degrees: float,
+                              std_dev_degrees: Optional[float]) -> None:
+    """A constant angle when std_dev_degrees is None, otherwise normal(mean, std_dev)."""
+    _require_plantarch_1388()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    use_normal = std_dev_degrees is not None
+    helios_lib.setShootPhyllotacticAngle(plantarch_ptr, plant_id, shoot_id, ctypes.c_float(mean_degrees),
+                                         ctypes.c_float(std_dev_degrees if use_normal else 0.0),
+                                         1 if use_normal else 0)
+
+
+def _phytomer_scalar(name: str, plantarch_ptr, plant_id: int, shoot_id: int, node_index: int) -> float:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    return float(getattr(helios_lib, name)(plantarch_ptr, plant_id, shoot_id, node_index))
+
+
+def getPhytomerAge(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int) -> float:
+    return _phytomer_scalar("getPhytomerAge", plantarch_ptr, plant_id, shoot_id, node_index)
+
+
+def getInternodeLength(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int) -> float:
+    return _phytomer_scalar("getInternodeLength", plantarch_ptr, plant_id, shoot_id, node_index)
+
+
+def getInternodeRadius(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int) -> float:
+    return _phytomer_scalar("getInternodeRadius", plantarch_ptr, plant_id, shoot_id, node_index)
+
+
+def _xyz_triples(ptr, count: int) -> List[Tuple[float, float, float]]:
+    return [(ptr[3 * i], ptr[3 * i + 1], ptr[3 * i + 2]) for i in range(count)] if ptr else []
+
+
+def getInternodeNodePositions(plantarch_ptr, plant_id: int, shoot_id: int,
+                              node_index: int) -> List[Tuple[float, float, float]]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    count = ctypes.c_int()
+    ptr = helios_lib.getInternodeNodePositions(plantarch_ptr, plant_id, shoot_id, node_index, ctypes.byref(count))
+    return _xyz_triples(ptr, count.value)
+
+
+def getInternodeAxisVector(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                           stem_fraction: float) -> Tuple[float, float, float]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    axis = (ctypes.c_float * 3)()
+    helios_lib.getInternodeAxisVector(plantarch_ptr, plant_id, shoot_id, node_index,
+                                      ctypes.c_float(stem_fraction), axis)
+    return (axis[0], axis[1], axis[2])
+
+
+def getPetioleAxisVector(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                         stem_fraction: float, petiole_index: int) -> Tuple[float, float, float]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    axis = (ctypes.c_float * 3)()
+    helios_lib.getPetioleAxisVector(plantarch_ptr, plant_id, shoot_id, node_index,
+                                    ctypes.c_float(stem_fraction), petiole_index, axis)
+    return (axis[0], axis[1], axis[2])
+
+
+def getPetioleVertices(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                       petiole_index: int) -> List[Tuple[float, float, float]]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    count = ctypes.c_int()
+    ptr = helios_lib.getPetioleVertices(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                        ctypes.byref(count))
+    return _xyz_triples(ptr, count.value)
+
+
+def getPetioleRadii(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                    petiole_index: int) -> List[float]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    count = ctypes.c_int()
+    ptr = helios_lib.getPetioleRadii(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                     ctypes.byref(count))
+    return [ptr[i] for i in range(count.value)] if ptr else []
+
+
+def getPhytomerLeafObjectIDs(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int) -> List[List[int]]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    count = ctypes.c_int()
+    ptr = helios_lib.getPhytomerLeafObjectIDs(plantarch_ptr, plant_id, shoot_id, node_index, ctypes.byref(count))
+    if not ptr or count.value == 0:
+        return []
+    flat = [ptr[i] for i in range(count.value)]
+    petiole_count = flat[0]
+    sizes = flat[1:1 + petiole_count]
+    result, cursor = [], 1 + petiole_count
+    for size in sizes:
+        result.append(flat[cursor:cursor + size])
+        cursor += size
+    return result
+
+
+def getLeafBasePosition(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                        leaf_index: int) -> Tuple[float, float, float]:
+    _require_plantarch_1388()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    for name, v in (("Petiole index", petiole_index), ("Leaf index", leaf_index)):
+        if v < 0:
+            raise ValueError(f"{name} must be non-negative")
+    position = (ctypes.c_float * 3)()
+    helios_lib.getLeafBasePosition(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, leaf_index,
+                                   position)
+    return (position[0], position[1], position[2])
+
+
+def getPlantModelLeafInclinationDistribution(plantarch_ptr, plant_model_name: str) -> Tuple[float, float]:
+    _require_plantarch_1388()
+    mu_nu = (ctypes.c_float * 2)()
+    helios_lib.getPlantModelLeafInclinationDistribution(plantarch_ptr, plant_model_name.encode('utf-8'), mu_nu)
+    return (mu_nu[0], mu_nu[1])
+
+
+def setPlantModelLeafInclinationDistribution(plantarch_ptr, plant_model_name: str, beta_mu: float,
+                                             beta_nu: float) -> None:
+    _require_plantarch_1388()
+    helios_lib.setPlantModelLeafInclinationDistribution(plantarch_ptr, plant_model_name.encode('utf-8'),
+                                                        ctypes.c_float(beta_mu), ctypes.c_float(beta_nu))
+
+
+def doesPlantModelDeclareLeafInclinationDistribution(plantarch_ptr, plant_model_name: str) -> bool:
+    _require_plantarch_1388()
+    return helios_lib.doesPlantModelDeclareLeafInclinationDistribution(
+        plantarch_ptr, plant_model_name.encode('utf-8')) == 1
+
+
+def getPlantAvailableNitrogen(plantarch_ptr, plant_id: int) -> float:
+    _require_plantarch_1388()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    return float(helios_lib.getPlantAvailableNitrogen(plantarch_ptr, plant_id))

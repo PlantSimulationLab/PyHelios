@@ -381,11 +381,12 @@ accordingly:
 ## Limitations
 
 **L-BFGS is unavailable in default builds.** NLopt's L-BFGS comes from its
-LGPL-2.1 Luksan sources, which PyHelios omits so the distributed library stays
-MIT-licensed. `Adam` covers the same gradient-based use case with better noise
-tolerance, and `BOBYQA` covers derivative-free local refinement.
+LGPL-2.1 Luksan sources, which PyHelios builds without. `Adam` covers the same
+gradient-based use case with better noise tolerance, and `BOBYQA` covers
+derivative-free local refinement.
 
-Enabling it means accepting the LGPL obligations for anything you redistribute. The
+The native library PyHelios ships is already LGPL-2.1-or-later, because Helios is, so
+enabling the Luksan sources brings code under the same license family. The
 setting is written by the build script, not read from the CMake command line — a
 `-DHELIOS_NLOPT_LUKSAN=ON` flag is overridden — so change the `set(HELIOS_NLOPT_LUKSAN
 OFF ...)` line emitted in `build_scripts/build_helios.py` and rebuild from clean.

@@ -1,5 +1,32 @@
 # Changelog
 
+# [v0.1.34] 2026-09-24
+
+- Updated helios-core to v1.3.88
+
+## Packaging
+- Corrected the package license metadata, which declared GPLv2: PyHelios is MIT and the bundled Helios native library is LGPL-2.1-or-later, whose license text now ships in the wheel
+
+## Plant Architecture
+- Added `PlantArchitecture.setPhytomerCreationFunction(shoot_type_label, callback)`, installing a Python function the plugin calls for every new phytomer of a shoot type; `None` removes any creation function, including a library one
+- Added `PlantArchitecture.setInternodeMaxLength()` and `scaleInternodeMaxLength()`, setting the fully-elongated length of one existing internode
+- Added `PlantArchitecture.scaleLeafPrototypeScale(plant_id, shoot_id, node_index, scale_factor, petiole_index=None)`, rescaling a phytomer's leaves immediately along with the size they grow toward
+- Added `PlantArchitecture.setShootPhyllotacticAngle(plant_id, shoot_id, mean_deg, sd_deg=None)`, setting the phyllotactic angle a shoot's next phytomers are created with
+- Added the per-phytomer readouts `getPhytomerAge()`, `getInternodeLength()`, `getInternodeRadius()`, `getInternodeNodePositions()`, `getInternodeAxisVector()`, `getPetioleAxisVector()`, `getPetioleVertices()`, `getPetioleRadii()`, `getPhytomerLeafObjectIDs()` and `getLeafBasePosition()`
+- Added `PlantArchitecture.getPlantModelLeafInclinationDistribution()`, `setPlantModelLeafInclinationDistribution()` and `doesPlantModelDeclareLeafInclinationDistribution()`, the leaf inclination distribution a library plant model steers its plants toward
+- The `cowpea` and `easternredbud` library models now steer their plants toward a measured leaf inclination distribution, so their leaf angles differ from earlier releases; `setPlantModelLeafInclinationDistribution(name, 0, 0)` restores the previous behavior
+- Fixed leaf angle distribution tracking drifting away from the requested distribution on species with curved blades, such as cowpea
+- `writePlantStructureXML()` now records the leaf inclination distribution a plant is tracking and `readPlantStructureXML()` restores it; previously a reloaded plant silently stopped tracking
+- Fixed leaves placed by `setPetioleLeafGeometry()` snapping to procedural positions as soon as they started expanding
+- Added `PlantArchitecture.getPlantAvailableNitrogen(plant_id)`, returning the nitrogen in a plant's available pool
+- Fixed the nitrogen model creating nitrogen as leaves expanded, which let a starved canopy green up with no supply
+- Fixed the nitrogen model giving a limited supply to the oldest leaves and none to new ones; new nitrogen now goes to expanding leaves first
+- Nitrogen remobilization now responds to a supply shortfall rather than leaf age; previously it never began on library plants
+- Added leaf senescence to the nitrogen model: over the end of `max_leaf_lifespan` a leaf returns nitrogen and yellows before being shed, starting earlier under nitrogen stress
+- Added the `NitrogenParameters` fields `leaf_remobilization_rate`, `leaf_senescence_duration_fraction` and `stress_senescence_advance_fraction`, and removed `remobilization_age_threshold`
+- `setPlantNitrogenParameters()` now rejects a dict key that is not a nitrogen parameter instead of silently ignoring it
+- Added `docs/examples/plantarch_tomato_calibrated_sample.py`, growing a calibrated tomato from seed with a rank-dependent creation function and node-by-node phyllotaxy, and measuring every leaf
+
 # [v0.1.33] 2026-09-19
 
 - Updated helios-core to v1.3.87
