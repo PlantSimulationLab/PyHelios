@@ -1,0 +1,161 @@
+{
+  "seed": 0,
+  "n_views": 8,
+  "elevation_deg": 12.0,
+  "pixel_noise_sigma_px": 0.5,
+  "hfov_deg": 57.82240163683314,
+  "resolution": [
+    480,
+    360
+  ],
+  "n_leaf_objects_total": 1172,
+  "n_branch_landmarks": 100,
+  "branch_segment_counts": {
+    "shoot": {
+      "n_objects": 77,
+      "n_tube": 77,
+      "n_other": 0
+    },
+    "petiole": {
+      "n_objects": 1172,
+      "n_tube": 0,
+      "n_other": 1172
+    },
+    "peduncle": {
+      "n_objects": 25,
+      "n_tube": 25,
+      "n_other": 0
+    }
+  },
+  "footprint_area_m2": 3.2399461291166602,
+  "footprint_note": "footprint_area_m2 = XY bounding-box area of the full tree at LAI-max (a real but crude ground-area proxy for a single free-standing tree, not a canopy-row LAI convention)",
+  "sweep": [
+    {
+      "lai_keep_fraction": 1.0,
+      "n_leaves_remaining": 1172,
+      "leaf_area_m2": 6.439842987259908,
+      "lai_proxy_leaf_area_over_footprint": 1.9876389083715007,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.8,
+      "recall_reconstructable_ge2_views": 0.52,
+      "mean_visible_views_per_landmark": 1.91,
+      "branch_geometry_rmse_mm": 8.991409969600591,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.85,
+      "n_leaves_remaining": 996,
+      "leaf_area_m2": 5.471585204984876,
+      "lai_proxy_leaf_area_over_footprint": 1.6887889449188622,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.82,
+      "recall_reconstructable_ge2_views": 0.56,
+      "mean_visible_views_per_landmark": 2.05,
+      "branch_geometry_rmse_mm": 8.925326236904613,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.7,
+      "n_leaves_remaining": 820,
+      "leaf_area_m2": 4.496184323543275,
+      "lai_proxy_leaf_area_over_footprint": 1.387734284572539,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.84,
+      "recall_reconstructable_ge2_views": 0.61,
+      "mean_visible_views_per_landmark": 2.21,
+      "branch_geometry_rmse_mm": 8.277665199127721,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.55,
+      "n_leaves_remaining": 645,
+      "leaf_area_m2": 3.5411189969745465,
+      "lai_proxy_leaf_area_over_footprint": 1.092956134409555,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.87,
+      "recall_reconstructable_ge2_views": 0.62,
+      "mean_visible_views_per_landmark": 2.36,
+      "branch_geometry_rmse_mm": 10.628583248127828,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.4,
+      "n_leaves_remaining": 469,
+      "leaf_area_m2": 2.5800042960618157,
+      "lai_proxy_leaf_area_over_footprint": 0.7963108623553654,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.9,
+      "recall_reconstructable_ge2_views": 0.67,
+      "mean_visible_views_per_landmark": 2.54,
+      "branch_geometry_rmse_mm": 10.187341113264575,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.25,
+      "n_leaves_remaining": 293,
+      "leaf_area_m2": 1.608174940891331,
+      "lai_proxy_leaf_area_over_footprint": 0.49635854326065115,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.94,
+      "recall_reconstructable_ge2_views": 0.73,
+      "mean_visible_views_per_landmark": 2.86,
+      "branch_geometry_rmse_mm": 8.850847240884466,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.15,
+      "n_leaves_remaining": 176,
+      "leaf_area_m2": 0.9896870539378142,
+      "lai_proxy_leaf_area_over_footprint": 0.3054640461592004,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.95,
+      "recall_reconstructable_ge2_views": 0.77,
+      "mean_visible_views_per_landmark": 3.03,
+      "branch_geometry_rmse_mm": 9.418083675650974,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.08,
+      "n_leaves_remaining": 94,
+      "leaf_area_m2": 0.5257824686341337,
+      "lai_proxy_leaf_area_over_footprint": 0.16228123792215124,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.96,
+      "recall_reconstructable_ge2_views": 0.78,
+      "mean_visible_views_per_landmark": 3.12,
+      "branch_geometry_rmse_mm": 8.685283157583081,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.03,
+      "n_leaves_remaining": 35,
+      "leaf_area_m2": 0.19387029216159135,
+      "lai_proxy_leaf_area_over_footprint": 0.05983750483359061,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.96,
+      "recall_reconstructable_ge2_views": 0.81,
+      "mean_visible_views_per_landmark": 3.24,
+      "branch_geometry_rmse_mm": 8.740169521492154,
+      "attention_effective_rank": null
+    },
+    {
+      "lai_keep_fraction": 0.0,
+      "n_leaves_remaining": 0,
+      "leaf_area_m2": 0,
+      "lai_proxy_leaf_area_over_footprint": 0.0,
+      "n_landmarks": 100,
+      "recall_visible_ge1_view": 0.96,
+      "recall_reconstructable_ge2_views": 0.83,
+      "mean_visible_views_per_landmark": 3.33,
+      "branch_geometry_rmse_mm": 7.485922889648135,
+      "attention_effective_rank": null
+    }
+  ],
+  "attention_effective_rank_note": "SKIPPED (not approximated) for every sweep point: this submetric is intrinsic to a specific foundation model's internal cross-view attention weights, and no such model runs in this environment -- see PHASE7_LOG.md. Reporting a numerically-similar-looking substitute here would misrepresent what was measured, so `attention_effective_rank` is left `null` throughout instead.",
+  "summary": {
+    "dense_canopy_mean_recall_ge1_view": 0.81,
+    "sparse_canopy_mean_recall_ge1_view": 0.9575,
+    "recall_drop_dense_to_sparse": 0.14749999999999996
+  },
+  "hypothesis_more_leaves_occlude_branches_supported": true
+}

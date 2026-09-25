@@ -1,0 +1,66 @@
+{
+  "n_frames": 16,
+  "scene_meta_path": "/home/yogesh/PyHelios/.claude/worktrees/phase7-diagnostics/yogesh_dev/phase7/output/wai_dataset/helios_apple_tree/tree0_orbit16/scene_meta.json",
+  "fl_x": 434.5584412271572,
+  "fl_y": 434.5584412271572,
+  "cx": 240.0,
+  "cy": 180.0,
+  "w": 480,
+  "h": 360,
+  "sample_frame": {
+    "frame_name": "frame_00000",
+    "camera_label": "cam0",
+    "transform_matrix": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.2079116667427826,
+      0.9781476058510996,
+      -5.295220375061034,
+      -0.0,
+      -0.9781476058510998,
+      -0.20791166674278258,
+      2.5237114429473877,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "world_to_camera_matrix": [
+      1.0,
+      -0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.20791166674278255,
+      -0.9781476058510995,
+      1.367624211828729,
+      0.0,
+      0.9781476058510995,
+      -0.20791166674278255,
+      5.704216184800937,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "eye": [
+      0.0,
+      -5.295220375061035,
+      2.5237114429473877
+    ],
+    "lookat": [
+      0.0,
+      0.0,
+      1.3981777429580688
+    ],
+    "file_path": "images/cam0_frame_00000.jpeg",
+    "depth_path": "depth/frame_00000.exr",
+    "mask_path": "masks/frame_00000.npy",
+    "azimuth_deg": 0.0,
+    "plant_id": 0,
+    "split": "test"
+  }
+}

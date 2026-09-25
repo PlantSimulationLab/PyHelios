@@ -1,0 +1,201 @@
+{
+  "primitive_counts": {
+    "0": 36105,
+    "1": 36409,
+    "2": 47699,
+    "total": 120213
+  },
+  "tier_b": {
+    "n_views": 9,
+    "total_s": 6.537182686999586,
+    "mean_s": 0.7263536318888428,
+    "min_s": 0.700951029999942,
+    "max_s": 0.8174877469996318,
+    "hz": 1.376739863473326,
+    "resolution": [
+      640,
+      480
+    ]
+  },
+  "tier_c": {
+    "n_poses_total": 3,
+    "n_poses_excl_warmup": 2,
+    "warmup_pose_s": 0.628272256999935,
+    "total_s_excl_warmup": 1.2545966659999976,
+    "mean_s_per_pose_excl_warmup": 0.6272983329999988,
+    "min_s": 0.6239240539998718,
+    "max_s": 0.6306726120001258,
+    "hz_excl_warmup": 1.5941378246895515,
+    "resolution": [
+      640,
+      480
+    ],
+    "antialiasing_samples": 1,
+    "scattering_depth": 1,
+    "n_cameras": 3
+  },
+  "sweep": [
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.7983891979997679,
+      "total_s_excl_warmup": 1.6352109629997358,
+      "mean_s_per_pose_excl_warmup": 0.8176054814998679,
+      "min_s": 0.815622682999674,
+      "max_s": 0.8195882800000618,
+      "hz_excl_warmup": 1.2230837765000497,
+      "resolution": [
+        320,
+        240
+      ],
+      "antialiasing_samples": 1,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "320x240_AA1"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.6716727769999125,
+      "total_s_excl_warmup": 1.4438487499996882,
+      "mean_s_per_pose_excl_warmup": 0.7219243749998441,
+      "min_s": 0.7204530539997904,
+      "max_s": 0.7233956959998977,
+      "hz_excl_warmup": 1.3851866409140376,
+      "resolution": [
+        320,
+        240
+      ],
+      "antialiasing_samples": 2,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "320x240_AA2"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.5964375690000452,
+      "total_s_excl_warmup": 1.3216484820004553,
+      "mean_s_per_pose_excl_warmup": 0.6608242410002276,
+      "min_s": 0.6600567280001997,
+      "max_s": 0.6615917540002556,
+      "hz_excl_warmup": 1.5132616783040431,
+      "resolution": [
+        320,
+        240
+      ],
+      "antialiasing_samples": 4,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "320x240_AA4"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.7341301449996536,
+      "total_s_excl_warmup": 1.68330122999987,
+      "mean_s_per_pose_excl_warmup": 0.841650614999935,
+      "min_s": 0.8366569289996733,
+      "max_s": 0.8466443010001967,
+      "hz_excl_warmup": 1.188141471268428,
+      "resolution": [
+        640,
+        480
+      ],
+      "antialiasing_samples": 1,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "640x480_AA1"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.6247148120000929,
+      "total_s_excl_warmup": 1.4518141939997804,
+      "mean_s_per_pose_excl_warmup": 0.7259070969998902,
+      "min_s": 0.7184432899998683,
+      "max_s": 0.7333709039999121,
+      "hz_excl_warmup": 1.3775867519864615,
+      "resolution": [
+        640,
+        480
+      ],
+      "antialiasing_samples": 2,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "640x480_AA2"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.8956868000000213,
+      "total_s_excl_warmup": 1.9385694719999265,
+      "mean_s_per_pose_excl_warmup": 0.9692847359999632,
+      "min_s": 0.9687142749999111,
+      "max_s": 0.9698551970000153,
+      "hz_excl_warmup": 1.0316885873255286,
+      "resolution": [
+        640,
+        480
+      ],
+      "antialiasing_samples": 4,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "640x480_AA4"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 1.0305903900002704,
+      "total_s_excl_warmup": 2.1800554000001284,
+      "mean_s_per_pose_excl_warmup": 1.0900277000000642,
+      "min_s": 1.0868650110001,
+      "max_s": 1.0931903890000285,
+      "hz_excl_warmup": 0.9174078787171566,
+      "resolution": [
+        1280,
+        960
+      ],
+      "antialiasing_samples": 1,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "1280x960_AA1"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.9512601999999788,
+      "total_s_excl_warmup": 2.0354313780003395,
+      "mean_s_per_pose_excl_warmup": 1.0177156890001697,
+      "min_s": 1.0122475160001159,
+      "max_s": 1.0231838620002236,
+      "hz_excl_warmup": 0.9825926934293663,
+      "resolution": [
+        1280,
+        960
+      ],
+      "antialiasing_samples": 2,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "1280x960_AA2"
+    },
+    {
+      "n_poses_total": 3,
+      "n_poses_excl_warmup": 2,
+      "warmup_pose_s": 0.9922988830003305,
+      "total_s_excl_warmup": 2.1491713329996855,
+      "mean_s_per_pose_excl_warmup": 1.0745856664998428,
+      "min_s": 1.0742258149998634,
+      "max_s": 1.0749455179998222,
+      "hz_excl_warmup": 0.9305912326722313,
+      "resolution": [
+        1280,
+        960
+      ],
+      "antialiasing_samples": 4,
+      "scattering_depth": 1,
+      "n_cameras": 3,
+      "config": "1280x960_AA4"
+    }
+  ]
+}

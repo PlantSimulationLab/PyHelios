@@ -1,0 +1,96 @@
+{
+  "seed": 20260729,
+  "build_time_s": 2.072794198989868,
+  "fruit_ground_truth": {
+    "n_fruit_primitives": 17098,
+    "n_fruit_objects": 83,
+    "n_fruit_records_written": 83,
+    "n_trees": 3,
+    "plant_id_lookup_misses": 0,
+    "output_path": "/home/yogesh/PyHelios/.claude/worktrees/phase2-avub/yogesh_dev/phase2/output/phase2_fruit_ground_truth.json"
+  },
+  "assign_vis_primitive_ids_s": 0.05308127403259277,
+  "n_fruit_surface_primitives": 17098,
+  "T2.6": {
+    "exists": false,
+    "n_hits_total": 12,
+    "n_code_hits": 0,
+    "hits": [
+      "1053f56fa84f700d2e33ac04a9a433ddddfe488a:active_vision_design.md:41:Everything else in the proposal \u2014 the occlusion-regulation module, the Helios orchard, the physical evaluation protocol \u2014 I would keep as written. Those are strengths.",
+      "1053f56fa84f700d2e33ac04a9a433ddddfe488a:active_vision_design.md:440:**D3 \u2014 Leaf-density / self-similarity sweep.** Helios lets you vary leaf area index continuously on a *fixed branch skeleton* (this is exactly what the proposal's occlusion-regulation module does). Sweep LAI from dormant to dense and measure (i) reconstruction error on the **branch geometry specifically** and (ii) attention effective rank in the aggregator. This tests the attention-collapse mechanism directly and would be the first parametric self-similarity study for this model family.",
+      "1053f56fa84f700d2e33ac04a9a433ddddfe488a:helios_setup_tasks.md:159:### T2.6 \u2014 Validate the proposal's occlusion-regulation module against AVUB **[PY]**",
+      "1053f56fa84f700d2e33ac04a9a433ddddfe488a:helios_setup_tasks.md:160:The WTFRC proposal's occlusion control adds/removes leaves to hit a target per-fruit occlusion. Check that the target occlusion level and the resulting AVUB distribution actually move together \u2014 that is the calibration that makes your factorial sweep meaningful.",
+      "1053f56fa84f700d2e33ac04a9a433ddddfe488a:helios_setup_tasks.md:258:- **T7.4** **D3 \u2014 LAI sweep on a fixed branch skeleton**, measuring branch-geometry error and attention effective rank. Uses the proposal's occlusion-regulation module. **[PY]**",
+      "bcb1a0af128e961b7baa2c01ec1ccc03b973a459:active_vision_design.md:41:Everything else in the proposal \u2014 the occlusion-regulation module, the Helios orchard, the physical evaluation protocol \u2014 I would keep as written. Those are strengths.",
+      "bcb1a0af128e961b7baa2c01ec1ccc03b973a459:active_vision_design.md:440:**D3 \u2014 Leaf-density / self-similarity sweep.** Helios lets you vary leaf area index continuously on a *fixed branch skeleton* (this is exactly what the proposal's occlusion-regulation module does). Sweep LAI from dormant to dense and measure (i) reconstruction error on the **branch geometry specifically** and (ii) attention effective rank in the aggregator. This tests the attention-collapse mechanism directly and would be the first parametric self-similarity study for this model family.",
+      "bcb1a0af128e961b7baa2c01ec1ccc03b973a459:helios_setup_tasks.md:159:### T2.6 \u2014 Validate the proposal's occlusion-regulation module against AVUB **[PY]**",
+      "bcb1a0af128e961b7baa2c01ec1ccc03b973a459:helios_setup_tasks.md:160:The WTFRC proposal's occlusion control adds/removes leaves to hit a target per-fruit occlusion. Check that the target occlusion level and the resulting AVUB distribution actually move together \u2014 that is the calibration that makes your factorial sweep meaningful.",
+      "bcb1a0af128e961b7baa2c01ec1ccc03b973a459:helios_setup_tasks.md:258:- **T7.4** **D3 \u2014 LAI sweep on a fixed branch skeleton**, measuring branch-geometry error and attention effective rank. Uses the proposal's occlusion-regulation module. **[PY]**",
+      "4f4ccc060460a9f05cb3c5dcc075493d724a89e0:active_vision_design.md:41:Everything else in the proposal \u2014 the occlusion-regulation module, the Helios orchard, the physical evaluation protocol \u2014 I would keep as written. Those are strengths.",
+      "4f4ccc060460a9f05cb3c5dcc075493d724a89e0:active_vision_design.md:440:**D3 \u2014 Leaf-density / self-similarity sweep.** Helios lets you vary leaf area index continuously on a *fixed branch skeleton* (this is exactly what the proposal's occlusion-regulation module does). Sweep LAI from dormant to dense and measure (i) reconstruction error on the **branch geometry specifically** and (ii) attention effective rank in the aggregator. This tests the attention-collapse mechanism directly and would be the first parametric self-similarity study for this model family."
+    ],
+    "conclusion": "no occlusion-regulation module exists anywhere in this repo's history (all hits are prose in .md design/task docs describing the external WTFRC proposal's module) -- T2.6 is blocked, skipped honestly per task brief"
+  },
+  "T2.1_T2.2_demo_time_s": 2.1793899536132812,
+  "T2.1_cross_validation": {
+    "n_fruit_view_pairs_with_signal": 241,
+    "pearson_correlation_vis_area_frac_vs_pixel_count_frac": 0.9242135588325447
+  },
+  "T2.2_union_demo": {
+    "n_fruit_seen_in_at_least_one_view": 83,
+    "n_fruit_where_union_exceeds_max_single_view": 82,
+    "mean_union_minus_max_single_view": 0.08712139332629064,
+    "best_example": {
+      "object_id": 7006,
+      "plant_id": 2,
+      "per_view_fracs": [
+        0.18665791379512614,
+        0.22020620819601167,
+        0.19021186782550428
+      ],
+      "union_frac": 0.4111594710962429,
+      "max_single_view_frac": 0.22020620819601167,
+      "union_minus_max_single": 0.19095326290023124
+    }
+  },
+  "sweep_timing": {
+    "0": {
+      "n_reachable_poses": 108,
+      "reachable_render_s": 24.226645469665527,
+      "n_free_flying_poses": 288,
+      "free_flying_render_s": 63.437161445617676
+    },
+    "1": {
+      "n_reachable_poses": 108,
+      "reachable_render_s": 23.9725182056427,
+      "n_free_flying_poses": 288,
+      "free_flying_render_s": 64.91472554206848
+    },
+    "2": {
+      "n_reachable_poses": 108,
+      "reachable_render_s": 23.824062824249268,
+      "n_free_flying_poses": 288,
+      "free_flying_render_s": 62.99398326873779
+    }
+  },
+  "T2.4_AVUB_summary": {
+    "n_fruit": 83,
+    "mean_AVUB": 0.49930054219067965,
+    "mean_AVUB_inf": 0.9765753423888792,
+    "ratio_of_means_AVUB_over_AVUB_inf": 0.511277031600348,
+    "mean_per_fruit_ratio_AVUB_over_AVUB_inf": 0.509801747800716,
+    "n_fruit_with_AVUB_inf_zero": 0,
+    "CAVEAT": "V_reach and the free-flying set are BOTH documented placeholders (see reachable_poses.py) -- these numbers will change once Phase 3's real kinematics-constrained roadmap replaces the placeholder grid."
+  },
+  "T2.5_achievability_summary": {
+    "n_fruit_total": 83,
+    "n_observable": 83,
+    "n_sizeable": 79,
+    "n_graspable": 82,
+    "fraction_observable_of_total": 1.0,
+    "fraction_sizeable_of_observable": 0.9518072289156626,
+    "fraction_graspable_of_observable": 0.9879518072289156,
+    "gamma_size_used": 0.3
+  },
+  "total_time_s": 270.9994161128998
+}

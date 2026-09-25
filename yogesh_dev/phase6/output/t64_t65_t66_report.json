@@ -1,0 +1,422 @@
+{
+  "T6.4": {
+    "n_fruit_total": 27,
+    "n_fruit_ever_detected": 21,
+    "overall_detection_recall": 0.7777777777777778,
+    "per_arm_n_detections": {
+      "arm_low": 0,
+      "arm_mid": 16,
+      "arm_high": 75
+    },
+    "deciles": [
+      {
+        "decile": 0,
+        "n_fruit": 3,
+        "mean_occlusion": 0.318150128828754,
+        "mean_vis_frac": 0.681849871171246,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 1,
+        "n_fruit": 2,
+        "mean_occlusion": 0.4220486131743026,
+        "mean_vis_frac": 0.5779513868256974,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 2,
+        "n_fruit": 3,
+        "mean_occlusion": 0.49056216430577865,
+        "mean_vis_frac": 0.5094378356942214,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 3,
+        "n_fruit": 3,
+        "mean_occlusion": 0.5181628073352406,
+        "mean_vis_frac": 0.4818371926647594,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 4,
+        "n_fruit": 3,
+        "mean_occlusion": 0.5308948007004466,
+        "mean_vis_frac": 0.4691051992995534,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 5,
+        "n_fruit": 2,
+        "mean_occlusion": 0.6011568410653252,
+        "mean_vis_frac": 0.39884315893467476,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 6,
+        "n_fruit": 3,
+        "mean_occlusion": 0.7276568660032551,
+        "mean_vis_frac": 0.27234313399674487,
+        "detection_recall": 1.0
+      },
+      {
+        "decile": 7,
+        "n_fruit": 3,
+        "mean_occlusion": 0.9120426388062163,
+        "mean_vis_frac": 0.08795736119378371,
+        "detection_recall": 0.6666666666666666
+      },
+      {
+        "decile": 8,
+        "n_fruit": 2,
+        "mean_occlusion": 1.0,
+        "mean_vis_frac": 0.0,
+        "detection_recall": 0.0
+      },
+      {
+        "decile": 9,
+        "n_fruit": 3,
+        "mean_occlusion": 1.0,
+        "mean_vis_frac": 0.0,
+        "detection_recall": 0.0
+      }
+    ],
+    "note": "Occlusion measure = 1 - (union-visible-fraction across all 42 real rendered views), Phase 2's own fruit_visible_fraction reused on this dataset's real vis_primitive_id maps. 'Detected' = appeared as a real >=5px instance-map detection (Phase 4 T4.4's own extract_detections) in >=1 of the 42 views, any arm. With only 27 fruit, each decile bucket holds ~2-3 fruit -- real numbers, small-N caveat noted rather than hidden."
+  },
+  "T6.5": {
+    "fruit": {
+      "precision": 0.5400565504241281,
+      "recall": 0.10921501706484642,
+      "f_score": 0.18168756595538071,
+      "n_candidate": 1061,
+      "n_gt": 3516,
+      "tau_m": 0.005,
+      "candidate_grid": "fine (attention-region, ~3mm voxels)"
+    },
+    "branch": {
+      "precision": 0.09745916515426498,
+      "recall": 0.29061895551257255,
+      "f_score": 0.14596793415506829,
+      "n_candidate": 5510,
+      "n_gt": 4136,
+      "tau_m": 0.01,
+      "candidate_grid": "coarse (whole-scene, ~2cm voxels)"
+    },
+    "leaf": {
+      "precision": 0.27622504537205084,
+      "recall": 0.35385072851620575,
+      "f_score": 0.3102561234378033,
+      "n_candidate": 5510,
+      "n_gt": 10089,
+      "tau_m": 0.01,
+      "candidate_grid": "coarse (whole-scene, ~2cm voxels)"
+    },
+    "wire": {
+      "note": "No wire/trellis geometry exists in this repo's scene at all -- single freestanding apple tree, no fruiting-wall/trellis (that's Phase 8 scope, T8.3). 0 GT wire elements; tau=5mm not applicable. Same 'real, not fabricated' policy as T2.6's missing-module finding.",
+      "n_gt": 0
+    }
+  },
+  "T6.6": {
+    "grid_dims": [
+      63,
+      62,
+      66
+    ],
+    "voxel_size_m": 0.02,
+    "confusion_matrix_pred_x_gt": {
+      "unknown": {
+        "gt_occupied": 1685,
+        "gt_free": 240004
+      },
+      "free": {
+        "gt_occupied": 20,
+        "gt_free": 10577
+      },
+      "occupied": {
+        "gt_occupied": 888,
+        "gt_free": 4622
+      }
+    },
+    "n_gt_occupied_voxels_branch_only": 994,
+    "n_gt_occupied_voxels_all_classes": 2593,
+    "M_free_given_occ__branch_only__safety_critical": 0.005030181086519115,
+    "M_free_given_occ__all_classes__for_reference": 0.007713073659853451,
+    "note": "GT occupancy is a real-geometry proxy: fruit = sphere of real equivalent_diameter_m around real centroid; branch = real tube segments from branch_segments_gt.json (label=='shoot'; leaf has no tube/sphere geometric proxy available and is excluded from GT-occupied here, so 'gt_free' includes true leaf-occupied space -- a known under-count of GT occupancy, documented rather than hidden). No wire class exists in this scene (see T6.5 note)."
+  },
+  "occupancy_build_report": {
+    "n_views": 42,
+    "n_valid_pixels_total": 302007,
+    "coarse_voxel_m": 0.02,
+    "fine_voxel_m": 0.003,
+    "coarse_dims": [
+      63,
+      62,
+      66
+    ],
+    "coarse_counts": {
+      "unknown": 241689,
+      "free": 10597,
+      "occupied": 5510,
+      "total": 257796
+    },
+    "n_attention_regions": 23,
+    "fine_region_dims": [
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        20,
+        20,
+        21
+      ],
+      [
+        20,
+        20,
+        21
+      ],
+      [
+        20,
+        21,
+        21
+      ],
+      [
+        20,
+        21,
+        21
+      ],
+      [
+        20,
+        21,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        20,
+        20,
+        21
+      ],
+      [
+        20,
+        21,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        21,
+        21,
+        21
+      ],
+      [
+        21,
+        21,
+        21
+      ],
+      [
+        21,
+        21,
+        21
+      ],
+      [
+        20,
+        21,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        20,
+        20,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        79,
+        47,
+        73
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        21,
+        20,
+        21
+      ],
+      [
+        20,
+        21,
+        21
+      ]
+    ],
+    "fine_region_counts": [
+      {
+        "unknown": 8810,
+        "free": 0,
+        "occupied": 10,
+        "total": 8820
+      },
+      {
+        "unknown": 8818,
+        "free": 0,
+        "occupied": 2,
+        "total": 8820
+      },
+      {
+        "unknown": 8371,
+        "free": 0,
+        "occupied": 29,
+        "total": 8400
+      },
+      {
+        "unknown": 8387,
+        "free": 0,
+        "occupied": 13,
+        "total": 8400
+      },
+      {
+        "unknown": 8806,
+        "free": 0,
+        "occupied": 14,
+        "total": 8820
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 8816,
+        "free": 0,
+        "occupied": 4,
+        "total": 8820
+      },
+      {
+        "unknown": 8370,
+        "free": 0,
+        "occupied": 30,
+        "total": 8400
+      },
+      {
+        "unknown": 8785,
+        "free": 0,
+        "occupied": 35,
+        "total": 8820
+      },
+      {
+        "unknown": 8817,
+        "free": 0,
+        "occupied": 3,
+        "total": 8820
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 9256,
+        "free": 0,
+        "occupied": 5,
+        "total": 9261
+      },
+      {
+        "unknown": 9243,
+        "free": 0,
+        "occupied": 18,
+        "total": 9261
+      },
+      {
+        "unknown": 9226,
+        "free": 0,
+        "occupied": 35,
+        "total": 9261
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 8813,
+        "free": 0,
+        "occupied": 7,
+        "total": 8820
+      },
+      {
+        "unknown": 8397,
+        "free": 0,
+        "occupied": 3,
+        "total": 8400
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 270199,
+        "free": 0,
+        "occupied": 850,
+        "total": 271049
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 8820,
+        "free": 0,
+        "occupied": 0,
+        "total": 8820
+      },
+      {
+        "unknown": 8817,
+        "free": 0,
+        "occupied": 3,
+        "total": 8820
+      }
+    ],
+    "update_time_s": 0.11587166786193848,
+    "pixel_stride": 2
+  }
+}

@@ -1,0 +1,41 @@
+==============================================================================
+W0 -- orchard factory measurement
+==============================================================================
+
+[layout] fixed geometry
+  2 rows x 10 trees, in-row 1.5 m, row 3.5 m
+  tree-base grid: x in [-6.75, 6.75], y in [-1.75, 1.75]
+
+[seeds] train/val/test seed-stream disjointness
+  {'n_train': 999, 'n_val': 499, 'n_test': 499, 'train_val_overlap': 0, 'train_test_overlap': 0, 'val_test_overlap': 0, 'disjoint': True}
+
+[M4a] single-tree age -> fruit curve
+  [1-tree] age=   400d  prims=   4886  fruit_objs=   0  build=  0.17s  h=1.79m
+  [1-tree] age=   500d  prims=   4886  fruit_objs=   0  build=  0.08s  h=1.79m
+  [1-tree] age=   540d  prims=  34001  fruit_objs=   0  build=  0.14s  h=1.97m
+  [1-tree] age=   600d  prims=  34024  fruit_objs=  20  build=  0.26s  h=2.7m
+  [1-tree] age=   650d  prims=  34024  fruit_objs=  20  build=  0.36s  h=2.7m
+  [1-tree] age=   700d  prims=  34024  fruit_objs=  20  build=  0.27s  h=2.7m
+  [1-tree] age=   720d  prims=  34024  fruit_objs=  20  build=  0.43s  h=2.7m
+  [1-tree] age=   800d  prims=  16058  fruit_objs=   0  build=  0.66s  h=2.55m
+  [1-tree] age=   900d  prims=  85340  fruit_objs=   0  build=  1.74s  h=2.58m
+
+[M2/M4b] full 2x10 orchard age sweep
+  [2x10]  age=   540d  prims=  752201  fruit_objs=    0  build=  13.45s  bbox_x=[-7.37,7.43] y=[-2.71,2.82] z=[-0.00,2.10]
+  [2x10]  age=   650d  prims=  830392  fruit_objs=  519  build=  40.09s  bbox_x=[-7.78,7.86] y=[-3.09,3.12] z=[-0.00,2.79]
+  [2x10]  age=   720d  prims=  830392  fruit_objs=  519  build=  37.78s  bbox_x=[-7.78,7.86] y=[-3.09,3.12] z=[-0.00,2.79]
+  [2x10]  age=   800d  prims=  381346  fruit_objs=    0  build=  45.17s  bbox_x=[-7.67,7.71] y=[-2.95,3.00] z=[-0.00,2.69]
+
+[M1] determinism (2x10 orchard, age 720 d)
+  seed 10000 build#1: prims=830392 fruit=519
+  seed 10000 build#2: prims=830392 fruit=519
+  seed 10001 build  : prims=846331 fruit=549
+  same-seed identical: True   different-seed differs: True
+
+[M3] advanceTime cost at 20-tree scale (start 650 d)
+  built at age=650.0d: prims=830392 in 36.86s
+  advanceTime(dt= 10.0) -> age= 660.0d      1.46s  prims=  830392  fruit_prims=106914
+  advanceTime(dt= 10.0) -> age= 670.0d      0.92s  prims=  830392  fruit_prims=106914
+  advanceTime(dt= 20.0) -> age= 690.0d      1.55s  prims=  830392  fruit_prims=106914
+  advanceTime(dt= 20.0) -> age= 710.0d      1.86s  prims=  830392  fruit_prims=106914
+  advanceTime(dt= 40.0) -> age= 750.0d      2.77s  prims=  381346  fruit_prims=0

@@ -1,0 +1,25 @@
+==============================================================================
+W0c -- growth channel inside the real growth window
+==============================================================================
+
+[Q1] build at 540.0d then advanceTime(5.0) x 10
+  age= 540.0  build   6.68s  prims= 752201  leafA=   13.10  fruitA=   0.000
+  age= 545.0  grow    1.92s  prims= 485145  leafA=   27.55  fruitA=   1.632
+  age= 550.0  grow    1.67s  prims= 561096  leafA=   40.76  fruitA=   3.129
+  age= 555.0  grow    3.37s  prims= 619871  leafA=   55.43  fruitA=   5.109
+  age= 560.0  grow    4.35s  prims= 689544  leafA=   68.67  fruitA=   7.572
+  age= 565.0  grow    2.04s  prims= 743468  leafA=   81.82  fruitA=  10.518
+  age= 570.0  grow    5.07s  prims= 807859  leafA=   93.76  fruitA=  13.946
+  age= 575.0  grow    2.36s  prims= 830392  leafA=  105.12  fruitA=  15.453
+  age= 580.0  grow    1.25s  prims= 830392  leafA=  110.41  fruitA=  15.453
+  age= 585.0  grow    1.30s  prims= 830392  leafA=  110.41  fruitA=  15.453
+  age= 590.0  grow    1.28s  prims= 830392  leafA=  110.41  fruitA=  15.453
+  advanceTime cost in-window: mean=2.46s min=1.25s max=5.07s (vs 6.7s for a full build)
+  consecutive stages that are geometrically IDENTICAL: 2/10
+
+[Q2] direct build at age 590.0 vs advanceTime path
+  advanceTime path: prims=830392  leafA=110.4103  fruitA=15.4530
+  direct build    : prims=830392  leafA=110.4103  fruitA=15.4531
+  count equality: {'n_primitives': True, 'n_leaf_prims': True, 'n_fruit_prims': True, 'n_shoot_prims': True}
+  |area difference|: {"area_leaf_m2": 1.4e-05, "area_shoot_m2": 0.017152, "area_fruit_m2": 4e-06, "area_petiole_m2": 8e-06, "area_peduncle_m2": 0.0}
+  EQUIVALENT: False

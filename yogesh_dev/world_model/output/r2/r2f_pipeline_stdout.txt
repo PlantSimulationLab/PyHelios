@@ -1,0 +1,11 @@
+[06:26:54] === R2-J: KL relaxation + class weights + L1 depth ===
+[06:54:26] r2_final exit=0
+[06:54:26] === W6 evaluation ===
+[06:54:37] evaluation exit=0
+[06:54:37] === R2-C: reconstruction floor, every Round 2 model, held-out ===
+[06:55:13] recon floor exit=0
+[06:55:13] === R2-D: growth counterfactual including the final model ===
+[06:55:16] growth counterfactual exit=0
+[06:55:16] === curves ===
+[06:55:17] curves exit=0
+[06:55:17] ROUND 2 PHASE F DONE
