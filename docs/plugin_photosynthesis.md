@@ -87,7 +87,7 @@ with Context() as context:
 
 ### Optional Output Primitive Data {#PhotoOptionalOutputData}
 
-**Note**: Optional output primitive data functionality is not yet implemented in PyHelios. In native Helios C++, this is done by calling `PhotosynthesisModel::optionalOutputPrimitiveData()`, which has no PyHelios equivalent at present.
+Optional outputs are requested by label before calling `run()`. In PyHelios this is exposed as \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::exportResults "exportResults(label)", which calls the native `PhotosynthesisModel::optionalOutputPrimitiveData()`.
 
  <table>
  <tr><th>Primitive Data Label</th><th>Symbol</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
@@ -96,6 +96,7 @@ with Context() as context:
  <tr><td>limitation\_state</td><td>N/A</td><td>N/A</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">int</span>\endhtmlonly</td><td>Photosynthesis limitation state. FvCB (C3): 0 = Rubisco-limited, 1 = electron-transport-limited. C4 (von Caemmerer 2021): 1 = enzyme-limited, 2 = electron-transport-limited.</td></tr>
  <tr><td>Cm</td><td>\f$C_m\f$</td><td>\f$\mu\f$bar</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Mesophyll cytosolic CO<sub>2</sub> partial pressure. C4 model only (helios-core v1.3.72+).</td></tr>
  <tr><td>Vp</td><td>\f$V_p\f$</td><td>\f$\mu\f$mol CO<sub>2</sub>/m<sup>2</sup>-sec</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>PEP carboxylation rate. C4 model only (helios-core v1.3.72+).</td></tr>
+ <tr><td>electron\_transport\_ratio</td><td>\f$J_a/J_e\f$</td><td>unitless</td><td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td><td>Relative light saturation of van der Tol et al. (2014): the electron transport used by carboxylation, photorespiration and triose-phosphate export at the chloroplast CO<sub>2</sub> partial pressure, divided by its light-limited potential. It is 1 in the dark and falls as light saturates photosynthesis, and drives the radiation plug-in's SIF fluorescence yield. Written by the Farquhar and C4 models (C4 since helios-core v1.3.89; before v1.3.89 this output was J/J<sub>max</sub>).</td></tr>
  </table>
 
 ## C4 Model (von Caemmerer 2021) {#C4Description}

@@ -374,6 +374,15 @@ PYHELIOS_API int doesPlantModelDeclareLeafInclinationDistribution(PlantArchitect
 // Nitrogen (g N) in the plant's available pool; -1 on error.
 PYHELIOS_API float getPlantAvailableNitrogen(PlantArchitecture* plantarch, unsigned int plantID);
 
+// ---- helios-core 1.3.89 additions ----
+// One-sided blade area (m^2) of a leaf object, excluding petiolule primitives; -1 on error.
+PYHELIOS_API float getLeafBladeArea(PlantArchitecture* plantarch, unsigned int leaf_objID);
+// Local light exposure in [0,1] from the plant's shadow-propagation grid at a world position (3 floats); -1 on error.
+PYHELIOS_API float getShadowLightExposureAtPoint(PlantArchitecture* plantarch, unsigned int plantID, const float* position);
+// One realization of PhytomerParameters::resample(), drawn with the Context's generator: every distributed
+// field of the input phytomer-parameters JSON comes back as a constant holding its draw. nullptr on error.
+PYHELIOS_API const char* resamplePhytomerParametersJSON(helios::Context* context, const char* json_params);
+
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 

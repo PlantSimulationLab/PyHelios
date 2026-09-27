@@ -1629,6 +1629,28 @@ PYHELIOS_API void createLiDARHitDataColumn(LiDARcloud* cloud, const char* label,
 PYHELIOS_API int getLiDARHitDataType(LiDARcloud* cloud, const char* label);
 
 /**
+ * @brief Remove a per-hit scalar-data column from every hit in the cloud (helios-core 1.3.89+)
+ *
+ * Also removes "timestamp" or "gapfillMisses_code" from synthesized misses that report it. Labels
+ * that synthesized misses depend on ("is_miss", "row", "column", "nRaysHit", and the origin_* labels
+ * of a moving scan) cannot be removed while any scan holds synthesized misses.
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param label Label of the data value; an error is reported if no column exists for it
+ */
+PYHELIOS_API void deleteLiDARHitData(LiDARcloud* cloud, const char* label);
+
+/**
+ * @brief Scan-grid cell a point lies in, from a static raster scan's declared raster (helios-core 1.3.89+)
+ *
+ * The cell is not clamped: a point outside the declared raster maps outside [0, Ntheta) x [0, Nphi).
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID Scan index; must be a static raster scan
+ * @param point (x, y, z) of the return, 3 floats
+ * @param out Receives [row, column]
+ */
+PYHELIOS_API void getLiDARNominalScanGridCell(LiDARcloud* cloud, unsigned int scanID, const float* point, int* out);
+
+/**
  * @brief Bulk-export a named scalar data column as 32-bit floats
  *
  * The float counterpart of getLiDARHitDataColumn(): reads a FLOAT32 column without widening it to

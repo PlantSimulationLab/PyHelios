@@ -80,6 +80,23 @@ class TestCalibratedTomatoExample:
         assert cotyledon_height == pytest.approx(1000 * THETA["hypocotyl_length"], abs=0.05), (
             "the cotyledon node sits on a hypocotyl of the prescribed length")
 
+    def test_fitted_tortuosity_is_converted_to_degrees_per_metre(self):
+        """theta_fitted.txt holds tortuosity per internode segment (pre-1.3.89); the shoot types need deg/m."""
+        if not get_plugin_registry().is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+        from pyhelios import Context, PlantArchitecture
+        example = _load_example()
+        growth = {k: v for k, v in THETA.items()
+                  if k not in ("hypocotyl_length", "emergence_offset_days", "emergence_offset_days_sd")}
+        with Context() as context, PlantArchitecture(context) as plantarch:
+            plantarch.disableMessages()
+            species = example.setup_tomato_species(context, plantarch, growth, "TomatoLeaf_centered.png")
+            grown = plantarch.getCurrentShootParameters(species["growth_type_label"])
+            segments = grown["phytomer_parameters"]["internode"]["length_segments"]
+            expected = THETA["tortuosity"] * segments / THETA["internode_length_max"]
+            assert grown["tortuosity"]["distribution"] == "constant"
+            assert grown["tortuosity"]["parameters"][0] == pytest.approx(expected, rel=1e-5)
+
     def test_rejects_plant_to_plant_variation(self):
         example = _load_example()
         with pytest.raises(ValueError, match="internode_length_max_sd"):

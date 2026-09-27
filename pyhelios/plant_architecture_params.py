@@ -230,7 +230,18 @@ class LeafPrototype:
     leaf_offset: Vec3 = (0.0, 0.0, 0.0)
     subdivisions: int = 1
     unique_prototypes: int = 1
+    #: Build a petiolule (the stalk joining a leaflet to the rachis): a cylinder along the
+    #: leaflet's midrib ending where the blade begins, then a short join that flattens and
+    #: tapers onto the blade base. Its primitives are labelled "petiolule", are drawn with the
+    #: petiole's material, and are not counted in leaf area.
     build_petiolule: bool = False
+    #: Petiolule length as a fraction of the leaflet's blade length, keyed by compound-leaf
+    #: index like :attr:`leaf_texture_file` (0 is the terminal leaflet; negative and positive
+    #: indices are the lateral leaflets on either side, counted from the tip). A single entry
+    #: applies to every leaflet. Only used when :attr:`build_petiolule` is True
+    #: (helios-core 1.3.89+). The petiolule's radius is not a parameter: it is taken from the
+    #: petiole where the leaflet attaches.
+    petiolule_length: Dict[int, float] = field(default_factory=lambda: {0: 0.05})
     OBJ_model_file: str = ""
     leaf_texture_file: Dict[int, str] = field(default_factory=dict)
     prototype_function: Optional[str] = None
@@ -278,6 +289,7 @@ class LeafPrototype:
             "subdivisions": int(self.subdivisions),
             "unique_prototypes": int(self.unique_prototypes),
             "build_petiolule": bool(self.build_petiolule),
+            "petiolule_length": {str(int(k)): float(v) for k, v in self.petiolule_length.items()},
             "OBJ_model_file": self.OBJ_model_file,
             "leaf_texture_file": {str(k): v for k, v in self.leaf_texture_file.items()},
             "prototype_function": self.prototype_function or "",
@@ -306,6 +318,8 @@ class LeafPrototype:
             subdivisions=int(d.get("subdivisions", base.subdivisions)),
             unique_prototypes=int(d.get("unique_prototypes", base.unique_prototypes)),
             build_petiolule=bool(d.get("build_petiolule", base.build_petiolule)),
+            petiolule_length=({int(k): float(v) for k, v in d["petiolule_length"].items()}
+                              if "petiolule_length" in d else base.petiolule_length),
             OBJ_model_file=str(d.get("OBJ_model_file", base.OBJ_model_file)),
             leaf_texture_file={int(k): str(v) for k, v in tex.items()},
             prototype_function=(d.get("prototype_function") or None),
@@ -588,6 +602,7 @@ _SHOOT_RPF_FIELDS = (
     ("base_yaw", 0.0),
     ("gravitropic_curvature", 0.0),
     ("tortuosity", 0.0),
+    ("tortuosity_persistence_length", 0.5),
     ("phyllochron_min", 2.0),
     ("elongation_rate_max", 0.2),
     ("leaf_expansion_rate_max", LEAF_EXPANSION_RATE_UNSET),
@@ -615,6 +630,11 @@ class ShootParameters:
     phytomer_parameters: PhytomerParameters = field(default_factory=PhytomerParameters)
 
     # Geometric / growth RandomParameter_float fields
+    #: Internode cross-sectional area (cm^2) per m^2 of downstream leaf area. Downstream leaf
+    #: area is cumulative -- every leaf ever produced above the internode, not reduced when
+    #: leaves drop or branches are shed (pipe model with disused pipes retained), so perennial
+    #: species need a much smaller factor than one driven by the current canopy. 0 disables
+    #: girth scaling.
     girth_area_factor: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     insertion_angle_tip: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(20.0))
     insertion_angle_decay_rate: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
@@ -624,7 +644,16 @@ class ShootParameters:
     base_roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     base_yaw: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     gravitropic_curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Standard deviation (degrees/m) of the random curvature that produces "wiggle" along
+    #: the shoot (an Ornstein-Uhlenbeck process in arc length), so the shoot's shape does not
+    #: depend on ``internode.length_segments``. Values from helios-core before 1.3.89, which
+    #: were an angle per internode segment, convert as
+    #: ``tortuosity * internode.length_segments / internode_length_max``.
     tortuosity: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Persistence length (m) over which the random tortuosity perturbation of the shoot's
+    #: curvature decorrelates (helios-core 1.3.89+): larger values give long, smooth meanders,
+    #: smaller values rapid, fine-scale wiggle. Values <= 0 fall back to the default of 0.5 m.
+    tortuosity_persistence_length: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.5))
     phyllochron_min: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(2.0))
     elongation_rate_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.2))
     #: Maximum relative expansion rate of the shoot's leaves and petioles

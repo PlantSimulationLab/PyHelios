@@ -1027,6 +1027,28 @@ try:
 except AttributeError:
     _PLANTARCHITECTURE_1388_AVAILABLE = False
 
+# Leaf blade area, shadow-grid light exposure and PhytomerParameters::resample() (helios-core 1.3.89).
+# NOTE: every wrapper function below must guard with _require_plantarch_1389(); guarding with an
+# older flag would skip the RuntimeError and call a symbol with no argtypes set.
+_PLANTARCHITECTURE_1389_AVAILABLE = False
+try:
+    helios_lib.getLeafBladeArea.argtypes = [ctypes.POINTER(UPlantArchitecture), ctypes.c_uint]
+    helios_lib.getLeafBladeArea.restype = ctypes.c_float
+    helios_lib.getLeafBladeArea.errcheck = _check_error
+
+    helios_lib.getShadowLightExposureAtPoint.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getShadowLightExposureAtPoint.restype = ctypes.c_float
+    helios_lib.getShadowLightExposureAtPoint.errcheck = _check_error
+
+    helios_lib.resamplePhytomerParametersJSON.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.resamplePhytomerParametersJSON.restype = ctypes.c_char_p
+    helios_lib.resamplePhytomerParametersJSON.errcheck = _check_error
+
+    _PLANTARCHITECTURE_1389_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1389_AVAILABLE = False
+
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
     """Create PlantArchitecture instance"""
@@ -3477,3 +3499,43 @@ def getPlantAvailableNitrogen(plantarch_ptr, plant_id: int) -> float:
     if plant_id < 0:
         raise ValueError("Plant ID must be non-negative")
     return float(helios_lib.getPlantAvailableNitrogen(plantarch_ptr, plant_id))
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.89 additions
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_1389() -> None:
+    """Raise if the native library predates the helios-core 1.3.89 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1389_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.89 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def getLeafBladeArea(plantarch_ptr, leaf_objID: int) -> float:
+    _require_plantarch_1389()
+    if leaf_objID < 0:
+        raise ValueError("Leaf object ID must be non-negative")
+    return float(helios_lib.getLeafBladeArea(plantarch_ptr, leaf_objID))
+
+
+def getShadowLightExposureAtPoint(plantarch_ptr, plant_id: int, position) -> float:
+    _require_plantarch_1389()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    pos = (ctypes.c_float * 3)(float(position[0]), float(position[1]), float(position[2]))
+    return float(helios_lib.getShadowLightExposureAtPoint(plantarch_ptr, plant_id, pos))
+
+
+def resamplePhytomerParameters(context_ptr, phytomer_parameters: dict) -> dict:
+    """Draw one realization of a phytomer-parameters dict; distributed fields come back as constants."""
+    _require_plantarch_1389()
+    import json
+    result = helios_lib.resamplePhytomerParametersJSON(
+        context_ptr, json.dumps(phytomer_parameters, default=_json_default).encode('utf-8'))
+    if not result:
+        raise RuntimeError("PhytomerParameters::resample returned no parameters")
+    return json.loads(result.decode('utf-8'))

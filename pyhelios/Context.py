@@ -1,7 +1,7 @@
 import ctypes
 import warnings
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 from enum import Enum
 
 import numpy as np
@@ -3261,10 +3261,14 @@ class Context:
         Args:
             uuids: List of primitive UUIDs to color
             primitive_data: Name of primitive data to use for coloring (e.g., "radiation_flux_SW")
-            colormap: Color map name - options include "hot", "cool", "parula", "rainbow", "gray", "lava"
-            ncolors: Number of discrete colors in color map (default: 10)
+            colormap: Color map name: "hot", "cool", "lava", "rainbow", "parula", "gray",
+                "green", "lines" or "algae" (see :meth:`getColormapNames`)
+            ncolors: Number of discrete colors in color map (default: 10). Must be at least 2.
             max_val: Maximum value for color scale (auto-determined if None)
             min_val: Minimum value for color scale (auto-determined if None)
+
+        If all primitives have the same data value (or ``min_val`` equals ``max_val``),
+        they are all given the first color of the colormap.
         """
         if max_val is not None and min_val is not None:
             context_wrapper.colorPrimitiveByDataPseudocolorWithRange(
@@ -6942,15 +6946,60 @@ class Context:
         """Generate a colormap with ``n_colors`` entries from a named colormap.
 
         Args:
-            name: Helios colormap name (e.g., "hot", "cool", "lava", "rainbow").
-            n_colors: Number of colors in the returned ramp.
+            name: Helios colormap name: "hot", "cool", "lava", "rainbow", "parula",
+                "gray", "green", "lines" or "algae" (see :meth:`getColormapNames`).
+            n_colors: Number of colors in the returned ramp. Must be at least 2.
 
         Returns:
             A list of ``RGBcolor`` instances of length ``n_colors``.
+
+        Raises:
+            HeliosRuntimeError: If ``name`` is not a predefined colormap (the error lists
+                the valid names) or ``n_colors`` is less than 2.
         """
         self._check_context_available()
         flat = context_wrapper.generateColormapNamedWrapper(self.context, name, int(n_colors))
-        return [RGBcolor(flat[i*3 + 0], flat[i*3 + 1], flat[i*3 + 2]) for i in range(int(n_colors))]
+        return [RGBcolor(flat[i*3 + 0], flat[i*3 + 1], flat[i*3 + 2]) for i in range(len(flat) // 3)]
+
+    @staticmethod
+    def getColormapNames() -> List[str]:
+        """Get the names of all predefined Helios colormaps.
+
+        These are the names accepted by :meth:`generateColormap`,
+        :meth:`colorPrimitiveByDataPseudocolor` and :meth:`getColormapControlPoints`
+        (as of helios-core 1.3.89: "hot", "cool", "lava", "rainbow", "parula", "gray",
+        "green", "lines" and "algae"). No Context instance is needed.
+
+        Returns:
+            List of colormap names.
+        """
+        return context_wrapper.getColormapNamesWrapper()
+
+    @staticmethod
+    def getColormapControlPoints(name: str) -> Tuple[List[RGBcolor], List[float]]:
+        """Get the control points that define a predefined Helios colormap.
+
+        A colormap is a set of colors placed at normalized positions between 0 and 1,
+        with colors linearly interpolated between them. These control points are the
+        single definition of each named colormap, and are also what the Visualizer's
+        predefined colormaps are built from. No Context instance is needed.
+
+        Args:
+            name: Colormap name (see :meth:`getColormapNames`).
+
+        Returns:
+            Tuple ``(colors, positions)``: the ``RGBcolor`` of each control point, and its
+            normalized position, in increasing order from 0 to 1.
+
+        Raises:
+            ValueError: If ``name`` is not a string.
+            HeliosRuntimeError: If ``name`` is not a predefined colormap (the error lists
+                the valid names).
+        """
+        if not isinstance(name, str):
+            raise ValueError(f"Colormap name must be a string, got {type(name).__name__}")
+        colors, positions = context_wrapper.getColormapControlPointsWrapper(name)
+        return [RGBcolor(r, g, b) for (r, g, b) in colors], positions
 
     def generateTexturesFromColormap(self, texture_file: str, colormap: List[RGBcolor]) -> List[str]:
         """Generate one texture file per color in ``colormap`` derived from

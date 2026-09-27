@@ -746,8 +746,26 @@ class TestVisualizerNewMethodsNative:
             visualizer.setColormap(Visualizer.COLORMAP_RAINBOW)
             
             # Test colormap validation
-            with pytest.raises(ValueError, match="Colormap ID must be 0-5"):
+            with pytest.raises(ValueError, match="Colormap ID must be one of"):
                 visualizer.setColormap(99)
+            # ID 6 is COLORMAP_CUSTOM, which is only reachable through setCustomColormap
+            with pytest.raises(ValueError, match="Colormap ID must be one of"):
+                visualizer.setColormap(6)
+
+    def test_colormap_lines_algae_green(self):
+        """COLORMAP_LINES (7) and the helios-core 1.3.89 COLORMAP_ALGAE (8) / COLORMAP_GREEN (9) are settable"""
+        assert Visualizer.COLORMAP_LINES == 7
+        assert Visualizer.COLORMAP_ALGAE == 8
+        assert Visualizer.COLORMAP_GREEN == 9
+        with Visualizer(400, 300, headless=True) as visualizer:
+            visualizer.setColormap(Visualizer.COLORMAP_LINES)
+            visualizer.setColormap(Visualizer.COLORMAP_ALGAE)
+            visualizer.setColormap(Visualizer.COLORMAP_GREEN)
+            visualizer.setColormap("lines")
+            visualizer.setColormap("ALGAE")
+            visualizer.setColormap("Green")
+            with pytest.raises(ValueError, match="Unknown colormap name"):
+                visualizer.setColormap("viridis")
 
 
 @pytest.mark.native_only

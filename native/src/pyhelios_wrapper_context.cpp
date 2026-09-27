@@ -11323,6 +11323,73 @@ extern "C" {
         }
     }
 
+    namespace {
+        thread_local std::vector<std::string> s_colormap_names_cache;
+        thread_local std::vector<float> s_colormap_control_points_cache;
+    }
+
+    PYHELIOS_API unsigned int getColormapNamesCount() {
+        clearError();
+        try {
+            s_colormap_names_cache = helios::Context::getColormapNames();
+            return (unsigned int)s_colormap_names_cache.size();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getColormapNames): ") + e.what()); return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getColormapNames): Unknown error."); return 0;
+        }
+    }
+
+    PYHELIOS_API int getColormapNameAt(unsigned int index, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            if (index >= s_colormap_names_cache.size()) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Index out of range; call getColormapNamesCount() first.");
+                return 0;
+            }
+            const std::string& value = s_colormap_names_cache[index];
+            int copy_length = std::min((int)value.length(), buffer_size - 1);
+            std::strncpy(buffer, value.c_str(), copy_length);
+            buffer[copy_length] = '\0';
+            return copy_length;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getColormapNameAt): ") + e.what()); return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getColormapNameAt): Unknown error."); return 0;
+        }
+    }
+
+    PYHELIOS_API float* getColormapControlPoints(const char* colormap_name, unsigned int* count_out) {
+        clearError();
+        try {
+            if (!count_out) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Count out-pointer is null"); return nullptr; }
+            *count_out = 0;
+            if (!colormap_name) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Colormap name is null"); return nullptr; }
+            std::vector<helios::RGBcolor> colors;
+            std::vector<float> positions;
+            helios::Context::getColormapControlPoints(std::string(colormap_name), colors, positions);
+            if (colors.size() != positions.size()) {
+                setError(PYHELIOS_ERROR_RUNTIME, "ERROR (Context::getColormapControlPoints): colors and positions differ in length.");
+                return nullptr;
+            }
+            s_colormap_control_points_cache.clear();
+            s_colormap_control_points_cache.reserve(colors.size() * 4);
+            for (size_t i = 0; i < colors.size(); ++i) {
+                s_colormap_control_points_cache.push_back(colors[i].r);
+                s_colormap_control_points_cache.push_back(colors[i].g);
+                s_colormap_control_points_cache.push_back(colors[i].b);
+                s_colormap_control_points_cache.push_back(positions[i]);
+            }
+            *count_out = (unsigned int)colors.size();
+            return s_colormap_control_points_cache.empty() ? nullptr : s_colormap_control_points_cache.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getColormapControlPoints): ") + e.what()); return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getColormapControlPoints): Unknown error."); return nullptr;
+        }
+    }
+
     PYHELIOS_API unsigned int generateTexturesFromColormapCount(helios::Context* context, const char* texture_file, float* colormap_rgb_flat, unsigned int n_colors) {
         clearError();
         try {

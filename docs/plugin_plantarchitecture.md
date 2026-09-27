@@ -89,6 +89,7 @@ PlantArchitecture includes 28 scientifically-validated plant models:
 **Trees:**
 - `"almond"` - Almond tree with seasonal growth patterns
 - `"almond_aldrich"` - Almond, Aldrich cultivar
+- `"almond_independence"` - Almond, Independence cultivar
 - `"almond_wood_colony"` - Almond, wood colony training
 - `"apple"` - Apple tree with standard varieties
 - `"apple_fruitingwall"` - Apple fruiting wall (specialized high-density training system)
@@ -164,6 +165,42 @@ days an inflorescence takes to expand from its initial quarter size to full size
 which is the right clock for a fruit but not for an inflorescence that finishes elongating long
 before the fruit it subtends even sets: the maize library model gives its tassel 6 days, roughly
 two months ahead of the ear's grain fill.
+
+`ShootParameters.tortuosity` is the standard deviation, in degrees per metre, of a random
+curvature that evolves along the shoot as an Ornstein-Uhlenbeck process in arc length, in
+addition to the deterministic `gravitropic_curvature`. Each internode segment is turned by that
+curvature times its length, so the shape of a shoot does not depend on how finely its internodes
+are subdivided (`internode.length_segments`). Library values range from about 10 degrees/m for
+trunks to about 200 degrees/m for very sinuous shoots. Before helios-core 1.3.89 tortuosity was an
+angle applied to every internode segment; convert an old value as
+tortuosity × `internode.length_segments` / `internode_length_max`.
+
+`ShootParameters.tortuosity_persistence_length` (helios-core 1.3.89, default 0.5 m) is the arc
+length over which that random curvature decorrelates: larger values give long, smooth meanders,
+smaller values rapid, fine-scale wiggle. Values of zero or less fall back to 0.5 m.
+
+`LeafPrototype.petiolule_length` (helios-core 1.3.89) sets the length of the petiolule -- the
+stalk joining a leaflet to the rachis, built when `LeafPrototype.build_petiolule` is true -- as a
+fraction of the leaflet's blade length. It is a `dict` keyed by compound-leaf index like
+`leaf_texture_file` (0 is the terminal leaflet, negative and positive indices the lateral leaflets
+on either side counted from the tip); a single entry applies to every leaflet, and the default is
+`{0: 0.05}`. The petiolule's radius is not a parameter: it is taken from the petiole where the
+leaflet attaches. Petiolule primitives are labelled `"petiolule"`, drawn with the petiole's
+material, and not counted as leaf area.
+
+`ShootParameters.girth_area_factor` is the internode cross-sectional area (cm²) per m² of
+downstream leaf area. As of helios-core 1.3.89 the downstream leaf area is cumulative: it counts
+every leaf ever produced above the internode and is not reduced when leaves drop or branches are
+shed (the pipe model with disused pipes retained), so old basal wood is thicker than its current
+canopy alone would require and a limb tapers as the square root of the leaf area it has supported.
+Because the total grows every season, perennial species need a much smaller factor than a model
+driven by the current canopy would.
+
+Committing a shoot type with `defineShootType()` stores the
+values it was given without re-drawing any random parameter, so reading a shoot type and writing it
+straight back unchanged leaves the model, and the random stream, unchanged (helios-core 1.3.89+).
+Phytomer parameters are instead re-drawn each time a phytomer is created, so that phytomers on the
+same shoot vary.
 
 `getCurrentShootParameters()` returns a plain nested `dict` by default; pass
 `return_typed=True` to get a `ShootParameters` object. The returned structure
@@ -346,6 +383,39 @@ builder, but a plant assembled manually with `addPlantInstance()` keeps the defa
 silently stops growing after 999 days — a long simulation that appears to plateau for no reason
 is usually this. Setting a maximum age below the plant's current age is permitted and freezes the
 plant at its current form.
+
+### Branch shedding and growth priority in perennials
+
+As of helios-core 1.3.89, perennial plants that cycle through winter dormancy are shaped by two
+processes applied once per season, at the dormancy boundary. Neither requires per-species
+parameters.
+
+- **Shade-driven branch shedding.** Each plant carries a coarse voxel grid into which every leaf
+  deposits "shadow" (the shadow-propagation model of Palubicki et al. 2009, a cheap surrogate for
+  light interception with no ray tracing), captured at the season's peak leaf area. Fine branches
+  that stood in deep shade through the season, and fine branches low in the crown and near its
+  axis, are shed stochastically. A branch must survive at least one full season in leaf before it
+  can be shed.
+- **Growth priority.** The laterals of each parent are ranked by the light their tips receive; the
+  best-lit are promoted, gaining node budget, internode length and bud-break probability over
+  successive seasons, while the rest are demoted, so dominant laterals develop into limbs.
+
+Both act only on shoots of type `"proleptic"` or `"sylleptic"`; every other shoot type is treated
+as structural wood (trunk, scaffolds) and is exempt, so a model whose fine shoots use other shoot
+type names is neither shed nor reprioritized. In native Helios neither process runs when the
+carbohydrate model is enabled (which prunes branches on carbon starvation instead); PyHelios does not
+currently expose enabling the carbohydrate model, so they always apply. Together they reduce the leaf area of
+the perennial tree models to roughly 55-60% of earlier versions; annuals, eastern redbud and
+grapevines are unchanged.
+
+`getShadowLightExposureAtPoint(plant_id, position)` reads a plant's current shadow grid at a
+world position, returning the local light exposure from 0 (fully shaded) to 1 (unshaded) that
+drives the shedding decision. It returns 1 before the plant has a canopy. It is intended for
+inspecting and testing the shedding model, not as a radiation calculation.
+
+```python
+exposure = plantarch.getShadowLightExposureAtPoint(plant_id, vec3(0.2, 0.0, 1.5))
+```
 
 ### Carbohydrate and nitrogen model parameters
 
@@ -990,21 +1060,27 @@ for step in range(40):
 `docs/examples/plantarch_tomato_calibrated_sample.py` uses all of these to grow a calibrated tomato
 from seed and measure every leaf, porting a C++ calibration program.
 
-\note A shoot type defined from a parameter dict consumes a different number of draws from the
-Context random generator than the same type built by copying C++ structs, so a Python port of a
-C++ model grows statistically equivalent plants, not the same plant for the same seed.
+\note As of helios-core 1.3.89, neither defining a shoot type from a parameter dict nor copying
+C++ parameter structs draws from the Context random generator; each phytomer draws its own values
+once, when it is created. Before 1.3.89 the two paths consumed different numbers of draws, so a
+Python port of a C++ model grew statistically equivalent plants rather than the same plant for the
+same seed. A port still draws the same stream only if it makes the same random-consuming calls in
+the same order as the C++ program.
 
 ### Built-Geometry Organ Queries
 
 `getCurrentShootParameters()` reports a shoot *type*: the distributions a parameter is drawn
 from. These queries report what the plant was actually built with, one entry per organ, measured
-from the geometry in the Context. The distinction matters for calibration because a random
-parameter caches its first draw and a shoot holds a copy of its type's parameters, so a plant can
-be built with no variation at all while its parameters describe a wide spread.
+from the geometry in the Context. The distinction matters for calibration because what a plant is
+built with is one finite sample of those distributions: each phytomer draws its own phytomer
+parameters once, when it is created (helios-core 1.3.89+), and a few phytomers can sit far from
+the spread their parameters describe. `resamplePhytomerParameters()` draws such a sample directly
+from a set of phytomer parameters, without building geometry.
 
 | Method | Returns |
 |---|---|
-| `getPlantLeafAreas(plant_id)` | Present one-sided area (m²) of each leaf, shoot by shoot then phytomer by phytomer (the order of `getPlantLeafObjectIDs()`); leaves without geometry are omitted |
+| `getPlantLeafAreas(plant_id)` | Present one-sided blade area (m²) of each leaf, shoot by shoot then phytomer by phytomer (the order of `getPlantLeafObjectIDs()`); leaves without geometry are omitted. A leaflet's petiolule is not counted (helios-core 1.3.89+), as in every leaf-area result |
+| `getLeafBladeArea(leaf_object_id)` | One-sided blade area (m²) of a single leaf object, excluding any petiolule; `Context.getObjectArea()` on the same object includes it (helios-core 1.3.89+) |
 | `getPlantInternodeLengths(plant_id)` | Length (m) of each internode along its built node positions, one per phytomer |
 | `getPlantLeafInclinations(plant_id)` | Angle (degrees) between each blade and the horizontal from its area-weighted normal, folded to [0, 90]; blades whose facet normals cancel are omitted |
 

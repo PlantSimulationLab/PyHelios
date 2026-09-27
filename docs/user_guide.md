@@ -368,6 +368,20 @@ UUID = context.addPatch(center, size, color=RGBcolor(1, 0, 0))
 SIZE = context.getPatchSize(UUID)
 ```
 
+### Coloring Primitives by Data {#ColormapColor}
+
+\ref pyhelios.Context.Context::colorPrimitiveByDataPseudocolor "colorPrimitiveByDataPseudocolor()" colors primitives by mapping a primitive data value onto a named colormap. The predefined colormaps are "hot", "cool", "lava", "rainbow", "parula", "gray", "green", "lines" and "algae" (a light-to-dark green from the cmocean package). \ref pyhelios.Context.Context::getColormapNames "Context.getColormapNames()" lists them, and \ref pyhelios.Context.Context::getColormapControlPoints "Context.getColormapControlPoints(name)" returns the colors and normalized positions that define one; both are static and need no Context instance. \ref pyhelios.Context.Context::generateColormap "generateColormap(name, n_colors)" samples a colormap into `n_colors` (at least 2) discrete colors. The Visualizer's predefined colormaps are built from these same definitions.
+
+```python
+from pyhelios import Context
+
+print(Context.getColormapNames())
+colors, positions = Context.getColormapControlPoints("algae")
+
+with Context() as context:
+    ramp = context.generateColormap("algae", 10)   # 10 RGBcolor values
+```
+
 ### Texture Mapping {#Texture}
 
 Images can be overlaid on patches and triangles through a process called [texture mapping](https://en.wikipedia.org/wiki/Texture_mapping). There are typically two reasons for doing this. One is simply for visualization purposes, as it easily allows for complex coloring of a surface by coloring a surface according to an image. The other is to create a more complex shape by removing a portion of the primitive surface according to the transparency channel of an image. Each of these cases are described in detail below.

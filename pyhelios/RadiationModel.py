@@ -285,11 +285,14 @@ class SIFCameraProperties(CameraProperties):
     Attributes:
         excitation_bin_width_nm: Excitation wavelength bin width in nm. Helios
             auto-creates internal radiation bands spanning 400–750 nm at this
-            resolution to compute per-leaf APAR. Must be > 0. Default 10.0.
+            resolution to compute the per-leaf incident excitation flux. Must be
+            > 0. Default 10.0.
         excitation_scattering_depth: Scattering depth for the auto-generated
-            excitation bands. ``0`` (default) treats every leaf hit as fully
-            absorbed. Set to ``>=1`` to include inter-leaf scattering at the
-            cost of additional excitation-band ray traces.
+            excitation bands. ``0`` (default) counts only excitation arriving
+            directly from the sources, so leaves inside a canopy miss the
+            excitation scattered to them by other leaves. Set to ``>=1`` to
+            include inter-leaf scattering at the cost of additional
+            excitation-band ray traces.
 
     Note:
         String fields inherited from :class:`CameraProperties` (``model``,
@@ -976,7 +979,10 @@ class RadiationModel:
         Args:
             object_spectrum: Object spectrum as list of (wavelength, value) tuples/vec2
             wavelength_min: Optional minimum wavelength for integration range
-            wavelength_max: Optional maximum wavelength for integration range
+            wavelength_max: Optional maximum wavelength for integration range. The
+                spectrum is linearly interpolated to the bounds, so a bound falling
+                between tabulated points contributes only the part of its segment
+                inside the range.
             source_id: Optional source ID for source spectrum weighting
             camera_spectrum: Optional camera spectrum for camera response weighting
 
@@ -1012,6 +1018,10 @@ class RadiationModel:
     def integrateSourceSpectrum(self, source_id: int, wavelength_min: float, wavelength_max: float) -> float:
         """
         Integrate source spectrum over wavelength range.
+
+        The spectrum is linearly interpolated to the wavelength bounds, so a bound
+        falling between tabulated points contributes only the part of its segment
+        inside the range.
 
         Args:
             source_id: Source ID
@@ -1946,6 +1956,12 @@ class RadiationModel:
         use the Fluspect-B leaf-fluorescence kernel for emission instead of Stefan-Boltzmann.
         Helios auto-creates internal radiation bands covering 400-750 nm at the resolution
         specified by ``camera_properties.excitation_bin_width_nm``.
+
+        Leaves fluoresce only if they carry ``fluspect_spectrum`` primitive data (authored by
+        :class:`LeafOptics`). Every such leaf must also carry ``electron_transport_ratio``
+        (the relative light saturation Ja/Je written by the Farquhar or C4 photosynthesis
+        model when that optional output is requested) when a SIF band is run; otherwise
+        :meth:`runBand` raises an error.
 
         Args:
             camera_label: Unique label for the camera.

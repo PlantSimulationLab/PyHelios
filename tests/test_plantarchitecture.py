@@ -5155,8 +5155,10 @@ class TestBuiltGeometryOrganQueries:
         leaf_ids = pa.getPlantLeafObjectIDs(plant_id)
         assert 0 < len(areas) <= len(leaf_ids)
         assert all(a > 0 for a in areas)
-        built = sum(context.getObjectArea(objID) for objID in leaf_ids)
+        # Leaf area excludes petiolule primitives (helios-core 1.3.89), which the object area includes.
+        built = sum(pa.getLeafBladeArea(objID) for objID in leaf_ids)
         assert sum(areas) == pytest.approx(built, rel=1e-3)
+        assert sum(areas) <= sum(context.getObjectArea(objID) for objID in leaf_ids) * (1 + 1e-6)
 
     def test_internode_lengths_one_per_phytomer(self, grown):
         pa, plant_id, _ = grown

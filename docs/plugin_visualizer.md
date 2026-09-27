@@ -508,10 +508,24 @@ Primitives can be colored by mapping associated data values to a color table. Gi
      <td>\image html colormap_gray.png</td>
   </tr>
   <tr>
+     <td>COLORMAP_LINES</td>
+     <td>\image html colormap_lines.png</td>
+  </tr>
+  <tr>
+     <td>COLORMAP_ALGAE</td>
+     <td>\image html colormap_algae.png</td>
+  </tr>
+  <tr>
+     <td>COLORMAP_GREEN</td>
+     <td>\image html colormap_green.png</td>
+  </tr>
+  <tr>
      <td>COLORMAP_CUSTOM</td>
      <td>N/A</td>
   </tr>
 </table>
+
+Each predefined Visualizer colormap is built from the Context colormap of the same name, so it is identical to what \ref pyhelios.Context.Context::colorPrimitiveByDataPseudocolor "Context.colorPrimitiveByDataPseudocolor()" produces; \ref pyhelios.Context.Context::getColormapControlPoints "Context.getColormapControlPoints()" returns its defining colors and positions.
 
 To color primitives by data values, use the \ref pyhelios.Visualizer.Visualizer::colorContextPrimitivesByData "colorContextPrimitivesByData()" method:
 

@@ -573,6 +573,8 @@ sun_par_flux = radiation.integrateSourceSpectrum(sun_id, 400, 700)
 print(f"Sun PAR flux: {sun_par_flux} W/m²")
 ```
 
+When integrating over a wavelength range, the spectrum is linearly interpolated to the bounds, so a bound that falls between tabulated points contributes only the part of its segment inside the range (helios-core 1.3.89+; earlier versions integrated the whole segment containing each bound).
+
 ### Spectrum Normalization
 
 ```python
@@ -773,9 +775,15 @@ with RadiationModel(context) as radiation:
     assert radiation.isSIFCamera("sif_cam")
 ```
 
-Each emission band is locked to a single excitation bin width — re-flagging the same band from a second camera with a different bin width is an error. Set `excitation_scattering_depth >= 1` to include inter-leaf scattering in the per-leaf APAR calculation; this captures NIR reflectance/transmittance contributions at the cost of additional excitation-band ray traces.
+Each emission band is locked to a single excitation bin width — re-flagging the same band from a second camera with a different bin width is an error. The Fluspect-B kernel acts on the excitation flux *incident* on each leaf (leaf absorption is already contained in the kernel). At the default `excitation_scattering_depth=0`, only excitation arriving directly from the sources is counted, so leaves inside a canopy miss the excitation scattered to them by other leaves (most in the far-red end of the excitation range, where leaf reflectance and transmittance are both large). Set `excitation_scattering_depth >= 1` to include inter-leaf scattering, at the cost of additional excitation-band ray traces.
 
-> Per-leaf APAR storage scales as `O(N_leaves * N_excitation_bands)` where
+Each leaf face emits the Fluspect-B *backward* spectrum of the excitation it receives plus the *forward* spectrum of the excitation received by the opposite face, so for a leaf lit from above the top face emits the backward spectrum. The two differ most in the red band near 685 nm, where backward emission is about twice as strong for a typical leaf because red fluorescence is reabsorbed crossing the leaf.
+
+The fluorescence quantum yield Φ_F follows van der Tol et al. (2014), Eq. 19, with its unstressed parameter set (the SCOPE default). It is driven by the per-leaf `electron_transport_ratio` primitive data — the relative light saturation Ja/Je, which is 1 in the dark and falls as light saturates photosynthesis — and by leaf `temperature` (the radiation model's default of 300 K when absent; a non-positive temperature is an error). `electron_transport_ratio` is written by the Farquhar and C4 photosynthesis models when requested as an optional output (see [Photosynthesis optional outputs](plugin_photosynthesis.md#PhotoOptionalOutputData)); the empirical model cannot drive SIF. Primitives without `fluspect_spectrum` do not fluoresce, but a primitive that has `fluspect_spectrum` and no `electron_transport_ratio` when a SIF band is run makes `runBand()` raise an error. Run the PAR band before photosynthesis, or every leaf sees zero light and gets the dark-adapted yield (Ja/Je = 1) regardless of its actual illumination.
+
+> **Note:** helios-core 1.3.89 corrected the SIF emission scaling and fluorescence yield, so absolute SIF values are much lower than those produced by earlier versions.
+
+> Per-leaf excitation-flux storage scales as `O(N_leaves * N_excitation_bands)` where
 > `N_excitation_bands = ceil(350 / excitation_bin_width_nm)`. For very large
 > canopies prefer a coarser bin width (e.g., 20 nm) to keep memory bounded.
 

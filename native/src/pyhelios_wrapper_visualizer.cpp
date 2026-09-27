@@ -1091,8 +1091,11 @@ extern "C" {
                 case 3: colormap = Visualizer::COLORMAP_LAVA; break;
                 case 4: colormap = Visualizer::COLORMAP_PARULA; break;
                 case 5: colormap = Visualizer::COLORMAP_GRAY; break;
+                case 7: colormap = Visualizer::COLORMAP_LINES; break;
+                case 8: colormap = Visualizer::COLORMAP_ALGAE; break;
+                case 9: colormap = Visualizer::COLORMAP_GREEN; break;
                 default:
-                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid colormap ID (must be 0-5)");
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Invalid colormap ID (must be 0-5 or 7-9; use setCustomColormap for a custom colormap)");
                     return;
             }
             

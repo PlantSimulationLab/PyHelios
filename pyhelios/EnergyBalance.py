@@ -345,9 +345,21 @@ class EnergyBalanceModel:
         them with :meth:`Context.setGlobalData` before calling :meth:`run`.
 
         After :meth:`run`, primitive data ``air_temperature``, ``air_humidity`` and
-        ``wind_speed`` are set on the canopy primitives, and global data
+        ``wind_speed`` are set on the canopy and ground primitives, and global data
         ``canopy_air_temperature``, ``canopy_air_humidity``, their per-layer counterparts,
         ``aerodynamic_resistance`` and ``canopy_airspace_iterations`` are reported.
+
+        The soil exchanges sensible heat and water vapor with the lowest layer through the
+        same boundary-layer and moisture conductances its own surface energy balance uses,
+        so the heat and water released by the soil are exactly what the airspace receives.
+        Ground primitives without ``boundarylayer_conductance`` primitive data use the
+        bare-soil conductance of Kustas and Norman (1999) rather than the flat-plate
+        relation used for other primitives; a value set by the user or by the
+        boundary-layer conductance plug-in takes precedence. Soil evaporation is governed
+        by the ``moisture_conductance`` (zero by default, i.e. a dry soil) and
+        ``surface_humidity`` primitive data of the ground primitives. Soil fluxes are
+        averaged over the area of the ground primitives, which are taken to represent the
+        soil surface beneath the whole canopy footprint.
 
         Args:
             canopy_UUIDs: Canopy (leaf) primitives exchanging heat and moisture with the airspace.

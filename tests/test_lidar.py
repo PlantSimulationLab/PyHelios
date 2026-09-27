@@ -3952,3 +3952,90 @@ class TestLiDAR1386Native:
             self._cloud_with_hits(lidar)
             with pytest.raises(Exception):
                 lidar.getGridGlobalCount()
+
+
+@pytest.mark.cross_platform
+class TestLiDAR1389Validation:
+    """Argument validation for the helios-core 1.3.89 LiDAR additions (pure Python)."""
+
+    def _cloud(self):
+        from pyhelios import LiDARCloud
+        return LiDARCloud.__new__(LiDARCloud)
+
+    def test_wrapper_guard_uses_1389_flag(self):
+        from pyhelios.wrappers import ULiDARWrapper as w
+        with patch.object(w, '_LIDAR_1389_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.89"):
+                w._require_lidar_1389()
+
+    def test_delete_hit_data_rejects_bad_label(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(TypeError):
+            LiDARCloud.deleteHitData(self._cloud(), 5)
+        with pytest.raises(ValueError):
+            LiDARCloud.deleteHitData(self._cloud(), "")
+
+    def test_nominal_scan_grid_cell_rejects_non_vec3(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(ValueError, match="vec3"):
+            LiDARCloud.getNominalScanGridCell(self._cloud(), 0, [1.0, 0.0, 0.0])
+        with pytest.raises(ValueError, match="vec3"):
+            LiDARCloud.getNominalScanGridCell(self._cloud(), 0, RGBcolor(1, 0, 0))
+
+
+@pytest.mark.native_only
+class TestLiDAR1389Native:
+    """The helios-core 1.3.89 LiDAR additions against the native library."""
+
+    def test_delete_hit_data_removes_only_that_column(self):
+        import numpy as np
+        from pyhelios import LiDARCloud
+        from pyhelios.LiDARCloud import HitDataType
+        with LiDARCloud() as lidar:
+            scan = lidar.addScan(origin=vec3(0, 0, 0), Ntheta=4, theta_range=(0.0, 0.5),
+                                 Nphi=4, phi_range=(0.0, 0.5),
+                                 exit_diameter=0.01, beam_divergence=0.001)
+            lidar.createHitDataColumn("idx", HitDataType.INT32)
+            lidar.createHitDataColumn("frac", HitDataType.FLOAT32)
+            xyz = np.array([[1.0 + i, 0.0, 0.0] for i in range(4)], dtype=np.float64)
+            vals = np.array([[float(i), i * 0.5] for i in range(4)], dtype=np.float64)
+            lidar.addHitPointsBulk(scan, xyz, labels=["idx", "frac"], values=vals)
+
+            lidar.deleteHitData("frac")
+
+            assert not any(lidar.doesHitDataExist(i, "frac") for i in range(4))
+            assert lidar.getHitDataColumnInt32("idx") == [0, 1, 2, 3]
+            with pytest.raises(Exception, match="no hit data column"):
+                lidar.deleteHitData("frac")
+
+    def test_nominal_scan_grid_cell_inverts_the_raster(self):
+        """A point fired along cell (r, c) of a static raster maps back to (r, c), unclamped outside it."""
+        import math
+        from pyhelios import LiDARCloud
+        Ntheta, Nphi = 11, 11
+        theta_min, theta_max, phi_min, phi_max = 0.5, 1.5, 0.0, 1.0
+        dtheta = (theta_max - theta_min) / (Ntheta - 1)
+        dphi = (phi_max - phi_min) / (Nphi - 1)
+
+        def fired(r, c, distance=5.0):
+            # The synthetic scanner rotates the head by dphi/Ntheta per row within a column.
+            zen = theta_min + r * dtheta
+            az = phi_min + c * dphi + r * dphi / Ntheta
+            return vec3(distance * math.sin(zen) * math.sin(az),
+                        distance * math.sin(zen) * math.cos(az),
+                        distance * math.cos(zen))
+
+        with LiDARCloud() as lidar:
+            scan = lidar.addScan(origin=vec3(0, 0, 0), Ntheta=Ntheta, theta_range=(theta_min, theta_max),
+                                 Nphi=Nphi, phi_range=(phi_min, phi_max),
+                                 exit_diameter=0.01, beam_divergence=0.001)
+            for r, c in [(0, 0), (3, 7), (10, 10), (5, 2)]:
+                assert lidar.getNominalScanGridCell(scan, fired(r, c)) == (r, c)
+            # Beyond thetaMax the row runs past Ntheta rather than being clamped to Ntheta-1.
+            assert lidar.getNominalScanGridCell(scan, fired(13, 4))[0] == 13
+
+    def test_nominal_scan_grid_cell_invalid_scan_raises(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            with pytest.raises(Exception, match="Invalid scanID"):
+                lidar.getNominalScanGridCell(3, vec3(1, 0, 0))

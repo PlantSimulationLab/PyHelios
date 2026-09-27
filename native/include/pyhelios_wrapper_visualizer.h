@@ -461,7 +461,7 @@ PYHELIOS_API void setColorbarFontSize(Visualizer* visualizer, unsigned int font_
 /**
  * @brief Set predefined colormap
  * @param visualizer Pointer to the Visualizer
- * @param colormap_id Colormap ID (0=HOT, 1=COOL, 2=RAINBOW, 3=LAVA, 4=PARULA, 5=GRAY)
+ * @param colormap_id Colormap ID, matching Visualizer::Ctable (0=HOT, 1=COOL, 2=RAINBOW, 3=LAVA, 4=PARULA, 5=GRAY, 7=LINES, 8=ALGAE, 9=GREEN); 6 (CUSTOM) is set through setCustomColormap()
  */
 PYHELIOS_API void setColormap(Visualizer* visualizer, unsigned int colormap_id);
 

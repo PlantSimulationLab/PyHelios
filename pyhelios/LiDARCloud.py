@@ -1324,6 +1324,9 @@ class LiDARCloud:
         """
         Generate triangle mesh from hit points using Delaunay triangulation.
 
+        For multi-return data only first returns are triangulated (the lowest
+        ``target_index``, whether the scan counts returns from 0 or from 1).
+
         Args:
             Lmax: Maximum triangle edge length
             max_aspect_ratio: Maximum triangle aspect ratio (default 4.0)
@@ -1754,6 +1757,14 @@ class LiDARCloud:
         Important for accurate leaf area calculations with real LiDAR data.
         Should be called before triangulation when processing real data.
 
+        Each scan is reconstructed from its returns' ``row``/``column`` data if present,
+        otherwise from their ``timestamp`` data. A static raster scan with neither is placed
+        on its declared raster by direction (through the scan's tilt and azimuth offset),
+        after checking that the returns lie on that raster; moving-platform, spinning
+        multibeam and Risley-prism scans still need timestamps or row/column data. Raises
+        an error if a scan's timestamps were rounded more coarsely than the scanner fires
+        (returns sharing a timestamp point in different directions).
+
         Misses synthesized here are stored in virtualized form -- as a per-cell occupancy
         bit plus a scan-wide angular model rather than as stored points -- so they cost no
         per-point storage. They are counted by :meth:`getHitCount` and readable through
@@ -2158,6 +2169,14 @@ class LiDARCloud:
             inversion fails fast without them. Misses are produced by
             ``syntheticScan(..., record_misses=True)`` (the default) or by
             :meth:`gapfillMisses`. Use :meth:`hasMisses` to check.
+
+        .. note::
+            Returns are grouped into beams by their shared ``timestamp``, so timestamps must
+            identify one pulse each. The inversion rejects a scan whose returns sharing a
+            timestamp point in different directions (timestamps rounded on export, e.g. to
+            32-bit floats), and one whose per-pulse data contradicts the grouping (two returns
+            of a pulse with the same ``target_index``, or more returns than its
+            ``target_count``). The error names the scan and how many beams are affected.
 
         Args:
             context: Helios Context instance
@@ -3023,6 +3042,78 @@ class LiDARCloud:
         # Keep the ctypes callback object alive for as long as native code holds it; ctypes does not.
         self._progress_callback_ref = lidar_wrapper.LiDARProgressCallback(_trampoline)
         lidar_wrapper.setLiDARProgressCallback(self._cloud_ptr, self._progress_callback_ref)
+
+    # ------------------------------------------------------------------
+    # helios-core 1.3.89 additions
+    # ------------------------------------------------------------------
+
+    def deleteHitData(self, label: str) -> None:
+        """
+        Remove a per-hit scalar-data column from every hit in the cloud.
+
+        Use this to discard hit data that is wrong and that later processing would otherwise
+        trust -- for example timestamps rounded more coarsely than the scanner fires, which
+        can then no longer group returns into pulses, or a ``target_index`` rewritten on
+        export. Every other column keeps its values.
+
+        Misses synthesized by :meth:`gapfillMisses` report some labels themselves. Removing
+        ``"timestamp"`` or ``"gapfillMisses_code"`` also removes it from those misses. The
+        labels they need to exist (``"is_miss"``, ``"row"``, ``"column"``, ``"nRaysHit"``,
+        and ``"origin_x"``/``"origin_y"``/``"origin_z"`` on a moving scan) cannot be removed
+        while any scan has synthesized misses.
+
+        A static raster scan whose timestamps were rounded can be gap-filled by removing
+        them (and ``"target_index"`` for multi-return data) first, so that
+        :meth:`gapfillMisses` places the returns on the declared raster by direction.
+
+        Args:
+            label: Label of the data value
+
+        Raises:
+            TypeError: If ``label`` is not a str
+            ValueError: If ``label`` is empty
+            HeliosError: If no column exists for the label, or the label is one that
+                synthesized misses depend on
+            RuntimeError: If the native library predates helios-core v1.3.89
+        """
+        self._validate_label(label)
+        lidar_wrapper.deleteLiDARHitData(self._cloud_ptr, label)
+
+    def getNominalScanGridCell(self, scanID: int, point: vec3) -> Tuple[int, int]:
+        """
+        Scan-grid cell (row, column) a point lies in, from the scan's declared raster.
+
+        The inverse of the raster the synthetic scanner fires: the point's direction from
+        the scan origin is taken back through the scan's azimuth offset and tilt into the
+        scanner's frame; the row is its zenith on the uniform [thetaMin, thetaMax] grid, and
+        the column its azimuth from phiMin on the uniform [phiMin, phiMax] grid after the
+        head's continuous rotation during each column is removed. The cell is not clamped: a
+        point outside the declared raster maps to a row or column outside ``[0, Ntheta)`` or
+        ``[0, Nphi)``, which :meth:`gapfillMisses` ignores.
+
+        Use it to give returns ``row``/``column`` hit data when their timestamps cannot
+        identify their pulses (rounded on export, say), so that :meth:`gapfillMisses` places
+        the misses through its row/column path. The cells are only as good as the declared
+        raster: the scan's angular ranges, size, tilt and azimuth offset must describe the
+        instrument.
+
+        Args:
+            scanID: Scan index; must be a static raster scan (not a moving, spinning
+                multibeam or Risley-prism scan)
+            point: (x, y, z) of the return
+
+        Returns:
+            ``(row, column)``: row is the zenith index, column the azimuth index
+
+        Raises:
+            ValueError: If ``point`` is not a vec3
+            HeliosError: If the scan does not exist or is not a static raster scan
+            RuntimeError: If the native library predates helios-core v1.3.89
+        """
+        if not isinstance(point, vec3):
+            raise ValueError(f"point must be a vec3, got {type(point).__name__}")
+        return lidar_wrapper.getLiDARNominalScanGridCell(
+            self._cloud_ptr, scanID, (point.x, point.y, point.z))
 
     def is_available(self) -> bool:
         """

@@ -136,7 +136,7 @@ Every `run(uuids, props, label)` call emits one extra global-data entry and one 
 | Global data `fluspect_biochem_<label>` | `std::vector<float>` (11 elements) | Fluspect-B biochemistry vector in fixed field order: `[Cab, Cca, Cw, Cdm, Cs, Cant, Cp, Cbc, N, V2Z, fqe]`. |
 | Primitive data `fluspect_spectrum` | `string` | Stamped on every UUID — value is `"fluspect_biochem_<label>"`. The radiation plugin reads this per primitive to identify fluorescing leaves; primitives without it are silently treated as non-fluorescing (stems, soil, etc.). |
 
-The biochemistry vector is keyed by label, so leaves sharing a spectrum label share a single Fluspect-B kernel in the radiation plugin's per-label kernel cache. This is automatic — no extra API to enable.
+The biochemistry vector is keyed by label, so leaves sharing a spectrum label share a single Fluspect-B kernel in the radiation plugin's per-label kernel cache. This is automatic — no extra API to enable. A cached kernel is recomputed whenever the biochemistry stored under its label changes (for example when `run()` is called again with the same label and new properties), and SIF follows leaves that are moved to a different label.
 
 ### Field Mapping (LeafOpticsProperties → Fluspect-B) {#LOSIFFields}
 

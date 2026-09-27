@@ -269,9 +269,35 @@ model's default values.
 | `setCanopyAirspaceConvergence(tolerance_K=0.01, max_iterations=50)` | Temperature tolerance (K) and iteration cap of the coupled solution |
 
 Running the model sets primitive data 'air_temperature', 'air_humidity' and 'wind_speed' on the
-canopy primitives, and reports global data 'canopy_air_temperature', 'canopy_air_humidity', their
+canopy and ground primitives, and reports global data 'canopy_air_temperature', 'canopy_air_humidity', their
 per-layer counterparts, 'aerodynamic_resistance' and 'canopy_airspace_iterations'. It also adds
 'boundarylayer_conductance_out' to the optional outputs, which the airspace solution requires.
+
+The ground primitive set may be empty, in which case there is no exchange with the soil surface.
+Otherwise the soil enters the lowest layer in the same way as a leaf, using the conductances and
+surface temperatures of the ground primitives as computed by their own surface energy balance, so
+the heat and water vapor released by the soil are exactly what the airspace receives. Soil fluxes
+are averaged over the area of the ground primitives, which are taken to represent the soil surface
+beneath the whole canopy footprint, so ground geometry extending beyond the canopy does not scale
+the soil contribution. Soil evaporation is governed by the 'moisture_conductance' (zero by default,
+i.e., a dry soil) and 'surface_humidity' primitive data of the ground primitives. Leaves act as
+water vapor sources at their 'surface_humidity' (1 by default, i.e., a saturated substomatal
+airspace) times the saturation vapor pressure at the leaf temperature.
+
+Unless primitive data 'boundarylayer_conductance' is set for a ground primitive, its boundary-layer
+conductance is the bare-soil relation of Kustas and Norman (1999),
+\f$g_{bl}=41.56\,(0.004+0.012U_s)\f$ mol/m\f$^2\f$-s, evaluated at the wind speed at the soil surface
+\f$U_s\f$, rather than the flat-plate relation used for other primitives. This is the same relation
+as the "Ground" model of the boundary-layer conductance plug-in. A conductance set by the user or by
+that plug-in is used unchanged.
+
+Every primitive given to `enableCanopyAirspaceModel()`, canopy and ground alike, must also be
+included in the primitives passed to `run()`. The within-canopy wind speeds are written during
+`run()`, so if boundary-layer conductances are instead supplied by the
+\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BoundaryLayerConductanceModel"
+run before the energy balance, it reads the 'wind_speed' left by the previous call to `run()` (or its
+default value on the first call), and its conductances lag a change in the reference wind speed by
+one call.
 
 ```python
 from pyhelios import Context, EnergyBalanceModel

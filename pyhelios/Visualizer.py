@@ -137,6 +137,9 @@ class Visualizer:
     COLORMAP_LAVA = 3
     COLORMAP_PARULA = 4
     COLORMAP_GRAY = 5
+    COLORMAP_LINES = 7
+    COLORMAP_ALGAE = 8
+    COLORMAP_GREEN = 9
     
     def __init__(self, width: int, height: int, antialiasing_samples: int = 4, headless: bool = False):
         """
@@ -2177,7 +2180,12 @@ class Visualizer:
         Set predefined colormap.
         
         Args:
-            colormap: Colormap ID (0-5) or name ("HOT", "COOL", "RAINBOW", "LAVA", "PARULA", "GRAY")
+            colormap: Colormap ID (one of the ``COLORMAP_*`` class constants: 0-5 or 7-9) or
+                name ("HOT", "COOL", "RAINBOW", "LAVA", "PARULA", "GRAY", "LINES", "ALGAE",
+                "GREEN"). ID 6 is the custom colormap, which is set with
+                :meth:`setCustomColormap`. Each predefined colormap is identical to the
+                Context colormap of the same name (see
+                :meth:`pyhelios.Context.Context.getColormapControlPoints`).
             
         Raises:
             ValueError: If colormap is invalid
@@ -2187,17 +2195,19 @@ class Visualizer:
             raise VisualizerError("Visualizer not initialized")
         
         colormap_map = {
-            "HOT": 0, "COOL": 1, "RAINBOW": 2, 
-            "LAVA": 3, "PARULA": 4, "GRAY": 5
+            "HOT": self.COLORMAP_HOT, "COOL": self.COLORMAP_COOL, "RAINBOW": self.COLORMAP_RAINBOW,
+            "LAVA": self.COLORMAP_LAVA, "PARULA": self.COLORMAP_PARULA, "GRAY": self.COLORMAP_GRAY,
+            "LINES": self.COLORMAP_LINES, "ALGAE": self.COLORMAP_ALGAE, "GREEN": self.COLORMAP_GREEN,
         }
         
         if isinstance(colormap, str):
             if colormap.upper() not in colormap_map:
-                raise ValueError(f"Unknown colormap name: {colormap}")
+                raise ValueError(f"Unknown colormap name: {colormap}. Valid names: {', '.join(colormap_map)}")
             colormap_id = colormap_map[colormap.upper()]
         elif isinstance(colormap, _INT_TYPE):
-            if colormap < 0 or colormap > 5:
-                raise ValueError("Colormap ID must be 0-5")
+            if colormap not in colormap_map.values():
+                raise ValueError(f"Colormap ID must be one of {sorted(colormap_map.values())} "
+                                 "(6 is the custom colormap; use setCustomColormap)")
             colormap_id = colormap
         else:
             raise ValueError("Colormap must be integer ID or string name")

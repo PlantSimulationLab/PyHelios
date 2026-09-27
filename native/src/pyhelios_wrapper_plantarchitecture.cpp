@@ -243,6 +243,11 @@ nlohmann::json leafPrototypeToJSON(const LeafPrototype& p) {
     j["subdivisions"] = p.subdivisions;
     j["unique_prototypes"] = p.unique_prototypes;
     j["build_petiolule"] = p.build_petiolule;
+    nlohmann::json petiolule_length = nlohmann::json::object();
+    for (const auto& kv : p.petiolule_length) {
+        petiolule_length[std::to_string(kv.first)] = kv.second;
+    }
+    j["petiolule_length"] = petiolule_length;
     j["OBJ_model_file"] = p.OBJ_model_file;
     nlohmann::json tex = nlohmann::json::object();
     for (const auto& kv : p.leaf_texture_file) {
@@ -274,6 +279,12 @@ void jsonToLeafPrototype(LeafPrototype& p, const nlohmann::json& j, std::minstd_
     if (j.contains("subdivisions")) p.subdivisions = j["subdivisions"];
     if (j.contains("unique_prototypes")) p.unique_prototypes = j["unique_prototypes"];
     if (j.contains("build_petiolule")) p.build_petiolule = j["build_petiolule"];
+    if (j.contains("petiolule_length")) {
+        p.petiolule_length.clear();
+        for (auto it = j["petiolule_length"].begin(); it != j["petiolule_length"].end(); ++it) {
+            p.petiolule_length[std::stoi(it.key())] = it.value().get<float>();
+        }
+    }
     if (j.contains("OBJ_model_file")) p.OBJ_model_file = j["OBJ_model_file"].get<std::string>();
     if (j.contains("leaf_texture_file")) {
         p.leaf_texture_file.clear();
@@ -514,6 +525,7 @@ nlohmann::json shootParametersToJSON(const ShootParameters& params) {
     j["base_yaw"] = randomParameterFloatToJSON(params.base_yaw);
     j["gravitropic_curvature"] = randomParameterFloatToJSON(params.gravitropic_curvature);
     j["tortuosity"] = randomParameterFloatToJSON(params.tortuosity);
+    j["tortuosity_persistence_length"] = randomParameterFloatToJSON(params.tortuosity_persistence_length);
 
     // Growth parameters
     j["phyllochron_min"] = randomParameterFloatToJSON(params.phyllochron_min);
@@ -567,6 +579,7 @@ ShootParameters jsonToShootParameters(const nlohmann::json& j, std::minstd_rand0
     if (j.contains("base_yaw")) params.base_yaw = jsonToRandomParameterFloat(j["base_yaw"], generator);
     if (j.contains("gravitropic_curvature")) params.gravitropic_curvature = jsonToRandomParameterFloat(j["gravitropic_curvature"], generator);
     if (j.contains("tortuosity")) params.tortuosity = jsonToRandomParameterFloat(j["tortuosity"], generator);
+    if (j.contains("tortuosity_persistence_length")) params.tortuosity_persistence_length = jsonToRandomParameterFloat(j["tortuosity_persistence_length"], generator);
 
     // Growth parameters
     if (j.contains("phyllochron_min")) params.phyllochron_min = jsonToRandomParameterFloat(j["phyllochron_min"], generator);
@@ -4205,6 +4218,107 @@ extern "C" {
 
     PYHELIOS_API float getPlantAvailableNitrogen(PlantArchitecture* plantarch, unsigned int plantID) {
         return guardedPhytomerCall(plantarch, "getPlantAvailableNitrogen", -1.f, [&]() { return plantarch->getPlantAvailableNitrogen(plantID); });
+    }
+
+    // ---- helios-core 1.3.89 additions ----
+
+    PYHELIOS_API float getLeafBladeArea(PlantArchitecture* plantarch, unsigned int leaf_objID) {
+        return guardedPhytomerCall(plantarch, "getLeafBladeArea", -1.f, [&]() { return plantarch->getLeafBladeArea(leaf_objID); });
+    }
+
+    PYHELIOS_API float getShadowLightExposureAtPoint(PlantArchitecture* plantarch, unsigned int plantID, const float* position) {
+        return guardedPhytomerCall(plantarch, "getShadowLightExposureAtPoint", -1.f, [&]() {
+            if (!position) {
+                throw std::invalid_argument("Position array is null");
+            }
+            return plantarch->getShadowLightExposureAtPoint(plantID, helios::make_vec3(position[0], position[1], position[2]));
+        });
+    }
+
+    // Draws one realization of a PhytomerParameters with PhytomerParameters::resample(), then writes every
+    // distributed field back as a constant holding its draw. The field list is that of
+    // PhytomerParameters::resample(); a field resample() leaves alone is left as it was.
+    PYHELIOS_API const char* resamplePhytomerParametersJSON(helios::Context* context, const char* json_params) {
+        try {
+            clearError();
+            if (!context) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
+                return nullptr;
+            }
+            if (!json_params) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "JSON parameters are null");
+                return nullptr;
+            }
+            std::minstd_rand0* generator = context->getRandomGenerator();
+            PhytomerParameters pp(generator);
+            jsonToPhytomerParameters(pp, nlohmann::json::parse(json_params), generator);
+            pp.resample();
+
+            auto freeze = [](auto& parameter) {
+                if (parameter.distribution != "constant") {
+                    parameter = parameter.val();
+                }
+            };
+            freeze(pp.internode.pitch);
+            freeze(pp.internode.phyllotactic_angle);
+            freeze(pp.internode.radius_initial);
+            freeze(pp.internode.max_vegetative_buds_per_petiole);
+            freeze(pp.internode.max_floral_buds_per_petiole);
+            freeze(pp.petiole.pitch);
+            freeze(pp.petiole.radius);
+            freeze(pp.petiole.length);
+            freeze(pp.petiole.curvature);
+            freeze(pp.petiole.taper);
+            freeze(pp.petiole.flexibility);
+            freeze(pp.petiole.flexibility_aging);
+            freeze(pp.leaf.leaves_per_petiole);
+            freeze(pp.leaf.pitch);
+            freeze(pp.leaf.yaw);
+            freeze(pp.leaf.roll);
+            freeze(pp.leaf.leaflet_offset);
+            freeze(pp.leaf.leaflet_scale);
+            freeze(pp.leaf.intercalary_leaflet_scale);
+            freeze(pp.leaf.prototype_scale);
+            freeze(pp.leaf.prototype.leaf_aspect_ratio);
+            freeze(pp.leaf.prototype.midrib_fold_fraction);
+            freeze(pp.leaf.prototype.longitudinal_curvature_exponent);
+            freeze(pp.leaf.prototype.longitudinal_curvature);
+            freeze(pp.leaf.prototype.lateral_curvature);
+            freeze(pp.leaf.prototype.petiole_roll);
+            freeze(pp.leaf.prototype.wave_period);
+            freeze(pp.leaf.prototype.wave_amplitude);
+            freeze(pp.leaf.prototype.flexibility);
+            freeze(pp.leaf.prototype.flexibility_taper);
+            freeze(pp.leaf.prototype.flexibility_aging);
+            freeze(pp.leaf.prototype.flexibility_aging_max);
+            HELIOS_PUSH_IGNORE_DEPRECATED
+            freeze(pp.leaf.prototype.leaf_buckle_length);
+            freeze(pp.leaf.prototype.leaf_buckle_angle);
+            HELIOS_POP_IGNORE_DEPRECATED
+            freeze(pp.peduncle.length);
+            freeze(pp.peduncle.radius);
+            freeze(pp.peduncle.pitch);
+            freeze(pp.peduncle.roll);
+            freeze(pp.peduncle.curvature);
+            freeze(pp.inflorescence.flowers_per_peduncle);
+            freeze(pp.inflorescence.flower_offset);
+            freeze(pp.inflorescence.pitch);
+            freeze(pp.inflorescence.roll);
+            freeze(pp.inflorescence.flower_prototype_scale);
+            freeze(pp.inflorescence.inflorescence_maturity_period);
+            freeze(pp.inflorescence.fruit_prototype_scale);
+            freeze(pp.inflorescence.fruit_gravity_factor_fraction);
+
+            static thread_local std::string json_string;
+            json_string = phytomerParametersToJSON(pp).dump();
+            return json_string.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PhytomerParameters::resample): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhytomerParameters::resample): Unknown error.");
+            return nullptr;
+        }
     }
 
 } // extern "C"

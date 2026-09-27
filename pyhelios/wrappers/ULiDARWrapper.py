@@ -3134,3 +3134,49 @@ def getLiDARHitPointCapacity(cloud_ptr) -> int:
     """Number of hit points the cloud can hold before its arrays reallocate."""
     _require_lidar_1386()
     return int(helios_lib.getLiDARHitPointCapacity(cloud_ptr))
+
+
+# helios-core 1.3.89 additions, probed separately for the same reason as the blocks above.
+# NOTE: every wrapper function below must guard with _require_lidar_1389(); guarding with an
+# older flag would skip the RuntimeError and call a symbol with no argtypes set.
+_LIDAR_1389_AVAILABLE = False
+try:
+    helios_lib.deleteLiDARHitData.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_char_p]
+    helios_lib.deleteLiDARHitData.restype = None
+    helios_lib.deleteLiDARHitData.errcheck = _check_error
+
+    helios_lib.getLiDARNominalScanGridCell.argtypes = [
+        ctypes.POINTER(ULiDARcloud), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int),
+    ]
+    helios_lib.getLiDARNominalScanGridCell.restype = None
+    helios_lib.getLiDARNominalScanGridCell.errcheck = _check_error
+
+    _LIDAR_1389_AVAILABLE = True
+except AttributeError:
+    _LIDAR_1389_AVAILABLE = False
+
+
+def _require_lidar_1389() -> None:
+    """Raise if the native library predates the helios-core 1.3.89 LiDAR additions."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE or not _LIDAR_1389_AVAILABLE:
+        raise RuntimeError(
+            "This LiDAR function is not available in the current native library. "
+            "It requires helios-core v1.3.89 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def deleteLiDARHitData(cloud_ptr, label: str) -> None:
+    """Remove a per-hit scalar-data column from every hit (raises if no column exists)."""
+    _require_lidar_1389()
+    helios_lib.deleteLiDARHitData(cloud_ptr, label.encode('utf-8'))
+
+
+def getLiDARNominalScanGridCell(cloud_ptr, scanID: int, point) -> Tuple[int, int]:
+    """(row, column) of the static-raster scan-grid cell a point lies in; not clamped to the raster."""
+    _require_lidar_1389()
+    pt = (ctypes.c_float * 3)(float(point[0]), float(point[1]), float(point[2]))
+    out = (ctypes.c_int * 2)()
+    helios_lib.getLiDARNominalScanGridCell(cloud_ptr, ctypes.c_uint(int(scanID)), pt, out)
+    return (int(out[0]), int(out[1]))

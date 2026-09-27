@@ -17,13 +17,16 @@ The bindings it depends on:
     ``getPhytomerLeafObjectIDs``, ``getLeafBasePosition``, ...) used to measure the plant.
 
 IMPORTANT: shoot types are defined here from parameter dicts, while the C++ program copies
-C++ structs. Both consume draws from the Context random generator, but not the same number,
-so the same seed does not grow the same plant draw for draw. With plant-to-plant variation
-switched off, structure (which leaves exist on which day, and their leaflet counts) matches
-the C++ program; organ sizes agree in distribution across seeds, not plant by plant.
+C++ structs. Since helios-core 1.3.89 neither path draws from the Context random generator, but
+the port only draws the same stream as the C++ program where it makes the same random-consuming
+calls in the same order, so the same seed is not guaranteed to grow the same plant. With
+plant-to-plant variation switched off, structure (which leaves exist on which day, and their
+leaflet counts) matches the C++ program; organ sizes agree in distribution across seeds.
 
 Parameters are read from a whitespace-separated ``key value`` file (``#`` starts a comment),
-the format of the C++ program's ``theta_fitted.txt``. The leaf texture is the C++ program's
+the format of the C++ program's ``theta_fitted.txt``. Its ``tortuosity`` is in the units it was
+fitted in, degrees per internode segment (helios-core 1.3.88 and earlier), and is converted to the
+current degrees per metre when the shoot types are defined, so the fitted shoot shape is kept. The leaf texture is the C++ program's
 blade crop, ``TomatoLeaf_blade.png``.
 
 Run:
@@ -136,6 +139,21 @@ class RankScaling:
             self.plantarch.scaleInternodeMaxLength(plant_id, shoot_id, node_index, float(internode_scale))
 
 
+def tortuosity_from_per_segment(degrees_per_segment, shoot_parameters):
+    """Convert a tortuosity fitted before helios-core 1.3.89 to the current units.
+
+    ``theta_fitted.txt`` holds tortuosity as an angle (degrees) applied to every internode segment,
+    its meaning up to helios-core 1.3.88. Since 1.3.89 ``ShootParameters.tortuosity`` is the standard
+    deviation of a curvature in degrees per metre, so the same shoot shape needs
+    degrees_per_segment * internode.length_segments / internode_length_max.
+    """
+    segments = shoot_parameters["phytomer_parameters"]["internode"]["length_segments"]
+    length_max = shoot_parameters["internode_length_max"]["parameters"][0]
+    if length_max <= 0:
+        raise ValueError(f"internode_length_max must be positive to convert tortuosity, got {length_max}")
+    return degrees_per_segment * segments / length_max
+
+
 def setup_tomato_species(context, plantarch, growth, texture_file):
     """Define the grown, cotyledon and build shoot types from the library tomato; mirrors setupTomatoSpecies()."""
     plantarch.loadPlantModelFromLibrary("tomato")
@@ -196,16 +214,18 @@ def setup_tomato_species(context, plantarch, growth, texture_file):
         "leaf_pitch": lambda p, v: p["phytomer_parameters"]["leaf"].__setitem__("pitch", constant(v)),
         "max_nodes": lambda p, v: p.__setitem__("max_nodes", constant(round(v))),
         "gravitropic_curvature": lambda p, v: p.__setitem__("gravitropic_curvature", constant(v)),
-        "tortuosity": lambda p, v: p.__setitem__("tortuosity", constant(v)),
         "leaflet_offset": lambda p, v: p["phytomer_parameters"]["leaf"].__setitem__("leaflet_offset", constant(v)),
         "leaf_expansion_rate_max": lambda p, v: p.__setitem__("leaf_expansion_rate_max", constant(v)),
     }
     simulation_keys = {"base_tilt_deg", "base_tilt_sd", "cotyledon_internode_length", "phyllotactic_angle_node1",
                        "phyllotactic_angle_node2"}
 
+    tortuosity_per_segment = None
     for key in sorted(growth):  # the C++ program iterates a std::map
         value = growth[key]
-        if key == "petiole_pitch_sd":
+        if key == "tortuosity":
+            tortuosity_per_segment = value
+        elif key == "petiole_pitch_sd":
             petiole_pitch_sd = value
         elif key == "leaf_pitch_sd":
             leaf_pitch_sd = value
@@ -288,6 +308,9 @@ def setup_tomato_species(context, plantarch, growth, texture_file):
         grown_prototype["unique_prototypes"] = unique_prototypes
 
     build["internode_length_max"] = constant(species["growth_internode_length_max"])
+    if tortuosity_per_segment is not None:
+        for parameters in (build, grown):
+            parameters["tortuosity"] = constant(tortuosity_from_per_segment(tortuosity_per_segment, parameters))
     species["growth_type_label"] = "grown_tomato"
     grown["child_shoot_types"] = children("grown_tomato")
     plantarch.defineShootType("grown_tomato", grown)

@@ -3422,6 +3422,47 @@ extern "C" {
         }
     }
 
+    /* helios-core 1.3.89 additions */
+    PYHELIOS_API void deleteLiDARHitData(LiDARcloud* cloud, const char* label) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Hit data label is null");
+                return;
+            }
+            cloud->deleteHitData(label);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (deleteLiDARHitData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (deleteLiDARHitData): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void getLiDARNominalScanGridCell(LiDARcloud* cloud, unsigned int scanID, const float* point, int* out) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            if (!point || !out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Point or output array is null");
+                return;
+            }
+            helios::int2 cell = cloud->getNominalScanGridCell(scanID, helios::make_vec3(point[0], point[1], point[2]));
+            out[0] = cell.x;
+            out[1] = cell.y;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARNominalScanGridCell): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARNominalScanGridCell): Unknown error");
+        }
+    }
+
     PYHELIOS_API void getLiDARHitDataColumnF32(LiDARcloud* cloud, const char* label, float* out,
                                                unsigned int n, float absent_value) {
         try {

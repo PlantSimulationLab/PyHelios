@@ -664,10 +664,18 @@ class PhotosynthesisModel:
 
     def exportResults(self, label: str):
         """
-        Export photosynthesis results with optional label.
-        
+        Request an optional output primitive data label, written on the next :meth:`run`.
+
+        Calls the native ``PhotosynthesisModel::optionalOutputPrimitiveData()``. Labels include
+        ``"Ci"``, ``"limitation_state"`` and ``"electron_transport_ratio"`` (plus ``"Gamma_CO2"``
+        for the Farquhar model and ``"Cm"``/``"Vp"`` for the C4 model).
+        ``electron_transport_ratio`` is the relative light saturation Ja/Je of van der Tol et al.
+        (2014): the electron transport used by carbon metabolism divided by its light-limited
+        potential. It is 1 in the dark, falls as light saturates photosynthesis, is written by
+        the Farquhar and C4 models, and drives the radiation model's SIF fluorescence yield.
+
         Args:
-            label: Data label for export
+            label: Primitive data label to output
         """
         self._check_context_alive()
         photosynthesis_wrapper.optionalOutputPrimitiveData(self._native_ptr, label)

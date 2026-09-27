@@ -1,5 +1,44 @@
 # Changelog
 
+# [v0.1.35] 2026-09-27
+
+- Updated helios-core to v1.3.89
+
+## Context
+- Added static `Context.getColormapNames()` and `Context.getColormapControlPoints(name)`, returning the predefined colormap names and the colors and positions that define each one
+- Added the "algae" and "lines" colormaps to `generateColormap()` and `colorPrimitiveByDataPseudocolor()`
+- `generateColormap()` now raises for fewer than 2 colors
+- Fixed `getJulianDate()` returning a day one too high for August dates in leap years, and treating century years such as 2100 as leap years
+
+## Visualizer
+- Added `Visualizer.COLORMAP_ALGAE` and `COLORMAP_GREEN`, and made the existing native `COLORMAP_LINES` settable through `setColormap()`
+
+## LiDAR
+- Added `LiDARCloud.deleteHitData(label)`, removing a per-hit data column from every hit
+- Added `LiDARCloud.getNominalScanGridCell(scanID, point)`, returning the static-raster (row, column) cell a point lies in
+- `gapfillMisses()` now gap-fills static raster scans whose returns carry neither timestamps nor row/column data, and raises on timestamps rounded more coarsely than the pulse rate
+
+## Plant Architecture
+- Added `PlantArchitecture.getLeafBladeArea(leaf_object_id)`, returning a leaf's blade area without its petiolule
+- Added `PlantArchitecture.getShadowLightExposureAtPoint(plant_id, position)`, reading the shadow grid that drives the new shade-driven branch shedding
+- Added `PlantArchitecture.resamplePhytomerParameters(params)`, drawing one realization of a set of phytomer parameters
+- Added `LeafPrototype.petiolule_length` and `ShootParameters.tortuosity_persistence_length`
+- Added the `almond_independence` library plant model
+- `ShootParameters.tortuosity` is now in degrees per metre; convert old values as tortuosity × `internode.length_segments` / `internode_length_max`
+- Leaf-area results now exclude petiolules
+- `plantarch_tomato_calibrated_sample.py` now converts the per-segment `tortuosity` of a fitted theta file to degrees per metre, keeping the fitted shoot shape
+- Fixed `buildPlantInstanceFromLibrary()` accepting build parameters for `almond_aldrich` and `almond_wood_colony`, which ignore them
+
+## Photosynthesis
+- The `electron_transport_ratio` output is now the relative light saturation Ja/Je (1 in the dark) rather than J/Jmax, and the C4 model now writes it
+
+## Radiation
+- SIF emission is now much lower in absolute terms and follows the van der Tol et al. (2014) fluorescence yield; `runBand()` raises when a SIF leaf lacks `electron_transport_ratio`
+- `integrateSpectrum()` over a wavelength range now clips at the bounds instead of including whole segments beyond them
+
+## Energy Balance
+- Fixed the canopy airspace model not conserving energy and water at the soil surface
+
 # [v0.1.34] 2026-09-24
 
 - Updated helios-core to v1.3.88

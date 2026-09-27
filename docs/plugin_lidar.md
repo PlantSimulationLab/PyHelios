@@ -204,8 +204,8 @@ The ASCII text file containing the data is a plain text file, where each row cor
 <tr><td>g (or g255)</td><td>Green component of (r,g,b) hit color. If "g" tag is used, g is a floating point value between 0 and 1. If "g255" is used, g is an integer between 0 and 255.</td><td>g=0 or g255=0</td></tr>
 <tr><td>b (or b255)</td><td>Blue component of (r,g,b) hit color. If "b" tag is used, b is a floating point value between 0 and 1. If "b255" is used, b is an integer between 0 and 255.</td><td>b=0 or b255=0</td></tr>
 <tr><td>target_count</td><td>Number of hits along scan pulse.</td><td>Assumed to be single-return data</td></tr>
-<tr><td>target_index</td><td>Index of hit along scan pulse.</td><td>Assumed to be single-return data</td></tr>
-<tr><td>timestamp</td><td>Unique timestamp of hit point.</td><td>Assumed to be single-return data</td></tr>
+<tr><td>target_index</td><td>Index of hit along scan pulse. Can count from 0 or from 1 (as LAS/LAZ return numbers do); the convention is decided per scan: if any return of the scan has index 0 the scan is 0-based, otherwise 1-based. Two returns of one pulse (one timestamp) may not share an index.</td><td>Assumed to be single-return data</td></tr>
+<tr><td>timestamp</td><td>Acquisition time of the pulse that produced the hit point. Every return of one pulse carries the same timestamp and different pulses carry different ones, since returns are grouped into a beam by their shared timestamp. Timestamps must therefore be stored at full precision: timestamps rounded on export (e.g. to 32-bit floats) are shared by several pulses and are rejected by calculateLeafArea() and gapfillMisses().</td><td>Assumed to be single-return data</td></tr>
 <tr><td>row</td><td>Scan-grid row index (zenithal/theta direction) of the hit point. Used by gapfillMisses() to reconstruct miss directions when timestamps are unavailable (see below).</td><td>N/A</td></tr>
 <tr><td>column</td><td>Scan-grid column index (azimuthal/phi direction) of the hit point. Used by gapfillMisses() to reconstruct miss directions when timestamps are unavailable (see below).</td><td>N/A</td></tr>
 <tr><td>is_miss</td><td>Miss flag for the hit (1 = miss/transmitted beam, 0 = return). When present in the imported file, misses are read directly and no reconstruction is needed (see \ref LiDARmisses).</td><td>N/A</td></tr>
@@ -240,7 +240,7 @@ A hit point is flagged as a miss with the per-hit `is_miss` data value (1 = miss
 <tr><td>3</td><td>**Generate a synthetic scan** with miss recording</td><td>Helios geometry plus a scan definition; call syntheticScan() with record_misses=True (see \ref LiDARsynthmisses).</td><td>When you are simulating, not importing, real data. Misses are recorded directly; this is the only option for non-raster (e.g. spinning-multibeam) patterns.</td></tr>
 </table>
 
-If you import a returns-only file with *none* of `is_miss`, `row`/`column`, or `timestamp`, there is no information from which the miss directions can be recovered, and neither approach 1 nor 2 is possible. The triangulation, leaf-angle, and plant-reconstruction routines do not require misses and will still run, but the leaf-area inversion cannot. In that case you must re-export the data from the original instrument project so that the necessary information is retained, because it was discarded at export time and cannot be reconstructed afterward.
+If you import a returns-only file with *none* of `is_miss`, `row`/`column`, or `timestamp` from a static raster scan, `gapfillMisses()` places each return on the scan's declared raster from its direction (see \ref LiDARleafarea), so approach 2 still works provided the scan's declared angular ranges, size, tilt and azimuth offset describe the instrument. For a moving-platform scan without that information there is no way to recover the miss directions, and neither approach 1 nor 2 is possible. The triangulation, leaf-angle, and plant-reconstruction routines do not require misses and will still run, but the leaf-area inversion cannot. In that case you must re-export the data from the original instrument project so that the necessary information is retained, because it was discarded at export time and cannot be reconstructed afterward.
 
 #### Exporting from instrument software so that misses survive {#LiDARmissexport}
 
@@ -573,7 +573,7 @@ There are two possible options to be specified when performing the triangulation
 
 Another optional parameter is the maximum allowable aspect ratio of a triangle, which is the ratio of the length of the longest triangle side to the shortest triangle side. This has a similar effect as the \f$L_{max}\f$ parameter, and works better in some cases.
 
-\note **Multi-Return Data:** For multi-return LiDAR data (detected automatically via the target_count field), the triangulation automatically filters for first returns only (target_index == 0), since later returns along the same pulse can create spurious triangles between spatially distant surfaces. In addition to the standard aspect ratio filter, an adaptive separation ratio filter is applied. This filter calculates the ratio of spatial distance to angular separation for each triangle edge and rejects triangles where this ratio is anomalously high (indicating points that are angularly close but spatially distant, characteristic of "sliver" triangles from beam spreading). The threshold is automatically calculated as 8.5 times the 25th percentile of the separation ratio distribution, eliminating the need for manual tuning. This approach is robust across different leaf sizes and scan resolutions.
+\note **Multi-Return Data:** For multi-return LiDAR data (detected automatically via the target_count field), the triangulation automatically filters for first returns only (the lowest target_index, whether the scan counts returns from 0 or from 1), since later returns along the same pulse can create spurious triangles between spatially distant surfaces. In addition to the standard aspect ratio filter, an adaptive separation ratio filter is applied. This filter calculates the ratio of spatial distance to angular separation for each triangle edge and rejects triangles where this ratio is anomalously high (indicating points that are angularly close but spatially distant, characteristic of "sliver" triangles from beam spreading). The threshold is automatically calculated as 8.5 times the 25th percentile of the separation ratio distribution, eliminating the need for manual tuning. This approach is robust across different leaf sizes and scan resolutions.
 
 The following code sample illustrates how to perform a triangulation.
 
@@ -601,7 +601,9 @@ The leaf area calculation **requires** that the point cloud contains "miss" poin
 - **Row/column reconstruction** (used when the returns carry `row` and `column` hit data; preferred when both row/column and timestamp data are present). The native scan-grid indices give the 2D theta/phi raster directly. A robust per-row generative model is fit from the returns (per-row median zenith and a robust Theil-Sen azimuth fit), so the reconstruction does not require the scan to be perfectly level or regular and does not require timestamps. The `row`/`column` indices are read from the ASCII columns of the same name.
 - **Timestamp reconstruction** (used when the returns carry `timestamp` data but not row/column). The scan grid is reconstructed by sorting returns by timestamp and detecting sweep boundaries from the angular sequence, then interpolating/extrapolating along the inferred sweeps.
 
-If a scan's returns carry neither `row`/`column` nor `timestamp` data, `gapfillMisses()` raises an error, since there is no information from which to reconstruct the miss directions. (A scan containing no returns at all is skipped gracefully.)
+The timestamp path requires that a timestamp identify one pulse. Timestamps rounded more coarsely than the scanner fires -- a common result of a 32-bit float round-trip through an export or a tool such as CloudCompare -- are shared by several pulses. `gapfillMisses()` detects this before using the timestamps (returns of one pulse lie along one beam, so returns that share a timestamp but point in different directions belong to different pulses) and raises an error stating the timestamp resolution. `calculateLeafArea()` applies the same check when it groups returns into beams by timestamp, whether or not the returns carry `target_count`/`target_index`, so rounded timestamps are rejected there too, including after gap-filling. It also rejects a pulse whose returns contradict each other -- a `target_index` repeated within the pulse, or more returns than the pulse's `target_count` -- with an error naming those columns. The exact fix is to re-export the scan with its GPS time at full (64-bit) precision and the scanner's original return numbers.
+
+If a static raster scan's returns carry neither `row`/`column` nor `timestamp` data, `gapfillMisses()` places each return on the scan's declared raster from its direction, through the scan's tilt and azimuth offset, records the cells as `row`/`column` data, and synthesizes the misses through the row/column path; the misses carry no timestamp, and `calculateLeafArea()` then inverts each return as its own pulse. This takes the declared raster -- its zenith and azimuth ranges, size, tilt and azimuth offset -- as the scanner's, and first checks that the returns bear it out: it raises an error when more than a quarter of the returns lie over a quarter cell from the centre of their cell (a wrong step, tilt or offset), when only one row or column in every *k* holds returns (a raster *k* times finer than the scanner's), or when more than 5% of the returns fall outside the raster (a wrong extent or offset). The checks need at least 200 returns; a scan with fewer is gap-filled on its declared raster unchecked. A moving-platform scan (or a spinning multibeam or Risley-prism scan) with neither `row`/`column` nor `timestamp` data cannot be gap-filled, and `gapfillMisses()` raises an error. (A scan containing no returns at all is skipped gracefully.)
 
 Example leaf area calculation:
 
@@ -1047,6 +1049,26 @@ scan_ids = pointcloud.getHitScanIDColumn()
 | [getScanGridDirection(scanID, row, column)](pyhelios.LiDARCloud.LiDARCloud.getScanGridDirection) | Beam direction at a grid cell, from the fitted model |
 
 \note `getScanGridDirection()` requires that `gapfillMisses()` has already run on the scan through the row/column path, since that is what fits the angular model. It raises otherwise.
+
+### Removing Hit Data and Assigning Scan-Grid Cells {#LiDARdeletehitdata}
+
+Imported per-hit data is sometimes wrong in a way later processing would trust: timestamps rounded more coarsely than the scanner fires cannot group returns into pulses, and a `target_index` can be rewritten on export. `deleteHitData(label)` removes one per-hit data column from every hit, leaving every other column intact. Removing `"timestamp"` or `"gapfillMisses_code"` also removes it from misses synthesized by `gapfillMisses()`; the labels those misses depend on (`"is_miss"`, `"row"`, `"column"`, `"nRaysHit"`, and `"origin_x"`/`"origin_y"`/`"origin_z"` on a moving scan) cannot be removed while any scan holds synthesized misses.
+
+`getNominalScanGridCell(scanID, point)` returns the `(row, column)` cell of a static raster scan that a point lies in, the inverse of the raster the synthetic scanner fires, taking into account the scan's tilt and azimuth offset. The cell is not clamped, so a point outside the declared raster maps outside `[0, Ntheta) x [0, Nphi)`. Use it to give returns `row`/`column` data when their timestamps cannot identify their pulses; the cells are only as good as the declared raster. It raises for moving, spinning-multibeam and Risley-prism scans.
+
+```python
+# A static scan exported with rounded timestamps: drop them and gap-fill by direction.
+pointcloud.deleteHitData("timestamp")
+pointcloud.deleteHitData("target_index")   # multi-return data only
+pointcloud.gapfillMisses()
+
+row, column = pointcloud.getNominalScanGridCell(0, vec3(1.2, 3.4, 0.5))
+```
+
+| Method | Description |
+|---|---|
+| [deleteHitData(label)](pyhelios.LiDARCloud.LiDARCloud.deleteHitData) | Remove a per-hit data column from every hit |
+| [getNominalScanGridCell(scanID, point)](pyhelios.LiDARCloud.LiDARCloud.getNominalScanGridCell) | Static-raster `(row, column)` cell a point lies in |
 
 ## Cropped Clouds and target_count {#LiDARcroppedreturns}
 

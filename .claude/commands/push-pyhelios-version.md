@@ -84,6 +84,14 @@ filenames will not match the tag.
    `git -C helios-core fetch && git -C helios-core checkout master && git -C helios-core merge --ff-only origin/master`.
 2. Set the date on the newest `docs/CHANGELOG.md` entry to today; make the commit date match.
 3. Squash all commits for this version into one, message matching the changelog entry.
+   Then confirm remote master holds nothing but version commits since the last tag:
+   ```bash
+   git fetch origin && git log --oneline $(git describe --tags --abbrev=0 --match 'v*' origin/master)..origin/master
+   ```
+   This must print nothing. A commit there (e.g. a workflow or skill fix pushed straight to
+   master between releases) would sit between two version commits forever and break
+   invariant 2. Building the candidate on top of it is **not** the fix. Stop and ask the user;
+   folding it in means rewriting master, which is theirs to approve.
 4. Check that PyPI has room for this release. The project has a **10 GB storage limit**, and
    an over-quota upload fails *mid-flight*, leaving a partial release live (v0.1.33 published
    6 of 15 wheels this way). A limit increase was requested and PyPI never answered, so treat
@@ -200,7 +208,9 @@ editing `build-wheels.yml`'s version step. It runs everything and cannot publish
   ordering. If it happens, the flow was not followed -- work out which step was skipped before
   reaching for a force-push, and fix this file so it cannot recur.
 - **Candidate is a sibling of master, not a descendant:** master was promoted too early.
-  Do not force-push master. Rebuild the candidate on the current master tip instead.
+  Do not force-push master. Rebuild the candidate on the current master tip instead -- but
+  only if every commit master gained is a version commit. If master gained a non-version
+  commit, rebuilding on it breaks invariant 2; see step 1.3 and ask the user.
 
 ## After a successful publish
 

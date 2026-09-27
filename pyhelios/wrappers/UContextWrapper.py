@@ -8867,3 +8867,54 @@ def getPrimitiveTextureTransparencyDataWrapper(context, uuid: int):
     n = width.value * height.value
     flat = [int(ptr[i]) for i in range(n)]
     return (int(width.value), int(height.value), flat)
+
+
+# helios-core 1.3.89 colormap introspection, probed separately from the block above.
+# NOTE: every wrapper function below must guard with _require_ctx_colormap_1389(); guarding with
+# the older flag would skip the NotImplementedError and call a symbol with no argtypes set.
+_CONTEXT_COLORMAP_1389_AVAILABLE = False
+try:
+    helios_lib.getColormapNamesCount.argtypes = []
+    helios_lib.getColormapNamesCount.restype = ctypes.c_uint
+    helios_lib.getColormapNamesCount.errcheck = _check_error
+
+    helios_lib.getColormapNameAt.argtypes = [ctypes.c_uint, ctypes.c_char_p, ctypes.c_int]
+    helios_lib.getColormapNameAt.restype = ctypes.c_int
+    helios_lib.getColormapNameAt.errcheck = _check_error
+
+    helios_lib.getColormapControlPoints.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getColormapControlPoints.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getColormapControlPoints.errcheck = _check_error
+
+    _CONTEXT_COLORMAP_1389_AVAILABLE = True
+except AttributeError:
+    _CONTEXT_COLORMAP_1389_AVAILABLE = False
+
+
+def _require_ctx_colormap_1389():
+    if not _CONTEXT_COLORMAP_1389_AVAILABLE:
+        raise NotImplementedError(
+            "Colormap introspection (getColormapNames/getColormapControlPoints) is not available "
+            "in the loaded native library. It requires helios-core v1.3.89 or newer; rebuild with: "
+            "build_scripts/build_helios --clean"
+        )
+
+
+def getColormapNamesWrapper() -> List[str]:
+    """Names of the predefined Helios colormaps."""
+    _require_ctx_colormap_1389()
+    count = int(helios_lib.getColormapNamesCount())
+    return [_read_string_buffer(helios_lib.getColormapNameAt, i) for i in range(count)]
+
+
+def getColormapControlPointsWrapper(name: str):
+    """Return (colors, positions) for a named colormap: a list of (r, g, b) tuples and a list of floats."""
+    _require_ctx_colormap_1389()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getColormapControlPoints(name.encode('utf-8'), ctypes.byref(count))
+    n = count.value
+    if n == 0 or not ptr:
+        raise RuntimeError(f"Context::getColormapControlPoints returned no control points for colormap '{name}'.")
+    colors = [(float(ptr[4*i]), float(ptr[4*i + 1]), float(ptr[4*i + 2])) for i in range(n)]
+    positions = [float(ptr[4*i + 3]) for i in range(n)]
+    return colors, positions

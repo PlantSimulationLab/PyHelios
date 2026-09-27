@@ -2589,6 +2589,13 @@ PYHELIOS_API void getLocation(helios::Context* context, float* latitude_deg_out,
 // generateColormap(name, Ncolors) - returns flat RGB triples (3*Ncolors floats).
 PYHELIOS_API float* generateColormapNamed(helios::Context* context, const char* colormap_name, unsigned int n_colors, unsigned int* count_out);
 
+// getColormapNames() - count+index pattern over the predefined colormap names (static; no Context needed).
+PYHELIOS_API unsigned int getColormapNamesCount();
+PYHELIOS_API int getColormapNameAt(unsigned int index, char* buffer, int buffer_size);
+
+// getColormapControlPoints(name) - returns 4*count floats interleaved as (r, g, b, position) per control point.
+PYHELIOS_API float* getColormapControlPoints(const char* colormap_name, unsigned int* count_out);
+
 // generateTexturesFromColormap returns a list of file paths via count+index pattern.
 PYHELIOS_API unsigned int generateTexturesFromColormapCount(helios::Context* context, const char* texture_file, float* colormap_rgb_flat, unsigned int n_colors);
 PYHELIOS_API int generateTexturesFromColormapPath(helios::Context* context, unsigned int index, char* buffer, int buffer_size);

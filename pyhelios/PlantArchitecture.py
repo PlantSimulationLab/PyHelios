@@ -50,6 +50,7 @@ from .validation.core import validate_positive_value
 from .assets import get_asset_manager
 from .plant_architecture_params import (
     BudState,
+    PhytomerParameters,
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
@@ -68,8 +69,7 @@ logger = logging.getLogger(__name__)
 # wrong-species key from producing a plant that quietly used defaults.
 _BUILD_PARAMETERS_BY_MODEL: Dict[str, frozenset] = {
     "almond": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-    "almond_aldrich": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-    "almond_wood_colony": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
+    "almond_independence": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
     "apple": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
     "grapevine_VSP": frozenset({"trunk_height", "vine_spacing"}),
     "grapevine_wye": frozenset(
@@ -413,8 +413,8 @@ class PlantArchitecture:
             build_parameters: Optional dict of parameter overrides for training system
                             parameters. Only some models read them, and a key the model does
                             not accept raises ValueError rather than being ignored:
-                            - almond, almond_aldrich, almond_wood_colony, apple, pistachio,
-                              walnut: trunk_height, num_scaffolds, scaffold_angle
+                            - almond, almond_independence, apple, pistachio, walnut:
+                              trunk_height, num_scaffolds, scaffold_angle
                             - grapevine_VSP: trunk_height, vine_spacing
                             - grapevine_wye: trunk_height, vine_spacing, cordon_spacing,
                               catch_wire_height
@@ -1863,6 +1863,8 @@ class PlantArchitecture:
         the same order as :meth:`getPlantLeafObjectIDs`. Leaves whose geometry does not
         exist (removed, senesced, or never built) are omitted rather than reported as
         zero, so the result can be shorter than the list from :meth:`getPlantLeafObjectIDs`.
+        Each area is blade area: a leaflet's petiolule belongs to its leaf object but is not
+        counted (helios-core 1.3.89+).
 
         Requires helios-core v1.3.85 or newer.
 
@@ -2084,6 +2086,9 @@ class PlantArchitecture:
     def getPlantLeafArea(self, plant_id: int) -> float:
         """
         Get the total leaf area of a plant in m².
+
+        Leaf area is blade area: the petiolules (leaflet stalks) of compound leaves are
+        excluded (helios-core 1.3.89+; earlier versions counted them as leaf).
 
         Args:
             plant_id: ID of the plant instance
@@ -5468,6 +5473,116 @@ class PlantArchitecture:
             return plantarch_wrapper.getPlantAvailableNitrogen(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get the available nitrogen of plant {plant_id}: {e}")
+
+    def getLeafBladeArea(self, leaf_object_id: int) -> float:
+        """
+        One-sided blade area (m²) of a single leaf object.
+
+        A leaf object can carry a petiolule -- the stalk joining a leaflet to its rachis
+        (see :attr:`pyhelios.plant_architecture_params.LeafPrototype.build_petiolule`) --
+        whose primitives are labelled ``"petiolule"`` rather than ``"leaf"``. This reports
+        the area of the object without them, which is what every leaf-area quantity of the
+        plugin (:meth:`sumPlantLeafArea`, :meth:`getPlantLeafAreas`) means as of
+        helios-core 1.3.89. ``Context.getObjectArea()`` on the same object includes the
+        petiolule.
+
+        Args:
+            leaf_object_id: Object ID of the leaf (e.g. from :meth:`getPlantLeafObjectIDs`)
+
+        Returns:
+            Blade area in m²
+
+        Raises:
+            ValueError: If ``leaf_object_id`` is not a non-negative int
+            PlantArchitectureError: If the object does not exist
+            RuntimeError: If the native library predates helios-core v1.3.89
+        """
+        if isinstance(leaf_object_id, bool) or not isinstance(leaf_object_id, int):
+            raise ValueError(
+                f"Leaf object ID must be a non-negative int, got {type(leaf_object_id).__name__}")
+        if leaf_object_id < 0:
+            raise ValueError("Leaf object ID must be non-negative")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getLeafBladeArea(self._plantarch_ptr, leaf_object_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the blade area of leaf object {leaf_object_id}: {e}")
+
+    def getShadowLightExposureAtPoint(self, plant_id: int, position: vec3) -> float:
+        """
+        Local light exposure at a point from a plant's shadow-propagation grid.
+
+        Exposure runs from 0 (fully shaded) to 1 (unshaded), and is the quantity that drives
+        shade-based branch shedding at each dormancy boundary in parameter-based growth
+        (after Palubicki et al. 2009): branches deep in the crown interior see a low
+        exposure while branches on the crown surface do not. Returns 1 when the plant has no
+        canopy yet, or when the shadow grid is disabled because the carbohydrate model is
+        active. Intended for inspection and testing; it is a cheap surrogate for light
+        interception, not a radiation calculation.
+
+        Args:
+            plant_id: ID of the plant
+            position: Query position in world coordinates
+
+        Returns:
+            Local light exposure in [0, 1]
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int or ``position`` is not a vec3
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.89
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        if not isinstance(position, vec3):
+            raise ValueError(f"Position must be a vec3, got {type(position).__name__}")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getShadowLightExposureAtPoint(
+                self._plantarch_ptr, plant_id, (position.x, position.y, position.z))
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the shadow-grid light exposure of plant {plant_id}: {e}")
+
+    def resamplePhytomerParameters(self, phytomer_parameters: Union[dict, PhytomerParameters]
+                                   ) -> Union[dict, PhytomerParameters]:
+        """
+        Draw one realization of a set of phytomer parameters.
+
+        Mirrors the native ``PhytomerParameters::resample()``, which each phytomer calls
+        once when it is created (helios-core 1.3.89+) to draw its own values of every
+        distributed parameter. The draw uses the Context's random generator, so it follows
+        ``Context.seedRandomGenerator()``. Every field with a distribution (uniform, normal,
+        weibull, discrete values) comes back as a constant holding the value drawn for it;
+        constant fields, and fields that are not random parameters, are returned unchanged
+        and consume no random draws. The input is not modified.
+
+        Args:
+            phytomer_parameters: A :class:`pyhelios.plant_architecture_params.PhytomerParameters`
+                or its dict form (e.g. ``getCurrentShootParameters(label)["phytomer_parameters"]``)
+
+        Returns:
+            The realization, of the same type as the input
+
+        Raises:
+            ValueError: If ``phytomer_parameters`` is not a dict or PhytomerParameters
+            PlantArchitectureError: If the parameters cannot be parsed natively
+            RuntimeError: If the native library predates helios-core v1.3.89
+        """
+        typed = isinstance(phytomer_parameters, PhytomerParameters)
+        if typed:
+            params_dict = phytomer_parameters.to_dict()
+        elif isinstance(phytomer_parameters, dict):
+            params_dict = phytomer_parameters
+        else:
+            raise ValueError(
+                f"Phytomer parameters must be a dict or PhytomerParameters, got "
+                f"{type(phytomer_parameters).__name__}")
+        self._check_context_alive()
+        try:
+            result = plantarch_wrapper.resamplePhytomerParameters(self.context.context, params_dict)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to resample phytomer parameters: {e}")
+        return PhytomerParameters.from_dict(result) if typed else result
 
     @staticmethod
     def _validateStemFraction(stem_fraction) -> float:
