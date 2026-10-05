@@ -578,6 +578,28 @@ class TestPlantArchitectureUSDValidation:
         with pytest.raises(ValueError, match="empty"):
             plantarch.writePlantStructureUSD(0, "")
 
+    def test_write_plant_structure_usd_rejects_removed_damping_ratio(self):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match="damping_time_constant"):
+            plantarch.writePlantStructureUSD(0, "out.usda", damping_ratio=0.1)
+
+    def test_write_plant_structure_usd_rejects_a_positional_damping_value(self):
+        """The slot after wood_density used to be damping_ratio; a positional value there must not become a time constant."""
+        plantarch = self._stub_plantarch()
+        with pytest.raises(TypeError, match="positional"):
+            plantarch.writePlantStructureUSD(0, "out.usda", 5e9, 800.0, 0.1)
+
+    @pytest.mark.parametrize("kwargs, match", [
+        ({"damping_time_constant": -0.01}, "damping_time_constant"),
+        ({"armature_stability_ratio": 0.0}, "armature_stability_ratio"),
+        ({"physics_steps_per_second": 0.0}, "physics_steps_per_second"),
+        ({"physics_steps_per_second": -60.0}, "physics_steps_per_second"),
+    ])
+    def test_write_plant_structure_usd_rejects_out_of_range_joint_parameters(self, kwargs, match):
+        plantarch = self._stub_plantarch()
+        with pytest.raises(ValueError, match=match):
+            plantarch.writePlantStructureUSD(0, "out.usda", **kwargs)
+
     def test_register_growth_frame_negative_id(self):
         plantarch = self._stub_plantarch()
         with pytest.raises(ValueError, match="non-negative"):
@@ -1371,13 +1393,51 @@ class TestPlantArchitectureUSDExport:
             plant_id, str(out),
             elastic_modulus=8e9,
             wood_density=750.0,
-            damping_ratio=0.2,
+            damping_time_constant=0.05,
+            armature_stability_ratio=4.0,
+            physics_steps_per_second=120.0,
             leaf_mass_per_area=0.04,
             fruit_mass=0.005,
             flower_mass=0.001,
         )
         assert out.exists()
         assert out.stat().st_size > 0
+
+    @staticmethod
+    def _joint_values(path, key):
+        values = []
+        with open(path, 'r') as f:
+            for line in f:
+                if key in line:
+                    values.append(float(line.split('=')[1]))
+        return values
+
+    def test_usd_joint_damping_scales_with_time_constant(self, plantarch, tmp_path):
+        plant_id = self._build_plant(plantarch)
+        base, doubled = tmp_path / "base.usda", tmp_path / "doubled.usda"
+        plantarch.writePlantStructureUSD(plant_id, str(base), damping_time_constant=0.02)
+        plantarch.writePlantStructureUSD(plant_id, str(doubled), damping_time_constant=0.04)
+
+        base_damping = self._joint_values(base, "physics:damping")
+        doubled_damping = self._joint_values(doubled, "physics:damping")
+        assert base_damping and len(base_damping) == len(doubled_damping)
+        assert max(base_damping) > 0
+        # Organ attachment joints use organ_spring_damping, so only some joints scale
+        ratios = {round(d / b, 2) for b, d in zip(base_damping, doubled_damping) if b > 0}
+        assert 2.0 in ratios
+        assert ratios <= {1.0, 2.0}
+
+    def test_usd_joint_armature_follows_step_rate_and_stability_ratio(self, plantarch, tmp_path):
+        plant_id = self._build_plant(plantarch)
+        base, fast, loose = (tmp_path / name for name in ("base.usda", "fast.usda", "loose.usda"))
+        plantarch.writePlantStructureUSD(plant_id, str(base))
+        plantarch.writePlantStructureUSD(plant_id, str(fast), physics_steps_per_second=240.0)
+        plantarch.writePlantStructureUSD(plant_id, str(loose), armature_stability_ratio=32.0)
+
+        base_armature = sum(self._joint_values(base, "physxJoint:armature"))
+        assert base_armature > 0
+        assert sum(self._joint_values(fast, "physxJoint:armature")) < base_armature
+        assert sum(self._joint_values(loose, "physxJoint:armature")) < base_armature
 
     def test_growth_frame_lifecycle(self, plantarch):
         plant_id = self._build_plant(plantarch)
@@ -4458,7 +4518,7 @@ class TestListShootTypeLabels:
 
         labels = plantarch.listShootTypeLabels()
 
-        assert sorted(labels) == ["proleptic", "scaffold", "sylleptic", "trunk"]
+        assert sorted(labels) == ["proleptic", "scaffold", "spur", "sylleptic", "trunk"]
 
     def test_labels_are_accepted_by_getCurrentShootParameters(self, plantarch):
         """Every label reported must actually work, or discovery is worthless."""
@@ -4482,7 +4542,7 @@ class TestListShootTypeLabels:
 
         labels = plantarch.listShootTypeLabels(plant_id=plant_id)
 
-        assert sorted(labels) == ["proleptic", "scaffold", "sylleptic", "trunk"]
+        assert sorted(labels) == ["proleptic", "scaffold", "spur", "sylleptic", "trunk"]
 
     def test_rejects_both_selectors(self, plantarch):
         with pytest.raises(ValueError, match="not both"):

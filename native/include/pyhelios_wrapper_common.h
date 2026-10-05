@@ -198,6 +198,33 @@ PYHELIOS_API float evaluateEllipsoidalAzimuthCDF(float phi, float e, float phi0_
 PYHELIOS_API float invertEllipsoidalAzimuthCDF(float probability, float e, float phi0_degrees);
 
 //=============================================================================
+// Blackbody Radiation (core/global.h; helios-core v1.3.90+)
+//=============================================================================
+
+/**
+ * @brief Fraction of total blackbody emissive power emitted between two wavelengths
+ *
+ * The integral of Planck's law between the two wavelengths divided by its integral
+ * over all wavelengths (sigma*T^4). Multiplying the result by epsilon*sigma*T^4 gives
+ * the in-band emitted flux of a gray surface.
+ *
+ * @param wavelength_min_nm Lower wavelength bound (nm); must be >= 0
+ * @param wavelength_max_nm Upper wavelength bound (nm); must be greater than wavelength_min_nm
+ * @param temperature_K Blackbody temperature (K); must be > 0
+ * @return Fraction in [0,1]; 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float blackbodyBandFraction(float wavelength_min_nm, float wavelength_max_nm, float temperature_K);
+
+/**
+ * @brief Spectral radiance of a blackbody (Planck's law)
+ *
+ * @param wavelength_nm Wavelength (nm); must be > 0
+ * @param temperature_K Blackbody temperature (K); must be > 0
+ * @return Spectral radiance in W/m^2/sr/nm; 0 on error (check getLastErrorCode())
+ */
+PYHELIOS_API float blackbodySpectralRadiance(float wavelength_nm, float temperature_K);
+
+//=============================================================================
 // Internal Helper Functions (for use by other wrapper modules)
 //=============================================================================
 

@@ -50,7 +50,8 @@ INTEGRATED_PLUGINS = [
     "plantarchitecture",
     "leafoptics",
     "lidar",
-    "parameteroptimization"
+    "parameteroptimization",
+    "planthydraulics"
 ]
 
 # Execute dependency_resolver.py to get PluginDependencyResolver

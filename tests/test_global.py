@@ -222,3 +222,97 @@ class TestLeafAngleDistributionCDF:
         self._skip_if_unavailable()
         with pytest.raises(Exception, match="(?i)probability"):
             Global.invertEllipsoidalAzimuthCDF(bad, 0.5, 0.0)
+
+
+@pytest.mark.cross_platform
+class TestBlackbodyFunctionsValidation:
+    """Argument checks and the availability guard of the 1.3.90 blackbody bindings."""
+
+    def test_unavailable_library_raises_clear_error(self):
+        if global_wrapper._BLACKBODY_FUNCTIONS_AVAILABLE:
+            pytest.skip("Native library provides the 1.3.90 blackbody functions")
+        with pytest.raises(RuntimeError, match="helios-core v1.3.90"):
+            Global.blackbodyBandFraction(8000, 14000, 300.0)
+        with pytest.raises(RuntimeError, match="helios-core v1.3.90"):
+            Global.blackbodySpectralRadiance(10000, 300.0)
+
+    def test_guard_matches_its_registration_block(self):
+        from unittest.mock import patch
+        with patch.object(global_wrapper, '_BLACKBODY_FUNCTIONS_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.90"):
+                global_wrapper.blackbodyBandFraction(8000, 14000, 300.0)
+            with pytest.raises(RuntimeError, match="1.3.90"):
+                global_wrapper.blackbodySpectralRadiance(10000, 300.0)
+
+    @pytest.mark.parametrize("args", [("8000", 14000, 300.0), (8000, None, 300.0), (8000, 14000, True)])
+    def test_band_fraction_rejects_non_numbers(self, args):
+        with patch_available():
+            with pytest.raises(ValueError, match="must be a number"):
+                Global.blackbodyBandFraction(*args)
+
+    @pytest.mark.parametrize("args", [("10000", 300.0), (10000, [300.0]), (False, 300.0)])
+    def test_spectral_radiance_rejects_non_numbers(self, args):
+        with patch_available():
+            with pytest.raises(ValueError, match="must be a number"):
+                Global.blackbodySpectralRadiance(*args)
+
+
+def patch_available():
+    """Force the blackbody availability flag on, so argument checks are reached in mock mode."""
+    from unittest.mock import patch
+    return patch.object(global_wrapper, '_BLACKBODY_FUNCTIONS_AVAILABLE', True)
+
+
+@pytest.mark.native_only
+class TestBlackbodyFunctions:
+    """helios::blackbodyBandFraction() and blackbodySpectralRadiance() (helios-core 1.3.90)."""
+
+    SIGMA = 5.670374e-8
+
+    @pytest.fixture(autouse=True)
+    def _skip_if_unavailable(self):
+        if not global_wrapper._BLACKBODY_FUNCTIONS_AVAILABLE:
+            pytest.skip("Blackbody functions not available "
+                        "(native library predates 1.3.90 or mock mode)")
+
+    def test_band_fraction_over_all_wavelengths_is_one(self):
+        assert Global.blackbodyBandFraction(0, 1e9, 300.0) == pytest.approx(1.0, abs=1e-4)
+
+    def test_band_fraction_matches_tabulated_value(self):
+        # Siegel & Howell blackbody fraction table: F(0 -> lambda*T = 2898 um K) = 0.2501,
+        # the quarter of the power emitted below the Wien peak.
+        assert Global.blackbodyBandFraction(0, 2898e3 / 300.0, 300.0) == pytest.approx(0.2501, abs=5e-4)
+
+    def test_band_fraction_is_additive_over_adjacent_bands(self):
+        whole = Global.blackbodyBandFraction(8000, 14000, 300.0)
+        parts = Global.blackbodyBandFraction(8000, 11000, 300.0) + Global.blackbodyBandFraction(11000, 14000, 300.0)
+        assert 0.0 < whole < 1.0
+        assert parts == pytest.approx(whole, rel=1e-4)
+
+    def test_band_fraction_agrees_with_integrated_spectral_radiance(self):
+        T = 300.0
+        n = 600
+        step = (14000.0 - 8000.0) / n
+        radiance = sum(Global.blackbodySpectralRadiance(8000.0 + (i + 0.5) * step, T) for i in range(n)) * step
+        expected = math.pi * radiance / (self.SIGMA * T ** 4)
+        assert Global.blackbodyBandFraction(8000, 14000, T) == pytest.approx(expected, rel=1e-3)
+
+    def test_spectral_radiance_peaks_at_the_wien_wavelength(self):
+        T = 300.0
+        peak_nm = 2897.77e3 / T
+        at_peak = Global.blackbodySpectralRadiance(peak_nm, T)
+        assert at_peak > Global.blackbodySpectralRadiance(0.8 * peak_nm, T)
+        assert at_peak > Global.blackbodySpectralRadiance(1.2 * peak_nm, T)
+        # Planck's law at the Wien peak: L = 4.0957e-6 W/m^2/sr/m/K^5 * T^5, here per nm
+        assert at_peak == pytest.approx(4.0957e-6 * T ** 5 * 1e-9, rel=1e-3)
+
+    @pytest.mark.parametrize("args", [(8000, 14000, 0.0), (8000, 14000, -5.0), (-1, 14000, 300.0),
+                                      (14000, 8000, 300.0), (8000, 8000, 300.0)])
+    def test_band_fraction_rejects_out_of_range_arguments(self, args):
+        with pytest.raises(Exception, match="(?i)temperature must be greater|wavelength bounds must satisfy"):
+            Global.blackbodyBandFraction(*args)
+
+    @pytest.mark.parametrize("args", [(0.0, 300.0), (-10.0, 300.0), (10000, 0.0)])
+    def test_spectral_radiance_rejects_out_of_range_arguments(self, args):
+        with pytest.raises(Exception, match="(?i)(temperature|wavelength) must be greater"):
+            Global.blackbodySpectralRadiance(*args)

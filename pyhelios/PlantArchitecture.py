@@ -72,7 +72,7 @@ _BUILD_PARAMETERS_BY_MODEL: Dict[str, frozenset] = {
     "almond_independence": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
     "apple": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
     "grapevine_VSP": frozenset({"trunk_height", "vine_spacing"}),
-    "grapevine_wye": frozenset(
+    "grapevine_Wye": frozenset(
         {"trunk_height", "vine_spacing", "cordon_spacing", "catch_wire_height"}
     ),
     "pistachio": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
@@ -255,12 +255,13 @@ def is_plantarchitecture_available():
         return False
 
 
-def _surfaces_phytomer_creation_errors(method):
-    """Re-raise an exception from a Python phytomer creation function out of the call that grew the phytomer.
+def _surfaces_phytomer_callback_errors(method):
+    """Re-raise an exception from a Python phytomer creation or callback function out of the call that ran it.
 
-    ctypes cannot propagate an exception out of a callback, so the trampoline built by
-    :meth:`PlantArchitecture.setPhytomerCreationFunction` stores it and makes the native call fail; this
-    decorator then raises the stored exception in place of the resulting native error.
+    ctypes cannot propagate an exception out of a callback, so the trampolines built by
+    :meth:`PlantArchitecture.setPhytomerCreationFunction` and :meth:`PlantArchitecture.setPhytomerCallbackFunction`
+    store it and make the native call fail; this decorator then raises the stored exception in place of the
+    resulting native error.
     """
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
@@ -392,6 +393,7 @@ class PlantArchitecture:
         if not plant_label.strip():
             raise ValueError("Plant label cannot be only whitespace")
 
+        self._reject_inside_phytomer_callback("loadPlantModelFromLibrary")
         self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
@@ -401,7 +403,7 @@ class PlantArchitecture:
 
         self._current_plant_model = plant_label.strip()
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def buildPlantInstanceFromLibrary(self, base_position: vec3, age: float,
                                      build_parameters: Optional[dict] = None) -> int:
         """
@@ -416,7 +418,7 @@ class PlantArchitecture:
                             - almond, almond_independence, apple, pistachio, walnut:
                               trunk_height, num_scaffolds, scaffold_angle
                             - grapevine_VSP: trunk_height, vine_spacing
-                            - grapevine_wye: trunk_height, vine_spacing, cordon_spacing,
+                            - grapevine_Wye: trunk_height, vine_spacing, cordon_spacing,
                               catch_wire_height
                             All other models read no build parameters.
 
@@ -459,7 +461,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant instance: {e}")
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def buildPlantCanopyFromLibrary(self, canopy_center: vec3,
                                   plant_spacing: vec2,
                                   plant_count: int2, age: float,
@@ -547,7 +549,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to build plant canopy: {e}")
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def advanceTime(self, dt: float, plant_id: Optional[int] = None,
                     plant_ids: Optional[List[int]] = None,
                     years: Optional[int] = None) -> None:
@@ -596,6 +598,7 @@ class PlantArchitecture:
         if years is not None and years < 0:
             raise ValueError(f"years must be non-negative, got {years}")
 
+        self._reject_inside_phytomer_callback("advanceTime")
         self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
@@ -2387,6 +2390,14 @@ class PlantArchitecture:
             behavior; traverse with :meth:`getShoot` and treat ``node_count == 0``
             as "nothing left here".
 
+            Called from a phytomer creation or callback function (see
+            :meth:`setPhytomerCreationFunction`, :meth:`setPhytomerCallbackFunction`), the
+            arguments are checked immediately but the cut is deferred: it is applied at the end
+            of the current time step of :meth:`advanceTime`, or before the build call that ran
+            the function returns. Until then the shoot still looks uncut. Deferred cuts are
+            applied in the order requested, and one whose shoot or node an earlier cut already
+            removed does nothing.
+
         Example:
             >>> # Remove a whole branch and everything growing off it
             >>> plantarch.pruneBranch(plant_id, shoot_id=3, node_index=0)
@@ -3303,7 +3314,8 @@ class PlantArchitecture:
     def writePlantStructureUSD(self, plant_id: int, filename: Union[str, Path],
                                elastic_modulus: float = 5e9,
                                wood_density: float = 800.0,
-                               damping_ratio: float = 0.1,
+                               *,
+                               damping_time_constant: float = 0.02,
                                static_friction: float = 0.5,
                                dynamic_friction: float = 0.3,
                                restitution: float = 0.1,
@@ -3313,20 +3325,32 @@ class PlantArchitecture:
                                fruit_mass: float = 0.01,
                                flower_mass: float = 0.002,
                                solver_position_iterations: int = 32,
-                               min_segment_length: float = 0.001) -> None:
+                               min_segment_length: float = 0.001,
+                               armature_stability_ratio: float = 8.0,
+                               physics_steps_per_second: float = 60.0,
+                               damping_ratio: Optional[float] = None) -> None:
         """
         Export plant structure as a USD articulated rigid body for NVIDIA IsaacSim physics.
 
-        Each tube segment becomes a capsule-shaped rigid link connected by spherical joints.
-        Spring/damper drives are derived from beam bending stiffness (E*I/L). Leaves, fruits,
+        Each tube segment becomes a capsule-shaped rigid link connected to its parent by a joint
+        that locks translation, limits bending to +/-60 degrees and carries a spring on each
+        rotation axis, with stiffness derived from beam bending stiffness (E*I/L). Leaves, fruits,
         and flowers are represented as mass bodies attached by spring links.
+
+        Beam stiffness on a short, light segment is stiffer than a physics solver can integrate at
+        a typical step rate, so each joint is given armature (an artificial inertia) that caps its
+        natural frequency at armature_stability_ratio * physics_steps_per_second. Armature adds no
+        weight, so deflection under gravity is unchanged. If the simulation runs at a coarser step
+        than physics_steps_per_second, set that parameter to match or the plant may be unstable.
 
         Args:
             plant_id: ID of the plant instance to export
             filename: Output file path (should have .usda extension)
             elastic_modulus: Young's modulus (Pa) for joint stiffness, K = E*I/L
             wood_density: Wood density (kg/m^3) used to compute mass from capsule volume
-            damping_ratio: Joint damping ratio (dimensionless)
+            damping_time_constant: Damping time constant (s) of the joints between stem, petiole
+                and peduncle segments; joint damping is this value times the joint stiffness.
+                Must be non-negative.
             static_friction: Static friction coefficient for collision material
             dynamic_friction: Dynamic friction coefficient for collision material
             restitution: Restitution (bounciness) for collision material
@@ -3337,18 +3361,41 @@ class PlantArchitecture:
             flower_mass: Mass per flower (kg)
             solver_position_iterations: PhysX articulation solver position iteration count
             min_segment_length: Minimum segment length (m); shorter segments are skipped
+            armature_stability_ratio: Cap on each joint's own natural frequency, as a multiple of
+                the physics step rate. Lower is more stable. Must be positive.
+            physics_steps_per_second: Physics step rate (Hz) the simulation is expected to run at,
+                used to size the joint armature. Must be positive.
+            damping_ratio: Removed; raises ValueError if given. See the note below.
 
         Raises:
-            ValueError: If plant_id is negative or filename is empty
+            ValueError: If plant_id is negative, filename is empty, a damping or armature
+                parameter is out of range, or the removed damping_ratio parameter is given
             PlantArchitectureError: If plant doesn't exist or file cannot be written
+
+        Note:
+            ``damping_ratio`` was removed in helios-core 1.3.90, where joint damping became
+            proportional to stiffness. Use ``damping_time_constant`` (seconds) instead; the two
+            are not interchangeable.
 
         Example:
             >>> plantarch.writePlantStructureUSD(plant_id, "plant.usda")
         """
+        if damping_ratio is not None:
+            raise ValueError(
+                "writePlantStructureUSD() no longer accepts damping_ratio: joint damping is now "
+                "proportional to stiffness and is set with damping_time_constant (seconds, default 0.02). "
+                "The two are not interchangeable, so the old value cannot be converted."
+            )
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
         if not filename:
             raise ValueError("Filename cannot be empty")
+        if damping_time_constant < 0:
+            raise ValueError(f"damping_time_constant must be non-negative, got {damping_time_constant}")
+        if armature_stability_ratio <= 0:
+            raise ValueError(f"armature_stability_ratio must be positive, got {armature_stability_ratio}")
+        if physics_steps_per_second <= 0:
+            raise ValueError(f"physics_steps_per_second must be positive, got {physics_steps_per_second}")
 
         absolute_path = _resolve_user_path(filename)
 
@@ -3357,11 +3404,18 @@ class PlantArchitecture:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.writePlantStructureUSD(
                     self._plantarch_ptr, plant_id, absolute_path,
-                    elastic_modulus, wood_density, damping_ratio,
-                    static_friction, dynamic_friction, restitution,
-                    organ_spring_stiffness, organ_spring_damping,
-                    leaf_mass_per_area, fruit_mass, flower_mass,
-                    solver_position_iterations, min_segment_length
+                    elastic_modulus=elastic_modulus, wood_density=wood_density,
+                    damping_time_constant=damping_time_constant,
+                    armature_stability_ratio=armature_stability_ratio,
+                    physics_steps_per_second=physics_steps_per_second,
+                    static_friction=static_friction, dynamic_friction=dynamic_friction,
+                    restitution=restitution,
+                    organ_spring_stiffness=organ_spring_stiffness,
+                    organ_spring_damping=organ_spring_damping,
+                    leaf_mass_per_area=leaf_mass_per_area, fruit_mass=fruit_mass,
+                    flower_mass=flower_mass,
+                    solver_position_iterations=solver_position_iterations,
+                    min_segment_length=min_segment_length
                 )
         except Exception as e:
             raise PlantArchitectureError(f"Failed to write plant structure USD to {filename}: {e}")
@@ -3464,7 +3518,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get growth frame count for plant {plant_id}: {e}")
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def readPlantStructureXML(self, filename: Union[str, Path], quiet: bool = False) -> List[int]:
         """
         Load plant structure from XML file.
@@ -3591,6 +3645,7 @@ class PlantArchitecture:
         if plant_id < 0:
             raise ValueError("Plant ID must be non-negative")
 
+        self._reject_inside_phytomer_callback("deletePlantInstance")
         self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
@@ -3598,7 +3653,7 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to delete plant instance {plant_id}: {e}")
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def addBaseStemShoot(self,
                         plant_id: int,
                         current_node_number: int,
@@ -3698,7 +3753,7 @@ class PlantArchitecture:
                 )
             raise PlantArchitectureError(f"Failed to add base stem shoot: {e}")
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def appendShoot(self,
                    plant_id: int,
                    parent_shoot_id: int,
@@ -3794,7 +3849,7 @@ class PlantArchitecture:
                 )
             raise PlantArchitectureError(f"Failed to append shoot: {e}")
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def addChildShoot(self,
                      plant_id: int,
                      parent_shoot_id: int,
@@ -3939,7 +3994,7 @@ class PlantArchitecture:
             radii.append(float(r))
         return positions, radii
 
-    @_surfaces_phytomer_creation_errors
+    @_surfaces_phytomer_callback_errors
     def addShootFromNodePositions(self,
                                   plant_id: int,
                                   parent_shoot_id: int,
@@ -4885,7 +4940,7 @@ class PlantArchitecture:
                 f"of plant {plant_id}: {e}")
 
     def bendPetioleUnderLeafWeight(self, plant_id: int, shoot_id: int, node_index: int,
-                                   petiole_index: int) -> None:
+                                   petiole_index: int, include_posed_leaves: bool = False) -> None:
         """
         Bend one petiole, and the leaves it carries, under the weight of its leaflets.
 
@@ -4898,18 +4953,27 @@ class PlantArchitecture:
 
         This is normally driven by the growth model from
         ``PhytomerParameters.petiole.flexibility``; call it directly only to re-bend a petiole
-        after changing its geometry yourself. It does nothing for a rigid petiole (flexibility
-        left at zero), a petiole whose centerline was prescribed, one carrying a prescribed
-        leaf, or when neither the load nor the compliance has changed since the last call.
+        after changing its geometry or its flexibility (:meth:`setPetioleFlexibility`) yourself.
+        It does nothing for a rigid petiole (flexibility left at zero), a petiole whose
+        centerline was prescribed, one carrying a prescribed leaf, or when neither the load nor
+        the compliance has changed since the last call.
+
+        A leaf counts as prescribed once it has been posed by :meth:`setLeafNormal`,
+        :meth:`setLeafAngleDistribution` or :meth:`setPetioleLeafGeometry`, so after any of
+        those its petiole no longer bends. Pass ``include_posed_leaves=True`` to bend it anyway:
+        the posed leaves are then carried along the petiole and turned with it, which moves them
+        away from the orientation they were given.
 
         Args:
             plant_id: ID of the plant instance
             shoot_id: Shoot index within the plant
             node_index: Phytomer index within the shoot
             petiole_index: Petiole within the phytomer
+            include_posed_leaves: Also bend a petiole that carries posed leaves
 
         Raises:
-            ValueError: If any identifier is not a non-negative int
+            ValueError: If any identifier is not a non-negative int, or
+                ``include_posed_leaves`` is not a bool
             PlantArchitectureError: If the plant, shoot, node or petiole does not exist
             RuntimeError: If the native library predates helios-core v1.3.87
         """
@@ -4917,10 +4981,15 @@ class PlantArchitecture:
         node_index = self._validateNodeIndex(node_index)
         petiole_index = self._validatePetioleIndex(petiole_index)
 
+        if not isinstance(include_posed_leaves, bool):
+            raise ValueError(
+                f"include_posed_leaves must be a bool, got {type(include_posed_leaves).__name__}")
+
         self._check_context_alive()
         try:
-            plantarch_wrapper.bendPetioleUnderLeafWeight(
-                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)
+            bend = (plantarch_wrapper.bendPetioleWithPosedLeavesUnderLeafWeight if include_posed_leaves
+                    else plantarch_wrapper.bendPetioleUnderLeafWeight)
+            bend(self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index)
         except Exception as e:
             raise PlantArchitectureError(
                 f"Failed to bend petiole {petiole_index} of node {node_index} of shoot "
@@ -4960,6 +5029,156 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to record the rest shape of petiole {petiole_index} of node "
                 f"{node_index} of shoot {shoot_id} of plant {plant_id}: {e}")
+
+    def setLeafAngleDistribution(self, plant_ids, beta_mu_inclination: float,
+                                 beta_nu_inclination: float, eccentricity: Optional[float] = None,
+                                 ellipse_rotation_degrees: float = 0.0) -> None:
+        """
+        Re-aim every leaf of a finished plant so that its leaf angles follow a prescribed distribution.
+
+        Inclination is made to follow a Beta distribution. If ``eccentricity`` is given, azimuth
+        is also made to follow an ellipsoidal distribution; otherwise each leaf keeps its azimuth.
+        Angles are not sampled per leaf: leaves are ordered by their current angle, weighted by leaf
+        area, and each takes the angle at its own position in the target distribution. The leaf
+        arrangement of the plant is therefore kept, a leaf held steeper than its neighbour stays
+        steeper, and the method can be called repeatedly with changing parameters (for example
+        once per timestep) to move the canopy smoothly between distributions.
+
+        This moves leaves that already exist. To steer leaves as they emerge on a growing plant,
+        use :meth:`enableLeafAngleDistributionTracking`.
+
+        Each leaf is re-aimed about its own base, so it stays attached to its petiole, and the
+        angles are recorded on the phytomer so they survive an XML round trip.
+
+        Args:
+            plant_ids: A single plant ID, or a sequence of plant IDs over which the distribution
+                is realized as a whole
+            beta_mu_inclination: First parameter of the Beta inclination distribution; must be
+                positive
+            beta_nu_inclination: Second parameter of the Beta inclination distribution; must be
+                positive. The mean leaf inclination from horizontal is 90 * nu / (mu + nu)
+                degrees, so raising nu relative to mu makes the leaves steeper.
+            eccentricity: Eccentricity of the ellipse defining the azimuth distribution, in
+                [0, 1], where 0 is a uniform azimuth distribution. ``None`` (the default) leaves
+                leaf azimuths as they are.
+            ellipse_rotation_degrees: Rotation of that ellipse (degrees); used only when
+                ``eccentricity`` is given
+
+        Raises:
+            ValueError: If a plant ID is not a non-negative int, the list is empty, a Beta
+                parameter is not positive, or eccentricity is outside [0, 1]
+            PlantArchitectureError: If a plant does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.setLeafAngleDistribution(plant_id, 2.0, 1.5)
+        """
+        multi = not isinstance(plant_ids, int) or isinstance(plant_ids, bool)
+        ids = self._validatePlantIdList(plant_ids) if multi else [
+            self._validatePlantIdentifier(plant_ids)]
+        values = {}
+        for name, value in (("beta_mu_inclination", beta_mu_inclination),
+                            ("beta_nu_inclination", beta_nu_inclination),
+                            ("eccentricity", 0.0 if eccentricity is None else eccentricity),
+                            ("ellipse_rotation_degrees", ellipse_rotation_degrees)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} must be a finite number, got {value!r}")
+            values[name] = float(value)
+        if values["beta_mu_inclination"] <= 0 or values["beta_nu_inclination"] <= 0:
+            raise ValueError("beta_mu_inclination and beta_nu_inclination must be positive")
+        if not 0.0 <= values["eccentricity"] <= 1.0:
+            raise ValueError(f"eccentricity must be between 0 and 1, got {eccentricity}")
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPlantLeafAngleDistribution(
+                self._plantarch_ptr, ids, values["beta_mu_inclination"],
+                values["beta_nu_inclination"],
+                None if eccentricity is None else values["eccentricity"],
+                values["ellipse_rotation_degrees"])
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the leaf angle distribution of {ids}: {e}")
+
+    def getPetioleFlexibility(self, plant_id: int, shoot_id: int, node_index: int) -> float:
+        """
+        Bending flexibility of the petioles of one phytomer.
+
+        The value is drawn from ``PhytomerParameters.petiole.flexibility`` when the phytomer is
+        created and held for its life. 0 is a rigid petiole.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+
+        Returns:
+            Dimensionless petiole flexibility
+
+        Raises:
+            ValueError: If any identifier is not a non-negative int
+            PlantArchitectureError: If the plant, shoot or node does not exist
+            RuntimeError: If the native library predates this binding
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPetioleFlexibility(
+                self._plantarch_ptr, plant_id, shoot_id, node_index)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the petiole flexibility of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
+
+    def setPetioleFlexibility(self, plant_id: int, shoot_id: int, node_index: int,
+                              flexibility: float) -> None:
+        """
+        Replace the bending flexibility of the petioles of one existing phytomer.
+
+        This changes how far the petioles droop under their leaflets' weight without rebuilding
+        the plant. The geometry does not move until :meth:`bendPetioleUnderLeafWeight` is called
+        for each petiole (or the plant next grows), which bends from the recorded rest shape, so
+        raising and lowering the flexibility is reversible. If the leaves have been posed, for
+        example by :meth:`setLeafAngleDistribution`, bend with ``include_posed_leaves=True``.
+
+        Note:
+            :meth:`bendPetioleUnderLeafWeight` does nothing at a flexibility of exactly zero, so
+            a petiole that has been bent is returned to its rest shape with a small positive
+            value rather than zero.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant
+            node_index: Phytomer index within the shoot
+            flexibility: Dimensionless petiole flexibility; must be finite and non-negative
+
+        Raises:
+            ValueError: If an identifier is invalid or ``flexibility`` is not a finite
+                non-negative number
+            PlantArchitectureError: If the plant, shoot or node does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.setPetioleFlexibility(plant_id, 0, 3, 2.0)
+            >>> plantarch.bendPetioleUnderLeafWeight(plant_id, 0, 3, 0)
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        node_index = self._validateNodeIndex(node_index)
+        if (isinstance(flexibility, bool) or not isinstance(flexibility, (int, float))
+                or not math.isfinite(flexibility) or flexibility < 0):
+            raise ValueError(
+                f"Flexibility must be a finite non-negative number, got {flexibility!r}")
+
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPetioleFlexibility(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, float(flexibility))
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the petiole flexibility of node {node_index} of shoot "
+                f"{shoot_id} of plant {plant_id}: {e}")
 
     # ------------------------------------------------------------------
     # Phytomer creation function (helios-core 1.3.88)
@@ -5006,9 +5225,11 @@ class PlantArchitecture:
           when it is created, so shoots created before this call keep whatever function they had.
         - Shoots created while a Python callback is installed look it up by label each time, so
           replacing the callback or clearing it with ``None`` also takes effect for them.
-        - ``None`` removes any creation function, including a library one: the library ``tomato``
-          model's ``mainstem`` rescales every new phytomer's leaves and internode by plant age,
-          which overrides sizes set through the shoot parameters.
+        - ``None`` restores the function the shoot type had before a Python callback was first
+          installed on it, usually the library one (for example the library ``tomato`` model's
+          ``mainstem`` function, which rescales every new phytomer's leaves and internode by plant
+          age). To build without a library function, define a new shoot type from the parameters
+          (see below), which carries none.
         - Redefining an existing label with :meth:`defineShootType` keeps its creation function.
           A new label defined from another type's parameters (for example
           ``defineShootType("my_stem", getCurrentShootParameters("mainstem"))``) starts with
@@ -5017,19 +5238,28 @@ class PlantArchitecture:
 
         Args:
             shoot_type_label: An existing shoot type label
-            callback: A callable taking the seven arguments above, or ``None`` to remove the creation function
+            callback: A callable taking the seven arguments above; the name of a library creation
+                function (see :meth:`getLibraryPhytomerCreationFunctionNames`), which installs that
+                native function in place of whatever the type had; or ``None`` to restore the
+                function the type had before a Python callback was installed
 
         Raises:
-            ValueError: If the label is not a non-empty str or the callback is not callable
-            PlantArchitectureError: If the shoot type does not exist
+            ValueError: If the label is not a non-empty str, the callback is neither callable, a str
+                nor None, or the name is empty
+            PlantArchitectureError: If the shoot type does not exist or the name is not a library
+                creation function
             RuntimeError: If the native library predates helios-core v1.3.88
         """
         if not isinstance(shoot_type_label, str) or not shoot_type_label:
             raise ValueError(
                 f"Shoot type label must be a non-empty str, got {type(shoot_type_label).__name__}")
+        if isinstance(callback, str):
+            self._setLibraryPhytomerFunction(shoot_type_label, callback, creation=True)
+            return
         if callback is not None and not callable(callback):
             raise ValueError(
-                f"Phytomer creation callback must be callable or None, got {type(callback).__name__}")
+                f"Phytomer creation callback must be callable, a library function name or None, "
+                f"got {type(callback).__name__}")
 
         native_callback = None if callback is None else self._makePhytomerCreationTrampoline(callback)
         self._check_context_alive()
@@ -5046,6 +5276,223 @@ class PlantArchitecture:
         else:
             callbacks[shoot_type_label] = native_callback
 
+    def setPhytomerCallbackFunction(self, shoot_type_label: str,
+                                    callback: Optional[Callable[[int, int, int, float], None]]) -> None:
+        """
+        Install a Python function that the plugin calls for every phytomer of a shoot type on every time step.
+
+        This is the Python counterpart of assigning
+        ``phytomer_parameters.phytomer_callback_function`` in C++. Use it for per-phytomer logic that must
+        run as the plant develops rather than once at creation (for that, see
+        :meth:`setPhytomerCreationFunction`), for example adjusting growth targets with phytomer age.
+
+        The callback is called as::
+
+            callback(plant_id, shoot_id, node_index, phytomer_age)
+
+        once per phytomer per :meth:`advanceTime` sub-step, after the phytomer's age has been advanced, so
+        ``(plant_id, shoot_id, node_index)`` addresses it through any per-phytomer method and
+        ``phytomer_age`` (days) equals :meth:`getPhytomerAge` at that moment. ``advanceTime`` divides its
+        interval into sub-steps of at most the shortest phyllochron (and at most 1 day for intervals shorter
+        than that), so the number of calls per phytomer is the number of sub-steps, not the number of days. It
+        also runs inside :meth:`buildPlantInstanceFromLibrary` and :meth:`buildPlantCanopyFromLibrary` when
+        they grow a plant to its starting age. The return value is ignored.
+
+        Performance: the cost scales with (phytomers x sub-steps). Crossing into Python costs roughly
+        0.2 microseconds per call, and each per-phytomer PyHelios method called from the callback adds
+        roughly 1.5-2 microseconds, so it is the callback's own work that dominates. On a growing plant this
+        is small beside the plugin's own work per step; it matters most for large, slowly changing
+        populations, such as a dormant tree over many days.
+
+        If the callback raises, the exception propagates out of the call that advanced time with its original
+        type, and no further callbacks run during that call; the plant is left partly advanced.
+
+        Which phytomers are affected:
+
+        - The function is copied into each phytomer when the phytomer is created, so phytomers created
+          before this call do not call a newly installed function. Install it before building the plant.
+        - Phytomers created while a Python callback is installed look it up by label on each call, so
+          replacing the callback or clearing it with ``None`` also takes effect for them.
+        - ``None`` restores the function the shoot type had before a Python callback was first
+          installed on it, usually the library one. Clearing a callback that was never installed
+          changes nothing.
+        - As with :meth:`setPhytomerCreationFunction`, redefining an existing label with
+          :meth:`defineShootType` keeps the function, but a new label defined from another type's parameter
+          dict starts with none.
+
+        Args:
+            shoot_type_label: An existing shoot type label
+            callback: A callable taking the four arguments above; the name of a library callback
+                function (see :meth:`getLibraryPhytomerCallbackFunctionNames`), which installs that
+                native function in place of whatever the type had; or ``None`` to restore the
+                function the type had before a Python callback was installed
+
+        Raises:
+            ValueError: If the label is not a non-empty str, the callback is neither callable, a str
+                nor None, or the name is empty
+            PlantArchitectureError: If the shoot type does not exist or the name is not a library
+                callback function
+            RuntimeError: If the native library predates this function
+        """
+        if not isinstance(shoot_type_label, str) or not shoot_type_label:
+            raise ValueError(
+                f"Shoot type label must be a non-empty str, got {type(shoot_type_label).__name__}")
+        if isinstance(callback, str):
+            self._setLibraryPhytomerFunction(shoot_type_label, callback, creation=False)
+            return
+        if callback is not None and not callable(callback):
+            raise ValueError(
+                f"Phytomer callback function must be callable, a library function name or None, "
+                f"got {type(callback).__name__}")
+
+        native_callback = None if callback is None else self._makePhytomerCallbackTrampoline(callback)
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPhytomerCallbackFunction(self._plantarch_ptr, shoot_type_label, native_callback)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the phytomer callback function of shoot type '{shoot_type_label}': {e}")
+
+        # The native registry now holds native_callback (or nothing), so this is the reference that must stay alive.
+        callbacks = self.__dict__.setdefault('_phytomer_callbacks', {})
+        if native_callback is None:
+            callbacks.pop(shoot_type_label, None)
+        else:
+            callbacks[shoot_type_label] = native_callback
+
+    def _setLibraryPhytomerFunction(self, shoot_type_label: str, function_name: str, creation: bool) -> None:
+        kind = "creation" if creation else "callback"
+        if not function_name:
+            raise ValueError(f"Library phytomer {kind} function name cannot be empty")
+        self._check_context_alive()
+        setter = (plantarch_wrapper.setPhytomerCreationFunctionByName if creation
+                  else plantarch_wrapper.setPhytomerCallbackFunctionByName)
+        try:
+            setter(self._plantarch_ptr, shoot_type_label, function_name)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the phytomer {kind} function of shoot type '{shoot_type_label}' "
+                f"to library function '{function_name}': {e}")
+        # The library function replaced any Python callback, which no longer needs to be kept alive.
+        registry = '_phytomer_creation_callbacks' if creation else '_phytomer_callbacks'
+        self.__dict__.setdefault(registry, {}).pop(shoot_type_label, None)
+
+    def _getLibraryPhytomerFunctionName(self, shoot_type_label: str, creation: bool) -> Optional[str]:
+        if not isinstance(shoot_type_label, str) or not shoot_type_label:
+            raise ValueError(
+                f"Shoot type label must be a non-empty str, got {type(shoot_type_label).__name__}")
+        self._check_context_alive()
+        getter = (plantarch_wrapper.getPhytomerCreationFunctionName if creation
+                  else plantarch_wrapper.getPhytomerCallbackFunctionName)
+        try:
+            return getter(self._plantarch_ptr, shoot_type_label) or None
+        except RuntimeError:
+            raise
+        except Exception as e:
+            kind = "creation" if creation else "callback"
+            raise PlantArchitectureError(
+                f"Failed to get the phytomer {kind} function of shoot type '{shoot_type_label}': {e}")
+
+    def getPhytomerCreationFunctionName(self, shoot_type_label: str) -> Optional[str]:
+        """
+        Get the name of the library creation function a shoot type carries.
+
+        Use it to carry a library model's creation function over to a new shoot type, which
+        :meth:`defineShootType` starts without::
+
+            params = plantarch.getCurrentShootParameters("proleptic")
+            plantarch.defineShootType("my_shoot", params)
+            name = plantarch.getPhytomerCreationFunctionName("proleptic")
+            if name:
+                plantarch.setPhytomerCreationFunction("my_shoot", name)
+
+        Args:
+            shoot_type_label: An existing shoot type label
+
+        Returns:
+            The library function's name, or ``None`` if the shoot type has no creation function
+            or has a Python one
+
+        Raises:
+            ValueError: If the label is not a non-empty str
+            PlantArchitectureError: If the shoot type does not exist
+            RuntimeError: If the native library predates this function
+        """
+        return self._getLibraryPhytomerFunctionName(shoot_type_label, creation=True)
+
+    def getPhytomerCallbackFunctionName(self, shoot_type_label: str) -> Optional[str]:
+        """
+        Get the name of the library per-timestep callback function a shoot type carries.
+
+        Args:
+            shoot_type_label: An existing shoot type label
+
+        Returns:
+            The library function's name, or ``None`` if the shoot type has no callback function
+            or has a Python one
+
+        Raises:
+            ValueError: If the label is not a non-empty str
+            PlantArchitectureError: If the shoot type does not exist
+            RuntimeError: If the native library predates this function
+        """
+        return self._getLibraryPhytomerFunctionName(shoot_type_label, creation=False)
+
+    @staticmethod
+    def getLibraryPhytomerCreationFunctionNames() -> List[str]:
+        """
+        List the library phytomer creation functions that :meth:`setPhytomerCreationFunction` accepts by name.
+
+        These are the functions the library plant models use, for example
+        ``"AlmondPhytomerCreationFunction"`` or ``"TomatoPhytomerCreationFunction"``.
+
+        Returns:
+            Function names, sorted
+
+        Raises:
+            RuntimeError: If the native library predates this function
+        """
+        return plantarch_wrapper.getLibraryPhytomerCreationFunctionNames()
+
+    @staticmethod
+    def getLibraryPhytomerCallbackFunctionNames() -> List[str]:
+        """
+        List the library per-timestep callback functions that :meth:`setPhytomerCallbackFunction` accepts by name.
+
+        These are the functions the library plant models use, for example
+        ``"AlmondSpurPhytomerCallbackFunction"`` (grows spurs on a model that defines a ``spur``
+        shoot type) or ``"GrapevinePhytomerCallbackFunction"`` (pulls fruit-zone leaves).
+
+        Returns:
+            Function names, sorted
+
+        Raises:
+            RuntimeError: If the native library predates this function
+        """
+        return plantarch_wrapper.getLibraryPhytomerCallbackFunctionNames()
+
+    def _makePhytomerCallbackTrampoline(self, callback):
+        """Wrap callback so an exception is stored for re-raising instead of being lost inside ctypes."""
+        owner = weakref.ref(self)
+
+        def trampoline(plant_id, shoot_id, node_index, phytomer_age):
+            plantarch = owner()
+            if plantarch is None or getattr(plantarch, '_pending_callback_error', None) is not None:
+                return 1
+            plantarch._phytomer_callback_depth = getattr(plantarch, '_phytomer_callback_depth', 0) + 1
+            try:
+                callback(plant_id, shoot_id, node_index, phytomer_age)
+            except BaseException as e:
+                plantarch._pending_callback_error = e
+                return 1
+            finally:
+                plantarch._phytomer_callback_depth -= 1
+            return 0
+
+        return plantarch_wrapper.PHYTOMER_CALLBACK(trampoline)
+
     def _makePhytomerCreationTrampoline(self, callback):
         """Wrap callback so an exception is stored for re-raising instead of being lost inside ctypes."""
         owner = weakref.ref(self)
@@ -5055,18 +5502,35 @@ class PlantArchitecture:
             plantarch = owner()
             if plantarch is None or getattr(plantarch, '_pending_callback_error', None) is not None:
                 return 1
+            plantarch._phytomer_callback_depth = getattr(plantarch, '_phytomer_callback_depth', 0) + 1
             try:
                 callback(int(plant_id), int(shoot_id), int(node_index), int(shoot_node_index),
                          int(parent_shoot_node_index), int(shoot_max_nodes), float(plant_age))
             except BaseException as e:
                 plantarch._pending_callback_error = e
                 return 1
+            finally:
+                plantarch._phytomer_callback_depth -= 1
             return 0
 
         return plantarch_wrapper.PHYTOMER_CREATION_CALLBACK(trampoline)
 
+    def _reject_inside_phytomer_callback(self, method_name: str) -> None:
+        """Raise if called from a Python phytomer creation or callback function.
+
+        The native plugin skips these operations inside a callback and only prints a warning, which
+        disableMessages() suppresses, so the call would otherwise appear to succeed.
+        """
+        if getattr(self, '_phytomer_callback_depth', 0) > 0:
+            raise PlantArchitectureError(
+                f"{method_name}() cannot be called from inside a phytomer creation or callback function, "
+                f"because it changes plant structure while the plant is being grown. Call it from outside "
+                f"the function, for example between calls to advanceTime(). pruneBranch() is the only "
+                f"structural edit a callback can make; it takes effect at the end of the current time step."
+            )
+
     def _raise_pending_callback_error(self, native_error: Optional[BaseException] = None) -> None:
-        """Raise, and clear, an exception stored by a phytomer creation callback."""
+        """Raise, and clear, an exception stored by a phytomer creation or callback function."""
         pending = getattr(self, '_pending_callback_error', None)
         if pending is None:
             return

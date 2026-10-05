@@ -180,7 +180,7 @@ class TestPhytomerBindingValidation:
         with pytest.raises(ValueError, match="(?i)shoot type label"):
             PlantArchitecture.setPhytomerCreationFunction(self._pa(), label, None)
 
-    @pytest.mark.parametrize("callback", [3, "fn", object()])
+    @pytest.mark.parametrize("callback", [3, b"fn", object()])
     def test_setPhytomerCreationFunction_rejects_non_callable(self, callback):
         with pytest.raises(ValueError, match="(?i)callable"):
             PlantArchitecture.setPhytomerCreationFunction(self._pa(), "mainstem", callback)
@@ -333,16 +333,54 @@ class TestPhytomerCreationCallback:
                 plant_id, shoot_id = _grow_base_stem(plantarch, label, nodes=2, internode_fraction=1.0)
                 return plantarch.getInternodeLength(plant_id, shoot_id, 0)
 
-    def test_none_clears_the_library_tomato_function(self):
+    def test_none_restores_the_library_tomato_function(self):
         """At plant age 0 TomatoPhytomerCreationFunction scales every new internode to 0.7 of its target."""
         _require_plantarch()
 
+        def installed(plantarch):
+            plantarch.setPhytomerCreationFunction("mainstem", lambda *a: None)
+            return "mainstem"
+
         def cleared(plantarch):
+            installed(plantarch)
+            plantarch.setPhytomerCreationFunction("mainstem", None)
+            return "mainstem"
+
+        def installed_twice_then_cleared(plantarch):
+            installed(plantarch)
+            return cleared(plantarch)
+
+        def cleared_without_installing(plantarch):
             plantarch.setPhytomerCreationFunction("mainstem", None)
             return "mainstem"
 
         assert self._first_internode_length(lambda pa: "mainstem") == pytest.approx(0.7 * 0.04, rel=1e-3)
-        assert self._first_internode_length(cleared) == pytest.approx(0.04, rel=1e-3)
+        assert self._first_internode_length(installed) == pytest.approx(0.04, rel=1e-3)
+        assert self._first_internode_length(cleared) == pytest.approx(0.7 * 0.04, rel=1e-3)
+        assert self._first_internode_length(installed_twice_then_cleared) == pytest.approx(0.7 * 0.04, rel=1e-3)
+        assert self._first_internode_length(cleared_without_installing) == pytest.approx(0.7 * 0.04, rel=1e-3)
+
+    def test_none_restores_the_library_function_for_shoots_built_while_installed(self):
+        """A shoot built with a Python function installed carries the trampoline, which must delegate once cleared."""
+        _require_plantarch()
+
+        def second_internode_length(clear):
+            with Context() as context:
+                context.seedRandomGenerator(5)
+                with PlantArchitecture(context) as plantarch:
+                    plantarch.disableMessages()
+                    plantarch.loadPlantModelFromLibrary("tomato")
+                    plantarch.setPhytomerCreationFunction("mainstem", lambda *a: None)
+                    plant_id, shoot_id = _grow_base_stem(plantarch, "mainstem", nodes=1, internode_fraction=1.0)
+                    if clear:
+                        plantarch.setPhytomerCreationFunction("mainstem", None)
+                    plantarch.breakPlantDormancy(plant_id)
+                    plantarch.advanceTime(25.0, plant_id=plant_id)
+                    assert plantarch.getShoot(plant_id, shoot_id)["node_count"] > 2
+                    return plantarch.getInternodeLength(plant_id, shoot_id, 1)
+
+        # Node 1 is created within a few days of age 0, where the library scale is well below 1.
+        assert second_internode_length(clear=True) < 0.95 * second_internode_length(clear=False)
 
     def test_redefining_an_existing_label_keeps_the_callback(self):
         _require_plantarch()
@@ -493,7 +531,6 @@ def tomato():
         with PlantArchitecture(context) as plantarch:
             plantarch.disableMessages()
             plantarch.loadPlantModelFromLibrary("tomato")
-            plantarch.setPhytomerCreationFunction("mainstem", None)
             _straight_tomato_type(plantarch, "probe", max_nodes=12)
             plant_id, shoot_id = _grow_base_stem(plantarch, "probe", nodes=4, internode_fraction=1.0,
                                                  leaf_fraction=1.0)

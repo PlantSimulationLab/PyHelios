@@ -63,6 +63,17 @@ PYHELIOS_API void calculateDirectSolarSpectrum(HeliosSolarPosition* solar_pos, c
 PYHELIOS_API void calculateDiffuseSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm);
 PYHELIOS_API void calculateGlobalSolarSpectrum(HeliosSolarPosition* solar_pos, const char* label, float resolution_nm);
 
+// Total column ozone and ground albedo (stored in Context global data)
+PYHELIOS_API void setOzoneColumn(HeliosSolarPosition* solar_pos, float ozone_DU);
+PYHELIOS_API float getOzoneColumn(HeliosSolarPosition* solar_pos);
+PYHELIOS_API void setGroundAlbedo(HeliosSolarPosition* solar_pos, float albedo);
+PYHELIOS_API float getGroundAlbedo(HeliosSolarPosition* solar_pos);
+
+// Atmosphere between the scene and a sensor above the atmosphere (e.g., a satellite)
+PYHELIOS_API void calculateSensorAtmosphereSpectra(HeliosSolarPosition* solar_pos, const char* label, float direction_x, float direction_y, float direction_z, float resolution_nm);
+PYHELIOS_API void calculateSensorThermalAtmosphere(HeliosSolarPosition* solar_pos, const char* label, float direction_x, float direction_y, float direction_z);
+PYHELIOS_API float getThermalSkyFlux(HeliosSolarPosition* solar_pos, float wavelength_min_nm, float wavelength_max_nm);
+
 // Prague Sky Model Methods
 PYHELIOS_API void enablePragueSkyModel(HeliosSolarPosition* solar_pos);
 PYHELIOS_API bool isPragueSkyModelEnabled(HeliosSolarPosition* solar_pos);

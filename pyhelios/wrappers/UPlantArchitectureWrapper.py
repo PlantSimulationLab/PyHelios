@@ -29,6 +29,10 @@ PHYTOMER_CREATION_CALLBACK = ctypes.CFUNCTYPE(
     ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
     ctypes.c_uint, ctypes.c_float)
 
+# Per-timestep phytomer callback: (plant_id, shoot_id, node_index, phytomer_age) -> 0 on success,
+# nonzero if the Python function raised.
+PHYTOMER_CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_float)
+
 # Function prototypes with availability detection
 try:
     # PlantArchitecture management functions
@@ -428,7 +432,9 @@ try:
         ctypes.c_char_p,  # filename
         ctypes.c_float,   # elastic_modulus
         ctypes.c_float,   # wood_density
-        ctypes.c_float,   # damping_ratio
+        ctypes.c_float,   # damping_time_constant
+        ctypes.c_float,   # armature_stability_ratio
+        ctypes.c_float,   # physics_steps_per_second
         ctypes.c_float,   # static_friction
         ctypes.c_float,   # dynamic_friction
         ctypes.c_float,   # restitution
@@ -1048,6 +1054,60 @@ try:
     _PLANTARCHITECTURE_1389_AVAILABLE = True
 except AttributeError:
     _PLANTARCHITECTURE_1389_AVAILABLE = False
+
+# Per-timestep phytomer callback (PhytomerParameters::phytomer_callback_function).
+# NOTE: guard with _require_plantarch_phytomer_callback(); an older flag would call the symbol with no argtypes set.
+_PLANTARCHITECTURE_PHYTOMER_CALLBACK_AVAILABLE = False
+try:
+    helios_lib.setPhytomerCallbackFunction.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_char_p, PHYTOMER_CALLBACK]
+    helios_lib.setPhytomerCallbackFunction.restype = ctypes.c_int
+    helios_lib.setPhytomerCallbackFunction.errcheck = _check_error
+
+    _PLANTARCHITECTURE_PHYTOMER_CALLBACK_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_PHYTOMER_CALLBACK_AVAILABLE = False
+
+# Posing a finished plant: one-shot leaf angle distribution and per-phytomer petiole flexibility.
+# NOTE: guard with _require_plantarch_posing(); an older flag would call the symbol with no argtypes set.
+_PLANTARCHITECTURE_POSING_AVAILABLE = False
+try:
+    helios_lib.setPlantLeafAngleDistribution.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_int,  # plantIDs, count
+        ctypes.c_float, ctypes.c_float,   # Beta_mu_inclination, Beta_nu_inclination
+        ctypes.c_int,                     # set_azimuth
+        ctypes.c_float, ctypes.c_float,   # eccentricity, ellipse_rotation_degrees
+    ]
+    helios_lib.setPlantLeafAngleDistribution.restype = ctypes.c_int
+    helios_lib.setPlantLeafAngleDistribution.errcheck = _check_error
+
+    helios_lib.bendPetioleWithPosedLeavesUnderLeafWeight.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index, petiole_index
+    ]
+    helios_lib.bendPetioleWithPosedLeavesUnderLeafWeight.restype = ctypes.c_int
+    helios_lib.bendPetioleWithPosedLeavesUnderLeafWeight.errcheck = _check_error
+
+    # -1 is the error sentinel; success is decided through errcheck.
+    helios_lib.getPetioleFlexibility.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index
+    ]
+    helios_lib.getPetioleFlexibility.restype = ctypes.c_float
+    helios_lib.getPetioleFlexibility.errcheck = _check_error
+
+    helios_lib.setPetioleFlexibility.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,  # plantID, shootID, node_index
+        ctypes.c_float,                   # flexibility
+    ]
+    helios_lib.setPetioleFlexibility.restype = ctypes.c_int
+    helios_lib.setPetioleFlexibility.errcheck = _check_error
+
+    _PLANTARCHITECTURE_POSING_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_POSING_AVAILABLE = False
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -2304,7 +2364,9 @@ def writePlantStructureUSD(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
                            plant_id: int, filename: str,
                            elastic_modulus: float = 5e9,
                            wood_density: float = 800.0,
-                           damping_ratio: float = 0.1,
+                           damping_time_constant: float = 0.02,
+                           armature_stability_ratio: float = 8.0,
+                           physics_steps_per_second: float = 60.0,
                            static_friction: float = 0.5,
                            dynamic_friction: float = 0.3,
                            restitution: float = 0.1,
@@ -2329,7 +2391,8 @@ def writePlantStructureUSD(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
     filename_bytes = filename.encode('utf-8')
     result = helios_lib.writePlantStructureUSD(
         plantarch_ptr, plant_id, filename_bytes,
-        elastic_modulus, wood_density, damping_ratio,
+        elastic_modulus, wood_density, damping_time_constant,
+        armature_stability_ratio, physics_steps_per_second,
         static_friction, dynamic_friction, restitution,
         organ_spring_stiffness, organ_spring_damping,
         leaf_mass_per_area, fruit_mass, flower_mass,
@@ -3305,6 +3368,32 @@ def recordPetioleRestShape(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), pl
 # readouts, live phyllotaxy, leaf inclination distributions, plant nitrogen pool
 # ---------------------------------------------------------------------------
 
+# Library phytomer creation/callback functions by name (Assets.h).
+# NOTE: guard with _require_plantarch_library_phytomer_functions().
+_PLANTARCHITECTURE_LIBRARY_PHYTOMER_FUNCTIONS_AVAILABLE = False
+try:
+    for _name in ("setPhytomerCreationFunctionByName", "setPhytomerCallbackFunctionByName"):
+        _f = getattr(helios_lib, _name)
+        _f.argtypes = [ctypes.POINTER(UPlantArchitecture), ctypes.c_char_p, ctypes.c_char_p]
+        _f.restype = ctypes.c_int
+        _f.errcheck = _check_error
+    for _name in ("getPhytomerCreationFunctionName", "getPhytomerCallbackFunctionName"):
+        _f = getattr(helios_lib, _name)
+        _f.argtypes = [ctypes.POINTER(UPlantArchitecture), ctypes.c_char_p]
+        _f.restype = ctypes.c_char_p
+        _f.errcheck = _check_error
+    for _name in ("getLibraryPhytomerCreationFunctionNames", "getLibraryPhytomerCallbackFunctionNames"):
+        _f = getattr(helios_lib, _name)
+        _f.argtypes = []
+        _f.restype = ctypes.c_char_p
+        _f.errcheck = _check_error
+    del _name, _f
+
+    _PLANTARCHITECTURE_LIBRARY_PHYTOMER_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_LIBRARY_PHYTOMER_FUNCTIONS_AVAILABLE = False
+
+
 def _require_plantarch_1388() -> None:
     """Raise if the native library predates the helios-core 1.3.88 additions."""
     if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1388_AVAILABLE:
@@ -3325,6 +3414,139 @@ def setPhytomerCreationFunction(plantarch_ptr: ctypes.POINTER(UPlantArchitecture
     native_callback = PHYTOMER_CREATION_CALLBACK(0) if callback is None else callback
     helios_lib.setPhytomerCreationFunction(plantarch_ptr, shoot_type_label.encode('utf-8'),
                                            native_callback)
+
+
+def _require_plantarch_posing() -> None:
+    """Raise if the native library predates the leaf angle distribution and petiole flexibility setters."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_POSING_AVAILABLE:
+        raise RuntimeError(
+            "Posing a finished plant (setPlantLeafAngleDistribution, petiole flexibility) is not available in "
+            "the current native library. Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def setPlantLeafAngleDistribution(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_ids,
+                                  beta_mu_inclination: float, beta_nu_inclination: float,
+                                  eccentricity: float = None,
+                                  ellipse_rotation_degrees: float = 0.0) -> None:
+    """Re-aim every leaf of the given plants onto a Beta inclination distribution.
+
+    Azimuth is also re-aimed, onto an ellipsoidal distribution, unless eccentricity is None.
+    """
+    _require_plantarch_posing()
+    ids = [int(p) for p in plant_ids]
+    if not ids:
+        raise ValueError("Plant ID list must not be empty")
+    if any(p < 0 for p in ids):
+        raise ValueError("Plant IDs must be non-negative")
+    arr = (ctypes.c_uint * len(ids))(*ids)
+    helios_lib.setPlantLeafAngleDistribution(
+        plantarch_ptr, arr, len(ids), ctypes.c_float(beta_mu_inclination),
+        ctypes.c_float(beta_nu_inclination), 0 if eccentricity is None else 1,
+        ctypes.c_float(0.0 if eccentricity is None else eccentricity),
+        ctypes.c_float(ellipse_rotation_degrees))
+
+
+def bendPetioleWithPosedLeavesUnderLeafWeight(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                                              shoot_id: int, node_index: int, petiole_index: int) -> None:
+    """bendPetioleUnderLeafWeight() that also bends a petiole whose leaves have been posed."""
+    _require_plantarch_posing()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if petiole_index < 0:
+        raise ValueError("Petiole index must be non-negative")
+    helios_lib.bendPetioleWithPosedLeavesUnderLeafWeight(plantarch_ptr, plant_id, shoot_id, node_index,
+                                                         petiole_index)
+
+
+def getPetioleFlexibility(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                          shoot_id: int, node_index: int) -> float:
+    """Bending flexibility of one phytomer's petioles."""
+    _require_plantarch_posing()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    return float(helios_lib.getPetioleFlexibility(plantarch_ptr, plant_id, shoot_id, node_index))
+
+
+def setPetioleFlexibility(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), plant_id: int,
+                          shoot_id: int, node_index: int, flexibility: float) -> None:
+    """Replace the bending flexibility of one phytomer's petioles; does not move geometry."""
+    _require_plantarch_posing()
+    _validate_phytomer_indices(plant_id, shoot_id, node_index)
+    if not flexibility >= 0:
+        raise ValueError(f"Flexibility must be non-negative, got {flexibility}")
+    helios_lib.setPetioleFlexibility(plantarch_ptr, plant_id, shoot_id, node_index,
+                                     ctypes.c_float(flexibility))
+
+
+def _require_plantarch_phytomer_callback() -> None:
+    """Raise if the native library predates setPhytomerCallbackFunction."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_PHYTOMER_CALLBACK_AVAILABLE:
+        raise RuntimeError(
+            "setPhytomerCallbackFunction is not available in the current native library. "
+            "Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def setPhytomerCallbackFunction(plantarch_ptr: ctypes.POINTER(UPlantArchitecture), shoot_type_label: str,
+                                callback) -> None:
+    """Install a PHYTOMER_CALLBACK on a shoot type, or clear it with None.
+
+    The caller must keep ``callback`` alive for as long as any phytomer may call it.
+    """
+    _require_plantarch_phytomer_callback()
+    native_callback = PHYTOMER_CALLBACK(0) if callback is None else callback
+    helios_lib.setPhytomerCallbackFunction(plantarch_ptr, shoot_type_label.encode('utf-8'), native_callback)
+
+
+def _require_plantarch_library_phytomer_functions() -> None:
+    """Raise if the native library predates the by-name library phytomer functions."""
+    if (not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE
+            or not _PLANTARCHITECTURE_LIBRARY_PHYTOMER_FUNCTIONS_AVAILABLE):
+        raise RuntimeError(
+            "Library phytomer creation and callback functions cannot be set by name in the current "
+            "native library. Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def setPhytomerCreationFunctionByName(plantarch_ptr, shoot_type_label: str, function_name: str) -> None:
+    """Install a library phytomer creation function (named as in Assets.h) on a shoot type."""
+    _require_plantarch_library_phytomer_functions()
+    helios_lib.setPhytomerCreationFunctionByName(
+        plantarch_ptr, shoot_type_label.encode('utf-8'), function_name.encode('utf-8'))
+
+
+def setPhytomerCallbackFunctionByName(plantarch_ptr, shoot_type_label: str, function_name: str) -> None:
+    """Install a library per-timestep phytomer callback (named as in Assets.h) on a shoot type."""
+    _require_plantarch_library_phytomer_functions()
+    helios_lib.setPhytomerCallbackFunctionByName(
+        plantarch_ptr, shoot_type_label.encode('utf-8'), function_name.encode('utf-8'))
+
+
+def getPhytomerCreationFunctionName(plantarch_ptr, shoot_type_label: str) -> str:
+    """Name of the library creation function a shoot type carries, or '' if it carries none."""
+    _require_plantarch_library_phytomer_functions()
+    name = helios_lib.getPhytomerCreationFunctionName(plantarch_ptr, shoot_type_label.encode('utf-8'))
+    return name.decode('utf-8') if name else ""
+
+
+def getPhytomerCallbackFunctionName(plantarch_ptr, shoot_type_label: str) -> str:
+    """Name of the library per-timestep callback a shoot type carries, or '' if it carries none."""
+    _require_plantarch_library_phytomer_functions()
+    name = helios_lib.getPhytomerCallbackFunctionName(plantarch_ptr, shoot_type_label.encode('utf-8'))
+    return name.decode('utf-8') if name else ""
+
+
+def getLibraryPhytomerCreationFunctionNames() -> List[str]:
+    """Names of the library phytomer creation functions that can be installed by name."""
+    _require_plantarch_library_phytomer_functions()
+    names = helios_lib.getLibraryPhytomerCreationFunctionNames()
+    return names.decode('utf-8').split('\n') if names else []
+
+
+def getLibraryPhytomerCallbackFunctionNames() -> List[str]:
+    """Names of the library per-timestep phytomer callbacks that can be installed by name."""
+    _require_plantarch_library_phytomer_functions()
+    names = helios_lib.getLibraryPhytomerCallbackFunctionNames()
+    return names.decode('utf-8').split('\n') if names else []
 
 
 def setInternodeMaxLength(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, length: float) -> None:

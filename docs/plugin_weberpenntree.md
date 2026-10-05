@@ -6,6 +6,8 @@
 
 <p> <br><br> </p>
 
+\attention <b>New users: consider the Plant Architecture plug-in instead.</b> The \ref PlantArchitectureDoc "Plant Architecture plug-in" is the recommended way to generate plant geometry. It provides a library of ready-to-use, biologically-based models for many crop and tree species (including almond, walnut, apple, olive, and many others), and supports plant growth over time, phenology, pruning, and physiological coupling. The Weber-Penn Tree plug-in is retained for backward compatibility, but new projects should generally use the Plant Architecture plug-in.
+
 <table>
 <tr><th>Dependencies</th><td>None</td></tr>
 <tr><th>Python Import</th><td>`from pyhelios import WeberPennTree`</td></tr>

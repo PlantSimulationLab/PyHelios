@@ -177,6 +177,52 @@ if _SOLARPOSITION_FUNCTIONS_AVAILABLE:
     helios_lib.getAmbientLongwaveFluxFromState.errcheck = _check_error
 
 
+# Ozone column, ground albedo and sensor atmosphere functions (helios-core v1.3.90+). Registered
+# separately so that a library built before they existed keeps the rest of the SolarPosition API.
+try:
+    helios_lib.setOzoneColumn.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float]
+    helios_lib.setOzoneColumn.restype = None
+    helios_lib.setOzoneColumn.errcheck = _check_error
+
+    helios_lib.getOzoneColumn.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getOzoneColumn.restype = ctypes.c_float
+    helios_lib.getOzoneColumn.errcheck = _check_error
+
+    helios_lib.setGroundAlbedo.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float]
+    helios_lib.setGroundAlbedo.restype = None
+    helios_lib.setGroundAlbedo.errcheck = _check_error
+
+    helios_lib.getGroundAlbedo.argtypes = [ctypes.POINTER(USolarPosition)]
+    helios_lib.getGroundAlbedo.restype = ctypes.c_float
+    helios_lib.getGroundAlbedo.errcheck = _check_error
+
+    helios_lib.calculateSensorAtmosphereSpectra.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.calculateSensorAtmosphereSpectra.restype = None
+    helios_lib.calculateSensorAtmosphereSpectra.errcheck = _check_error
+
+    helios_lib.calculateSensorThermalAtmosphere.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_char_p, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.calculateSensorThermalAtmosphere.restype = None
+    helios_lib.calculateSensorThermalAtmosphere.errcheck = _check_error
+
+    helios_lib.getThermalSkyFlux.argtypes = [ctypes.POINTER(USolarPosition), ctypes.c_float, ctypes.c_float]
+    helios_lib.getThermalSkyFlux.restype = ctypes.c_float
+    helios_lib.getThermalSkyFlux.errcheck = _check_error
+
+    _SOLARPOSITION_ATMOSPHERE_FUNCTIONS_AVAILABLE = True
+
+except AttributeError:
+    _SOLARPOSITION_ATMOSPHERE_FUNCTIONS_AVAILABLE = False
+
+
+def _require_atmosphere_functions(name: str) -> None:
+    if not _SOLARPOSITION_ATMOSPHERE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            f"SolarPosition.{name}() is not available in the current Helios library. "
+            "It requires helios-core v1.3.90 or later; rebuild PyHelios with:\n"
+            "  build_scripts/build_helios --clean"
+        )
+
+
 # Wrapper functions
 def createSolarPosition(context) -> ctypes.POINTER(USolarPosition):
     """Create SolarPosition instance using Context location"""
@@ -424,7 +470,7 @@ def getAmbientLongwaveFluxFromState(solar_pos: ctypes.POINTER(USolarPosition)) -
 # SSolar-GOA Spectral Solar Model Methods
 def calculateDirectSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
     """
-    Calculate direct beam solar spectrum using SSolar-GOA model and store in Context global data.
+    Calculate the direct beam solar spectrum and store it in Context global data.
 
     Args:
         solar_pos: SolarPosition instance pointer
@@ -434,7 +480,7 @@ def calculateDirectSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), labe
     Note:
         - Computes spectral irradiance normal to sun direction from 300-2600 nm
         - Stores result as std::vector<helios::vec2> (wavelength_nm, W/m²/nm) in Context global data
-        - Uses SSolar-GOA model (Cachorro et al. 2022)
+        - Uses a spectral model following SSolar-GOA (Cachorro et al. 2022)
     """
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
@@ -445,7 +491,7 @@ def calculateDirectSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), labe
 
 def calculateDiffuseSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
     """
-    Calculate diffuse solar spectrum using SSolar-GOA model and store in Context global data.
+    Calculate the diffuse solar spectrum and store it in Context global data.
 
     Args:
         solar_pos: SolarPosition instance pointer
@@ -455,7 +501,7 @@ def calculateDiffuseSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), lab
     Note:
         - Computes diffuse spectral irradiance on horizontal surface from 300-2600 nm
         - Stores result as std::vector<helios::vec2> (wavelength_nm, W/m²/nm) in Context global data
-        - Uses SSolar-GOA model (Cachorro et al. 2022)
+        - Uses a spectral model following SSolar-GOA (Cachorro et al. 2022)
     """
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
@@ -466,7 +512,7 @@ def calculateDiffuseSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), lab
 
 def calculateGlobalSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), label: str, resolution_nm: float = 1.0) -> None:
     """
-    Calculate global (total) solar spectrum using SSolar-GOA model and store in Context global data.
+    Calculate the global (total) solar spectrum and store it in Context global data.
 
     Args:
         solar_pos: SolarPosition instance pointer
@@ -476,13 +522,85 @@ def calculateGlobalSolarSpectrum(solar_pos: ctypes.POINTER(USolarPosition), labe
     Note:
         - Computes global spectral irradiance on horizontal surface from 300-2600 nm
         - Stores result as std::vector<helios::vec2> (wavelength_nm, W/m²/nm) in Context global data
-        - Uses SSolar-GOA model (Cachorro et al. 2022)
+        - Uses a spectral model following SSolar-GOA (Cachorro et al. 2022)
     """
     if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
         raise NotImplementedError("SolarPosition methods not available. Rebuild with solarposition enabled.")
 
     label_encoded = label.encode('utf-8')
     helios_lib.calculateGlobalSolarSpectrum(solar_pos, label_encoded, resolution_nm)
+
+
+# Ozone column and ground albedo (v1.3.90)
+def setOzoneColumn(solar_pos: ctypes.POINTER(USolarPosition), ozone_DU: float) -> None:
+    """Set the total column ozone (Dobson units), overriding the climatological value"""
+    _require_atmosphere_functions("setOzoneColumn")
+    helios_lib.setOzoneColumn(solar_pos, float(ozone_DU))
+
+
+def getOzoneColumn(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get the total column ozone (Dobson units) used by the solar radiation models"""
+    _require_atmosphere_functions("getOzoneColumn")
+    return float(helios_lib.getOzoneColumn(solar_pos))
+
+
+def setGroundAlbedo(solar_pos: ctypes.POINTER(USolarPosition), albedo: float) -> None:
+    """Set the albedo of the ground surrounding the scene"""
+    _require_atmosphere_functions("setGroundAlbedo")
+    helios_lib.setGroundAlbedo(solar_pos, float(albedo))
+
+
+def getGroundAlbedo(solar_pos: ctypes.POINTER(USolarPosition)) -> float:
+    """Get the albedo of the ground surrounding the scene"""
+    _require_atmosphere_functions("getGroundAlbedo")
+    return float(helios_lib.getGroundAlbedo(solar_pos))
+
+
+# Sensor atmosphere methods (v1.3.90)
+def calculateSensorAtmosphereSpectra(solar_pos: ctypes.POINTER(USolarPosition), label: str,
+                                     direction_to_sensor: List[float], resolution_nm: float = 1.0) -> None:
+    """
+    Calculate the spectral atmospheric quantities between the scene and a sensor above the atmosphere.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        label: Prefix of the labels under which the spectra are stored in Context global data
+        direction_to_sensor: [x, y, z] vector pointing from the scene toward the sensor
+        resolution_nm: Wavelength resolution in nm (default: 1.0, valid range: 1.0-2300.0)
+    """
+    _require_atmosphere_functions("calculateSensorAtmosphereSpectra")
+    if len(direction_to_sensor) != 3:
+        raise ValueError(f"direction_to_sensor must have 3 elements, got {len(direction_to_sensor)}")
+
+    helios_lib.calculateSensorAtmosphereSpectra(solar_pos, label.encode('utf-8'),
+                                                float(direction_to_sensor[0]), float(direction_to_sensor[1]),
+                                                float(direction_to_sensor[2]), float(resolution_nm))
+
+
+def calculateSensorThermalAtmosphere(solar_pos: ctypes.POINTER(USolarPosition), label: str,
+                                     direction_to_sensor: List[float]) -> None:
+    """
+    Calculate the thermal infrared atmospheric quantities between the scene and a sensor above the atmosphere.
+
+    Args:
+        solar_pos: SolarPosition instance pointer
+        label: Prefix of the labels under which the results are stored in Context global data
+        direction_to_sensor: [x, y, z] vector pointing from the scene toward the sensor
+    """
+    _require_atmosphere_functions("calculateSensorThermalAtmosphere")
+    if len(direction_to_sensor) != 3:
+        raise ValueError(f"direction_to_sensor must have 3 elements, got {len(direction_to_sensor)}")
+
+    helios_lib.calculateSensorThermalAtmosphere(solar_pos, label.encode('utf-8'),
+                                                float(direction_to_sensor[0]), float(direction_to_sensor[1]),
+                                                float(direction_to_sensor[2]))
+
+
+def getThermalSkyFlux(solar_pos: ctypes.POINTER(USolarPosition), wavelength_min_nm: float,
+                      wavelength_max_nm: float) -> float:
+    """Get the clear-sky longwave irradiance (W/m²) on a horizontal surface within a thermal band"""
+    _require_atmosphere_functions("getThermalSkyFlux")
+    return float(helios_lib.getThermalSkyFlux(solar_pos, float(wavelength_min_nm), float(wavelength_max_nm)))
 
 
 # Prague Sky Model Methods (v1.3.59)

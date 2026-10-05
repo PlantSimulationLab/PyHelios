@@ -163,27 +163,47 @@ This plugin calculates the position of the sun, and also implements other models
 
  Direct beam irradiance is computed from the product of these transmittances, while diffuse irradiance uses a two-layer scattering scheme that accounts for aerosol forward scattering and backscattering from the atmosphere-ground system. The model partitions the total radiative flux into direct and diffuse components suitable for agricultural, solar energy, and climate applications.
 
-### Spectral Solar Irradiance (SSolar-GOA Model) {#SpectralIrradianceTheory}
+### Spectral Solar Irradiance (Model Based on SSolar-GOA) {#SpectralIrradianceTheory}
 
- For applications requiring high spectral resolution (e.g., photosynthesis, remote sensing), the plugin implements the SSolar-GOA spectral radiative transfer model from <a href="https://gmd.copernicus.org/articles/15/1689/2022/">Cachorro et al. (2022)</a>. This model computes bottom-of-atmosphere spectral irradiance from 300-2600 nm at 1 nm resolution.
+ For applications requiring high spectral resolution (e.g., photosynthesis, remote sensing), \ref pyhelios.SolarPosition.SolarPosition::calculateDirectSolarSpectrum "calculateDirectSolarSpectrum()", \ref pyhelios.SolarPosition.SolarPosition::calculateDiffuseSolarSpectrum "calculateDiffuseSolarSpectrum()" and \ref pyhelios.SolarPosition.SolarPosition::calculateGlobalSolarSpectrum "calculateGlobalSolarSpectrum()" compute the direct normal, diffuse horizontal and global horizontal spectral irradiance at the ground from 300 to 2600 nm at 1 nm resolution. The model follows the structure of SSolar-GOA (<a href="https://doi.org/10.5194/gmd-15-1689-2022">Cachorro et al. 2022</a>): the atmosphere is a single homogeneous layer of molecules and aerosol whose scattering transmittance is given by an analytical two-stream solution, gas absorption multiplies it, and multiple reflection between the ground and the atmosphere is included through the atmosphere's spherical albedo.
 
- The SSolar-GOA model uses the Wehrli (1985) extraterrestrial solar spectrum corrected for Earth-Sun distance, then applies atmospheric transmittances for:
+ - <b>Extraterrestrial spectrum</b>: the 1985 Wehrli standard spectrum, averaged over 1 nm bins and scaled for the Earth-Sun distance
+ - <b>Air mass</b>: the relative optical air mass of Kasten and Young (1989)
+ - <b>Rayleigh scattering and aerosol extinction</b>: a single mixed layer, with the aerosol optical depth from the Ångström law (exponent 1.3) and the single-scattering albedo (0.893) and asymmetry parameter (0.634) of the 6S continental aerosol at 550 nm
+ - <b>Gas absorption</b>: transmittance tables computed with the 6S radiative transfer code for water vapor, ozone and the uniformly mixed gases (oxygen, carbon dioxide, methane, nitrous oxide and carbon monoxide)
+ - <b>Ground-atmosphere multiple reflection</b>: from the ground albedo (see \ref pyhelios.SolarPosition.SolarPosition::setGroundAlbedo "setGroundAlbedo()") and the atmospheric spherical albedo
 
- - <b>Rayleigh scattering</b>: Molecular scattering using Bates (1984) optical depth formula
- - <b>Aerosol extinction</b>: Ångström turbidity law with Ambartsumian solution for scattering
- - <b>Water vapor absorption</b>: Empirical model for bands at 940, 1130, 1380, and 1870 nm
- - <b>Ozone absorption</b>: UV Hartley band (200-310 nm) and visible Chappuis band (400-700 nm)
- - <b>Oxygen absorption</b>: Primarily the A-band at 760 nm
+ <b>Parameter Derivation:</b> The model uses the same atmospheric inputs as the REST-2 model (pressure, temperature, humidity, turbidity). The precipitable water is derived from the air temperature and relative humidity, which must therefore be greater than zero. The total column ozone comes from \ref pyhelios.SolarPosition.SolarPosition::getOzoneColumn "getOzoneColumn()" (see \ref OzoneColumn) and the ground albedo from \ref pyhelios.SolarPosition.SolarPosition::setGroundAlbedo "setGroundAlbedo()" (default 0.2).
 
- The model also accounts for surface-atmosphere multiple reflections based on surface albedo and atmospheric spherical albedo.
+ <b>Output Format:</b> Results are stored in Context global data as vectors of (wavelength, irradiance) pairs with user-defined labels. Three spectral components are computed: global irradiance on horizontal surface, direct irradiance normal to sun direction, and diffuse irradiance on horizontal surface (all in W/m²/nm).
 
- <b>Parameter Derivation:</b> The implementation uses the same atmospheric inputs as the REST-2 model (pressure, temperature, humidity, turbidity). Additional parameters are derived automatically: precipitable water (Viswanadham 1981), ozone column (van Heuklon 1979), Ångström alpha (1.3), surface albedo (0.2), aerosol single scattering albedo (0.90), and asymmetry parameter (0.85).
+ The gas transmittance tables cover a water vapor path (precipitable water times air mass) up to 320 g/cm², an ozone path (ozone column times air mass) up to 25 atm-cm, and an air mass times the ratio of surface pressure to 1013.25 hPa up to 37.99. A longer path raises an error; with the sun close to the horizon this happens for precipitable water above about 8.4 cm, an ozone column above about 660 DU, or a surface pressure above about 1015 hPa. A sun at or below the horizon also raises an error.
 
- <b>Output Format:</b> Results are stored in Context global data as vectors of (wavelength, irradiance) pairs (\ref pyhelios.types.vec2 "vec2") with user-defined labels. Three spectral components are computed: global irradiance on horizontal surface, direct irradiance normal to sun direction, and diffuse irradiance on horizontal surface (all in W/m²/nm).
+### Atmosphere Between the Scene and a Satellite Sensor {#SensorAtmosphereTheory}
+
+ To simulate imagery from a sensor above the atmosphere (e.g., a satellite), the radiance leaving the scene must be converted to the radiance reaching the sensor. The atmosphere attenuates the scene radiance and adds light of its own. Following the formulation of the 6S radiative transfer code (<a href="https://doi.org/10.1109/36.581987">Vermote et al. 1997</a>), the radiance at the sensor is
+
+ <center>
+   \f$L_{sensor} = L_{path} + T_{dir}^{\uparrow} L_{surface} + T_{dif}^{\uparrow} \rho_g E_g / \pi\f$,
+ </center>
+
+ where \f$L_{path}\f$ is the path radiance scattered into the sensor by the atmosphere without reaching the ground, \f$T_{dir}^{\uparrow}\f$ and \f$T_{dif}^{\uparrow}\f$ are the direct and diffuse transmittances from the ground to the sensor, and the last term (the adjacency effect) is light reflected by the surrounding ground of albedo \f$\rho_g\f$, lit by the global irradiance \f$E_g\f$, and scattered into the sensor's line of sight.
+
+ The scattering quantities are taken from a look-up table computed with the vector version of 6S for its continental aerosol model. The table spans surface pressures from 701.2 to 1013 hPa, aerosol optical depths at 550 nm from 0 to 1.2, solar zenith angles up to 70 degrees, view zenith angles up to 60 degrees and all relative azimuths. Gas transmittance, also from 6S, is tabulated separately at 1 nm spacing. In a comparison with direct 6S calculations, top-of-atmosphere reflectances differed by 0.0009 on average and by at most 0.011.
+
+ Limitations: a single (continental) aerosol type; the sensor is above the atmosphere; the adjacency effect assumes surroundings of uniform albedo; and clear sky.
+
+### Thermal Infrared Atmosphere Between the Scene and a Satellite Sensor {#SensorThermalAtmosphereTheory}
+
+ In a thermal infrared band the atmosphere absorbs part of the radiance leaving the scene and emits radiance of its own, so the spectral radiance at a sensor above the atmosphere is \f$L_{sensor} = \tau L_{surface} + L^{\uparrow}\f$, where \f$\tau\f$ is the atmospheric transmittance along the view path and \f$L^{\uparrow}\f$ the radiance emitted by the atmosphere along it. The atmosphere also emits the sky radiance that the scene reflects; it is described by \f$L^{\downarrow}\f$, the downwelling irradiance at the ground divided by \f$\pi\f$, so that a Lambertian surface of emissivity \f$\varepsilon\f$ reflects \f$(1-\varepsilon)L^{\downarrow}\f$.
+
+ The three quantities are interpolated from a look-up table computed with the libRadtran radiative transfer code (REPTRAN absorption parameterization) for a clear sky without aerosol, as averages over 5 cm⁻¹ wavenumber bins stored at the bin centers, 5502-15326 nm. The temperature and humidity profiles are not known from the surface conditions alone, so the table assumes climatological ones, interpolated between standard atmospheres according to the surface air temperature.
+
+ The table's axes are the column water vapor (0.1-7.5 g/cm²), the surface air temperature (at sea level, 246.2-321.7 K; the range is lower at higher elevations, e.g. 242.4-304.6 K at 701.2 hPa), the surface pressure (701.2-1013 hPa, extrapolated linearly up to 1050 hPa), the view zenith angle (0-60 degrees) and the ozone column (150-450 DU). The table agrees with the line-by-line model LBLRTM to within 1 K in brightness temperature for the satellite bands tested.
 
 ### Ambient Longwave Flux {#LWTheory}
 
- The longwave radiation flux emanating from the clear-sky is modeled following <a href="https://rmets.onlinelibrary.wiley.com/doi/full/10.1002/qj.49712253306">Prata (1996)</a>.
+ The broadband longwave radiation flux emitted by a clear sky (\ref pyhelios.SolarPosition.SolarPosition::getAmbientLongwaveFlux "getAmbientLongwaveFlux()") is modeled following <a href="https://rmets.onlinelibrary.wiley.com/doi/full/10.1002/qj.49712253306">Prata (1996)</a>.
 
  The model surmounts to calculating the effective emissivity of the sky as a function of precipitable water in the atmosphere
 
@@ -191,7 +211,7 @@ This plugin calculates the position of the sun, and also implements other models
    \f$\epsilon_s = 1-(1+u)\mathrm{exp}\left(-\left(1.2+3u\right)^{0.5}\right)\f$,
  </center>
 
- where \f$u\f$ is the wator vapor path length (cm of precipitable water) which can be estimated following <a href="https://journals.ametsoc.org/doi/abs/10.1175/1520-0450(1981)020%3C0003%3ATRBTPW%3E2.0.CO%3B2">Viswanadham (1981)</a> for example.
+ where \f$u\f$ is the precipitable water in cm. It is estimated from the air temperature \f$T_a\f$ (K) and relative humidity \f$h\f$ set with `setAtmosphericConditions()` as \f$u = 0.465\,e_0/T_a\f$, with the vapor pressure \f$e_0 = 611\,h\,\mathrm{exp}\left(17.502\,(T_a-273)/(T_a-273+240.9)\right)\f$ in Pa. (The precipitable water used by the spectral solar models and the thermal atmosphere look-up table is instead derived from the dew point.)
 
  The downwelling longwave radiation flux on a horizontal surface is given by
 
@@ -200,6 +220,8 @@ This plugin calculates the position of the sun, and also implements other models
  </center>
 
  where \f$\sigma=5.67\times10^{-8}\f$ W/m<sup>2</sup>-K<sup>4</sup>, and \f$T_a\f$ is the air temperature in Kelvin measured near the ground (say 2 m height).
+
+ This flux covers all longwave wavelengths. It is not the right diffuse flux for an emission band with wavelength bounds, which should receive only the sky radiation within the band: \ref pyhelios.SolarPosition.SolarPosition::getThermalSkyFlux "getThermalSkyFlux()" computes that from the thermal atmosphere look-up table (see \ref SensorThermalAtmosphereTheory), for bands within 5502-15326 nm. The table cannot replace the broadband flux, since much of the sky's longwave emission lies outside that range (e.g., the water vapor rotation band beyond 15 µm).
  
 ## Using the SolarPosition Plug-in {#SolarLib}
 
@@ -280,22 +302,17 @@ with Context() as context:
 
 #### Understanding the Turbidity Parameter {#TurbidityDefinition}
 
- The turbidity parameter used in the SolarPosition plugin is <b>Ångström's aerosol turbidity coefficient (β)</b>, which represents the <b>aerosol optical depth (AOD) at 500 nm reference wavelength</b>. This parameter quantifies the amount of aerosols (dust, pollution, haze) in the atmosphere that scatter and absorb solar radiation.
+ The turbidity parameter used in the SolarPosition plugin is <b>Ångström's aerosol turbidity coefficient (β)</b>, the <b>aerosol optical depth at 1 µm</b>. It quantifies the amount of aerosols (dust, pollution, haze) in the atmosphere that scatter and absorb solar radiation.
 
- <b>Important:</b> This turbidity definition is NOT the same as "Linke turbidity" (T<sub>L</sub>), which is commonly used in some other solar radiation models. Linke turbidity typically ranges from 2-6, while Ångström turbidity (AOD) typically ranges from 0.02-0.4. The two are related but use different scales.
+ <b>Important:</b> This turbidity definition is NOT the same as "Linke turbidity" (T<sub>L</sub>), which is commonly used in some other solar radiation models and uses a different scale.
 
- The turbidity value is used in the Ångström turbidity formula:
+ The aerosol optical depth at wavelength λ follows the Ångström turbidity formula:
  \f[
- \tau_{aerosol}(\lambda) = \beta \left(\frac{\lambda_{ref}}{\lambda}\right)^{\alpha}
+ \tau_{aerosol}(\lambda) = \beta \lambda^{-\alpha}
  \f]
- where β is the turbidity parameter (AOD at 500 nm), λ is wavelength, λ<sub>ref</sub> = 500 nm, and α is the Ångström exponent (typically ~1.3).
+ where λ is in µm and α is the Ångström exponent, taken as 1.3 by the REST-2 and spectral models and the sensor atmosphere model. The aerosol optical depth at 550 nm is therefore about 2.18β, and that at 500 nm about 2.46β; an aerosol optical depth measured at 500 nm (e.g., by a sun photometer) corresponds to β ≈ 0.41 times that value. Passing an aerosol optical depth at 500 nm directly as the turbidity over-states the aerosol load by about 2.5 times. The default turbidity is 0.02.
 
- <b>Guidance for selecting turbidity values:</b>
- - 0.02: Very clear sky (remote/clean atmosphere) - <b>default value</b>
- - 0.03-0.05: Clear sky (typical for rural areas)
- - 0.1: Light haze or light pollution
- - 0.2-0.3: Hazy conditions (urban/polluted atmosphere)
- - >0.4: Very hazy or heavily polluted atmosphere
+ The Prague sky model (\ref pyhelios.SolarPosition.SolarPosition::updatePragueSkyModel "updatePragueSkyModel()") is parameterized by ground-level visibility rather than aerosol optical depth. The aerosol optical depth at 550 nm is converted to visibility by log-log interpolation through the model's continental polluted, average and clean atmospheres, whose visibilities are 27.6, 59.4 and 131.8 km. The visibility is limited to the model's range of 20-131.8 km, so air cleaner than an aerosol optical depth at 550 nm of 0.064 (turbidity about 0.029, which includes the default of 0.02) is represented by the cleanest Prague atmosphere, and air hazier than about 0.45 (turbidity about 0.21) by the haziest. The visibility used is stored in Context global data as <code>prague_sky_visibility_km</code>.
 
  Higher turbidity values result in:
  - Reduced direct solar radiation
@@ -308,9 +325,20 @@ with Context() as context:
  <tr><th>Parameter</th><th>Description</th><th>Validation</th><th>Example Value</th></tr>
  <tr><td>pressure_Pa</td><td>Atmospheric pressure in Pascals (near the ground)</td><td>Must be > 0</td><td>101,325 Pa (1 atm)</td></tr>
  <tr><td>temperature_K</td><td>Air temperature in Kelvin (near the ground)</td><td>Must be > 0</td><td>300 K (27°C)</td></tr>
- <tr><td>humidity_rel</td><td>Air relative humidity (near the ground)</td><td>Must be 0-1</td><td>0.6 (60%)</td></tr>
- <tr><td>turbidity</td><td>Ångström's aerosol turbidity coefficient (β), which represents the aerosol optical depth (AOD) at 500 nm reference wavelength. <b>Note:</b> This is NOT Linke turbidity, which uses a different scale (typically 2-6). Typical values: 0.02 (very clear sky), 0.05 (clear sky), 0.1 (light haze), 0.2-0.3 (hazy), >0.4 (very hazy/polluted). Higher values indicate more aerosols in the atmosphere, which reduces direct solar flux and increases diffuse fraction.</td><td>Must be ≥ 0</td><td>0.02 (default clear sky)</td></tr>
+ <tr><td>humidity_rel</td><td>Air relative humidity (near the ground)</td><td>Must be 0-1; must be greater than 0 for the spectral irradiance, sensor atmosphere and thermal atmosphere methods</td><td>0.5 (50%)</td></tr>
+ <tr><td>turbidity</td><td>Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm (see \ref TurbidityDefinition). <b>Note:</b> This is NOT Linke turbidity, which uses a different scale. Higher values indicate more aerosols in the atmosphere, which reduces direct solar flux and increases diffuse fraction.</td><td>Must be ≥ 0</td><td>0.02 (default)</td></tr>
  </table>
+
+#### Total Column Ozone {#OzoneColumn}
+
+ The REST-2 and spectral irradiance models and the sensor atmosphere models need the total column ozone, which absorbs in the ultraviolet and in the Chappuis band in the visible. It can be set, in Dobson units, with \ref pyhelios.SolarPosition.SolarPosition::setOzoneColumn "setOzoneColumn()" (stored in Context global data as <code>atmosphere_ozone_DU</code>). Otherwise it is taken from a monthly zonal-mean climatology: the monthly mean total ozone of the NASA SBUV Merged Ozone Data Set in 36 latitude bands 5 degrees wide, averaged over 2005-2024. The value at the current date and latitude is interpolated linearly in latitude between the centers of the bands and in the day of the year between the middles of the months. It can be retrieved with \ref pyhelios.SolarPosition.SolarPosition::getOzoneColumn "getOzoneColumn()".
+
+ The climatology ranges from about 180 DU (the Antarctic ozone hole, 75-80 degrees south in October) to about 420 DU (the Arctic in spring). It has no data where the sun is too low for the satellite measurements, in high-latitude winter months, nor poleward of 80 degrees; for those dates and latitudes, any method that needs the ozone column (including \ref pyhelios.SolarPosition.SolarPosition::getSolarFlux "getSolarFlux()") raises an error, and the ozone column must be set with `setOzoneColumn()`. Next to a latitude band or month without data, the value of the band or month containing the latitude or date is used rather than interpolating toward the missing one.
+
+```python
+sun.setOzoneColumn(310.0)        # e.g., from a local measurement
+ozone_DU = sun.getOzoneColumn()  # 310.0
+```
 
 ### Getting the Solar Flux {#SolarFlux}
 
@@ -428,11 +456,15 @@ with Context() as context:
 
 ## Getting Spectral Solar Irradiance {#SpectralFlux}
 
- For applications requiring wavelength-resolved irradiance (e.g., photosynthesis models with wavelength-dependent quantum yield, remote sensing, hyperspectral image simulation), the \ref pyhelios.SolarPosition.SolarPosition::calculateGlobalSolarSpectrum "calculateGlobalSolarSpectrum()" method computes high-resolution spectral irradiance using the SSolar-GOA model.
+ For applications requiring wavelength-resolved irradiance (e.g., photosynthesis models with wavelength-dependent quantum yield, remote sensing, hyperspectral image simulation), the \ref pyhelios.SolarPosition.SolarPosition::calculateGlobalSolarSpectrum "calculateGlobalSolarSpectrum()", \ref pyhelios.SolarPosition.SolarPosition::calculateDirectSolarSpectrum "calculateDirectSolarSpectrum()" and \ref pyhelios.SolarPosition.SolarPosition::calculateDiffuseSolarSpectrum "calculateDiffuseSolarSpectrum()" methods compute high-resolution spectral irradiance with the model described in \ref SpectralIrradianceTheory.
 
- The spectral irradiance methods automatically derive atmospheric parameters (water vapor, ozone column) from standard atmospheric models. Results are stored in Context global data for use by other plugins (e.g., radiation plugin for ray tracing with spectral sources).
+ The spectral irradiance methods use the atmospheric conditions set with \ref pyhelios.SolarPosition.SolarPosition::setAtmosphericConditions "setAtmosphericConditions()" (the relative humidity must be greater than zero), the ozone column (see \ref OzoneColumn) and the ground albedo. Results are stored in Context global data for use by other plugins (e.g., the radiation plugin for ray tracing with spectral sources), which refer to a spectrum by its label.
 
- **Note:** The Python API for spectral calculations differs from C++. Atmospheric conditions must be provided via \ref pyhelios.SolarPosition.SolarPosition::getSolarFlux "getSolarFlux()" and related methods. The spectral calculation methods derive additional parameters automatically.
+ The spectral model also depends on the albedo of the ground surrounding the scene. Light reflected by the ground is partly scattered back down by the atmosphere, which raises the global and diffuse irradiance, most strongly at blue and ultraviolet wavelengths where atmospheric scattering is strongest; without cloud calibration the direct beam is unaffected. The ground albedo defaults to 0.2 and can be set with \ref pyhelios.SolarPosition.SolarPosition::setGroundAlbedo "setGroundAlbedo()" (stored in Context global data as <code>atmosphere_ground_albedo</code>):
+
+```python
+sun.setGroundAlbedo(0.8)  # e.g., fresh snow
+```
 
  Example code for calculating spectral irradiance:
 
@@ -453,14 +485,9 @@ with Context() as context:
         # Or specify a coarser resolution (e.g., 10 nm)
         sun.calculateGlobalSolarSpectrum("clear_sky_10nm", 10.0)
 
-        # Retrieve spectral data from Context using the same label
-        global_spectrum = context.getGlobalData("clear_sky")
-
-        # Use spectral data (wavelength in nm, irradiance in W/m²/nm)
-        for point in global_spectrum:
-            wavelength_nm = point.x
-            irradiance = point.y  # W/m²/nm on horizontal surface
-            # ... use wavelength-resolved irradiance
+        # The spectrum is stored in Context global data under the same label
+        # as (wavelength in nm, irradiance in W/m²/nm) pairs
+        n_wavelengths = context.getGlobalDataSize("clear_sky")  # 2301
 
         # Similarly for direct and diffuse components:
         sun.calculateDirectSolarSpectrum("direct_beam")
@@ -474,9 +501,68 @@ with Context() as context:
 
  Each method accepts an optional resolution parameter (default 1 nm) allowing wavelength downsampling. For example, resolution_nm=10.0 produces 231 wavelengths instead of the native 2301.
 
+### Simulating Satellite Imagery {#SensorAtmosphere}
+
+ \ref pyhelios.SolarPosition.SolarPosition::calculateSensorAtmosphereSpectra "calculateSensorAtmosphereSpectra()" computes the spectra needed to convert radiance leaving the scene into radiance at a sensor above the atmosphere (see \ref SensorAtmosphereTheory). Given the direction from the scene toward the sensor, it stores in Context global data the path radiance, the adjacency radiance, the upward direct and diffuse transmittances and the atmospheric spherical albedo, together with the direct, diffuse and global solar irradiance at the ground computed with the same atmosphere. To keep the illumination of the scene consistent with the atmosphere between it and the sensor, use these irradiance spectra, rather than those of `calculateDirectSolarSpectrum()` and `calculateDiffuseSolarSpectrum()`, for the scene's radiation sources.
+
+```python
+from pyhelios import Context, SolarPosition
+from pyhelios.types import vec3
+
+with Context() as context:
+    context.setDate(2023, 7, 16)
+    context.setTime(12, 0)
+
+    with SolarPosition(context, 0, 36.93, 3.33) as sun:
+        sun.setAtmosphericConditions(101325, 298, 0.5, 0.1)  # pressure, temperature, humidity, turbidity
+        sun.setGroundAlbedo(0.15)  # albedo of the ground surrounding the scene
+
+        # Sensor at nadir
+        sun.calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1))
+
+        # Stored spectra: (wavelength in nm, value) pairs
+        assert context.doesGlobalDataExist("satellite_path_radiance")  # W/m²/sr/nm
+```
+
+ <table>
+ <caption>Global data stored by calculateSensorAtmosphereSpectra(), each named with the label followed by a suffix</caption>
+ <tr><th>Suffix</th><th>Description</th><th>Units</th></tr>
+ <tr><td>_path_radiance</td><td>Radiance scattered by the atmosphere into the sensor without reaching the ground</td><td>W/m²/sr/nm</td></tr>
+ <tr><td>_adjacency_radiance</td><td>Radiance reflected by the surrounding ground and scattered by the atmosphere into the sensor</td><td>W/m²/sr/nm</td></tr>
+ <tr><td>_upward_direct_transmittance</td><td>Transmittance of the surface-leaving radiance straight to the sensor, including gas absorption</td><td>-</td></tr>
+ <tr><td>_upward_diffuse_transmittance</td><td>Transmittance of surface-leaving radiance scattered into the sensor direction, including gas absorption</td><td>-</td></tr>
+ <tr><td>_spherical_albedo</td><td>Spherical albedo of the atmosphere</td><td>-</td></tr>
+ <tr><td>_direct_irradiance</td><td>Direct solar irradiance at the ground, normal to the sun direction</td><td>W/m²/nm</td></tr>
+ <tr><td>_diffuse_irradiance</td><td>Diffuse solar irradiance at the ground on a horizontal surface</td><td>W/m²/nm</td></tr>
+ <tr><td>_global_irradiance</td><td>Global solar irradiance at the ground on a horizontal surface</td><td>W/m²/nm</td></tr>
+ <tr><td>_direction_to_sensor</td><td>Unit vector toward the sensor (a single vec3)</td><td>-</td></tr>
+ </table>
+
+ The turbidity set with `setAtmosphericConditions()` (the Ångström coefficient β, see \ref TurbidityDefinition) is converted to an aerosol optical depth at 550 nm using an Ångström exponent of 1.3. Conditions outside the range of the look-up table (solar zenith above 70 degrees, view zenith above 60 degrees, aerosol optical depth at 550 nm above 1.2, surface pressure below 701.2 hPa or above 1050 hPa, or a water vapor path, the column water vapor times \f$1/\mu_s + 1/\mu_v\f$, above 320 g/cm²) and a sun below the horizon raise an error; pressures between 1013 and 1050 hPa are extrapolated linearly. The model assumes clear sky, so it cannot be used together with cloud calibration.
+
+### Simulating Satellite Thermal Imagery {#SensorThermalAtmosphere}
+
+ \ref pyhelios.SolarPosition.SolarPosition::calculateSensorThermalAtmosphere "calculateSensorThermalAtmosphere()" computes the thermal infrared transmittance and upwelling and downwelling atmospheric radiance for a sensor viewing the scene from the given direction (see \ref SensorThermalAtmosphereTheory). They are stored in Context global data as spectra of 234 points from 5502 to 15326 nm, with the suffixes "_thermal_transmittance", "_thermal_upwelling_radiance" and "_thermal_downwelling_radiance" (radiances in W/m²/sr/nm). The atmospheric profile is built from the air temperature, humidity and pressure set with `setAtmosphericConditions()` and the ozone column (\ref OzoneColumn); the column water vapor derived from the temperature and humidity is stored with the suffix "_thermal_water_vapor_cm", and the unit vector toward the sensor with the suffix "_direction_to_sensor". The model does not depend on the sun's position, so night-time imagery can be simulated.
+
+```python
+sun.setAtmosphericConditions(101325, 298, 0.5, 0.1)
+sun.calculateSensorThermalAtmosphere("satellite", vec3(0, 0, 1))  # sensor at nadir
+
+water_vapor = context.getGlobalData("satellite_thermal_water_vapor_cm")  # g/cm²
+```
+
+ The column water vapor must lie within 0.1-7.5 g/cm², the pressure within 701.2-1050 hPa, the ozone column within 150-450 DU, and the view zenith angle must not exceed 60 degrees. The supported air temperatures depend on the pressure: 246.2-321.7 K at 1013 hPa. Conditions outside these ranges raise an error.
+
+ The sky longwave radiance that the scene reflects in a thermal band should come from the same atmosphere. \ref pyhelios.SolarPosition.SolarPosition::getThermalSkyFlux "getThermalSkyFlux()" gives the clear-sky longwave irradiance on a horizontal surface within a band, the band-specific counterpart of the broadband \ref pyhelios.SolarPosition.SolarPosition::getAmbientLongwaveFlux "getAmbientLongwaveFlux()"; it is the diffuse flux to give an emission band with the same wavelength bounds:
+
+```python
+radiation.addRadiationBand("TIR", 10600, 11190)  # e.g., Landsat 8 TIRS band 10
+radiation.setDiffuseRadiationFlux("TIR", sun.getThermalSkyFlux(10600, 11190))
+```
+
 ### Getting the Sky Longwave Flux {#LWFlux}
 
-The downwelling longwave radiation flux from the sky can be calculated using the \ref pyhelios.SolarPosition.SolarPosition::getAmbientLongwaveFlux "getAmbientLongwaveFlux()" function. This function is based on the Prata (1996) model and returns the clear-sky downwelling longwave radiation flux on a horizontal surface in W/m<sup>2</sup>.
+The downwelling longwave radiation flux from the sky can be calculated using the \ref pyhelios.SolarPosition.SolarPosition::getAmbientLongwaveFlux "getAmbientLongwaveFlux()" function. This function is based on the Prata (1996) model and returns the clear-sky downwelling longwave radiation flux on a horizontal surface in W/m<sup>2</sup>, integrated over all longwave wavelengths (see \ref LWTheory). It is the diffuse flux to give an emission band without wavelength bounds. For an emission band with wavelength bounds, use \ref pyhelios.SolarPosition.SolarPosition::getThermalSkyFlux "getThermalSkyFlux()" instead, which gives the clear-sky irradiance within the band (see \ref SensorThermalAtmosphere).
 
 ```python
 from pyhelios import Context, SolarPosition

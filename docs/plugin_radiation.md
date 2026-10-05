@@ -141,6 +141,11 @@ radiation.addRadiationBand("custom", wavelength_min=400.0, wavelength_max=700.0)
 radiation.copyRadiationBand("PAR", "PAR_copy")
 ```
 
+Wavelength bounds are in nanometers. The lower bound must not be negative (a band may start at 0 nm) and the upper bound must exceed it by at least 1 nm. Bounds change how a band is treated:
+
+- Surface `reflectivity_spectrum` and `transmissivity_spectrum` primitive data set a primitive's band reflectivity and transmissivity only in a band that has bounds (see [Spectral Surface Properties](#RadSpectralSurfaceProperties)).
+- An emission-enabled band with bounds emits only the in-band part of the Planck spectrum (see [Emission Control](#RadEmissionControl)).
+
 ### Common Radiation Bands
 
 ```python
@@ -240,7 +245,7 @@ radiation.setDiffuseRadiationFlux("PAR", 200.0)
 
 ## Ray Configuration
 
-### Ray Count Settings
+### Ray Count Settings {#RadRayCountSettings}
 
 ```python
 # Configure ray counts for accuracy vs. performance
@@ -251,6 +256,10 @@ radiation.setDiffuseRayCount("PAR", 3000)   # Diffuse rays
 radiation.setDirectRayCount("PAR", 5000)
 radiation.setDiffuseRayCount("PAR", 10000)
 ```
+
+The defaults are 100 direct rays and 1000 diffuse rays per primitive. The diffuse ray count is also used for the scattering iterations.
+
+> **Note:** Bands run together in one `runBand()` call share a single ray launch, which uses the largest direct and diffuse ray counts set for any of those bands. If "PAR" is set to 100 direct rays and "NIR" to 1000, `runBand(["PAR", "NIR"])` traces both with 1000. To give each band its own ray count, run the bands in separate `runBand()` calls.
 
 ### Ray Count Guidelines
 
@@ -281,13 +290,24 @@ radiation.setScatteringDepth("PAR", 3)
 radiation.setMinScatterEnergy("PAR", 0.01)
 ```
 
-### Emission Control
+### Emission Control {#RadEmissionControl}
 
 ```python
 # Enable/disable emission for thermal radiation
 radiation.enableEmission("thermal")
 radiation.disableEmission("PAR")  # PAR typically doesn't emit
 ```
+
+Each primitive emits with emissivity `emissivity_<band>` (default 1) at its `temperature` primitive data (default 300 K). How much it emits depends on whether the band has wavelength bounds:
+
+- A band added without bounds, such as `addRadiationBand("LW")`, is treated as broadband longwave and emits the full εσT⁴. This is the usual setup for the longwave band of an energy balance.
+- A band added with bounds, such as `addRadiationBand("thermal", 8000, 14000)`, emits only the part of the Planck spectrum inside them, εσT⁴ times the blackbody band fraction. A thermal camera band with bounds therefore records in-band radiance: at 300 K the 8-14 µm band holds about 38% of σT⁴.
+
+The band fraction and the Planck spectral radiance are available as `Global.blackbodyBandFraction(wavelength_min_nm, wavelength_max_nm, temperature_K)` and `Global.blackbodySpectralRadiance(wavelength_nm, temperature_K)` (from `pyhelios import Global`), for example to convert an in-band flux back to a temperature or to check the emission of a surface.
+
+Any diffuse (sky) flux given to a bounded emission band with `setDiffuseRadiationFlux()` should also be the in-band value rather than the broadband longwave flux; \ref pyhelios.SolarPosition.SolarPosition.getThermalSkyFlux "SolarPosition.getThermalSkyFlux()" computes it for bands within 5.5-15.3 µm.
+
+> **Note:** Before helios-core 1.3.90 every emission band emitted the full broadband σT⁴ regardless of its bounds. Results for bounded emission bands are lower than in earlier versions (by about 2.7x for 8-14 µm at 300 K), and a visible band with bounds and emission left enabled no longer emits several hundred W/m².
 
 `runBand()` records each band's emission state as global data named `emission_enabled_<band>` (`uint`, 1 when emission is enabled for that band and 0 otherwise). This is what lets downstream plug-ins identify which band governs longwave emission — the energy balance model reads it to select the emitting band's emissivity. You can read it back through the Context:
 
@@ -355,6 +375,8 @@ radiation.runBand("SW")     # Full GPU setup overhead again
 # Single band execution (when only one band needed)
 radiation.runBand("PAR")
 ```
+
+Bands run together are traced with the largest direct and diffuse ray counts set for any of them (see [Ray Count Settings](#RadRayCountSettings)), so run bands separately when they need different ray counts.
 
 ### Performance Comparison
 
@@ -557,15 +579,20 @@ print(f"Total reflectance: {total}")
 par_reflectance = radiation.integrateSpectrum(leaf_reflectance, 400, 700)
 print(f"PAR reflectance: {par_reflectance}")
 
-# Integration weighted by source spectrum
+# Source-weighted average over a range: int(S*f) / int(S)
 source_weighted = radiation.integrateSpectrum(
     leaf_reflectance, 400, 700, source_id=sun_id
 )
 
-# Integration with camera spectral response
+# Camera-response-weighted average: int(f*C) / int(C)
 camera_response = [(400, 0.2), (550, 1.0), (700, 0.3)]
 camera_weighted = radiation.integrateSpectrum(
     leaf_reflectance, camera_spectrum=camera_response
+)
+
+# Source- and camera-weighted, normalized by the source: int(S*f*C) / int(S)
+source_camera_weighted = radiation.integrateSpectrum(
+    leaf_reflectance, source_id=sun_id, camera_spectrum=camera_response
 )
 
 # Integrate source spectrum directly
@@ -574,6 +601,25 @@ print(f"Sun PAR flux: {sun_par_flux} W/m²")
 ```
 
 When integrating over a wavelength range, the spectrum is linearly interpolated to the bounds, so a bound that falls between tabulated points contributes only the part of its segment inside the range (helios-core 1.3.89+; earlier versions integrated the whole segment containing each bound).
+
+The source- and camera-weighted forms return weighted averages rather than plain integrals, and treat every spectrum as zero outside the wavelengths at which it is tabulated. A source tabulated from 500 to 600 nm therefore weights only that part of a 400-700 nm range (helios-core 1.3.90+; earlier versions held the source's edge values across the rest of the range). The source must have a spectrum, and the call raises if there is nothing to weight by: a source spectrum with no energy between the bounds or where the camera response is tabulated, or a camera response that is zero everywhere. Earlier versions returned NaN.
+
+### Spectral Surface Properties {#RadSpectralSurfaceProperties}
+
+Setting the primitive data `reflectivity_spectrum` or `transmissivity_spectrum` to the label of a spectrum in Context global data makes the model compute that primitive's reflectivity or transmissivity in each band that has wavelength bounds, by averaging the spectrum over the band weighted by the incident radiation's spectrum.
+
+```python
+radiation.addRadiationBand("PAR", 400, 700)
+context.setPrimitiveDataString(leaf_uuids, "reflectivity_spectrum", "leaf_reflectivity")
+context.setPrimitiveDataString(leaf_uuids, "transmissivity_spectrum", "leaf_transmissivity")
+```
+
+- **A band value overrides the spectrum.** If `reflectivity_<band>` or `transmissivity_<band>` is also set on the primitive, that value is used in that band instead of the spectrum, including a value of 0. Before helios-core 1.3.90 a value of 0 was ignored and the spectrum used, so a scene that carries a band value of 0 alongside a spectrum (for example, one loaded from XML) now uses 0.
+- **Spectra are zero outside their tabulated range.** This holds for source spectra and for reflectivity and transmissivity spectra alike. A reflectivity or transmissivity spectrum that does not overlap a band at all has no defined value in it, and `runBand()` raises when that band is run; set a constant `reflectivity_<band>` or `transmissivity_<band>` for that band instead.
+- **A source needs energy where it has flux.** If a source has a flux in a band (for example from `setSourceFlux()`) but its spectrum has no energy in that band, or a diffuse flux has a diffuse spectrum with no energy in the band, `runBand()` raises when the band is run with surfaces that have spectral properties. Earlier versions silently used a reflectivity and transmissivity of 0, so surfaces absorbed all of that radiation.
+- **Several sources.** Radiation coming directly from a source uses properties weighted by that source's spectrum. Diffuse, scattered and emitted radiation use properties weighted by the band's combined incident spectrum: each source's spectrum and the diffuse spectrum, in proportion to their band fluxes. Before helios-core 1.3.90 they were weighted by the spectrum of source 0 alone, so results with several differently coloured sources in one band depended on the order the sources were added.
+
+The model supports at most 255 radiation sources.
 
 ### Spectrum Normalization
 
@@ -1451,6 +1497,77 @@ radiation.updateCameraParameters("cam", CameraProperties(camera_resolution=(1024
 radiation.runBand(["red", "green", "blue"])          # required before writing again
 radiation.writeCameraImage("cam", ["red", "green", "blue"], "after")
 ```
+
+### Simulating Satellite Imagery {#RadCameraAtmosphere}
+
+A camera normally records the radiance leaving the scene. A sensor above the atmosphere, such as a satellite, instead records that radiance attenuated by the atmosphere, plus light scattered into its view by the atmosphere itself (path radiance) and by the surrounding ground (the adjacency effect). `enableCameraAtmosphere()` converts a camera's images to the radiance at such a sensor, using spectra computed by \ref pyhelios.SolarPosition.SolarPosition.calculateSensorAtmosphereSpectra "SolarPosition.calculateSensorAtmosphereSpectra()" (see the [Solar Position documentation](plugin_solarposition.md) for the model and its accuracy). After each camera ray trace, every pixel in a band becomes L_path + T↑ · L_pixel + L_adj, with the path and adjacency radiances integrated over the band with the camera's spectral response and the upward direct transmittance T↑ averaged over the band.
+
+Illuminate the scene with the direct and diffuse irradiance spectra computed together with the atmosphere spectra, so that the light reaching the scene and the light leaving it pass through the same atmosphere:
+
+```python
+from pyhelios import Context, RadiationModel, SolarPosition, CameraProperties
+from pyhelios.types import vec2, vec3
+
+camera_position = vec3(0, 0, 50)
+camera_lookat = vec3(0, 0, 0)
+
+ground = context.addPatch(center=vec3(0, 0, 0), size=vec2(20, 20))
+context.setPrimitiveDataFloat(ground, "reflectivity_red", 0.1)
+
+with SolarPosition(context, utc_offset=8, latitude=38.5, longitude=121.7) as solar:
+    solar.setAtmosphericConditions(101325, 298, 0.5, 0.1)
+    solar.setGroundAlbedo(0.15)
+    # Direction from the camera's look-at point toward its position
+    solar.calculateSensorAtmosphereSpectra("satellite_atmosphere", vec3(0, 0, 1))
+    sun_direction = solar.getSunDirectionVector()
+
+with RadiationModel(context) as radiation:
+    radiation.addRadiationBand("red", 620, 670)
+    radiation.disableEmission("red")
+    radiation.setScatteringDepth("red", 1)  # cameras record scattered radiation
+    sun = radiation.addCollimatedRadiationSource(sun_direction)
+    radiation.setSourceSpectrum(sun, "satellite_atmosphere_direct_irradiance")
+    radiation.setDiffuseSpectrum("red", "satellite_atmosphere_diffuse_irradiance")
+
+    properties = CameraProperties(
+        HFOV=5.0,              # narrow field of view
+        exposure="manual",     # keep pixel values in radiance units
+        white_balance="off",
+    )
+    radiation.addRadiationCamera("satellite", ["red"], camera_position, camera_lookat, properties, 1)
+    radiation.enableCameraAtmosphere("satellite", "satellite_atmosphere")
+
+    radiation.runBand("red")
+    radiance = radiation.getCameraPixelData("satellite", "red")
+```
+
+The camera does not need to be at orbital altitude: the atmosphere is applied analytically, so only the viewing direction matters. A camera a short distance above the scene with a narrow field of view avoids numerical precision problems, and its image can be averaged to the footprint of the satellite pixels being simulated.
+
+The atmosphere spectra are read when `runBand()` is called, so these requirements are checked there, and violating any of them raises an error:
+
+- The atmosphere spectra must have been computed for the direction from the camera's look-at point toward its position, to within 1 degree.
+- Every pixel must see the scene. Sky pixels have no surface for the atmosphere to act on.
+- A reflective band must have wavelength bounds or a camera spectral response, and must lie within the wavelength range of the atmosphere spectra (300-2600 nm at the default 1 nm resolution).
+- A thermal band must have wavelength bounds within 5502-15326 nm, its spectral response must not be zero over the band, and each pixel's brightness temperature must lie within 150-400 K.
+
+Emission (thermal) bands are converted with the thermal atmosphere computed by \ref pyhelios.SolarPosition.SolarPosition.calculateSensorThermalAtmosphere "SolarPosition.calculateSensorThermalAtmosphere()" under the same label. Because a bounded emission band emits only the in-band part of the Planck spectrum, the pixels are in-band radiances. Each pixel's radiance is converted to a brightness temperature; the Planck spectrum at that temperature is multiplied by the atmospheric transmittance wavelength by wavelength and integrated over the band with the camera's spectral response, and the upwelling atmospheric radiance is added. Any band within 5.5-15.3 µm can be used (for example GOES ABI bands 8-16, MODIS bands 27-36, Landsat 8/9 TIRS bands 10 and 11, and 7.5-13.5 µm microbolometer cameras), but not the 3.5-5 µm bands, where reflected sunlight is significant.
+
+```python
+solar.calculateSensorThermalAtmosphere("satellite_atmosphere", vec3(0, 0, 1))
+
+radiation.addRadiationBand("TIR", 10600, 11190)   # Landsat 8 TIRS band 10
+radiation.setDiffuseRadiationFlux("TIR", solar.getThermalSkyFlux(10600, 11190))
+context.setPrimitiveDataFloat(ground_uuids, "emissivity_TIR", 0.96)
+```
+
+The emissivity of many surfaces varies with wavelength in the thermal infrared, so each thermal band needs its own `emissivity_<band>`. The sky radiance the scene reflects is whatever diffuse flux the band is given, which must be the in-band value.
+
+Any exposure other than `"manual"` and any white balance other than `"off"` rescales the images after the atmosphere is applied, so use `exposure="manual"` and `white_balance="off"` when radiance values are needed.
+
+| Method | Description |
+|---|---|
+| [enableCameraAtmosphere(camera_label, atmosphere_label)](pyhelios.RadiationModel.RadiationModel.enableCameraAtmosphere) | Convert a camera's images to the radiance at a sensor above the atmosphere |
+| [disableCameraAtmosphere(camera_label)](pyhelios.RadiationModel.RadiationModel.disableCameraAtmosphere) | Record the radiance leaving the scene again (the default) |
 
 ### Camera Flux Smoothing
 

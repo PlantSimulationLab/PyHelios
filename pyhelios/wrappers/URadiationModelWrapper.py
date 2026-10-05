@@ -746,6 +746,24 @@ except AttributeError:
     _CAMERA_FLUX_SMOOTHING_AVAILABLE = False
 
 
+# Camera sensor atmosphere bindings (helios-core v1.3.90+). Probed separately so wheels
+# built against older libraries keep the rest of the RadiationModel API working.
+_CAMERA_ATMOSPHERE_AVAILABLE = False
+try:
+    helios_lib.enableCameraAtmosphere.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                  ctypes.c_char_p]
+    helios_lib.enableCameraAtmosphere.restype = None
+    helios_lib.enableCameraAtmosphere.errcheck = _check_error
+
+    helios_lib.disableCameraAtmosphere.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p]
+    helios_lib.disableCameraAtmosphere.restype = None
+    helios_lib.disableCameraAtmosphere.errcheck = _check_error
+
+    _CAMERA_ATMOSPHERE_AVAILABLE = True
+except AttributeError:
+    _CAMERA_ATMOSPHERE_AVAILABLE = False
+
+
 # Python wrapper functions
 
 #=============================================================================
@@ -1340,14 +1358,15 @@ def integrateSpectrum(radiation_model, object_spectrum, wavelength_min: float = 
                      wavelength_max: float = None, source_id: int = None,
                      camera_spectrum=None) -> float:
     """
-    Integrate spectrum with optional source/camera spectra and wavelength range.
+    Integrate or average a spectrum, optionally weighted by a source and/or camera spectrum.
 
-    This is a unified function that handles multiple integration scenarios:
-    - Basic integration: integrateSpectrum(model, spectrum)
-    - Range integration: integrateSpectrum(model, spectrum, wmin, wmax)
-    - With source: integrateSpectrum(model, spectrum, wmin, wmax, source_id=sid)
-    - With camera: integrateSpectrum(model, spectrum, camera_spectrum=cam_spec)
-    - Full integration: integrateSpectrum(model, spectrum, source_id=sid, camera_spectrum=cam_spec)
+    This is a unified function that handles multiple scenarios:
+    - Integral: integrateSpectrum(model, spectrum)
+    - Integral over a range: integrateSpectrum(model, spectrum, wmin, wmax)
+    - Source-weighted average over a range: integrateSpectrum(model, spectrum, wmin, wmax, source_id=sid)
+    - Camera-response-weighted average: integrateSpectrum(model, spectrum, camera_spectrum=cam_spec)
+    - Source- and camera-weighted integral normalized by the source integral:
+      integrateSpectrum(model, spectrum, source_id=sid, camera_spectrum=cam_spec)
 
     Args:
         object_spectrum: Object spectrum as list of (wavelength, value) tuples/lists/vec2
@@ -2567,3 +2586,30 @@ def getCameraFluxSmoothingCreaseAngle(radiation_model) -> float:
     """Return the crease angle (degrees) used by camera flux smoothing."""
     _require_camera_flux_smoothing()
     return float(helios_lib.getCameraFluxSmoothingCreaseAngle(radiation_model))
+
+
+def _require_camera_atmosphere() -> None:
+    """Raise if the native library predates the camera sensor atmosphere API."""
+    if not _CAMERA_ATMOSPHERE_AVAILABLE:
+        raise RuntimeError(
+            "Camera sensor atmosphere functions are not available in the current native library. "
+            "They require helios-core v1.3.90 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def enableCameraAtmosphere(radiation_model, camera_label: str, atmosphere_label: str) -> None:
+    """Convert a camera's images to the radiance reaching a sensor above the atmosphere."""
+    _require_camera_atmosphere()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.enableCameraAtmosphere(radiation_model, camera_label.encode('utf-8'),
+                                      atmosphere_label.encode('utf-8'))
+
+
+def disableCameraAtmosphere(radiation_model, camera_label: str) -> None:
+    """Stop applying a sensor atmosphere to a camera's images."""
+    _require_camera_atmosphere()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.disableCameraAtmosphere(radiation_model, camera_label.encode('utf-8'))

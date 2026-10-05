@@ -113,16 +113,20 @@ jobs:
         run: |
           echo "=== Installing Vulkan SDK for radiation plugin ==="
           # Install LunarG Vulkan SDK via official installer
-          VULKAN_SDK_VERSION="1.3.290.0"
-          curl -L -o vulkansdk.dmg "https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkansdk-macos-${VULKAN_SDK_VERSION}.dmg"
-          hdiutil attach vulkansdk.dmg -mountpoint /Volumes/VulkanSDK
+          # LunarG withdraws old SDK versions from its servers; when this one disappears,
+          # pick a replacement from https://vulkan.lunarg.com/sdk/versions/mac.json
+          VULKAN_SDK_VERSION="1.3.296.0"
+          VULKAN_SDK_SHA256="393fd11f65a4001f12fd34fdd009c38045220ca3f735bc686d97822152b0f33c"
+          # -f: a withdrawn version returns an HTML 404 page, which must fail here rather than at unpack
+          curl -fL -o vulkansdk.zip "https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/mac/vulkansdk-macos-${VULKAN_SDK_VERSION}.zip"
+          echo "${VULKAN_SDK_SHA256}  vulkansdk.zip" | shasum -a 256 -c -
+          ditto -x -k vulkansdk.zip vulkansdk-installer
           # Run the installer to a known location
           export VULKAN_SDK_INSTALL_DIR="$HOME/VulkanSDK/${VULKAN_SDK_VERSION}"
-          sudo /Volumes/VulkanSDK/InstallVulkan.app/Contents/MacOS/InstallVulkan \
+          sudo vulkansdk-installer/InstallVulkan.app/Contents/MacOS/InstallVulkan \
             --root "$VULKAN_SDK_INSTALL_DIR" \
             --accept-licenses --default-answer --confirm-command install
-          hdiutil detach /Volumes/VulkanSDK
-          rm vulkansdk.dmg
+          rm -rf vulkansdk.zip vulkansdk-installer
           # Verify installation
           echo "VULKAN_SDK=${VULKAN_SDK_INSTALL_DIR}/macOS"
           ls "${VULKAN_SDK_INSTALL_DIR}/macOS/lib/" | head -5
@@ -450,8 +454,8 @@ jobs:
                     # Test Linux testable plugins including headless visualizer
                     # Only GPU-accelerated plugins require special hardware not available in CI
                     available_plugins = info.get('available_plugins', [])
-                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture']
-                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation', 'plantarchitecture']
+                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture']
+                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'energybalance', 'radiation', 'plantarchitecture']
             
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
@@ -548,7 +552,7 @@ jobs:
             
                     # Test macOS expected plugins (8 plugins including Vulkan-based radiation)
                     available_plugins = info.get('available_plugins', [])
-                    expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture', 'radiation', 'energybalance']
+                    expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture', 'radiation', 'energybalance']
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')
             
@@ -639,8 +643,8 @@ jobs:
                     # Test Windows testable plugins (CI containers don't have GPU for radiation/energybalance testing)
                     # We build GPU plugins but can't test them in CI environment
                     available_plugins = info.get('available_plugins', [])
-                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture']
-                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'energybalance', 'radiation', 'plantarchitecture']
+                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture']
+                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'energybalance', 'radiation', 'plantarchitecture']
 
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
@@ -1424,7 +1428,7 @@ jobs:
                   # Test GPU plugin availability (critical for GPU wheels)
                   available_plugins = info.get('available_plugins', [])
                   gpu_plugins = ['energybalance', 'radiation']
-                  expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'plantarchitecture', 'energybalance', 'radiation']
+                  expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture', 'energybalance', 'radiation']
 
                   print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                   print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')

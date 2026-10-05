@@ -123,6 +123,17 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         optional=True,
         test_symbols=["createBoundaryLayerConductanceModel", "runBoundaryLayerModel", "setBoundaryLayerModel"]
     ),
+
+    "planthydraulics": PluginMetadata(
+        name="planthydraulics",
+        description="Plant hydraulics modeling of soil, root, stem and leaf water potentials",
+        system_dependencies=[],
+        plugin_dependencies=[],
+        platforms=["windows", "linux", "macos"],
+        gpu_required=False,
+        optional=True,
+        test_symbols=["createPlantHydraulicsModel", "runPlantHydraulicsModel"]
+    ),
     
     "plantarchitecture": PluginMetadata(
         name="plantarchitecture",

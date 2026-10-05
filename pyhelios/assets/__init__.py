@@ -408,7 +408,7 @@ class AssetPathManager:
             'weberpenntree': ['leaves', 'wood', 'xml'],
             'visualizer': ['shaders', 'textures', 'fonts'],
             'radiation': ['spectral_data'],
-            'solarposition': ['ssolar_goa']
+            'solarposition': ['ssolar_goa', 'atmosphere_lut', 'thermal_atmosphere_lut', 'ozone_climatology']
         }
         return subdirs_map.get(plugin_name, [])
 

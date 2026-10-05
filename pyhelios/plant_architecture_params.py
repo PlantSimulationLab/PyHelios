@@ -474,6 +474,9 @@ class PeduncleParameters:
     radius: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.001))
     pitch: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    # Degrees the peduncle is turned about its parent internode, away from the leaf side of the node:
+    # 0 leaves the node from the leaf axil, 180 is opposite the leaf.
+    yaw: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     color: Color = (0.0, 0.0, 0.0)
     length_segments: int = 3
@@ -485,6 +488,7 @@ class PeduncleParameters:
             "radius": self.radius.to_dict(),
             "pitch": self.pitch.to_dict(),
             "roll": self.roll.to_dict(),
+            "yaw": self.yaw.to_dict(),
             "curvature": self.curvature.to_dict(),
             "color": _color_to_dict(self.color),
             "length_segments": int(self.length_segments),
@@ -499,6 +503,7 @@ class PeduncleParameters:
             radius=_rpf(d, "radius", base.radius),
             pitch=_rpf(d, "pitch", base.pitch),
             roll=_rpf(d, "roll", base.roll),
+            yaw=_rpf(d, "yaw", base.yaw),
             curvature=_rpf(d, "curvature", base.curvature),
             color=_color_from_dict(d["color"], base.color) if "color" in d else base.color,
             length_segments=int(d.get("length_segments", base.length_segments)),

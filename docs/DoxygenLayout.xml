@@ -22,6 +22,7 @@
       <tab type="user" visible="yes" url="@ref LiDARDoc" title="Terrestrial LiDAR"/>
       <tab type="user" visible="yes" url="@ref PhotosynthesisDoc" title="Photosynthesis Model"/>
       <tab type="user" visible="yes" url="@ref PlantArchitectureDoc" title="Plant Architecture"/>
+      <tab type="user" visible="yes" url="@ref PlantHydraulicsDoc" title="Plant Hydraulics Model"/>
       <tab type="user" visible="yes" url="@ref RadiationDoc" title="Radiation Model"/>
       <tab type="user" visible="yes" url="@ref SolarPositionDoc" title="Solar Position"/>
       <tab type="user" visible="yes" url="@ref StomatalConductanceDoc" title="Stomatal Conductance Model"/>

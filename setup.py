@@ -94,10 +94,14 @@ def get_asset_files():
                     'plugins/*/data/*.txt',
                     'plugins/*/data/*.dat',
                     'plugins/*/data/*.json',
-                    # SolarPosition spectral tables (wehrli.dat, abscoef.dat).
+                    # SolarPosition data tables: extraterrestrial spectrum, sensor
+                    # atmosphere look-up tables and ozone climatology.
                     # Platform-independent, so kept out of the Windows/Linux-only
                     # spectral_data block below.
-                    'plugins/*/ssolar_goa/*.dat',
+                    'plugins/*/ssolar_goa/*.txt',
+                    'plugins/*/atmosphere_lut/*.bin',
+                    'plugins/*/thermal_atmosphere_lut/*.bin',
+                    'plugins/*/ozone_climatology/*.txt',
                     # Prague sky model dataset (~26 MB) and its license.
                     'plugins/*/lib/prague_sky_model/*',
                     # Camera and light models

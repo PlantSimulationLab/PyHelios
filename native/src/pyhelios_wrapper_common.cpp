@@ -164,4 +164,34 @@ extern "C" {
         }
     }
 
+    //=============================================================================
+    // Blackbody Radiation (core/global.h; helios-core v1.3.90+)
+    //=============================================================================
+
+    PYHELIOS_API float blackbodyBandFraction(float wavelength_min_nm, float wavelength_max_nm, float temperature_K) {
+        clearError();
+        try {
+            return helios::blackbodyBandFraction(wavelength_min_nm, wavelength_max_nm, temperature_K);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (blackbodyBandFraction): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (blackbodyBandFraction): Unknown error.");
+            return 0.0f;
+        }
+    }
+
+    PYHELIOS_API float blackbodySpectralRadiance(float wavelength_nm, float temperature_K) {
+        clearError();
+        try {
+            return helios::blackbodySpectralRadiance(wavelength_nm, temperature_K);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (blackbodySpectralRadiance): ") + e.what());
+            return 0.0f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (blackbodySpectralRadiance): Unknown error.");
+            return 0.0f;
+        }
+    }
+
 } //extern "C"

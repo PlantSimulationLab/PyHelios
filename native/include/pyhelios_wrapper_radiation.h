@@ -1295,6 +1295,31 @@ PYHELIOS_API int isCameraFluxSmoothingEnabled(RadiationModel* radiation_model);
  */
 PYHELIOS_API float getCameraFluxSmoothingCreaseAngle(RadiationModel* radiation_model);
 
+/**
+ * @brief Convert a camera's images to the radiance reaching a sensor above the atmosphere
+ *
+ * After each camera ray trace, every pixel of a reflective band becomes
+ * L_path + T_dir_up * L_pixel + L_adj, using the spectra stored under atmosphere_label by
+ * SolarPosition::calculateSensorAtmosphereSpectra(). Emission bands are converted with the
+ * thermal atmosphere stored under the same label by
+ * SolarPosition::calculateSensorThermalAtmosphere().
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label of an existing camera
+ * @param atmosphere_label Label prefix of the sensor atmosphere spectra in Context global data.
+ *        The spectra are read when runBand() is next called, not here.
+ */
+PYHELIOS_API void enableCameraAtmosphere(RadiationModel* radiation_model, const char* camera_label,
+                                         const char* atmosphere_label);
+
+/**
+ * @brief Stop applying a sensor atmosphere to a camera's images
+ *
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label of an existing camera
+ */
+PYHELIOS_API void disableCameraAtmosphere(RadiationModel* radiation_model, const char* camera_label);
+
 #ifdef __cplusplus
 }
 #endif

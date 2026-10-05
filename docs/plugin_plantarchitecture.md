@@ -118,6 +118,39 @@ PlantArchitecture includes 28 scientifically-validated plant models:
 - `"grapevine_VSP"` - Grapevine with vertical shoot positioned trellis
 - `"grapevine_Wye"` - Grapevine with Wye trellis (quadrilateral)
 
+### Build Parameters
+
+A few models read training-system parameters, passed as `build_parameters` to
+`buildPlantInstanceFromLibrary()` or `buildPlantCanopyFromLibrary()`. A key the loaded model does
+not read raises `ValueError`, and a value outside its range raises `PlantArchitectureError`.
+
+| Model | Parameter | Default | Range | Meaning |
+|---|---|---|---|---|
+| `almond`, `almond_independence` | `trunk_height` | 0.78 | 0.1-3 m | Trunk height |
+| | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
+| | `scaffold_angle` | 52 | 20-70° | Scaffold branch angle |
+| `apple` | `trunk_height` | 0.8 | 0.1-3 m | Trunk height |
+| | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
+| | `scaffold_angle` | 40 | 20-70° | Scaffold branch angle |
+| `pistachio` | `trunk_height` | 1.0 | 0.1-3 m | Trunk height |
+| | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches, attached in opposite pairs down the top of the trunk |
+| | `scaffold_angle` | 57 | 20-70° | Scaffold branch angle |
+| `walnut` | `trunk_height` | 0.8 | 0.1-3 m | Trunk height |
+| | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
+| | `scaffold_angle` | 40 | 25-60° | Scaffold branch angle |
+| `grapevine_VSP` | `trunk_height` | 0.8 | 0.05-1 m | Height of the fruiting wire |
+| | `vine_spacing` | 2.4 | 0.5-5 m | Plant-to-plant spacing along the row |
+| `grapevine_Wye` | `trunk_height` | 1.4 | 0.5-2 m | Height of the two cordon wires |
+| | `cordon_spacing` | 0.6 | 0.2-2 m | Distance across the row between the two cordon wires |
+| | `vine_spacing` | 1.8 | 0.5-5 m | Plant-to-plant spacing along the row; each cordon spans half of it |
+| | `catch_wire_height` | `trunk_height` + 0.6 | 0.5-4 m | Height of the top gable wires; must exceed `trunk_height` |
+
+As of helios-core 1.3.90 the `grapevine_Wye` row runs along the y-axis, as for `grapevine_VSP`
+(it previously ran along x), and its `trunk_height` is the height of the cordon wires rather than
+the trunk length (previously 0.165 m by default, range 0.05-1 m). Existing Wye layouts need to be
+turned by 90 degrees and their `trunk_height` revised. A pistachio `num_scaffolds` above 4 is now
+honoured; earlier versions accepted 5-8 but built 4.
+
 ## Shoot, Phenology, and Resource Parameters
 
 Beyond loading a named library model, PyHelios exposes the underlying parameter
@@ -208,8 +241,13 @@ surfaces the full `phytomer_parameters` sub-structure (internode, petiole, leaf,
 peduncle, inflorescence, and the leaf prototype). `defineShootType()` accepts
 either a nested `dict` or a `ShootParameters`.
 
+`phytomer_parameters.peduncle.yaw` (helios-core 1.3.90) is the angle in degrees by which a
+peduncle is turned about its parent internode, away from the side of the node its leaf is on. At 0,
+the default, the peduncle leaves the node from the leaf axil; at 180 it is opposite the leaf, as a
+grapevine cluster is (the `grapevine_VSP` and `grapevine_Wye` models set 180).
+
 Shoot type labels are species-specific — bean defines `unifoliate`/`trifoliate`,
-almond defines `trunk`/`scaffold`/`proleptic`/`sylleptic`. There is no generic
+almond defines `trunk`/`scaffold`/`proleptic`/`sylleptic`/`spur`. There is no generic
 `"stem"` type. Rather than guessing, list them:
 
 ```python
@@ -279,6 +317,16 @@ geometry by hand:
 |---|---|
 | `bendPetioleUnderLeafWeight(plant_id, shoot_id, node_index, petiole_index)` | Re-bend one petiole for its leaves' current size and its own age |
 | `recordPetioleRestShape(plant_id, shoot_id, node_index, petiole_index)` | Record the petiole's current centerline as the undeformed shape the bend starts from |
+| `getPetioleFlexibility(plant_id, shoot_id, node_index)` | The flexibility a phytomer's petioles were created with |
+| `setPetioleFlexibility(plant_id, shoot_id, node_index, flexibility)` | Replace that flexibility on an existing phytomer; call `bendPetioleUnderLeafWeight()` afterward to move the geometry |
+
+Changing the flexibility of an existing petiole and re-bending it is reversible, so it can be
+driven from a state variable such as turgor pressure. `bendPetioleUnderLeafWeight()` does nothing
+at a flexibility of exactly zero, so return a bent petiole to its rest shape with a small positive
+value. A petiole whose leaves have been posed (by `setLeafNormal()`, `setLeafAngleDistribution()`
+or `setPetioleLeafGeometry()`) is not bent unless `include_posed_leaves=True` is passed.
+`docs/examples/planthydraulics_wilting_movie.py` uses these to make a tomato plant wilt and
+recover over a day.
 
 The bend is always computed from the recorded rest shape rather than the current shape, so
 repeated calls cannot accumulate and creep the petiole downward. A petiole whose centerline
@@ -392,17 +440,21 @@ parameters.
 
 - **Shade-driven branch shedding.** Each plant carries a coarse voxel grid into which every leaf
   deposits "shadow" (the shadow-propagation model of Palubicki et al. 2009, a cheap surrogate for
-  light interception with no ray tracing), captured at the season's peak leaf area. Fine branches
-  that stood in deep shade through the season, and fine branches low in the crown and near its
-  axis, are shed stochastically. A branch must survive at least one full season in leaf before it
-  can be shed.
+  light interception with no ray tracing), captured at the season's peak leaf area. A fine branch
+  is judged by the mean light reaching all the foliage it supports, on its own leaves and those of
+  the shoots it carries, relative to the mean over the whole plant; poorly lit branches are shed
+  stochastically, less readily the larger their share of the plant's leaf area. A branch must
+  survive at least one full season in leaf before it can be shed. (Before helios-core 1.3.90 a
+  branch was judged by the light at its tip against a fixed level, and fine branches low in the
+  crown were thinned separately; that thinning no longer runs.)
 - **Growth priority.** The laterals of each parent are ranked by the light their tips receive; the
   best-lit are promoted, gaining node budget, internode length and bud-break probability over
   successive seasons, while the rest are demoted, so dominant laterals develop into limbs.
 
 Both act only on shoots of type `"proleptic"` or `"sylleptic"`; every other shoot type is treated
 as structural wood (trunk, scaffolds) and is exempt, so a model whose fine shoots use other shoot
-type names is neither shed nor reprioritized. In native Helios neither process runs when the
+type names is neither shed nor reprioritized. Pistachio scaffolds use a `"scaffold"` shoot type as
+of helios-core 1.3.90 for this reason; they were previously `"proleptic"` and could be shed whole. In native Helios neither process runs when the
 carbohydrate model is enabled (which prunes branches on carbon starvation instead); PyHelios does not
 currently expose enabling the carbohydrate model, so they always apply. Together they reduce the leaf area of
 the perennial tree models to roughly 55-60% of earlier versions; annuals, eastern redbud and
@@ -956,8 +1008,8 @@ model, not from the shoot type's phytomer-creation hook, which runs on every phy
 built. Bean's hook, for example, scales each new internode by `min(1, 0.2 + 0.8 * age / 10)`, so
 a reconstruction on a plant created at age 0 comes out at a fifth of its measured size. Create
 the plant instance at an age where the hook's scale is 1 (10 days for bean), build on a shoot
-type of your own defined with `defineShootType()`, which carries no hook, or remove the hook with
-`setPhytomerCreationFunction(label, None)` (see Phytomer Creation Functions below).
+type of your own defined with `defineShootType()`, which carries no hook, or replace the hook with
+a Python one through `setPhytomerCreationFunction()` (see Phytomer Creation Functions below).
 
 **XML round trip (helios-core 1.3.85).** `writePlantStructureXML()` records the prescribed node
 positions and radii, and `readPlantStructureXML()` rebuilds the shoot from them, so the measured
@@ -1002,15 +1054,110 @@ shoot's initial node count.
 
 - An exception raised in the function propagates out of the call that created the phytomer, with
   its original type; no further callbacks run in that call, and the plant is left partly grown.
-- `None` removes the creation function, including a library one. The library `tomato` model's
-  `mainstem`, for example, rescales every new phytomer by plant age, overriding sizes set through
-  the shoot parameters.
+- A Python function replaces any library one. The library `tomato` model's `mainstem`, for
+  example, rescales every new phytomer by plant age, overriding sizes set through the shoot
+  parameters. `None` restores the function the shoot type had before a Python function was first
+  installed; to build without the library function, define a new shoot type (last point below).
 - Each shoot copies its type's parameters when it is created, so shoots created before the call
   keep whatever function they had. Shoots created with a Python function installed look it up by
   label each time, so replacing or clearing it also takes effect for them.
 - Redefining an existing label with `defineShootType()` keeps its creation function. A **new**
   label defined from another type's parameters starts with none, because the parameter dict
-  carries no functions.
+  carries no functions. Give it a library function by name (next section).
+
+### Library Creation and Callback Functions by Name
+
+The creation and callback functions the library models use can be installed on any shoot type by
+passing their name in place of a Python function. This is how a shoot type cloned from a library
+model keeps the model's behavior:
+
+```python
+plantarch.loadPlantModelFromLibrary("almond")
+plantarch.defineShootType("my_shoot", plantarch.getCurrentShootParameters("proleptic"))
+
+# The new label carries no functions; copy them over from the type it was cloned from
+plantarch.setPhytomerCreationFunction("my_shoot", plantarch.getPhytomerCreationFunctionName("proleptic"))
+plantarch.setPhytomerCallbackFunction("my_shoot", "AlmondSpurPhytomerCallbackFunction")
+```
+
+| Method | Effect |
+|---|---|
+| `setPhytomerCreationFunction(label, name)` / `setPhytomerCallbackFunction(label, name)` | Install the named library function, replacing whatever the type had (including a Python function) |
+| `getPhytomerCreationFunctionName(label)` / `getPhytomerCallbackFunctionName(label)` | Name of the library function the type carries; `None` if it has none or has a Python function |
+| `PlantArchitecture.getLibraryPhytomerCreationFunctionNames()` / `getLibraryPhytomerCallbackFunctionNames()` | The names accepted |
+
+Names follow the native functions, e.g. `"TomatoPhytomerCreationFunction"`,
+`"AlmondSpurPhytomerCallbackFunction"` (grows spurs; needs a `spur` shoot type in the model) and
+`"GrapevinePhytomerCallbackFunction"` (pulls fruit-zone leaves at fruit set). A library function
+runs natively, so it costs nothing to cross into Python. Many are written for their own model's
+shoot types and organ layout, and installing one on an unrelated model may do nothing or raise.
+
+### Per-Timestep Phytomer Callbacks
+
+A C++ shoot type can also carry a *phytomer callback function*, which the plugin calls for every
+phytomer on every `advanceTime()` sub-step. `setPhytomerCallbackFunction()` lets a Python function
+play that role:
+
+```python
+def age_response(plant_id, shoot_id, node_index, phytomer_age):
+    if phytomer_age > 30.0:
+        plantarch.scaleInternodeMaxLength(plant_id, shoot_id, node_index, 1.0)
+
+for label in plantarch.listShootTypeLabels():
+    plantarch.setPhytomerCallbackFunction(label, age_response)
+plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=20)
+```
+
+- The function is copied into each phytomer when it is created, so **install it before building
+  the plant**; phytomers that already exist do not call a newly installed function.
+- It runs once per sub-step, after the phytomer's age is advanced. `advanceTime()` splits its
+  interval into sub-steps of at most the shortest phyllochron, so the number of calls is not the
+  number of days.
+- `None`, exceptions, and which shoots are affected behave as for creation functions above.
+- Cost: about 0.2 µs per call to cross into Python, plus 1.5–2 µs for each per-phytomer method the
+  function calls. For a growing plant this is around 1% of `advanceTime()`; for a dormant tree,
+  whose own per-step work is small, it can be several times the run time.
+
+### Structural Edits from Creation Functions and Callbacks
+
+Both kinds of function run while the plugin is part-way through walking the plant, so what they
+may change is limited (helios-core 1.3.90):
+
+- **Reading the plant and per-phytomer edits** (growth targets, scale factors, leaf removal and
+  the other per-phytomer methods) take effect immediately.
+- **`pruneBranch()` is deferred.** Its arguments are checked at once, so an invalid plant, shoot
+  or node raises inside the function, but the cut is applied at the end of the current time step
+  of `advanceTime()`, or before the build call that ran the function returns. Until then the shoot
+  still reports its uncut node count, including to the functions of phytomers visited later in the
+  same step. Cuts are applied in the order requested; one whose shoot or node an earlier cut
+  already removed does nothing. If the enclosing call ends in an error, the cuts it queued are
+  discarded. Before 1.3.90, pruning from one of these functions could crash or corrupt the plant.
+- **`advanceTime()`, `deletePlantInstance()` and `loadPlantModelFromLibrary()` raise
+  `PlantArchitectureError`.** The native plugin skips these with a warning; PyHelios raises
+  instead, because the warning is suppressed by `disableMessages()` and the call would otherwise
+  appear to succeed.
+- **Operations that add structure raise `PlantArchitectureError`:** `addBaseStemShoot()`,
+  `appendShoot()`, `addChildShoot()`, `addShootFromNodePositions()`,
+  `buildPlantInstanceFromLibrary()`, `buildPlantCanopyFromLibrary()` and
+  `readPlantStructureXML()`. To add structure in response to something a function observed, record
+  it there and make the call between calls to `advanceTime()`.
+
+As with any exception raised in one of these functions, the error propagates out of the
+`advanceTime()` or build call that ran it.
+
+```python
+def head_back(plant_id, shoot_id, node_index, phytomer_age):
+    # Head any shoot of this type back to 8 nodes once it reaches 12
+    if node_index == 11:
+        plantarch.pruneBranch(plant_id, shoot_id, 8)
+
+plantarch.setPhytomerCallbackFunction("my_branch", head_back)
+```
+
+Several library models rely on their own callback: `pistachio` trains its scaffolds and their
+secondaries from it, `grapevine_VSP` and `grapevine_Wye` pull their fruit-zone leaves, and `almond`
+grows its spurs. Installing a Python function on one of their shoot types replaces that behaviour
+for shoots created afterwards.
 
 ### Per-Phytomer Growth Targets, Phyllotaxy and Readouts
 
@@ -1105,6 +1252,11 @@ shifting about from one timestep to the next.
 | `enableLeafAzimuthAngleDistributionTracking(plant_id, eccentricity, ellipse_rotation_degrees, lambda_degrees)` | Steer azimuth only, leaving inclination to the model |
 | `disableLeafAngleDistributionTracking(plant_id)` | Stop steering |
 | `isLeafAngleDistributionTrackingEnabled(plant_id)` | Whether a plant is being steered |
+| `setLeafAngleDistribution(plant_ids, beta_mu, beta_nu, eccentricity=None, ellipse_rotation_degrees=0)` | Re-aim the leaves of a finished plant in one shot; azimuth is left alone unless `eccentricity` is given |
+
+`setLeafAngleDistribution()` moves leaves that already exist rather than steering new ones. Each
+leaf takes the angle at its own rank in the target distribution, so it can be called repeatedly
+with changing parameters without scrambling the canopy.
 
 Inclination follows a Beta distribution whose mean is `(pi/2) * beta_nu / (beta_mu + beta_nu)`,
 so a large `beta_nu` gives an erectophile canopy and a large `beta_mu` a planophile one. Azimuth
@@ -1848,7 +2000,7 @@ The exported file contains tab-separated values with the following information f
 
 ### Export USD Articulated Rigid Body (IsaacSim Physics)
 
-Export the plant structure as a PhysX articulation in USDA (ASCII USD) format for NVIDIA IsaacSim physics simulation. Each tube segment becomes a capsule-shaped rigid link connected by spherical joints whose local frames encode the rest-pose orientation. Spring/damper drives are derived from beam bending stiffness (`K = E*I/L`). Leaves, fruits, and flowers are represented as mass bodies attached by spring links.
+Export the plant structure as a PhysX articulation in USDA (ASCII USD) format for NVIDIA IsaacSim physics simulation. Each tube segment becomes a capsule-shaped rigid link connected to its parent by a joint whose local frames encode the rest-pose orientation. Every joint locks translation, limits bending to ±60 degrees and carries a spring on each rotation axis, with stiffness derived from beam bending stiffness (`K = E*I/L`) and damping proportional to it (`damping_time_constant`). Leaves, fruits, and flowers are represented as mass bodies attached by spring links.
 
 **Basic Usage:**
 
@@ -1869,7 +2021,7 @@ with Context() as context:
             plant_id, "almond_custom.usda",
             elastic_modulus=8e9,         # Young's modulus (Pa)
             wood_density=750.0,          # kg/m^3
-            damping_ratio=0.15,
+            damping_time_constant=0.03,  # s; joint damping = time constant * stiffness
             leaf_mass_per_area=0.04,     # kg/m^2
             fruit_mass=0.005,            # kg
         )

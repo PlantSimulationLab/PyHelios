@@ -21,3 +21,4 @@ from . import UPlantArchitectureWrapper
 from . import ULeafOpticsWrapper
 from . import ULiDARWrapper
 from . import UParameterOptimizationWrapper
+from . import UPlantHydraulicsWrapper

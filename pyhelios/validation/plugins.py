@@ -26,36 +26,36 @@ def validate_wavelength_range(wavelength_min: float, wavelength_max: float,
             suggestion="Use finite numeric values for wavelength bounds."
         )
     
-    if wavelength_min <= 0 or wavelength_max <= 0:
+    if wavelength_min < 0:
         raise create_validation_error(
-            f"Wavelength values must be positive, got min={wavelength_min}, max={wavelength_max}",
+            f"Wavelength bounds must not be negative, got min={wavelength_min}, max={wavelength_max}",
             param_name=f"{param_name_min}, {param_name_max}",
             function_name=function_name,
-            expected_type="positive numbers",
+            expected_type="non-negative numbers",
             actual_value=f"min={wavelength_min}, max={wavelength_max}",
-            suggestion="Wavelengths must be greater than 0."
+            suggestion="Provide wavelengths in nanometers; the lower bound may be 0."
         )
-    
-    if wavelength_min >= wavelength_max:
+
+    if wavelength_max - wavelength_min < 1:
         raise create_validation_error(
-            f"Wavelength minimum ({wavelength_min}) must be less than maximum ({wavelength_max})",
+            f"Wavelength range must be at least 1 nm with the maximum greater than the minimum, "
+            f"got min={wavelength_min}, max={wavelength_max}",
             param_name=f"{param_name_min}, {param_name_max}",
             function_name=function_name,
-            expected_type="min < max",
+            expected_type="max - min >= 1 nm",
             actual_value=(wavelength_min, wavelength_max),
-            suggestion="Ensure wavelength_min < wavelength_max."
+            suggestion="Ensure wavelength_max exceeds wavelength_min by at least 1 nm."
         )
-    
-    # Physical reasonableness check (UV to far-IR range in nanometers)
-    if wavelength_min < 100 or wavelength_max > 100000:
+
+    # Physical reasonableness check (far-IR upper limit in nanometers)
+    if wavelength_max > 100000:
         raise create_validation_error(
             f"Wavelength range [{wavelength_min}, {wavelength_max}] nm seems unrealistic",
             param_name=f"{param_name_min}, {param_name_max}",
             function_name=function_name,
-            expected_type="wavelengths in range 100-100000 nm",
+            expected_type="wavelengths up to 100000 nm",
             actual_value=f"min={wavelength_min}, max={wavelength_max}",
-            suggestion="Typical wavelength range is 100-100000 nm (UV to far-IR). "
-                      "Provide wavelength values in nanometers (e.g., PAR: 400-700 nm)."
+            suggestion="Provide wavelength values in nanometers (e.g., PAR: 400-700 nm)."
         )
 
 

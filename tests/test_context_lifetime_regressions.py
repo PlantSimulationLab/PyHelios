@@ -190,6 +190,29 @@ class TestPluginModelOutlivingContext:
             f"expected RuntimeError, got:\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
+    @pytest.mark.skipif(not plugin_available('planthydraulics'),
+                        reason="planthydraulics plugin not built")
+    def test_planthydraulics_after_context_exit_raises_not_segfault(self):
+        result = run_in_subprocess("""
+            from pyhelios import Context, PlantHydraulicsModel
+            from pyhelios.types import vec3
+            ctx = Context()
+            leaf = ctx.addPatch(center=vec3(0, 0, 0))
+            hydraulics = PlantHydraulicsModel(ctx)
+            ctx.__exit__(None, None, None)
+            try:
+                hydraulics.run([leaf])
+            except RuntimeError:
+                print("RAISED_RUNTIMEERROR")
+                raise SystemExit(0)
+            print("NO_ERROR_RAISED")
+            raise SystemExit(2)
+        """)
+        assert_did_not_segfault(result)
+        assert "RAISED_RUNTIMEERROR" in result.stdout, (
+            f"expected RuntimeError, got:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
     def test_live_context_is_not_falsely_rejected(self):
         """The liveness guard must not reject a Context that is still alive."""
         from pyhelios.Context import check_context_alive

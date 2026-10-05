@@ -131,8 +131,8 @@ helios::vec3 jsonToVec3(const nlohmann::json& j, helios::vec3 fallback) {
 // ---- Prototype-function registries (name <-> built-in function pointer) ----
 // Function pointers cannot cross the ctypes boundary, so the built-in prototype
 // functions declared in Assets.h are referenced by name. The phytomer creation function
-// is bound separately through a trampoline (see phytomerCreationTrampoline below);
-// phytomer_callback_function is not exposed.
+// and the per-timestep phytomer_callback_function are bound separately through trampolines
+// (see phytomerCreationTrampoline and phytomerCallbackTrampoline below).
 typedef uint (*LeafPrototypeFn)(helios::Context*, LeafPrototype*, int);
 typedef uint (*FlowerPrototypeFn)(helios::Context*, uint, bool);
 typedef uint (*FruitPrototypeFn)(helios::Context*, uint);
@@ -342,6 +342,7 @@ nlohmann::json phytomerParametersToJSON(const PhytomerParameters& pp) {
     pd["radius"] = randomParameterFloatToJSON(pp.peduncle.radius);
     pd["pitch"] = randomParameterFloatToJSON(pp.peduncle.pitch);
     pd["roll"] = randomParameterFloatToJSON(pp.peduncle.roll);
+    pd["yaw"] = randomParameterFloatToJSON(pp.peduncle.yaw);
     pd["curvature"] = randomParameterFloatToJSON(pp.peduncle.curvature);
     pd["color"] = rgbToJSON(pp.peduncle.color);
     pd["length_segments"] = pp.peduncle.length_segments;
@@ -410,6 +411,7 @@ void jsonToPhytomerParameters(PhytomerParameters& pp, const nlohmann::json& j, s
         if (pd.contains("radius")) pp.peduncle.radius = jsonToRandomParameterFloat(pd["radius"], generator);
         if (pd.contains("pitch")) pp.peduncle.pitch = jsonToRandomParameterFloat(pd["pitch"], generator);
         if (pd.contains("roll")) pp.peduncle.roll = jsonToRandomParameterFloat(pd["roll"], generator);
+        if (pd.contains("yaw")) pp.peduncle.yaw = jsonToRandomParameterFloat(pd["yaw"], generator);
         if (pd.contains("curvature")) pp.peduncle.curvature = jsonToRandomParameterFloat(pd["curvature"], generator);
         if (pd.contains("color")) pp.peduncle.color = jsonToRGB(pd["color"], pp.peduncle.color);
         if (pd.contains("length_segments")) pp.peduncle.length_segments = pd["length_segments"];
@@ -711,12 +713,19 @@ float* flattenVec3(const std::vector<helios::vec3>& points, int* count) {
 // PhytomerParameters::phytomer_creation_function is a plain function pointer with no user data, so one static
 // trampoline is installed on every shoot type that has a Python callback. It recovers the owning
 // PlantArchitecture and shoot type label from the phytomer and looks the Python callback up in this registry.
-// A null entry means the callback was cleared: shoots built while it was set still carry the trampoline, and it
-// then does nothing for them.
+// Each entry also keeps the function the shoot type had before a Python callback replaced it (usually a library
+// function). Clearing the callback restores that function to the shoot type, and shoots built while the callback was
+// set, which still carry the trampoline, are delegated to it.
 using PhytomerCreationCallback = PyheliosPhytomerCreationCallback;
+using PhytomerCreationFn = void (*)(std::shared_ptr<Phytomer>, uint, uint, uint, float);
 
-std::map<const PlantArchitecture*, std::map<std::string, PhytomerCreationCallback>>& phytomerCreationCallbacks() {
-    static std::map<const PlantArchitecture*, std::map<std::string, PhytomerCreationCallback>> registry;
+struct PhytomerCreationEntry {
+    PhytomerCreationCallback callback = nullptr;
+    PhytomerCreationFn original = nullptr;
+};
+
+std::map<const PlantArchitecture*, std::map<std::string, PhytomerCreationEntry>>& phytomerCreationCallbacks() {
+    static std::map<const PlantArchitecture*, std::map<std::string, PhytomerCreationEntry>> registry;
     return registry;
 }
 
@@ -730,8 +739,12 @@ void phytomerCreationTrampoline(std::shared_ptr<Phytomer> phytomer, uint shoot_n
     if (instance == registry.end() || instance->second.find(shoot->shoot_type_label) == instance->second.end()) {
         throw std::runtime_error("No Python phytomer creation function is registered for shoot type '" + shoot->shoot_type_label + "'.");
     }
-    const PhytomerCreationCallback callback = instance->second.at(shoot->shoot_type_label);
+    const PhytomerCreationEntry& entry = instance->second.at(shoot->shoot_type_label);
+    const PhytomerCreationCallback callback = entry.callback;
     if (callback == nullptr) {
+        if (entry.original != nullptr) {
+            entry.original(phytomer, shoot_node_index, parent_shoot_node_index, shoot_max_nodes, plant_age);
+        }
         return;
     }
 
@@ -751,6 +764,133 @@ void phytomerCreationTrampoline(std::shared_ptr<Phytomer> phytomer, uint shoot_n
         throw std::runtime_error("The Python phytomer creation function for shoot type '" + shoot->shoot_type_label + "' raised an exception (node " + std::to_string(node_index) + " of shoot " +
                                  std::to_string(phytomer->parent_shoot_ID) + " of plant " + std::to_string(phytomer->plantID) + ").");
     }
+}
+
+// ---- Per-timestep phytomer callback trampoline ----
+// Same scheme as the creation function: PhytomerParameters::phytomer_callback_function carries no user data, so one
+// static trampoline recovers the Python callback from the phytomer's PlantArchitecture and shoot type label, and
+// clearing it restores the function it replaced.
+using PhytomerCallback = PyheliosPhytomerCallback;
+using PhytomerCallbackFn = void (*)(std::shared_ptr<Phytomer>);
+
+struct PhytomerCallbackEntry {
+    PhytomerCallback callback = nullptr;
+    PhytomerCallbackFn original = nullptr;
+};
+
+std::map<const PlantArchitecture*, std::map<std::string, PhytomerCallbackEntry>>& phytomerCallbacks() {
+    static std::map<const PlantArchitecture*, std::map<std::string, PhytomerCallbackEntry>> registry;
+    return registry;
+}
+
+void phytomerCallbackTrampoline(std::shared_ptr<Phytomer> phytomer) {
+    const Shoot* shoot = phytomer->parent_shoot_ptr;
+    if (shoot == nullptr) {
+        throw std::runtime_error("Phytomer callback function was called for a phytomer with no parent shoot.");
+    }
+    const auto& registry = phytomerCallbacks();
+    const auto instance = registry.find(shoot->plantarchitecture_ptr);
+    if (instance == registry.end()) {
+        throw std::runtime_error("No Python phytomer callback function is registered for shoot type '" + shoot->shoot_type_label + "'.");
+    }
+    const auto entry = instance->second.find(shoot->shoot_type_label);
+    if (entry == instance->second.end()) {
+        throw std::runtime_error("No Python phytomer callback function is registered for shoot type '" + shoot->shoot_type_label + "'.");
+    }
+    const PhytomerCallback callback = entry->second.callback;
+    if (callback == nullptr) {
+        if (entry->second.original != nullptr) {
+            entry->second.original(phytomer);
+        }
+        return;
+    }
+
+    // shoot_index.x is the phytomer's position on its shoot; confirm it, since this runs on every phytomer every step.
+    size_t node_index = static_cast<size_t>(phytomer->shoot_index.x);
+    if (node_index >= shoot->phytomers.size() || shoot->phytomers.at(node_index).get() != phytomer.get()) {
+        node_index = shoot->phytomers.size();
+        for (size_t i = 0; i < shoot->phytomers.size(); i++) {
+            if (shoot->phytomers.at(i).get() == phytomer.get()) {
+                node_index = i;
+                break;
+            }
+        }
+        if (node_index == shoot->phytomers.size()) {
+            throw std::runtime_error("Phytomer callback function was called for a phytomer not attached to shoot " + std::to_string(shoot->ID) + ".");
+        }
+    }
+
+    if (callback(phytomer->plantID, phytomer->parent_shoot_ID, static_cast<unsigned int>(node_index), phytomer->age) != 0) {
+        throw std::runtime_error("The Python phytomer callback function for shoot type '" + shoot->shoot_type_label + "' raised an exception (node " + std::to_string(node_index) + " of shoot " +
+                                 std::to_string(phytomer->parent_shoot_ID) + " of plant " + std::to_string(phytomer->plantID) + ").");
+    }
+}
+
+// ---- Library phytomer function registries (name <-> function declared in Assets.h) ----
+// The library models' creation and per-timestep callback functions are referenced by name for the same reason as the
+// prototype functions above.
+// StrawberryPhytomerCreationFunction is declared in Assets.h but defined nowhere, so it cannot be listed.
+const std::map<std::string, PhytomerCreationFn>& libraryPhytomerCreationRegistry() {
+    static const std::map<std::string, PhytomerCreationFn> reg = {
+        {"AlmondPhytomerCreationFunction", &AlmondPhytomerCreationFunction},
+        {"ApplePhytomerCreationFunction", &ApplePhytomerCreationFunction},
+        {"AsparagusPhytomerCreationFunction", &AsparagusPhytomerCreationFunction},
+        {"BeanPhytomerCreationFunction", &BeanPhytomerCreationFunction},
+        {"CapsicumPhytomerCreationFunction", &CapsicumPhytomerCreationFunction},
+        {"CowpeaPhytomerCreationFunction", &CowpeaPhytomerCreationFunction},
+        {"GrapevinePhytomerCreationFunction", &GrapevinePhytomerCreationFunction},
+        {"MaizePhytomerCreationFunction", &MaizePhytomerCreationFunction},
+        {"OlivePhytomerCreationFunction", &OlivePhytomerCreationFunction},
+        {"PistachioPhytomerCreationFunction", &PistachioPhytomerCreationFunction},
+        {"RedbudPhytomerCreationFunction", &RedbudPhytomerCreationFunction},
+        {"RicePhytomerCreationFunction", &RicePhytomerCreationFunction},
+        {"ButterLettucePhytomerCreationFunction", &ButterLettucePhytomerCreationFunction},
+        {"SorghumPhytomerCreationFunction", &SorghumPhytomerCreationFunction},
+        {"SoybeanPhytomerCreationFunction", &SoybeanPhytomerCreationFunction},
+        {"TomatoPhytomerCreationFunction", &TomatoPhytomerCreationFunction},
+        {"CherryTomatoPhytomerCreationFunction", &CherryTomatoPhytomerCreationFunction},
+        {"WalnutPhytomerCreationFunction", &WalnutPhytomerCreationFunction},
+        {"WheatPhytomerCreationFunction", &WheatPhytomerCreationFunction},
+    };
+    return reg;
+}
+
+const std::map<std::string, PhytomerCallbackFn>& libraryPhytomerCallbackRegistry() {
+    static const std::map<std::string, PhytomerCallbackFn> reg = {
+        {"AlmondPhytomerCallbackFunction", &AlmondPhytomerCallbackFunction},
+        {"AlmondSpurPhytomerCallbackFunction", &AlmondSpurPhytomerCallbackFunction},
+        {"ApplePhytomerCallbackFunction", &ApplePhytomerCallbackFunction},
+        {"GrapevinePhytomerCallbackFunction", &GrapevinePhytomerCallbackFunction},
+        {"OlivePhytomerCallbackFunction", &OlivePhytomerCallbackFunction},
+        {"PistachioPhytomerCallbackFunction", &PistachioPhytomerCallbackFunction},
+        {"RedbudPhytomerCallbackFunction", &RedbudPhytomerCallbackFunction},
+        {"CherryTomatoPhytomerCallbackFunction", &CherryTomatoPhytomerCallbackFunction},
+        {"WalnutPhytomerCallbackFunction", &WalnutPhytomerCallbackFunction},
+    };
+    return reg;
+}
+
+template<typename FnMap>
+typename FnMap::mapped_type resolveLibraryPhytomerFunction(const FnMap& reg, const char* name, const char* kind) {
+    if (!name || std::strlen(name) == 0) {
+        throw std::invalid_argument(std::string("Library phytomer ") + kind + " function name is null or empty");
+    }
+    const auto it = reg.find(name);
+    if (it == reg.end()) {
+        throw std::invalid_argument(std::string("Unknown library phytomer ") + kind + " function name: '" + name + "'");
+    }
+    return it->second;
+}
+
+template<typename FnMap>
+const char* joinedRegistryNames(const FnMap& reg) {
+    static thread_local std::string names;
+    names.clear();
+    for (const auto& kv : reg) {
+        if (!names.empty()) names += '\n';
+        names += kv.first;
+    }
+    return names.c_str();
 }
 
 } // anonymous namespace
@@ -777,6 +917,7 @@ extern "C" {
 
     PYHELIOS_API void destroyPlantArchitecture(PlantArchitecture* plantarch) {
         phytomerCreationCallbacks().erase(plantarch);
+        phytomerCallbacks().erase(plantarch);
         delete plantarch;
     }
 
@@ -2074,7 +2215,8 @@ extern "C" {
     }
 
     PYHELIOS_API int writePlantStructureUSD(PlantArchitecture* plantarch, unsigned int plantID, const char* filename,
-                                             float elastic_modulus, float wood_density, float damping_ratio,
+                                             float elastic_modulus, float wood_density, float damping_time_constant,
+                                             float armature_stability_ratio, float physics_steps_per_second,
                                              float static_friction, float dynamic_friction, float restitution,
                                              float organ_spring_stiffness, float organ_spring_damping,
                                              float leaf_mass_per_area, float fruit_mass, float flower_mass,
@@ -2093,7 +2235,9 @@ extern "C" {
             USDExportParameters params;
             params.elastic_modulus = elastic_modulus;
             params.wood_density = wood_density;
-            params.damping_ratio = damping_ratio;
+            params.damping_time_constant = damping_time_constant;
+            params.armature_stability_ratio = armature_stability_ratio;
+            params.physics_steps_per_second = physics_steps_per_second;
             params.static_friction = static_friction;
             params.dynamic_friction = dynamic_friction;
             params.restitution = restitution;
@@ -3988,6 +4132,111 @@ extern "C" {
     }
 
     //=============================================================================
+    // Posing a finished plant
+    //=============================================================================
+
+    PYHELIOS_API int setPlantLeafAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int count, float Beta_mu_inclination, float Beta_nu_inclination, int set_azimuth,
+                                                   float eccentricity, float ellipse_rotation_degrees) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!plantIDs || count <= 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPlantLeafAngleDistribution): Plant ID list is empty");
+                return -1;
+            }
+            std::vector<uint> ids(plantIDs, plantIDs + count);
+            if (set_azimuth) {
+                plantarch->setPlantLeafAngleDistribution(ids, Beta_mu_inclination, Beta_nu_inclination, eccentricity, ellipse_rotation_degrees);
+            } else {
+                plantarch->setPlantLeafElevationAngleDistribution(ids, Beta_mu_inclination, Beta_nu_inclination);
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPlantLeafAngleDistribution): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPlantLeafAngleDistribution): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int bendPetioleWithPosedLeavesUnderLeafWeight(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            std::shared_ptr<Phytomer> phytomer = resolvePhytomer(plantarch, plantID, shootID, node_index, "bendPetioleUnderLeafWeight");
+            if (petiole_index >= phytomer->leaf_pose_prescribed.size()) {
+                phytomer->bendPetioleUnderLeafWeight(petiole_index);
+                return 0;
+            }
+            // Phytomer::bendPetioleUnderLeafWeight() returns early for a petiole carrying a posed leaf, so the flags are
+            // lowered for the duration of the call. They are restored afterward because they also select how a leaf is
+            // rebuilt as it grows and how it is written to XML.
+            const std::vector<bool> posed = phytomer->leaf_pose_prescribed.at(petiole_index);
+            phytomer->leaf_pose_prescribed.at(petiole_index).assign(posed.size(), false);
+            try {
+                phytomer->bendPetioleUnderLeafWeight(petiole_index);
+            } catch (...) {
+                phytomer->leaf_pose_prescribed.at(petiole_index) = posed;
+                throw;
+            }
+            phytomer->leaf_pose_prescribed.at(petiole_index) = posed;
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::bendPetioleUnderLeafWeight): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::bendPetioleUnderLeafWeight): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API float getPetioleFlexibility(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1.f;
+            }
+            return resolvePhytomer(plantarch, plantID, shootID, node_index, "getPetioleFlexibility")->petiole_flexibility;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPetioleFlexibility): ") + e.what());
+            return -1.f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPetioleFlexibility): Unknown error.");
+            return -1.f;
+        }
+    }
+
+    PYHELIOS_API int setPetioleFlexibility(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float flexibility) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            if (!(flexibility >= 0.f) || !std::isfinite(flexibility)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPetioleFlexibility): Flexibility must be finite and non-negative, but " + std::to_string(flexibility) + " was given.");
+                return -1;
+            }
+            resolvePhytomer(plantarch, plantID, shootID, node_index, "setPetioleFlexibility")->petiole_flexibility = flexibility;
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleFlexibility): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleFlexibility): Unknown error.");
+            return -1;
+        }
+    }
+
+    //=============================================================================
     // Phytomer creation callback, per-phytomer growth targets and readouts, live
     // phyllotaxy, per-model leaf inclination distributions (helios-core 1.3.88)
     //=============================================================================
@@ -3999,9 +4248,36 @@ extern "C" {
             }
             const std::string label(shoot_type_label);
             ShootParameters params = plantarch->getCurrentShootParameters(label);
-            params.phytomer_parameters.phytomer_creation_function = callback ? &phytomerCreationTrampoline : nullptr;
+            PhytomerCreationFn& function = params.phytomer_parameters.phytomer_creation_function;
+            PhytomerCreationEntry entry = phytomerCreationCallbacks()[plantarch][label];
+            // Anything other than the trampoline is the shoot type's own function (e.g. after a library model is reloaded).
+            if (function != &phytomerCreationTrampoline) {
+                entry.original = function;
+            }
+            entry.callback = callback;
+            function = callback ? &phytomerCreationTrampoline : entry.original;
             plantarch->defineShootType(label, params);
-            phytomerCreationCallbacks()[plantarch][label] = callback;
+            phytomerCreationCallbacks()[plantarch][label] = entry;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPhytomerCallbackFunction(PlantArchitecture* plantarch, const char* shoot_type_label, PhytomerCallback callback) {
+        return guardedPhytomerCall(plantarch, "setPhytomerCallbackFunction", -1, [&]() {
+            if (!shoot_type_label) {
+                throw std::invalid_argument("Shoot type label is null");
+            }
+            const std::string label(shoot_type_label);
+            ShootParameters params = plantarch->getCurrentShootParameters(label);
+            PhytomerCallbackFn& function = params.phytomer_parameters.phytomer_callback_function;
+            PhytomerCallbackEntry entry = phytomerCallbacks()[plantarch][label];
+            if (function != &phytomerCallbackTrampoline) {
+                entry.original = function;
+            }
+            entry.callback = callback;
+            function = callback ? &phytomerCallbackTrampoline : entry.original;
+            plantarch->defineShootType(label, params);
+            phytomerCallbacks()[plantarch][label] = entry;
             return 0;
         });
     }
@@ -4299,6 +4575,7 @@ extern "C" {
             freeze(pp.peduncle.radius);
             freeze(pp.peduncle.pitch);
             freeze(pp.peduncle.roll);
+            freeze(pp.peduncle.yaw);
             freeze(pp.peduncle.curvature);
             freeze(pp.inflorescence.flowers_per_peduncle);
             freeze(pp.inflorescence.flower_offset);
@@ -4319,6 +4596,83 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PhytomerParameters::resample): Unknown error.");
             return nullptr;
         }
+    }
+
+    //=============================================================================
+    // Library phytomer creation and callback functions by name (Assets.h)
+    //=============================================================================
+
+    PYHELIOS_API int setPhytomerCreationFunctionByName(PlantArchitecture* plantarch, const char* shoot_type_label, const char* function_name) {
+        return guardedPhytomerCall(plantarch, "setPhytomerCreationFunctionByName", -1, [&]() {
+            if (!shoot_type_label) {
+                throw std::invalid_argument("Shoot type label is null");
+            }
+            const PhytomerCreationFn library_function = resolveLibraryPhytomerFunction(libraryPhytomerCreationRegistry(), function_name, "creation");
+            const std::string label(shoot_type_label);
+            ShootParameters params = plantarch->getCurrentShootParameters(label);
+            params.phytomer_parameters.phytomer_creation_function = library_function;
+            plantarch->defineShootType(label, params);
+            // Shoots built while a Python callback was installed still carry the trampoline; point them at the library function too.
+            auto& entries = phytomerCreationCallbacks()[plantarch];
+            const auto entry = entries.find(label);
+            if (entry != entries.end()) {
+                entry->second.callback = nullptr;
+                entry->second.original = library_function;
+            }
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPhytomerCallbackFunctionByName(PlantArchitecture* plantarch, const char* shoot_type_label, const char* function_name) {
+        return guardedPhytomerCall(plantarch, "setPhytomerCallbackFunctionByName", -1, [&]() {
+            if (!shoot_type_label) {
+                throw std::invalid_argument("Shoot type label is null");
+            }
+            const PhytomerCallbackFn library_function = resolveLibraryPhytomerFunction(libraryPhytomerCallbackRegistry(), function_name, "callback");
+            const std::string label(shoot_type_label);
+            ShootParameters params = plantarch->getCurrentShootParameters(label);
+            params.phytomer_parameters.phytomer_callback_function = library_function;
+            plantarch->defineShootType(label, params);
+            auto& entries = phytomerCallbacks()[plantarch];
+            const auto entry = entries.find(label);
+            if (entry != entries.end()) {
+                entry->second.callback = nullptr;
+                entry->second.original = library_function;
+            }
+            return 0;
+        });
+    }
+
+    PYHELIOS_API const char* getPhytomerCreationFunctionName(PlantArchitecture* plantarch, const char* shoot_type_label) {
+        return guardedPhytomerCall(plantarch, "getPhytomerCreationFunctionName", static_cast<const char*>(nullptr), [&]() -> const char* {
+            if (!shoot_type_label) {
+                throw std::invalid_argument("Shoot type label is null");
+            }
+            static thread_local std::string name;
+            name = prototypeFunctionName(libraryPhytomerCreationRegistry(), plantarch->getCurrentShootParameters(std::string(shoot_type_label)).phytomer_parameters.phytomer_creation_function);
+            return name.c_str();
+        });
+    }
+
+    PYHELIOS_API const char* getPhytomerCallbackFunctionName(PlantArchitecture* plantarch, const char* shoot_type_label) {
+        return guardedPhytomerCall(plantarch, "getPhytomerCallbackFunctionName", static_cast<const char*>(nullptr), [&]() -> const char* {
+            if (!shoot_type_label) {
+                throw std::invalid_argument("Shoot type label is null");
+            }
+            static thread_local std::string name;
+            name = prototypeFunctionName(libraryPhytomerCallbackRegistry(), plantarch->getCurrentShootParameters(std::string(shoot_type_label)).phytomer_parameters.phytomer_callback_function);
+            return name.c_str();
+        });
+    }
+
+    PYHELIOS_API const char* getLibraryPhytomerCreationFunctionNames() {
+        clearError();
+        return joinedRegistryNames(libraryPhytomerCreationRegistry());
+    }
+
+    PYHELIOS_API const char* getLibraryPhytomerCallbackFunctionNames() {
+        clearError();
+        return joinedRegistryNames(libraryPhytomerCallbackRegistry());
     }
 
 } // extern "C"

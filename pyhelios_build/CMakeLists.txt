@@ -124,6 +124,10 @@ if("plantarchitecture" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_plantarchitecture.cpp)
 endif()
 
+if("planthydraulics" IN_LIST PLUGINS)
+    list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_planthydraulics.cpp)
+endif()
+
 if("leafoptics" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_leafoptics.cpp)
 endif()
@@ -223,6 +227,14 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
     if("boundarylayerconductance" IN_LIST PLUGINS)
         target_include_directories(pyhelios_interface PRIVATE
             ${BASE_DIRECTORY}/plugins/boundarylayerconductance/include
+        )
+    endif()
+endif()
+
+if(NOT DEFINED ENV{CIBUILDWHEEL})
+    if("planthydraulics" IN_LIST PLUGINS)
+        target_include_directories(pyhelios_interface PRIVATE
+            ${BASE_DIRECTORY}/plugins/planthydraulics/include
         )
     endif()
 endif()
@@ -373,6 +385,12 @@ endif()
 if("boundarylayerconductance" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/boundarylayerconductance/include
+    )
+endif()
+
+if("planthydraulics" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_shared PRIVATE
+        ${BASE_DIRECTORY}/plugins/planthydraulics/include
     )
 endif()
 

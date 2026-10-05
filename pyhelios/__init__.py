@@ -118,6 +118,22 @@ except (AttributeError, ImportError):
     BoundaryLayerConductanceModelError = None
 
 try:
+    from .PlantHydraulics import (
+        PlantHydraulicsModel,
+        PlantHydraulicsModelError,
+        PlantHydraulicsModelCoefficients,
+        HydraulicConductance,
+        HydraulicCapacitance,
+    )
+except (AttributeError, ImportError):
+    # PlantHydraulicsModel functions not available in current library
+    PlantHydraulicsModel = None
+    PlantHydraulicsModelError = None
+    PlantHydraulicsModelCoefficients = None
+    HydraulicConductance = None
+    HydraulicCapacitance = None
+
+try:
     from .PhotosynthesisModel import (
         PhotosynthesisModel,
         PhotosynthesisModelError,

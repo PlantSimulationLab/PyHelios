@@ -665,8 +665,19 @@ class RadiationModel:
         
         Args:
             band_label: Name/label for the radiation band
-            wavelength_min: Optional minimum wavelength (nm)
-            wavelength_max: Optional maximum wavelength (nm)
+            wavelength_min: Optional minimum wavelength (nm). Must not be negative; a band
+                may start at 0 nm.
+            wavelength_max: Optional maximum wavelength (nm). Must exceed wavelength_min by
+                at least 1 nm.
+
+        Note:
+            Wavelength bounds change how the band is treated. Surface
+            ``reflectivity_spectrum``/``transmissivity_spectrum`` data are only applied in
+            a band that has bounds. An emission-enabled band with bounds emits only the
+            part of the Planck spectrum inside them (e.g. about 38% of sigma*T^4 for
+            8000-14000 nm at 300 K), whereas a band without bounds emits the full
+            broadband epsilon*sigma*T^4; any diffuse flux given to a bounded emission band
+            should likewise be the in-band value.
         """
         # Validate inputs
         validate_band_label(band_label, "band_label", "addRadiationBand")
@@ -691,8 +702,10 @@ class RadiationModel:
         Args:
             old_label: Existing band label to copy
             new_label: New label for the copied band
-            wavelength_min: Optional minimum wavelength for new band (nm)
-            wavelength_max: Optional maximum wavelength for new band (nm)
+            wavelength_min: Optional minimum wavelength for new band (nm). Must not be negative.
+            wavelength_max: Optional maximum wavelength for new band (nm). Must exceed
+                wavelength_min by at least 1 nm. Passing 0 for both bounds creates a band
+                without wavelength bounds; omitting both keeps the bounds of the copied band.
 
         Example:
             >>> # Copy band with same wavelength range
@@ -700,13 +713,21 @@ class RadiationModel:
             >>>
             >>> # Copy band with different wavelength range
             >>> radiation.copyRadiationBand("full_spectrum", "PAR", 400, 700)
+            >>>
+            >>> # Copy band, dropping its wavelength bounds
+            >>> radiation.copyRadiationBand("PAR", "PAR_unbounded", 0, 0)
         """
-        if wavelength_min is not None and wavelength_max is not None:
+        has_bounds = wavelength_min is not None and wavelength_max is not None
+        unbounded_copy = has_bounds and wavelength_min == 0 and wavelength_max == 0
+        if has_bounds and not unbounded_copy:
             validate_wavelength_range(wavelength_min, wavelength_max, "wavelength_min", "wavelength_max", "copyRadiationBand")
 
         self._check_context_alive()
         radiation_wrapper.copyRadiationBand(self.radiation_model, old_label, new_label, wavelength_min, wavelength_max)
-        if wavelength_min is not None:
+        if unbounded_copy:
+            self._bounded_bands.discard(new_label)
+            logger.debug(f"Copied radiation band {old_label} to {new_label} without wavelength bounds")
+        elif has_bounds:
             self._bounded_bands.add(new_label)
             logger.debug(f"Copied radiation band {old_label} to {new_label} with wavelengths {wavelength_min}-{wavelength_max} nm")
         else:
@@ -967,14 +988,23 @@ class RadiationModel:
                          wavelength_max: float = None, source_id: int = None,
                          camera_spectrum=None) -> float:
         """
-        Integrate spectrum with optional source/camera spectra and wavelength range.
+        Integrate or average a spectrum, optionally weighted by a source and/or camera spectrum.
 
-        This unified method handles multiple integration scenarios:
-        - Basic: Total spectrum integration
-        - Range: Integration over wavelength range
-        - Source: Integration weighted by source spectrum
-        - Camera: Integration weighted by camera spectral response
-        - Full: Integration with both source and camera spectra
+        What is returned depends on which optional arguments are given:
+
+        - Neither ``source_id`` nor ``camera_spectrum``: the integral of the spectrum, over
+          all tabulated wavelengths or between ``wavelength_min`` and ``wavelength_max``.
+        - ``source_id`` (with both wavelength bounds): the source-weighted average
+          ``int(S*f) / int(S)`` between the bounds, where ``S`` is the source spectrum and
+          ``f`` the object spectrum.
+        - ``camera_spectrum``: the camera-response-weighted average ``int(f*C) / int(C)``
+          over the wavelengths at which the camera response ``C`` is tabulated.
+        - ``source_id`` and ``camera_spectrum``: ``int(S*f*C) / int(S)`` over the
+          wavelengths at which both the source spectrum and the camera response are
+          tabulated. The wavelength bounds are not used.
+
+        In the weighted forms every spectrum is zero outside the wavelengths at which it is
+        tabulated, so a source weights only the part of the interval its spectrum covers.
 
         Args:
             object_spectrum: Object spectrum as list of (wavelength, value) tuples/vec2
@@ -983,11 +1013,20 @@ class RadiationModel:
                 spectrum is linearly interpolated to the bounds, so a bound falling
                 between tabulated points contributes only the part of its segment
                 inside the range.
-            source_id: Optional source ID for source spectrum weighting
+            source_id: Optional source ID for source spectrum weighting. The source must
+                have a spectrum (see :meth:`setSourceSpectrum`). Requires
+                ``wavelength_min`` and ``wavelength_max`` unless ``camera_spectrum`` is
+                also given.
             camera_spectrum: Optional camera spectrum for camera response weighting
 
         Returns:
-            Integrated value
+            Integral or weighted average, as described above
+
+        Raises:
+            HeliosRuntimeError: If there is nothing to weight by: the source spectrum has no energy
+                between the bounds (or where the camera response is tabulated), or the
+                camera response is zero everywhere. Earlier helios-core versions returned
+                NaN in these cases.
 
         Example:
             >>> leaf_reflectance = [(400, 0.1), (500, 0.4), (600, 0.6), (700, 0.5)]
@@ -1255,7 +1294,14 @@ class RadiationModel:
 
     @require_plugin('radiation', 'set ray count')
     def setDirectRayCount(self, band_label: str, ray_count: int):
-        """Set direct ray count for radiation band."""
+        """
+        Set the number of direct rays per primitive for a radiation band (default 100).
+
+        Note:
+            Bands run together in one :meth:`runBand` call share a single ray launch,
+            which uses the largest direct ray count set for any of them. To trace bands
+            with different ray counts, run them in separate ``runBand()`` calls.
+        """
         validate_band_label(band_label, "band_label", "setDirectRayCount")
         validate_ray_count(ray_count, "ray_count", "setDirectRayCount")
         self._check_context_alive()
@@ -1263,7 +1309,16 @@ class RadiationModel:
     
     @require_plugin('radiation', 'set ray count')
     def setDiffuseRayCount(self, band_label: str, ray_count: int):
-        """Set diffuse ray count for radiation band."""
+        """
+        Set the number of diffuse rays per primitive for a radiation band (default 1000).
+
+        The diffuse ray count is also used for the scattering iterations.
+
+        Note:
+            Bands run together in one :meth:`runBand` call share a single ray launch,
+            which uses the largest diffuse ray count set for any of them. To trace bands
+            with different ray counts, run them in separate ``runBand()`` calls.
+        """
         validate_band_label(band_label, "band_label", "setDiffuseRayCount")
         validate_ray_count(ray_count, "ray_count", "setDiffuseRayCount")
         self._check_context_alive()
@@ -1466,6 +1521,12 @@ class RadiationModel:
             (helios-core v1.3.79+), so an explicit :meth:`updateGeometry` call is not
             required first. A subset build from ``updateGeometry(uuids)`` is preserved:
             it is never rebuilt automatically, since that would discard the subset.
+
+            Bands run together share one ray launch, so the direct and diffuse ray counts
+            used are the largest values set for any band in the call (see
+            :meth:`setDirectRayCount` and :meth:`setDiffuseRayCount`); bands with lower
+            counts receive more rays than requested. Run bands in separate calls to give
+            each its own ray count.
         """
         if isinstance(band_label, (list, tuple)):
             # Multiple bands - validate each label
@@ -2325,6 +2386,108 @@ class RadiationModel:
         logger.debug(f"Set spectral response for camera '{camera_label}', band '{band_label}'")
         self._warn_if_bounded_bands_with_camera_response(
             camera_label, [band_label], "setCameraSpectralResponse")
+
+    @require_plugin('radiation', 'enable camera sensor atmosphere')
+    def enableCameraAtmosphere(self, camera_label: str, atmosphere_label: str) -> None:
+        """
+        Convert a camera's images to the radiance reaching a sensor above the atmosphere.
+
+        Use this to simulate satellite imagery. After each camera ray trace, the radiance of
+        every pixel in a reflective band becomes ``L_path + T_dir_up * L_pixel + L_adj``: the
+        path radiance, the surface-leaving radiance attenuated by the upward direct
+        transmittance, and the adjacency radiance, each combined over the band with the
+        camera's spectral response. These spectra are computed by
+        :meth:`SolarPosition.calculateSensorAtmosphereSpectra`.
+
+        Emission (thermal) bands are converted with the thermal atmosphere computed by
+        :meth:`SolarPosition.calculateSensorThermalAtmosphere` under the same label. Each
+        pixel's in-band radiance gives a brightness temperature; the Planck spectrum at that
+        temperature is transmitted through the atmosphere wavelength by wavelength and
+        integrated over the band with the camera's spectral response, and the upwelling
+        atmospheric radiance is added.
+
+        Args:
+            camera_label: Label of an existing camera.
+            atmosphere_label: Label prefix passed to
+                :meth:`SolarPosition.calculateSensorAtmosphereSpectra` (reflective bands)
+                and :meth:`SolarPosition.calculateSensorThermalAtmosphere` (emission bands).
+
+        Raises:
+            ValueError: If either label is not a non-empty string
+            RadiationModelError: If the camera does not exist
+            RuntimeError: If the native library predates helios-core v1.3.90
+
+        Note:
+            The atmosphere spectra are read when :meth:`runBand` is next called, not here,
+            so problems with them are raised by ``runBand()``. It raises if:
+
+            - the spectra do not exist in Context global data, or were not computed for the
+              direction from the camera's look-at point toward its position (to within 1 degree);
+            - any pixel sees the sky rather than the scene;
+            - a reflective band lies outside the wavelength range of the atmosphere spectra
+              (300-2600 nm at the default 1 nm resolution);
+            - an emission band has no wavelength bounds, has bounds outside 5502-15326 nm,
+              or a pixel's brightness temperature lies outside 150-400 K.
+
+            The spectra describe the camera's central viewing direction, so give the camera
+            a narrow field of view. The camera does not need to be at orbital altitude.
+
+            Illuminate the scene with the ``<label>_direct_irradiance`` and
+            ``<label>_diffuse_irradiance`` spectra stored by
+            :meth:`SolarPosition.calculateSensorAtmosphereSpectra`, so that the illumination
+            and the view path share one atmosphere.
+
+            Use ``CameraProperties(exposure="manual", white_balance="off")`` to obtain
+            radiance values; any other setting rescales the images after the atmosphere is
+            applied.
+
+        Example:
+            >>> solar.calculateSensorAtmosphereSpectra("satellite_atmosphere", vec3(0, 0, 1))
+            >>> radiation.addRadiationCamera("satellite", ["red"], position=vec3(0, 0, 50),
+            ...                              lookat_or_direction=vec3(0, 0, 0),
+            ...                              camera_properties=properties)
+            >>> radiation.enableCameraAtmosphere("satellite", "satellite_atmosphere")
+            >>> radiation.runBand("red")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        if not isinstance(atmosphere_label, str) or not atmosphere_label.strip():
+            raise ValueError("Atmosphere label must be a non-empty string")
+
+        self._check_context_alive()
+        try:
+            radiation_wrapper.enableCameraAtmosphere(self.radiation_model, camera_label, atmosphere_label)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to enable sensor atmosphere for camera '{camera_label}': {e}")
+
+    @require_plugin('radiation', 'disable camera sensor atmosphere')
+    def disableCameraAtmosphere(self, camera_label: str) -> None:
+        """
+        Stop applying a sensor atmosphere to a camera's images.
+
+        Images rendered by later :meth:`runBand` calls record the radiance leaving the
+        scene again. Calling this for a camera with no atmosphere enabled does nothing.
+
+        Args:
+            camera_label: Label of an existing camera.
+
+        Raises:
+            ValueError: If camera_label is not a non-empty string
+            RadiationModelError: If the camera does not exist
+            RuntimeError: If the native library predates helios-core v1.3.90
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+
+        self._check_context_alive()
+        try:
+            radiation_wrapper.disableCameraAtmosphere(self.radiation_model, camera_label)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to disable sensor atmosphere for camera '{camera_label}': {e}")
 
     @require_plugin('radiation', 'configure camera from library')
     def setCameraSpectralResponseFromLibrary(self, camera_label: str, camera_library_name: str):

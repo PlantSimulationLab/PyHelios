@@ -246,3 +246,56 @@ class Global:
             RuntimeError: If the native library predates helios-core v1.3.87
         """
         return global_wrapper.invertEllipsoidalAzimuthCDF(probability, e, phi0_degrees)
+
+    # =========================================================================
+    # Blackbody Radiation (helios-core v1.3.90+)
+    # =========================================================================
+
+    @staticmethod
+    def blackbodyBandFraction(wavelength_min_nm: float, wavelength_max_nm: float, temperature_K: float) -> float:
+        """Fraction of a blackbody's total emissive power emitted between two wavelengths.
+
+        This is the integral of Planck's law between the two wavelengths divided by its
+        integral over all wavelengths (``sigma * T**4``). Multiplying the result by
+        ``emissivity * sigma * T**4`` gives the in-band emitted flux of a gray surface,
+        which is what a RadiationModel emission band added with wavelength bounds emits.
+
+        Args:
+            wavelength_min_nm: Lower wavelength bound (nm); must be >= 0
+            wavelength_max_nm: Upper wavelength bound (nm); must be greater than ``wavelength_min_nm``
+            temperature_K: Blackbody temperature (K); must be > 0
+
+        Returns:
+            Fraction of blackbody emissive power in the band, in ``[0, 1]``
+
+        Raises:
+            ValueError: If an argument is not a number
+            HeliosError: If the bounds or the temperature are out of range
+            RuntimeError: If the native library predates helios-core v1.3.90
+
+        Example:
+            >>> from pyhelios import Global
+            >>> fraction = Global.blackbodyBandFraction(8000, 14000, 300.0)  # 8-14 um at 300 K
+            >>> in_band_flux = 0.98 * 5.670374e-8 * 300.0**4 * fraction      # W/m^2
+        """
+        return global_wrapper.blackbodyBandFraction(wavelength_min_nm, wavelength_max_nm, temperature_K)
+
+    @staticmethod
+    def blackbodySpectralRadiance(wavelength_nm: float, temperature_K: float) -> float:
+        """Spectral radiance of a blackbody (Planck's law).
+
+        Its integral over all wavelengths is ``sigma * T**4 / pi``.
+
+        Args:
+            wavelength_nm: Wavelength (nm); must be > 0
+            temperature_K: Blackbody temperature (K); must be > 0
+
+        Returns:
+            Spectral radiance in W/m^2/sr/nm
+
+        Raises:
+            ValueError: If an argument is not a number
+            HeliosError: If the wavelength or the temperature is not positive
+            RuntimeError: If the native library predates helios-core v1.3.90
+        """
+        return global_wrapper.blackbodySpectralRadiance(wavelength_nm, temperature_K)

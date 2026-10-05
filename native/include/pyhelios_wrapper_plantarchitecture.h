@@ -142,7 +142,8 @@ PYHELIOS_API int writePlantMeshVertices(PlantArchitecture* plantarch, unsigned i
 PYHELIOS_API int writePlantStructureXML(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
 PYHELIOS_API int writeQSMCylinderFile(PlantArchitecture* plantarch, unsigned int plantID, const char* filename);
 PYHELIOS_API int writePlantStructureUSD(PlantArchitecture* plantarch, unsigned int plantID, const char* filename,
-                                         float elastic_modulus, float wood_density, float damping_ratio,
+                                         float elastic_modulus, float wood_density, float damping_time_constant,
+                                         float armature_stability_ratio, float physics_steps_per_second,
                                          float static_friction, float dynamic_friction, float restitution,
                                          float organ_spring_stiffness, float organ_spring_damping,
                                          float leaf_mass_per_area, float fruit_mass, float flower_mass,
@@ -306,6 +307,26 @@ PYHELIOS_API int bendPetioleUnderLeafWeight(PlantArchitecture* plantarch, unsign
 // the new shape.
 PYHELIOS_API int recordPetioleRestShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index);
 
+// ---- Posing a finished plant ----
+// Re-aim every leaf of the given plants so that inclination follows a Beta distribution, realized over
+// the plants as a whole. With set_azimuth nonzero, azimuth is also made to follow an ellipsoidal
+// distribution; otherwise eccentricity and ellipse_rotation_degrees are ignored and azimuths are kept.
+// Leaves are assigned targets by quantile of their current angle, so repeated calls keep the same leaf
+// ordering. plantIDs holds count entries. Returns 0 on success, -1 on error.
+PYHELIOS_API int setPlantLeafAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int count, float Beta_mu_inclination, float Beta_nu_inclination, int set_azimuth,
+                                               float eccentricity, float ellipse_rotation_degrees);
+// bendPetioleUnderLeafWeight() for a petiole whose leaves have been posed (by setLeafNormal(),
+// setPlantLeafAngleDistribution() or setPetioleLeafGeometry()), which it otherwise leaves alone. The posed
+// leaves are carried along the petiole and turned with it like generated ones. Returns 0 on success, -1 on error.
+PYHELIOS_API int bendPetioleWithPosedLeavesUnderLeafWeight(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index);
+// Bending flexibility of the petioles of one phytomer, which is drawn from petiole.flexibility when the
+// phytomer is created and held for its life. Returns -1 on error.
+PYHELIOS_API float getPetioleFlexibility(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index);
+// Replace that flexibility (>= 0). Geometry is not moved until bendPetioleUnderLeafWeight() is called,
+// which does nothing at a flexibility of zero, so a bent petiole is straightened with a small positive
+// value rather than zero. Returns 0 on success, -1 on error.
+PYHELIOS_API int setPetioleFlexibility(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float flexibility);
+
 // ---- Built-geometry organ queries (helios-core 1.3.85) ----
 // Measured from the geometry actually built, one entry per organ, visited shoot by shoot and then
 // phytomer by phytomer. All return thread-local static storage; do NOT free.
@@ -324,10 +345,36 @@ PYHELIOS_API float* getPlantLeafInclinations(PlantArchitecture* plantarch, unsig
 typedef int (*PyheliosPhytomerCreationCallback)(unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int shoot_node_index, unsigned int parent_shoot_node_index,
                                                 unsigned int shoot_max_nodes, float plant_age);
 // Install callback as the creation function of an existing shoot type, replacing any function it had (including a
-// library one); NULL removes it. Shoots created earlier keep the function they were created with, except that one
-// created with a callback installed looks the callback up by label when called, so replacing or clearing it takes
-// effect for those shoots too.
+// library one); NULL restores the function the type had before a callback was first installed. Shoots created earlier
+// keep the function they were created with, except that one created with a callback installed looks the callback up
+// by label when called, so replacing or clearing it (restoring the original) takes effect for those shoots too.
 PYHELIOS_API int setPhytomerCreationFunction(PlantArchitecture* plantarch, const char* shoot_type_label, PyheliosPhytomerCreationCallback callback);
+
+// ---- Per-timestep phytomer callback ----
+// Called for every phytomer of the shoot type on every advanceTime sub-step, after the phytomer's age has been
+// advanced. node_index is the phytomer's index on its shoot and phytomer_age its age in days. Return 0 on success;
+// any other value makes the enclosing native call fail.
+typedef int (*PyheliosPhytomerCallback)(unsigned int plantID, unsigned int shootID, unsigned int node_index, float phytomer_age);
+// Install callback as the per-timestep callback of an existing shoot type, replacing any function it had (including
+// a library one); NULL restores the function the type had before a callback was first installed. The function is
+// copied into each phytomer when it is created, so phytomers created earlier keep the function they were created
+// with, except that one created with a callback installed looks the callback up by label when called, so replacing
+// or clearing it (restoring the original) takes effect for those phytomers too.
+PYHELIOS_API int setPhytomerCallbackFunction(PlantArchitecture* plantarch, const char* shoot_type_label, PyheliosPhytomerCallback callback);
+
+// ---- Library phytomer creation and callback functions by name ----
+// The functions the library plant models use (declared in Assets.h, e.g. "AlmondPhytomerCreationFunction",
+// "GrapevinePhytomerCallbackFunction") can be installed on any existing shoot type by name, replacing whatever
+// function it had, including a Python callback. An unknown or empty name sets PYHELIOS_ERROR_INVALID_PARAMETER.
+PYHELIOS_API int setPhytomerCreationFunctionByName(PlantArchitecture* plantarch, const char* shoot_type_label, const char* function_name);
+PYHELIOS_API int setPhytomerCallbackFunctionByName(PlantArchitecture* plantarch, const char* shoot_type_label, const char* function_name);
+// Name of the library function a shoot type currently carries; "" if it has none or carries a function that is not a
+// library one (a Python callback). NULL on error.
+PYHELIOS_API const char* getPhytomerCreationFunctionName(PlantArchitecture* plantarch, const char* shoot_type_label);
+PYHELIOS_API const char* getPhytomerCallbackFunctionName(PlantArchitecture* plantarch, const char* shoot_type_label);
+// Names accepted by the two setters above, separated by newlines.
+PYHELIOS_API const char* getLibraryPhytomerCreationFunctionNames();
+PYHELIOS_API const char* getLibraryPhytomerCallbackFunctionNames();
 
 // ---- Per-phytomer growth targets (helios-core 1.3.88) ----
 // Out-of-range node, petiole and leaf indices set PYHELIOS_ERROR_INVALID_PARAMETER. Return 0 on success, -1 on error.

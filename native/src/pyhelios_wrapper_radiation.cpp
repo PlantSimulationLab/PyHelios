@@ -3224,6 +3224,49 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
         }
     }
 
+    PYHELIOS_API void enableCameraAtmosphere(RadiationModel* radiation_model, const char* camera_label,
+                                             const char* atmosphere_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !atmosphere_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            radiation_model->enableCameraAtmosphere(std::string(camera_label), std::string(atmosphere_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableCameraAtmosphere): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableCameraAtmosphere): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableCameraAtmosphere(RadiationModel* radiation_model, const char* camera_label) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null");
+                return;
+            }
+
+            radiation_model->disableCameraAtmosphere(std::string(camera_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableCameraAtmosphere): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableCameraAtmosphere): Unknown error");
+        }
+    }
+
 } //extern "C"
 
 #endif //RADIATION_PLUGIN_AVAILABLE

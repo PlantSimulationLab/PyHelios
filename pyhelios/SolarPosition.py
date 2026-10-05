@@ -21,18 +21,37 @@ from .wrappers.DataTypes import Time, Date, vec3, SphericalCoord
 logger = logging.getLogger(__name__)
 
 
+# Runtime data files that the SolarPosition C++ code opens by relative path, given relative to the
+# plugin's asset directory ("plugins/solarposition" under the build directory).
+_PRAGUE_DATASET = 'lib/prague_sky_model/PragueSkyModelReduced.dat'
+_OZONE_CLIMATOLOGY = 'ozone_climatology/sbuv_total_ozone_climatology.txt'
+_EXTRATERRESTRIAL_SPECTRUM = 'ssolar_goa/wehrli85.txt'
+_ATMOSPHERE_LUT = 'atmosphere_lut/atmosphere_lut.bin'
+_THERMAL_ATMOSPHERE_LUT = 'thermal_atmosphere_lut/thermal_atmosphere_lut.bin'
+
+# Files read by the spectral solar irradiance and sensor atmosphere models
+_SPECTRAL_MODEL_ASSETS = (_OZONE_CLIMATOLOGY, _EXTRATERRESTRIAL_SPECTRUM, _ATMOSPHERE_LUT)
+# Files read by the thermal sensor atmosphere model
+_THERMAL_MODEL_ASSETS = (_OZONE_CLIMATOLOGY, _THERMAL_ATMOSPHERE_LUT)
+
+
 @contextmanager
-def _solarposition_working_directory():
+def _solarposition_working_directory(required_assets: Tuple[str, ...] = (_PRAGUE_DATASET,)):
     """
     Context manager that temporarily changes working directory to where SolarPosition assets are located.
 
-    SolarPosition C++ code opens the Prague sky model dataset through the hardcoded relative path
-    "plugins/solarposition/lib/prague_sky_model/PragueSkyModelReduced.dat", so it is only resolvable
-    when the process is running from the build directory. This manager temporarily changes to the
-    build directory where the dataset actually lives.
+    SolarPosition C++ code opens its data files (the Prague sky model dataset, the ozone climatology,
+    the extraterrestrial solar spectrum and the atmospheric look-up tables) through hardcoded relative
+    paths such as "plugins/solarposition/lib/prague_sky_model/PragueSkyModelReduced.dat", so they are
+    only resolvable when the process is running from the build directory. This manager temporarily
+    changes to the build directory where the files actually live.
+
+    Args:
+        required_assets: Paths, relative to the "plugins/solarposition" asset directory, of the data
+                         files the enclosed call reads.
 
     Raises:
-        RuntimeError: If the build directory or the Prague dataset are not found, indicating a
+        RuntimeError: If the build directory or a required data file is not found, indicating a
                       build system error.
     """
     asset_manager = get_asset_manager()
@@ -61,15 +80,22 @@ def _solarposition_working_directory():
                     f"Run: build_scripts/build_helios --clean"
                 )
 
-    prague_dataset = (solarposition_assets / 'lib' / 'prague_sky_model' /
-                      'PragueSkyModelReduced.dat')
-    if not prague_dataset.exists():
-        raise RuntimeError(
-            f"Prague sky model dataset not found at {prague_dataset}. "
-            f"This indicates a build system error. The build script should copy the "
-            f"~26 MB dataset to this location. "
-            f"Rebuild with: build_scripts/build_helios --clean"
-        )
+    for asset in required_assets:
+        asset_path = solarposition_assets / asset
+        if not asset_path.exists():
+            if asset == _PRAGUE_DATASET:
+                raise RuntimeError(
+                    f"Prague sky model dataset not found at {asset_path}. "
+                    f"This indicates a build system error. The build script should copy the "
+                    f"~26 MB dataset to this location. "
+                    f"Rebuild with: build_scripts/build_helios --clean"
+                )
+            raise RuntimeError(
+                f"SolarPosition data file not found at {asset_path}. "
+                f"This indicates a build system error. The build script should copy the "
+                f"solarposition plugin assets to this location. "
+                f"Rebuild with: build_scripts/build_helios --clean"
+            )
 
     original_dir = os.getcwd()
     try:
@@ -79,6 +105,18 @@ def _solarposition_working_directory():
     finally:
         os.chdir(original_dir)
         logger.debug(f"Restored working directory to {original_dir}")
+
+
+def _validate_sensor_arguments(label, direction_to_sensor) -> None:
+    """Validate the label and sensor direction shared by the sensor atmosphere methods."""
+    if not isinstance(label, str):
+        raise ValueError(f"Label must be a string, got {type(label).__name__}")
+    if not label:
+        raise ValueError("Label cannot be empty")
+    if not isinstance(direction_to_sensor, vec3):
+        raise ValueError(f"direction_to_sensor must be a vec3, got {type(direction_to_sensor).__name__}")
+    if direction_to_sensor.x == 0.0 and direction_to_sensor.y == 0.0 and direction_to_sensor.z == 0.0:
+        raise ValueError("direction_to_sensor must be a non-zero vector")
 
 
 class SolarPositionError(HeliosError):
@@ -227,8 +265,13 @@ class SolarPosition:
         Args:
             pressure_Pa: Atmospheric pressure in Pascals (e.g., 101325 for sea level)
             temperature_K: Temperature in Kelvin (e.g., 288.15 for 15°C)
-            humidity_rel: Relative humidity as fraction (0.0-1.0)
-            turbidity: Atmospheric turbidity coefficient (typically 0.02-0.5)
+            humidity_rel: Relative humidity as fraction (0.0-1.0). The spectral solar irradiance,
+                sensor atmosphere and thermal atmosphere methods derive the precipitable water
+                from it and require a value greater than 0.
+            turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth
+                at 1 µm (must be >= 0). The aerosol optical depth at 550 nm is about 2.18 β and
+                that at 500 nm about 2.46 β, so an aerosol optical depth measured at 500 nm
+                corresponds to β of about 0.41 times that value. This is not Linke turbidity.
 
         Raises:
             ValueError: If atmospheric parameters are out of valid ranges
@@ -268,7 +311,8 @@ class SolarPosition:
         Get currently set atmospheric conditions from Context.
 
         Returns:
-            Tuple of (pressure_Pa, temperature_K, humidity_rel, turbidity)
+            Tuple of (pressure_Pa, temperature_K, humidity_rel, turbidity), where turbidity is
+            Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm
 
         Raises:
             SolarPositionError: If operation fails
@@ -453,7 +497,7 @@ class SolarPosition:
             pressure_Pa: Atmospheric pressure in Pascals (e.g., 101325 for sea level) [optional]
             temperature_K: Temperature in Kelvin (e.g., 288.15 for 15°C) [optional]
             humidity_rel: Relative humidity as fraction (0.0-1.0) [optional]
-            turbidity: Atmospheric turbidity coefficient (typically 0.02-0.5) [optional]
+            turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
             Total solar flux in W/m²
@@ -461,6 +505,12 @@ class SolarPosition:
         Raises:
             ValueError: If some parameters provided but not all, or if values are invalid
             SolarPositionError: If calculation fails or atmospheric conditions not set (modern API)
+
+        Note:
+            The model uses the total column ozone of getOzoneColumn(). Where the ozone climatology
+            has no data (high-latitude winter months, or poleward of 80 degrees) the calculation
+            fails until the ozone column is set with setOzoneColumn(). The same applies to
+            getSolarFluxPAR(), getSolarFluxNIR() and getDiffuseFraction().
 
         Examples:
             Legacy API (backward compatible):
@@ -478,7 +528,8 @@ class SolarPosition:
             # Legacy API: All parameters provided
             self._check_context_alive()
             try:
-                return solar_wrapper.getSolarFlux(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getSolarFlux(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate solar flux: {e}")
 
@@ -486,7 +537,8 @@ class SolarPosition:
             # Modern API: No parameters, use atmospheric conditions from Context
             self._check_context_alive()
             try:
-                return solar_wrapper.getSolarFluxFromState(self._solar_pos)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getSolarFluxFromState(self._solar_pos)
             except Exception as e:
                 raise SolarPositionError(
                     f"Failed to calculate solar flux from atmospheric state: {e}\n"
@@ -513,7 +565,7 @@ class SolarPosition:
             pressure_Pa: Atmospheric pressure in Pascals [optional]
             temperature_K: Temperature in Kelvin [optional]
             humidity_rel: Relative humidity as fraction (0.0-1.0) [optional]
-            turbidity: Atmospheric turbidity coefficient [optional]
+            turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
             PAR solar flux in W/m² (wavelength range ~400-700 nm)
@@ -533,13 +585,15 @@ class SolarPosition:
         if all(params_provided):
             self._check_context_alive()
             try:
-                return solar_wrapper.getSolarFluxPAR(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getSolarFluxPAR(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate PAR flux: {e}")
         elif not any(params_provided):
             self._check_context_alive()
             try:
-                return solar_wrapper.getSolarFluxPARFromState(self._solar_pos)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getSolarFluxPARFromState(self._solar_pos)
             except Exception as e:
                 raise SolarPositionError(
                     f"Failed to calculate PAR flux from atmospheric state: {e}\n"
@@ -559,7 +613,7 @@ class SolarPosition:
             pressure_Pa: Atmospheric pressure in Pascals [optional]
             temperature_K: Temperature in Kelvin [optional]
             humidity_rel: Relative humidity as fraction (0.0-1.0) [optional]
-            turbidity: Atmospheric turbidity coefficient [optional]
+            turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
             NIR solar flux in W/m² (wavelength range >700 nm)
@@ -579,13 +633,15 @@ class SolarPosition:
         if all(params_provided):
             self._check_context_alive()
             try:
-                return solar_wrapper.getSolarFluxNIR(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getSolarFluxNIR(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate NIR flux: {e}")
         elif not any(params_provided):
             self._check_context_alive()
             try:
-                return solar_wrapper.getSolarFluxNIRFromState(self._solar_pos)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getSolarFluxNIRFromState(self._solar_pos)
             except Exception as e:
                 raise SolarPositionError(
                     f"Failed to calculate NIR flux from atmospheric state: {e}\n"
@@ -605,7 +661,7 @@ class SolarPosition:
             pressure_Pa: Atmospheric pressure in Pascals [optional]
             temperature_K: Temperature in Kelvin [optional]
             humidity_rel: Relative humidity as fraction (0.0-1.0) [optional]
-            turbidity: Atmospheric turbidity coefficient [optional]
+            turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
             Diffuse fraction as ratio (0.0-1.0) where:
@@ -627,13 +683,15 @@ class SolarPosition:
         if all(params_provided):
             self._check_context_alive()
             try:
-                return solar_wrapper.getDiffuseFraction(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getDiffuseFraction(self._solar_pos, pressure_Pa, temperature_K, humidity_rel, turbidity)
             except Exception as e:
                 raise SolarPositionError(f"Failed to calculate diffuse fraction: {e}")
         elif not any(params_provided):
             self._check_context_alive()
             try:
-                return solar_wrapper.getDiffuseFractionFromState(self._solar_pos)
+                with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                    return solar_wrapper.getDiffuseFractionFromState(self._solar_pos)
             except Exception as e:
                 raise SolarPositionError(
                     f"Failed to calculate diffuse fraction from atmospheric state: {e}\n"
@@ -664,7 +722,10 @@ class SolarPosition:
 
         Note:
             The longwave flux model is based on Prata (1996).
-            Returns downwelling longwave radiation flux on a horizontal surface.
+            Returns downwelling longwave radiation flux on a horizontal surface, integrated over
+            all longwave wavelengths. It is the diffuse flux to give an emission band without
+            wavelength bounds. For the sky flux within a thermal band with wavelength bounds,
+            use getThermalSkyFlux().
 
         Examples:
             Legacy API:
@@ -796,7 +857,8 @@ class SolarPosition:
         
         self._check_context_alive()
         try:
-            return solar_wrapper.calibrateTurbidityFromTimeseries(self._solar_pos, timeseries_label)
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.calibrateTurbidityFromTimeseries(self._solar_pos, timeseries_label)
         except Exception as e:
             raise SolarPositionError(f"Failed to calibrate turbidity: {e}")
     
@@ -906,7 +968,11 @@ class SolarPosition:
             SolarPositionError: If update fails
 
         Note:
-            Reads turbidity from Context atmospheric conditions. Stores results in Context
+            Reads turbidity (Ångström's β, the aerosol optical depth at 1 µm) from Context
+            atmospheric conditions and converts the aerosol optical depth at 550 nm to the
+            visibility that parameterizes the Prague model, limited to its range of
+            20-131.8 km: turbidities below about 0.029 (including the default of 0.02) use the
+            cleanest Prague atmosphere and those above about 0.21 the haziest. Stores results in Context
             global data as "prague_sky_spectral_params" (1350 floats: 225 wavelengths × 6 params),
             "prague_sky_sun_direction", "prague_sky_visibility_km", "prague_sky_ground_albedo",
             and "prague_sky_valid" flag.
@@ -962,12 +1028,12 @@ class SolarPosition:
     # SSolar-GOA Spectral Solar Model Methods
     def calculateDirectSolarSpectrum(self, label: str, resolution_nm: float = 1.0):
         """
-        Calculate direct beam solar spectrum using SSolar-GOA model.
+        Calculate direct beam solar spectrum.
 
-        Computes the spectral irradiance of direct beam solar radiation across
-        300-2600 nm wavelength range using the SSolar-GOA (Global Ozone and
-        Atmospheric) spectral model. Results are stored in Context global data
-        as a vector of (wavelength, irradiance) pairs.
+        Computes the spectral irradiance of the direct solar beam on a surface normal to
+        the sun direction from 300 to 2600 nm, with a spectral model that follows SSolar-GOA
+        (Cachorro et al. 2022). Results are stored in Context global data as a vector of
+        (wavelength, irradiance) pairs.
 
         Args:
             label: Label to store the spectrum data in Context global data
@@ -981,9 +1047,15 @@ class SolarPosition:
 
         Note:
             - Requires Context time/date to be set for accurate solar position
-            - Atmospheric parameters from Context location are used
-            - Results accessible via context.getGlobalData(label)
-            - SSolar-GOA model accounts for atmospheric absorption and scattering
+            - Atmospheric conditions are taken from setAtmosphericConditions(), the ozone column
+              from getOzoneColumn() and the ground albedo from setGroundAlbedo(); cloud
+              calibration is applied if enabled with enableCloudCalibration()
+            - The spectrum is referred to by its label, e.g. in RadiationModel.setSourceSpectrum()
+              or RadiationModel.setDiffuseSpectrum(); context.getGlobalDataSize(label) gives its
+              number of wavelengths
+            - Fails if the sun is at or below the horizon, if the relative humidity is not
+              greater than zero, or if no ozone column was set and the climatology has no data
+              for the location and date (see getOzoneColumn())
 
         Example:
             >>> with Context() as context:
@@ -991,8 +1063,7 @@ class SolarPosition:
             ...     context.setTime(12, 0)
             ...     with SolarPosition(context) as solar:
             ...         solar.calculateDirectSolarSpectrum("direct_spectrum", resolution_nm=5.0)
-            ...         spectrum = context.getGlobalData("direct_spectrum")
-            ...         # spectrum is list of vec2(wavelength_nm, irradiance_W_m2_nm)
+            ...         n_wavelengths = context.getGlobalDataSize("direct_spectrum")  # 461
         """
         if not label:
             raise ValueError("Label cannot be empty")
@@ -1001,17 +1072,19 @@ class SolarPosition:
 
         self._check_context_alive()
         try:
-            solar_wrapper.calculateDirectSolarSpectrum(self._solar_pos, label, resolution_nm)
+            with _solarposition_working_directory(_SPECTRAL_MODEL_ASSETS):
+                solar_wrapper.calculateDirectSolarSpectrum(self._solar_pos, label, resolution_nm)
         except Exception as e:
             raise SolarPositionError(f"Failed to calculate direct solar spectrum: {e}")
 
     def calculateDiffuseSolarSpectrum(self, label: str, resolution_nm: float = 1.0):
         """
-        Calculate diffuse solar spectrum using SSolar-GOA model.
+        Calculate diffuse solar spectrum.
 
-        Computes the spectral irradiance of diffuse (scattered) solar radiation
-        across 300-2600 nm wavelength range using the SSolar-GOA model. Results
-        are stored in Context global data as a vector of (wavelength, irradiance) pairs.
+        Computes the diffuse (sky) spectral irradiance on a horizontal surface from 300 to
+        2600 nm, including light reflected by the ground and scattered back down by the
+        atmosphere, with a spectral model that follows SSolar-GOA (Cachorro et al. 2022).
+        Results are stored in Context global data as a vector of (wavelength, irradiance) pairs.
 
         Args:
             label: Label to store the spectrum data in Context global data
@@ -1025,8 +1098,15 @@ class SolarPosition:
 
         Note:
             - Requires Context time/date to be set for accurate solar position
-            - Atmospheric parameters from Context location are used
-            - Results accessible via context.getGlobalData(label)
+            - Atmospheric conditions are taken from setAtmosphericConditions(), the ozone column
+              from getOzoneColumn() and the ground albedo from setGroundAlbedo(); cloud
+              calibration is applied if enabled with enableCloudCalibration()
+            - The spectrum is referred to by its label, e.g. in RadiationModel.setSourceSpectrum()
+              or RadiationModel.setDiffuseSpectrum(); context.getGlobalDataSize(label) gives its
+              number of wavelengths
+            - Fails if the sun is at or below the horizon, if the relative humidity is not
+              greater than zero, or if no ozone column was set and the climatology has no data
+              for the location and date (see getOzoneColumn())
             - Diffuse radiation results from atmospheric scattering (Rayleigh, aerosol)
 
         Example:
@@ -1035,8 +1115,7 @@ class SolarPosition:
             ...     context.setTime(12, 0)
             ...     with SolarPosition(context) as solar:
             ...         solar.calculateDiffuseSolarSpectrum("diffuse_spectrum", resolution_nm=5.0)
-            ...         spectrum = context.getGlobalData("diffuse_spectrum")
-            ...         # spectrum is list of vec2(wavelength_nm, irradiance_W_m2_nm)
+            ...         n_wavelengths = context.getGlobalDataSize("diffuse_spectrum")  # 461
         """
         if not label:
             raise ValueError("Label cannot be empty")
@@ -1045,17 +1124,18 @@ class SolarPosition:
 
         self._check_context_alive()
         try:
-            solar_wrapper.calculateDiffuseSolarSpectrum(self._solar_pos, label, resolution_nm)
+            with _solarposition_working_directory(_SPECTRAL_MODEL_ASSETS):
+                solar_wrapper.calculateDiffuseSolarSpectrum(self._solar_pos, label, resolution_nm)
         except Exception as e:
             raise SolarPositionError(f"Failed to calculate diffuse solar spectrum: {e}")
 
     def calculateGlobalSolarSpectrum(self, label: str, resolution_nm: float = 1.0):
         """
-        Calculate global (total) solar spectrum using SSolar-GOA model.
+        Calculate global (total) solar spectrum.
 
-        Computes the spectral irradiance of total solar radiation (direct + diffuse)
-        across 300-2600 nm wavelength range using the SSolar-GOA model. Results
-        are stored in Context global data as a vector of (wavelength, irradiance) pairs.
+        Computes the global (direct plus diffuse) spectral irradiance on a horizontal surface
+        from 300 to 2600 nm, with a spectral model that follows SSolar-GOA (Cachorro et al. 2022).
+        Results are stored in Context global data as a vector of (wavelength, irradiance) pairs.
 
         Args:
             label: Label to store the spectrum data in Context global data
@@ -1069,8 +1149,15 @@ class SolarPosition:
 
         Note:
             - Requires Context time/date to be set for accurate solar position
-            - Atmospheric parameters from Context location are used
-            - Results accessible via context.getGlobalData(label)
+            - Atmospheric conditions are taken from setAtmosphericConditions(), the ozone column
+              from getOzoneColumn() and the ground albedo from setGroundAlbedo(); cloud
+              calibration is applied if enabled with enableCloudCalibration()
+            - The spectrum is referred to by its label, e.g. in RadiationModel.setSourceSpectrum()
+              or RadiationModel.setDiffuseSpectrum(); context.getGlobalDataSize(label) gives its
+              number of wavelengths
+            - Fails if the sun is at or below the horizon, if the relative humidity is not
+              greater than zero, or if no ozone column was set and the climatology has no data
+              for the location and date (see getOzoneColumn())
             - Global spectrum = direct beam + diffuse (sky) radiation
             - Most useful for plant canopy modeling and photosynthesis calculations
 
@@ -1080,9 +1167,7 @@ class SolarPosition:
             ...     context.setTime(12, 0)
             ...     with SolarPosition(context) as solar:
             ...         solar.calculateGlobalSolarSpectrum("global_spectrum", resolution_nm=10.0)
-            ...         spectrum = context.getGlobalData("global_spectrum")
-            ...         # spectrum is list of vec2(wavelength_nm, irradiance_W_m2_nm)
-            ...         total_irradiance = sum([s.y for s in spectrum]) * 10.0  # Integrate
+            ...         n_wavelengths = context.getGlobalDataSize("global_spectrum")  # 231
         """
         if not label:
             raise ValueError("Label cannot be empty")
@@ -1091,9 +1176,313 @@ class SolarPosition:
 
         self._check_context_alive()
         try:
-            solar_wrapper.calculateGlobalSolarSpectrum(self._solar_pos, label, resolution_nm)
+            with _solarposition_working_directory(_SPECTRAL_MODEL_ASSETS):
+                solar_wrapper.calculateGlobalSolarSpectrum(self._solar_pos, label, resolution_nm)
         except Exception as e:
             raise SolarPositionError(f"Failed to calculate global solar spectrum: {e}")
+
+    # Ozone column and ground albedo (v1.3.90+)
+    def setOzoneColumn(self, ozone_DU: float) -> None:
+        """
+        Set the total column ozone, overriding the climatological value.
+
+        The ozone column is used by the broadband solar flux model (getSolarFlux() family), the
+        spectral solar irradiance model and the sensor atmosphere models. It is stored in Context
+        global data as "atmosphere_ozone_DU".
+
+        Args:
+            ozone_DU: Total column ozone in Dobson units (must be > 0)
+
+        Raises:
+            ValueError: If ozone_DU is not a positive number
+            SolarPositionError: If operation fails
+
+        Example:
+            >>> solar.setOzoneColumn(310.0)  # e.g., from a local measurement
+        """
+        if isinstance(ozone_DU, bool) or not isinstance(ozone_DU, (int, float)):
+            raise ValueError(f"Ozone column must be a number, got {type(ozone_DU).__name__}")
+        if not ozone_DU > 0.0:
+            raise ValueError(f"Ozone column must be positive, got: {ozone_DU}")
+
+        self._check_context_alive()
+        try:
+            solar_wrapper.setOzoneColumn(self._solar_pos, ozone_DU)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to set ozone column: {e}")
+
+    def getOzoneColumn(self) -> float:
+        """
+        Get the total column ozone used by the solar radiation models.
+
+        Returns the ozone column set with setOzoneColumn(), if any. Otherwise returns the monthly
+        zonal-mean climatology of the NASA SBUV Merged Ozone Data Set averaged over 2005-2024,
+        interpolated linearly in latitude between the centers of its 5-degree latitude bands and in
+        the day of the year between the middles of the months.
+
+        Returns:
+            Total column ozone in Dobson units
+
+        Raises:
+            SolarPositionError: If no ozone column was set and the climatology has no data for the
+                location and date. The climatology has no data in high-latitude winter months or
+                poleward of 80 degrees; set the ozone column with setOzoneColumn() there.
+
+        Note:
+            Next to a latitude band or month without data, the value of the band or month containing
+            the location or date is used rather than interpolating toward the missing one.
+
+        Example:
+            >>> ozone_DU = solar.getOzoneColumn()
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getOzoneColumn(self._solar_pos)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to get ozone column: {e}")
+
+    def setGroundAlbedo(self, albedo: float) -> None:
+        """
+        Set the albedo of the ground surrounding the scene.
+
+        The ground albedo sets how much light is reflected back and forth between the ground and
+        the atmosphere, which increases the global and diffuse irradiance, most strongly at short
+        wavelengths. It is stored in Context global data as "atmosphere_ground_albedo".
+
+        Args:
+            albedo: Broadband ground albedo (must be between 0 and 1)
+
+        Raises:
+            ValueError: If albedo is not a number between 0 and 1
+            SolarPositionError: If operation fails
+
+        Note:
+            The ground albedo affects the global and diffuse spectra of calculateGlobalSolarSpectrum()
+            and calculateDiffuseSolarSpectrum(), and the ground irradiance and adjacency radiance of
+            calculateSensorAtmosphereSpectra(); without cloud calibration it does not affect the direct
+            beam. It does not affect the broadband getSolarFlux() family of methods, and the Prague sky
+            model takes its ground albedo as an argument of updatePragueSkyModel().
+
+        Example:
+            >>> solar.setGroundAlbedo(0.8)  # e.g., fresh snow
+        """
+        if isinstance(albedo, bool) or not isinstance(albedo, (int, float)):
+            raise ValueError(f"Ground albedo must be a number, got {type(albedo).__name__}")
+        if not 0.0 <= albedo <= 1.0:
+            raise ValueError(f"Ground albedo must be between 0 and 1, got: {albedo}")
+
+        self._check_context_alive()
+        try:
+            solar_wrapper.setGroundAlbedo(self._solar_pos, albedo)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to set ground albedo: {e}")
+
+    def getGroundAlbedo(self) -> float:
+        """
+        Get the albedo of the ground surrounding the scene.
+
+        Returns:
+            Ground albedo set by setGroundAlbedo(), or 0.2 if it has not been set
+
+        Raises:
+            SolarPositionError: If operation fails
+
+        Example:
+            >>> albedo = solar.getGroundAlbedo()
+        """
+        self._check_context_alive()
+        try:
+            return solar_wrapper.getGroundAlbedo(self._solar_pos)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to get ground albedo: {e}")
+
+    # Sensor atmosphere methods (v1.3.90+)
+    def calculateSensorAtmosphereSpectra(self, label: str, direction_to_sensor: vec3,
+                                         resolution_nm: float = 1.0) -> None:
+        """
+        Calculate the spectral atmospheric quantities needed to simulate imagery from a sensor
+        above the atmosphere (e.g., a satellite).
+
+        Radiance reaching the sensor is modeled as L_sensor = L_path + T_dir_up * L_surface + L_adj,
+        where L_surface is the radiance leaving the scene. The atmosphere is described by a look-up
+        table computed with the 6S radiative transfer code (continental aerosol), which gives both
+        the upward path to the sensor and the downward solar illumination of the scene. For the two
+        to be consistent, illuminate the scene with the "_direct_irradiance" and
+        "_diffuse_irradiance" spectra stored by this method rather than those of
+        calculateDirectSolarSpectrum() and calculateDiffuseSolarSpectrum().
+
+        The following spectra are stored in Context global data as vectors of vec2
+        (wavelength_nm, value), each labeled with the given label followed by a suffix:
+
+        - "_path_radiance": radiance scattered by the atmosphere into the sensor without reaching
+          the ground (W/m²/sr/nm)
+        - "_adjacency_radiance": radiance reflected by the surrounding ground (albedo from
+          setGroundAlbedo()) and scattered by the atmosphere into the sensor (W/m²/sr/nm)
+        - "_upward_direct_transmittance": transmittance of the surface-leaving radiance straight to
+          the sensor, including gas absorption
+        - "_upward_diffuse_transmittance": transmittance of surface-leaving radiance scattered into
+          the sensor direction, including gas absorption
+        - "_spherical_albedo": spherical albedo of the atmosphere
+        - "_direct_irradiance": direct solar irradiance at the ground, normal to the sun direction
+          (W/m²/nm)
+        - "_diffuse_irradiance": diffuse solar irradiance at the ground on a horizontal surface
+          (W/m²/nm)
+        - "_global_irradiance": global solar irradiance at the ground on a horizontal surface
+          (W/m²/nm)
+
+        The unit vector toward the sensor is also stored, as vec3 global data with the suffix
+        "_direction_to_sensor".
+
+        Args:
+            label: Prefix of the labels under which the spectra are stored in Context global data
+            direction_to_sensor: Vector pointing from the scene toward the sensor (need not be
+                normalized). Its zenith angle must not exceed 60 degrees.
+            resolution_nm: Wavelength resolution in nanometers (1.0-2300.0). Default is 1.0 nm.
+
+        Raises:
+            ValueError: If label is empty, direction_to_sensor is not a non-zero vec3, or
+                resolution is out of valid range
+            SolarPositionError: If calculation fails, including for conditions outside the range of
+                the look-up table
+
+        Note:
+            - Atmospheric conditions are taken from setAtmosphericConditions(), the ozone column
+              from getOzoneColumn() and the ground albedo from setGroundAlbedo(). The turbidity is
+              converted to aerosol optical depth at 550 nm with an Ångström exponent of 1.3.
+            - The look-up table covers solar zenith angles up to 70 degrees, view zenith angles up
+              to 60 degrees, aerosol optical depths at 550 nm up to 1.2 (turbidity up to about 0.55)
+              and surface pressures from 701.2 to 1013 hPa (ground elevations up to about 3 km);
+              pressures up to 1050 hPa are extrapolated linearly. Its gas tables cover water vapor
+              paths up to 320 g/cm². Conditions outside these ranges, and a sun below the horizon,
+              raise an error.
+            - The sensor is taken to be above the atmosphere. The model assumes clear sky and
+              cannot be used with cloud calibration enabled.
+            - RadiationModel.enableCameraAtmosphere() applies these spectra to a camera's images.
+
+        Example:
+            >>> solar.setAtmosphericConditions(101325, 298, 0.5, 0.1)
+            >>> solar.setGroundAlbedo(0.15)
+            >>> solar.calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1))  # sensor at nadir
+            >>> radiation.setSourceSpectrum(sun_source, "satellite_direct_irradiance")
+            >>> radiation.setDiffuseSpectrum("red", "satellite_diffuse_irradiance")
+        """
+        _validate_sensor_arguments(label, direction_to_sensor)
+        if isinstance(resolution_nm, bool) or not isinstance(resolution_nm, (int, float)):
+            raise ValueError(f"Wavelength resolution must be a number, got {type(resolution_nm).__name__}")
+        if resolution_nm < 1.0 or resolution_nm > 2300.0:
+            raise ValueError(f"Wavelength resolution must be between 1 and 2300 nm, got: {resolution_nm}")
+
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory(_SPECTRAL_MODEL_ASSETS):
+                solar_wrapper.calculateSensorAtmosphereSpectra(self._solar_pos, label,
+                                                               direction_to_sensor.to_list(), resolution_nm)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate sensor atmosphere spectra: {e}")
+
+    def calculateSensorThermalAtmosphere(self, label: str, direction_to_sensor: vec3) -> None:
+        """
+        Calculate the thermal infrared atmospheric quantities needed to simulate thermal imagery
+        from a sensor above the atmosphere (e.g., a satellite).
+
+        Radiance reaching the sensor at a thermal wavelength is modeled as
+        L_sensor = tau * L_surface + L_up, where L_surface is the radiance leaving the scene
+        (emitted plus reflected sky radiance), tau the atmospheric transmittance and L_up the
+        radiance emitted upward by the atmosphere. These are interpolated from a look-up table
+        computed with the libRadtran radiative transfer code (clear sky without aerosol).
+
+        The following spectra are stored in Context global data as vectors of vec2
+        (wavelength of the bin center in nm, value), with 234 points from 5502 to 15326 nm, each
+        labeled with the given label followed by a suffix:
+
+        - "_thermal_transmittance": atmospheric transmittance from the ground to the sensor
+        - "_thermal_upwelling_radiance": radiance emitted by the atmosphere toward the sensor
+          (W/m²/sr/nm)
+        - "_thermal_downwelling_radiance": sky irradiance on a horizontal surface at the ground
+          divided by pi (W/m²/sr/nm), independent of the view direction
+
+        The column water vapor (float, g/cm²) is stored with the suffix "_thermal_water_vapor_cm",
+        and the unit vector toward the sensor, as vec3, with the suffix "_direction_to_sensor".
+
+        Args:
+            label: Prefix of the labels under which the results are stored in Context global data
+            direction_to_sensor: Vector pointing from the scene toward the sensor (need not be
+                normalized). Its zenith angle must not exceed 60 degrees.
+
+        Raises:
+            ValueError: If label is empty or direction_to_sensor is not a non-zero vec3
+            SolarPositionError: If calculation fails, including for conditions outside the range of
+                the look-up table
+
+        Note:
+            - The atmospheric profile is built from the surface air temperature, humidity and
+              pressure set with setAtmosphericConditions() and the ozone column of
+              getOzoneColumn(). The column water vapor, derived from the temperature and humidity,
+              must lie within 0.1-7.5 g/cm², the pressure within 701.2-1050 hPa (pressures above
+              1013 hPa are extrapolated) and the ozone column within 150-450 DU. The supported air
+              temperatures depend on the pressure: 246.2-321.7 K at 1013 hPa.
+            - The model assumes clear sky and does not depend on the position of the sun, so
+              night-time imagery can be simulated. Reflected sunlight, which is significant below
+              about 5 µm, is not included.
+
+        Example:
+            >>> solar.setAtmosphericConditions(101325, 298, 0.5, 0.1)
+            >>> solar.calculateSensorThermalAtmosphere("satellite", vec3(0, 0, 1))  # sensor at nadir
+            >>> context.getGlobalDataSize("satellite_thermal_transmittance")
+            234
+        """
+        _validate_sensor_arguments(label, direction_to_sensor)
+
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory(_THERMAL_MODEL_ASSETS):
+                solar_wrapper.calculateSensorThermalAtmosphere(self._solar_pos, label,
+                                                               direction_to_sensor.to_list())
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate sensor thermal atmosphere: {e}")
+
+    def getThermalSkyFlux(self, wavelength_min_nm: float, wavelength_max_nm: float) -> float:
+        """
+        Calculate the sky longwave irradiance on a horizontal surface within a thermal band.
+
+        This is the band-specific counterpart of getAmbientLongwaveFlux(): the downward irradiance
+        emitted by a clear-sky atmosphere between two wavelengths, integrated from the downwelling
+        radiance of the thermal atmosphere look-up table (see calculateSensorThermalAtmosphere()).
+        It is the diffuse flux to give an emission band with the same wavelength bounds
+        (RadiationModel.setDiffuseRadiationFlux()), so that the sky radiance the scene reflects is
+        consistent with the thermal sensor atmosphere.
+
+        Args:
+            wavelength_min_nm: Lower wavelength bound of the band in nm
+            wavelength_max_nm: Upper wavelength bound of the band in nm
+
+        Returns:
+            Sky longwave irradiance within the band on a horizontal surface, in W/m²
+
+        Raises:
+            ValueError: If the bounds are not numbers satisfying 0 < wavelength_min_nm < wavelength_max_nm
+            SolarPositionError: If calculation fails, including for bounds outside 5502-15326 nm or
+                atmospheric conditions outside the ranges given for calculateSensorThermalAtmosphere()
+
+        Example:
+            >>> radiation.addRadiationBand("TIR", 10600, 11190)  # e.g., Landsat 8 TIRS band 10
+            >>> radiation.setDiffuseRadiationFlux("TIR", solar.getThermalSkyFlux(10600, 11190))
+        """
+        for name, value in (("wavelength_min_nm", wavelength_min_nm), ("wavelength_max_nm", wavelength_max_nm)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+        if wavelength_min_nm <= 0.0 or wavelength_max_nm <= wavelength_min_nm:
+            raise ValueError(
+                f"Wavelength bounds must satisfy 0 < wavelength_min_nm < wavelength_max_nm, "
+                f"got: ({wavelength_min_nm}, {wavelength_max_nm})")
+
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory(_THERMAL_MODEL_ASSETS):
+                return solar_wrapper.getThermalSkyFlux(self._solar_pos, wavelength_min_nm, wavelength_max_nm)
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate thermal sky flux: {e}")
 
     def is_available(self) -> bool:
         """

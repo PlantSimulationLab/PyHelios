@@ -1,5 +1,78 @@
 # Changelog
 
+# [v0.1.36] 2026-10-05
+
+- Updated helios-core to v1.3.90
+
+## Global
+- Added `Global.blackbodyBandFraction(wavelength_min_nm, wavelength_max_nm, temperature_K)`, the fraction of blackbody emissive power emitted between two wavelengths
+- Added `Global.blackbodySpectralRadiance(wavelength_nm, temperature_K)`, the Planck spectral radiance in W/m²/sr/nm
+
+## Solar Position
+- Added `SolarPosition.setOzoneColumn()` and `getOzoneColumn()`, setting and reading the total column ozone used by the solar flux and spectral models
+- The ozone column now defaults to a monthly zonal-mean climatology in place of an empirical formula that was wrong in the Southern Hemisphere
+- Added `SolarPosition.setGroundAlbedo()` and `getGroundAlbedo()`, the ground albedo used by the spectral solar model (default 0.2)
+- Added `SolarPosition.calculateSensorAtmosphereSpectra(label, direction_to_sensor, resolution_nm=1.0)`, storing the path radiance, transmittances and ground irradiance needed to simulate imagery from a sensor above the atmosphere
+- Added `SolarPosition.calculateSensorThermalAtmosphere(label, direction_to_sensor)`, storing the thermal infrared (5.5-15.3 um) transmittance and atmospheric radiance between the scene and such a sensor
+- Added `SolarPosition.getThermalSkyFlux(wavelength_min_nm, wavelength_max_nm)`, the clear-sky longwave irradiance within a thermal band
+- The spectral solar model (`calculateGlobalSolarSpectrum()`, `calculateDirectSolarSpectrum()`, `calculateDiffuseSolarSpectrum()`) was reimplemented and its spectra differ from previous versions
+- Fixed the spectral solar model returning NaN spectra when relative humidity was zero; it now raises
+- `getSolarFlux()` and related methods now raise poleward of 80 degrees and in high-latitude winter, where the ozone climatology has no data, unless `setOzoneColumn()` is called
+- The Prague sky model now reads turbidity as Ångström's β like the other models, changing its visibility by up to about 6.5%
+- Corrected the documentation of `turbidity`: it is Ångström's β, the aerosol optical depth at 1 um, not at 500 nm
+- Fixed the spectral solar model failing when the working directory was not the build directory
+- Fixed wheels omitting the solar spectrum, ozone climatology and atmosphere look-up tables that SolarPosition loads at runtime
+
+## Radiation
+- Added `RadiationModel.enableCameraAtmosphere(camera_label, atmosphere_label)` and `disableCameraAtmosphere(camera_label)`, converting a camera's images to the radiance at a sensor above the atmosphere
+- An emission band added with wavelength bounds now emits only the in-band part of the Planck spectrum rather than the full broadband flux
+- Radiation cameras now see through translucent covers (`glass_n_<band>`) instead of treating them as opaque
+- Fixed translucent covers recording all the radiation striking them as absorbed
+- A `reflectivity_<band>` or `transmissivity_<band>` value of 0 now overrides a spectrum instead of being ignored
+- `runBand()` now raises when a reflectivity or transmissivity spectrum does not overlap the band
+- `runBand()` now raises when a source has flux in a band where its spectrum has no energy
+- Diffuse, scattered and emitted radiation now use surface properties weighted by the band's combined incident spectrum rather than by source 0's
+- The source- and camera-weighted `integrateSpectrum()` forms now raise instead of returning NaN when there is nothing to weight by
+- The maximum number of radiation sources is now 255
+- Fixed `addRadiationBand()` and `copyRadiationBand()` rejecting a lower wavelength bound of 0 nm and any bound below 100 nm
+- Fixed `copyRadiationBand()` rejecting bounds of `(0, 0)`, which create a band without wavelength bounds
+
+## Plant Hydraulics
+- Added the `PlantHydraulicsModel` class, binding the Helios plant hydraulics plug-in for soil, root, stem and leaf water potentials, turgor pressure, osmotic potential and relative water content
+- Added `PlantHydraulicsModelCoefficients`, `HydraulicConductance` and `HydraulicCapacitance` for setting leaf, stem and root conductance and capacitance, including leaf capacitance from the species library
+- Added `PlantHydraulicsModel.computeWaterPotential()`, `computeTurgorPressure()`, `computeOsmoticPotential()`, `computeConductance()` and `computeCapacitance()` for evaluating pressure-volume and vulnerability curves
+- Added `PlantHydraulicsModel.getModelCoefficients(UUID)`, reading back the coefficients set for an individual primitive
+- Added `PlantHydraulicsModel.getModelCoefficientsFromLibrary(species)`, reading a species' coefficients from the library
+- Added `docs/examples/planthydraulics_wilting_movie.py`, a movie of a tomato plant wilting and recovering over a day as its leaf angles and petiole droop follow the computed turgor pressure
+
+## Plant Architecture
+- Added `PlantArchitecture.setLeafAngleDistribution(plant_ids, beta_mu, beta_nu, eccentricity=None, ellipse_rotation_degrees=0)`, re-aiming the leaves of a finished plant onto a Beta inclination distribution and, optionally, an ellipsoidal azimuth distribution
+- Added `PlantArchitecture.getPetioleFlexibility()` and `setPetioleFlexibility()`, reading and replacing the petiole flexibility of an existing phytomer
+- Added `include_posed_leaves` to `bendPetioleUnderLeafWeight()`, bending a petiole whose leaves have been posed
+- Added `peduncle.yaw` to the phytomer parameters, turning a peduncle about its parent internode away from the leaf axil
+- `writePlantStructureUSD()` replaces `damping_ratio` with `damping_time_constant`; passing `damping_ratio` raises, and parameters after `wood_density` are now keyword-only
+- Added `armature_stability_ratio` and `physics_steps_per_second` to `writePlantStructureUSD()`
+- Fixed plants exported with `writePlantStructureUSD()` collapsing when simulated in IsaacSim
+- `setPhytomerCreationFunction()` and `setPhytomerCallbackFunction()` now accept the name of a library function, such as `"AlmondSpurPhytomerCallbackFunction"` or `"GrapevinePhytomerCallbackFunction"`
+- Added `PlantArchitecture.getPhytomerCreationFunctionName()` and `getPhytomerCallbackFunctionName()`, naming the library function a shoot type carries
+- Added `PlantArchitecture.getLibraryPhytomerCreationFunctionNames()` and `getLibraryPhytomerCallbackFunctionNames()`, listing the library functions that can be installed by name
+- `pruneBranch()` can now be called from a phytomer callback; the cut is applied at the end of the time step
+- `advanceTime()`, `deletePlantInstance()` and `loadPlantModelFromLibrary()` now raise when called from a phytomer callback, as do the methods that add shoots or plants
+- Fixed `buildPlantInstanceFromLibrary()` rejecting every build parameter of the `grapevine_Wye` model
+- The `grapevine_Wye` build parameter `trunk_height` is now the height of the cordon wires (default 1.4 m) rather than the trunk length
+- `grapevine_Wye` rows now run along the y-axis instead of x, so existing Wye layouts need turning by 90 degrees
+- The `pistachio` model was recalibrated against LiDAR-measured trees and grows differently from previous versions
+- The `pistachio` model now trains itself by heading its scaffolds and their secondaries
+- Fixed the `pistachio` model building only 4 scaffolds for a `num_scaffolds` of 5 to 8
+- The `almond` model now grows spurs, and carries more leaf area
+- Fixed the `grapevine_VSP` model never bearing fruit
+- The `grapevine_VSP` and `grapevine_Wye` models now pull their fruit-zone leaves at fruit set
+- Corrected the leaf arrangement (`phyllotactic_angle`) of the `tomato`, `cherrytomato`, `walnut`, `strawberry` and `wheat` models
+- The `puncturevine` model now bears its leaves in opposite pairs
+- Fixed lateral shoots sharing one draw of `internode_length_max`, `base_roll` and `insertion_angle_tip` when these are distributions; models that use one grow differently
+- Shade-driven branch shedding now judges a branch by the mean light on all the foliage it supports
+- Fixed `readPlantStructureXML()` rebuilding curved stems along a different path than the plant that was written
+
 # [v0.1.35] 2026-09-27
 
 - Updated helios-core to v1.3.89

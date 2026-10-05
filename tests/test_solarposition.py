@@ -1023,3 +1023,414 @@ class TestCloudCalibrationV1383:
 
                 assert 0.0 <= fdiff <= 1.0
                 assert fdiff < 1.0, "diffuse fraction saturated at fully-diffuse"
+
+
+def _bare_solar_position():
+    """A SolarPosition with no native object, for argument validation that runs before any native call."""
+    return SolarPosition.__new__(SolarPosition)
+
+
+@pytest.mark.cross_platform
+class TestAtmosphereArgumentValidation:
+    """Argument validation of the ozone, ground albedo and sensor atmosphere methods."""
+
+    @pytest.mark.parametrize("value", [0.0, -10.0, float("nan")])
+    def test_ozone_column_must_be_positive(self, value):
+        with pytest.raises(ValueError, match="(?i)ozone column must be positive"):
+            _bare_solar_position().setOzoneColumn(value)
+
+    @pytest.mark.parametrize("value", ["300", None, True, vec3(300, 0, 0)])
+    def test_ozone_column_rejects_non_numbers(self, value):
+        with pytest.raises(ValueError, match="(?i)ozone column must be a number"):
+            _bare_solar_position().setOzoneColumn(value)
+        with pytest.raises(ValueError, match="(?i)ozone column must be a number"):
+            _bare_solar_position().setOzoneColumn(ozone_DU=value)
+
+    @pytest.mark.parametrize("value", [-0.01, 1.01, float("nan")])
+    def test_ground_albedo_must_be_between_zero_and_one(self, value):
+        with pytest.raises(ValueError, match="(?i)ground albedo must be between 0 and 1"):
+            _bare_solar_position().setGroundAlbedo(value)
+
+    @pytest.mark.parametrize("value", ["0.2", None, False, vec3(0.2, 0, 0)])
+    def test_ground_albedo_rejects_non_numbers(self, value):
+        with pytest.raises(ValueError, match="(?i)ground albedo must be a number"):
+            _bare_solar_position().setGroundAlbedo(value)
+        with pytest.raises(ValueError, match="(?i)ground albedo must be a number"):
+            _bare_solar_position().setGroundAlbedo(albedo=value)
+
+    @pytest.mark.parametrize("method", ["calculateSensorAtmosphereSpectra", "calculateSensorThermalAtmosphere"])
+    @pytest.mark.parametrize("direction", [SphericalCoord(1, 0, 0), (0, 0, 1), [0, 0, 1], None, 1.0])
+    def test_direction_must_be_vec3(self, method, direction):
+        solar = _bare_solar_position()
+        with pytest.raises(ValueError, match="direction_to_sensor must be a vec3"):
+            getattr(solar, method)("satellite", direction)
+        with pytest.raises(ValueError, match="direction_to_sensor must be a vec3"):
+            getattr(solar, method)(label="satellite", direction_to_sensor=direction)
+
+    @pytest.mark.parametrize("method", ["calculateSensorAtmosphereSpectra", "calculateSensorThermalAtmosphere"])
+    def test_swapped_positional_arguments_are_rejected(self, method):
+        with pytest.raises(ValueError, match="(?i)label must be a string"):
+            getattr(_bare_solar_position(), method)(vec3(0, 0, 1), "satellite")
+
+    @pytest.mark.parametrize("method", ["calculateSensorAtmosphereSpectra", "calculateSensorThermalAtmosphere"])
+    def test_label_and_direction_must_be_non_empty(self, method):
+        solar = _bare_solar_position()
+        with pytest.raises(ValueError, match="(?i)label cannot be empty"):
+            getattr(solar, method)("", vec3(0, 0, 1))
+        with pytest.raises(ValueError, match="(?i)non-zero"):
+            getattr(solar, method)("satellite", vec3(0, 0, 0))
+
+    @pytest.mark.parametrize("resolution", [0.5, 2301.0, -1.0])
+    def test_sensor_atmosphere_resolution_range(self, resolution):
+        with pytest.raises(ValueError, match="between 1 and 2300"):
+            _bare_solar_position().calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1), resolution)
+        with pytest.raises(ValueError, match="between 1 and 2300"):
+            _bare_solar_position().calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1), resolution_nm=resolution)
+
+    def test_sensor_atmosphere_resolution_rejects_vec3(self):
+        with pytest.raises(ValueError, match="(?i)resolution must be a number"):
+            _bare_solar_position().calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1), vec3(1, 0, 0))
+
+    @pytest.mark.parametrize("bounds", [(0.0, 9000.0), (-1.0, 9000.0), (9000.0, 9000.0), (11000.0, 9000.0)])
+    def test_thermal_sky_flux_bounds_must_be_ordered(self, bounds):
+        with pytest.raises(ValueError, match="0 < wavelength_min_nm < wavelength_max_nm"):
+            _bare_solar_position().getThermalSkyFlux(*bounds)
+
+    @pytest.mark.parametrize("bounds", [("8000", 14000), (8000, None), (vec3(8000, 0, 0), 14000)])
+    def test_thermal_sky_flux_rejects_non_numbers(self, bounds):
+        with pytest.raises(ValueError, match="must be a number"):
+            _bare_solar_position().getThermalSkyFlux(*bounds)
+        with pytest.raises(ValueError, match="must be a number"):
+            _bare_solar_position().getThermalSkyFlux(wavelength_min_nm=bounds[0], wavelength_max_nm=bounds[1])
+
+    def test_guard_names_the_missing_method(self):
+        from unittest.mock import patch
+        from pyhelios.wrappers import USolarPositionWrapper as solar_wrapper
+        with patch.object(solar_wrapper, '_SOLARPOSITION_ATMOSPHERE_FUNCTIONS_AVAILABLE', False):
+            for name, args in (("setOzoneColumn", (None, 300.0)), ("getOzoneColumn", (None,)),
+                               ("setGroundAlbedo", (None, 0.2)), ("getGroundAlbedo", (None,)),
+                               ("calculateSensorAtmosphereSpectra", (None, "satellite", [0, 0, 1])),
+                               ("calculateSensorThermalAtmosphere", (None, "satellite", [0, 0, 1])),
+                               ("getThermalSkyFlux", (None, 8000.0, 14000.0))):
+                with pytest.raises(NotImplementedError, match=name):
+                    getattr(solar_wrapper, name)(*args)
+
+    def test_symbols_are_registered(self):
+        from pyhelios.wrappers import USolarPositionWrapper as solar_wrapper
+        if not solar_wrapper._SOLARPOSITION_FUNCTIONS_AVAILABLE:
+            pytest.skip("SolarPosition native functions not available")
+        assert solar_wrapper._SOLARPOSITION_ATMOSPHERE_FUNCTIONS_AVAILABLE
+        for name in ("setOzoneColumn", "getOzoneColumn", "setGroundAlbedo", "getGroundAlbedo",
+                     "calculateSensorAtmosphereSpectra", "calculateSensorThermalAtmosphere", "getThermalSkyFlux"):
+            assert hasattr(solar_wrapper.helios_lib, name)
+
+
+def _require_solarposition():
+    if not get_plugin_registry().is_plugin_available('solarposition'):
+        pytest.skip("solarposition plugin not available")
+
+
+def _midlatitude_noon_context():
+    context = Context()
+    context.setDate(2023, 6, 21)
+    context.setTime(12, 0)
+    return context
+
+
+# Davis, California; Helios counts the UTC offset and longitude positive moving west
+_DAVIS = dict(utc_offset=8, latitude=38.55, longitude=121.76)
+
+
+@pytest.mark.native_only
+class TestOzoneColumn:
+
+    def test_climatology_is_used_by_default(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                ozone = solar.getOzoneColumn()
+                assert 250.0 < ozone < 400.0
+                assert not context.doesGlobalDataExist("atmosphere_ozone_DU")
+
+    def test_climatology_varies_with_latitude(self):
+        _require_solarposition()
+        with Context() as context:
+            context.setDate(2023, 3, 15)
+            context.setTime(12, 0)
+            with SolarPosition(context, utc_offset=0, latitude=0, longitude=0) as equator:
+                equatorial = equator.getOzoneColumn()
+            with SolarPosition(context, utc_offset=0, latitude=60, longitude=0) as north:
+                northern = north.getOzoneColumn()
+            assert northern > equatorial + 50.0
+
+    def test_set_and_get_round_trip(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setOzoneColumn(287.5)
+                assert solar.getOzoneColumn() == pytest.approx(287.5)
+                assert context.getGlobalData("atmosphere_ozone_DU") == pytest.approx(287.5)
+
+    def test_ozone_column_changes_solar_flux(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.05)
+                solar.setOzoneColumn(200.0)
+                thin = solar.getSolarFluxPAR()
+                solar.setOzoneColumn(450.0)
+                thick = solar.getSolarFluxPAR()
+                assert thin > thick > 0.0
+
+    def test_no_climatology_poleward_of_80_degrees(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, utc_offset=0, latitude=85, longitude=0) as solar:
+                solar.setAtmosphericConditions(101325.0, 270.0, 0.5, 0.05)
+                with pytest.raises(SolarPositionError, match="setOzoneColumn"):
+                    solar.getOzoneColumn()
+                with pytest.raises(SolarPositionError, match="setOzoneColumn"):
+                    solar.getSolarFlux()
+
+                solar.setOzoneColumn(350.0)
+                assert solar.getOzoneColumn() == pytest.approx(350.0)
+                assert solar.getSolarFlux() > 0.0
+
+
+@pytest.mark.native_only
+class TestGroundAlbedo:
+
+    def test_default_is_0p2(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                assert solar.getGroundAlbedo() == pytest.approx(0.2)
+
+    def test_set_and_get_round_trip(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setGroundAlbedo(0.65)
+                assert solar.getGroundAlbedo() == pytest.approx(0.65)
+                assert context.getGlobalData("atmosphere_ground_albedo") == pytest.approx(0.65)
+
+    def test_native_range_check_is_reported(self):
+        """An out-of-range value set behind the API's back must surface as an error, not a value."""
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                context.setGlobalDataFloat("atmosphere_ground_albedo", 1.5)
+                with pytest.raises(SolarPositionError, match="(?i)between 0 and 1"):
+                    solar.getGroundAlbedo()
+
+
+@pytest.mark.native_only
+class TestSolarAssetsFromArbitraryDirectory:
+    """The ozone climatology, extraterrestrial spectrum and look-up tables are opened by relative path."""
+
+    ATMOSPHERE = (101325.0, 298.0, 0.5, 0.05)
+
+    def test_solar_flux(self, tmp_path, monkeypatch):
+        _require_solarposition()
+        monkeypatch.chdir(tmp_path)
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                assert solar.getSolarFlux(*self.ATMOSPHERE) > 0.0
+                solar.setAtmosphericConditions(*self.ATMOSPHERE)
+                assert solar.getSolarFluxPAR() > 0.0
+                assert solar.getSolarFluxNIR() > 0.0
+                assert 0.0 < solar.getDiffuseFraction() < 1.0
+
+    @pytest.mark.parametrize("component", ["Direct", "Diffuse", "Global"])
+    def test_solar_spectrum(self, component, tmp_path, monkeypatch):
+        _require_solarposition()
+        monkeypatch.chdir(tmp_path)
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(*self.ATMOSPHERE)
+                getattr(solar, f"calculate{component}SolarSpectrum")("spectrum")
+                assert context.getGlobalDataSize("spectrum") == 2301
+                getattr(solar, f"calculate{component}SolarSpectrum")("coarse", 10.0)
+                assert context.getGlobalDataSize("coarse") == 231
+
+    def test_working_directory_is_restored(self, tmp_path, monkeypatch):
+        import os
+        _require_solarposition()
+        monkeypatch.chdir(tmp_path)
+        expected = os.getcwd()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(*self.ATMOSPHERE)
+                solar.getOzoneColumn()
+                solar.calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1))
+                solar.calculateSensorThermalAtmosphere("satellite", vec3(0, 0, 1))
+                solar.getThermalSkyFlux(8000.0, 14000.0)
+        assert os.getcwd() == expected
+
+    def test_working_directory_is_restored_after_a_native_error(self, tmp_path, monkeypatch):
+        import os
+        _require_solarposition()
+        monkeypatch.chdir(tmp_path)
+        expected = os.getcwd()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(*self.ATMOSPHERE)
+                with pytest.raises(SolarPositionError):
+                    solar.getThermalSkyFlux(100.0, 200.0)  # outside the tabulated 5502-15326 nm
+                assert os.getcwd() == expected
+
+    def test_zero_humidity_is_an_error_for_spectra(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.0, 0.05)
+                with pytest.raises(SolarPositionError, match="(?i)humidity"):
+                    solar.calculateGlobalSolarSpectrum("spectrum")
+
+
+@pytest.mark.native_only
+class TestSensorAtmosphereSpectra:
+
+    SPECTRUM_SUFFIXES = ("_path_radiance", "_adjacency_radiance", "_upward_direct_transmittance",
+                         "_upward_diffuse_transmittance", "_spherical_albedo", "_direct_irradiance",
+                         "_diffuse_irradiance", "_global_irradiance")
+
+    def test_spectra_are_stored_under_the_label(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                solar.setGroundAlbedo(0.15)
+                solar.calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1))
+
+                for suffix in self.SPECTRUM_SUFFIXES:
+                    label = "satellite" + suffix
+                    assert context.doesGlobalDataExist(label), label
+                    assert context.getGlobalDataSize(label) == 2301, label
+                    assert context.getGlobalData(label)[0] == pytest.approx(300.0), label
+
+    def test_direction_is_stored_normalized(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                solar.calculateSensorAtmosphereSpectra("satellite", vec3(3, 0, 4))
+                direction = context.getGlobalData("satellite_direction_to_sensor")
+                assert list(direction) == pytest.approx([0.6, 0.0, 0.8], abs=1e-5)
+
+    def test_resolution_downsamples(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                solar.calculateSensorAtmosphereSpectra("coarse", vec3(0, 0, 1), resolution_nm=10.0)
+                for suffix in self.SPECTRUM_SUFFIXES:
+                    assert context.getGlobalDataSize("coarse" + suffix) == 231
+
+    def test_view_zenith_above_60_degrees_is_an_error(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                with pytest.raises(SolarPositionError, match="(?i)view zenith"):
+                    solar.calculateSensorAtmosphereSpectra("satellite", vec3(1, 0, 0.2))
+                assert not context.doesGlobalDataExist("satellite_path_radiance")
+
+    def test_cloud_calibration_is_an_error(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            for hour in range(6, 19):
+                context.addTimeseriesData("R_meas", 500.0, Date(2023, 6, 21), Time(hour, 0, 0))
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                solar.enableCloudCalibration("R_meas")
+                with pytest.raises(SolarPositionError, match="(?i)cloud calibration"):
+                    solar.calculateSensorAtmosphereSpectra("satellite", vec3(0, 0, 1))
+
+
+@pytest.mark.native_only
+class TestSensorThermalAtmosphere:
+
+    SPECTRUM_SUFFIXES = ("_thermal_transmittance", "_thermal_upwelling_radiance", "_thermal_downwelling_radiance")
+
+    def test_spectra_are_stored_under_the_label(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                solar.calculateSensorThermalAtmosphere("satellite", vec3(0, 0, 2))
+
+                for suffix in self.SPECTRUM_SUFFIXES:
+                    label = "satellite" + suffix
+                    assert context.doesGlobalDataExist(label), label
+                    assert context.getGlobalDataSize(label) == 234, label
+                    assert context.getGlobalData(label)[0] == pytest.approx(5502.0, abs=1.0), label
+
+                assert 0.0 <= context.getGlobalData("satellite_thermal_transmittance")[1] <= 1.0
+                assert 0.1 <= context.getGlobalData("satellite_thermal_water_vapor_cm") <= 7.5
+                direction = context.getGlobalData("satellite_direction_to_sensor")
+                assert list(direction) == pytest.approx([0.0, 0.0, 1.0], abs=1e-5)
+
+    def test_does_not_need_the_sun(self):
+        _require_solarposition()
+        with Context() as context:
+            context.setDate(2023, 6, 21)
+            context.setTime(0, 0)
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 285.0, 0.6, 0.1)
+                solar.calculateSensorThermalAtmosphere("night", vec3(0, 0, 1))
+                assert context.getGlobalDataSize("night_thermal_transmittance") == 234
+
+    def test_conditions_outside_the_table_are_an_error(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                with pytest.raises(SolarPositionError, match="(?i)view zenith"):
+                    solar.calculateSensorThermalAtmosphere("satellite", vec3(1, 0, 0.2))
+
+                solar.setOzoneColumn(600.0)
+                with pytest.raises(SolarPositionError, match="(?i)ozone column"):
+                    solar.calculateSensorThermalAtmosphere("satellite", vec3(0, 0, 1))
+
+
+@pytest.mark.native_only
+class TestThermalSkyFlux:
+
+    def test_band_flux_is_part_of_the_broadband_flux(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                window = solar.getThermalSkyFlux(8000.0, 14000.0)
+                narrow = solar.getThermalSkyFlux(10600.0, 11190.0)
+                broadband = solar.getAmbientLongwaveFlux()
+
+                assert 0.0 < narrow < window < broadband
+
+    def test_adjacent_bands_sum_to_the_whole(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                whole = solar.getThermalSkyFlux(8000.0, 14000.0)
+                parts = solar.getThermalSkyFlux(8000.0, 11000.0) + solar.getThermalSkyFlux(11000.0, 14000.0)
+                assert parts == pytest.approx(whole, rel=1e-4)
+
+    def test_humid_sky_emits_more(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.2, 0.1)
+                dry = solar.getThermalSkyFlux(8000.0, 14000.0)
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.9, 0.1)
+                humid = solar.getThermalSkyFlux(8000.0, 14000.0)
+                assert humid > dry
+
+    def test_band_outside_the_table_is_an_error(self):
+        _require_solarposition()
+        with _midlatitude_noon_context() as context:
+            with SolarPosition(context, **_DAVIS) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                with pytest.raises(SolarPositionError, match="(?i)look-up table"):
+                    solar.getThermalSkyFlux(400.0, 700.0)

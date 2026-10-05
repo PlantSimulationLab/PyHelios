@@ -206,7 +206,10 @@ def copy_assets_for_packaging(project_root):
         'xml': ['*.xml'],
         'spectral_data': ['*.csv', '*.txt', '*.dat', '*.xml'],
         'data': ['*.csv', '*.txt', '*.dat', '*.json'],
-        'ssolar_goa': ['*.dat'],
+        'ssolar_goa': ['*.txt'],
+        'atmosphere_lut': ['*.bin'],
+        'thermal_atmosphere_lut': ['*.bin'],
+        'ozone_climatology': ['*.txt'],
         'camera_light_models': ['*.xml', '*.json']
     }
 
@@ -218,21 +221,30 @@ def copy_assets_for_packaging(project_root):
         'plantarchitecture': ['assets/textures', 'assets/obj'],
         'leafoptics': ['spectral_data'],
         'lidar': ['xml', 'data'],
-        # SolarPosition::calculateSpectralIrradiance() loads wehrli.dat and
-        # abscoef.dat from "plugins/solarposition/ssolar_goa", so the source
-        # path assets/ssolar_goa must be flattened to ssolar_goa at the
+        # SolarPosition opens its data tables by hardcoded relative path with the
+        # "assets/" level dropped -- "plugins/solarposition/ssolar_goa/wehrli85.txt"
+        # (spectral solar model), ".../atmosphere_lut/atmosphere_lut.bin" and
+        # ".../thermal_atmosphere_lut/thermal_atmosphere_lut.bin" (sensor
+        # atmosphere), ".../ozone_climatology/sbuv_total_ozone_climatology.txt" --
+        # so each assets/<dir> source must be flattened to <dir> at the
         # destination (see flatten_asset_dirs below).
         # enablePragueSkyModel() loads the ~26 MB dataset from
         # "plugins/solarposition/lib/prague_sky_model", so that nested path is
         # preserved verbatim at the destination.
-        'solarposition': ['assets/ssolar_goa', 'lib/prague_sky_model'],
+        'solarposition': ['assets/ssolar_goa', 'assets/atmosphere_lut', 'assets/thermal_atmosphere_lut',
+                          'assets/ozone_climatology', 'lib/prague_sky_model'],
         # NOTE: canopygenerator is not integrated with PyHelios - assets not needed
     }
 
     # Source subdirectories that must NOT keep their full nested path at the
     # destination, because the C++ runtime looks them up without the prefix.
     flatten_asset_dirs = {
-        'solarposition': {'assets/ssolar_goa': 'ssolar_goa'},
+        'solarposition': {
+            'assets/ssolar_goa': 'ssolar_goa',
+            'assets/atmosphere_lut': 'atmosphere_lut',
+            'assets/thermal_atmosphere_lut': 'thermal_atmosphere_lut',
+            'assets/ozone_climatology': 'ozone_climatology',
+        },
     }
 
     # Add radiation assets (Vulkan works on all platforms, OptiX on Windows/Linux)

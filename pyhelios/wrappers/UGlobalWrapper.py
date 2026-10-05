@@ -71,6 +71,23 @@ except AttributeError:
     _LEAF_ANGLE_CDF_FUNCTIONS_AVAILABLE = False
 
 
+# Blackbody radiation functions from core/global.h (helios-core v1.3.90+), probed
+# separately for the same reason as the blocks above.
+_BLACKBODY_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.blackbodyBandFraction.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.blackbodyBandFraction.restype = ctypes.c_float
+    helios_lib.blackbodyBandFraction.errcheck = _check_error
+
+    helios_lib.blackbodySpectralRadiance.argtypes = [ctypes.c_float, ctypes.c_float]
+    helios_lib.blackbodySpectralRadiance.restype = ctypes.c_float
+    helios_lib.blackbodySpectralRadiance.errcheck = _check_error
+
+    _BLACKBODY_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _BLACKBODY_FUNCTIONS_AVAILABLE = False
+
+
 def _require_global_rng_functions(name: str) -> None:
     if not _GLOBAL_RNG_FUNCTIONS_AVAILABLE:
         raise RuntimeError(
@@ -85,6 +102,15 @@ def _require_leaf_angle_cdf_functions(name: str) -> None:
         raise RuntimeError(
             f"{name} is not available in the current native library. It requires "
             "helios-core v1.3.87 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def _require_blackbody_functions(name: str) -> None:
+    if not _BLACKBODY_FUNCTIONS_AVAILABLE:
+        raise RuntimeError(
+            f"{name} is not available in the current native library. It requires "
+            "helios-core v1.3.90 or newer; rebuild with "
             "'build_scripts/build_helios --clean'."
         )
 
@@ -199,3 +225,26 @@ def invertEllipsoidalAzimuthCDF(probability: float, e: float, phi0_degrees: floa
     _require_leaf_angle_cdf_functions("invertEllipsoidalAzimuthCDF")
     return float(helios_lib.invertEllipsoidalAzimuthCDF(
         ctypes.c_float(probability), ctypes.c_float(e), ctypes.c_float(phi0_degrees)))
+
+
+def _require_real_number(name: str, value) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+
+
+def blackbodyBandFraction(wavelength_min_nm: float, wavelength_max_nm: float, temperature_K: float) -> float:
+    """Fraction of blackbody emissive power emitted between two wavelengths."""
+    _require_blackbody_functions("blackbodyBandFraction")
+    for name, v in (("wavelength_min_nm", wavelength_min_nm), ("wavelength_max_nm", wavelength_max_nm),
+                    ("temperature_K", temperature_K)):
+        _require_real_number(name, v)
+    return float(helios_lib.blackbodyBandFraction(
+        ctypes.c_float(wavelength_min_nm), ctypes.c_float(wavelength_max_nm), ctypes.c_float(temperature_K)))
+
+
+def blackbodySpectralRadiance(wavelength_nm: float, temperature_K: float) -> float:
+    """Spectral radiance of a blackbody (W/m^2/sr/nm)."""
+    _require_blackbody_functions("blackbodySpectralRadiance")
+    for name, v in (("wavelength_nm", wavelength_nm), ("temperature_K", temperature_K)):
+        _require_real_number(name, v)
+    return float(helios_lib.blackbodySpectralRadiance(ctypes.c_float(wavelength_nm), ctypes.c_float(temperature_K)))

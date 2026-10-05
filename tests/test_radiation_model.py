@@ -3659,3 +3659,330 @@ class TestCameraExposureTargetNative:
                 props.exposure_target = 0.3
                 radiation.updateCameraParameters("cam", props)
                 assert "cam" in radiation.getAllCameraLabels()
+
+
+@pytest.mark.cross_platform
+class TestRadiationBandWavelengthValidation:
+    """Band wavelength bounds follow the native rules (helios-core 1.3.90): the lower
+    bound may be 0 nm, a negative bound is rejected, and the range must be at least 1 nm."""
+
+    def test_lower_bound_of_zero_is_accepted(self):
+        from pyhelios.validation.plugins import validate_wavelength_range
+        validate_wavelength_range(0, 700)
+        validate_wavelength_range(0.0, 1.0)
+
+    def test_ultraviolet_lower_bound_is_accepted(self):
+        from pyhelios.validation.plugins import validate_wavelength_range
+        validate_wavelength_range(50, 400)
+
+    @pytest.mark.parametrize("bounds", [(-1, 700), (-10, -5)])
+    def test_negative_bound_is_rejected(self, bounds):
+        from pyhelios.validation.plugins import validate_wavelength_range
+        with pytest.raises(ValidationError, match="(?i)negative"):
+            validate_wavelength_range(*bounds)
+
+    @pytest.mark.parametrize("bounds", [(700, 400), (500, 500), (500, 500.5), (0, 0)])
+    def test_range_under_one_nanometer_is_rejected(self, bounds):
+        from pyhelios.validation.plugins import validate_wavelength_range
+        with pytest.raises(ValidationError, match="at least 1 nm"):
+            validate_wavelength_range(*bounds)
+
+    @pytest.mark.parametrize("bounds", [(float("nan"), 700), (400, float("inf")), (None, 700)])
+    def test_non_finite_bound_is_rejected(self, bounds):
+        from pyhelios.validation.plugins import validate_wavelength_range
+        with pytest.raises(ValidationError, match="finite"):
+            validate_wavelength_range(*bounds)
+
+
+@pytest.mark.cross_platform
+class TestCopyRadiationBandBoundsTracking:
+    """copyRadiationBand(old, new, 0, 0) creates a band without wavelength bounds."""
+
+    def _model(self, monkeypatch):
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        model.context = MagicMock()
+        model._bounded_bands = {"red"}
+
+        calls = []
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'copyRadiationBand',
+                            lambda *a: calls.append(a[1:]))
+        return model, calls
+
+    def test_zero_bounds_copy_is_unbounded(self, monkeypatch):
+        model, calls = self._model(monkeypatch)
+        model.copyRadiationBand("red", "red_unbounded", 0, 0)
+        assert calls == [("red", "red_unbounded", 0, 0)]
+        assert "red_unbounded" not in model._bounded_bands
+
+    def test_explicit_bounds_copy_is_bounded(self, monkeypatch):
+        model, calls = self._model(monkeypatch)
+        model.copyRadiationBand("red", "wide", 0, 700)
+        assert calls == [("red", "wide", 0, 700)]
+        assert "wide" in model._bounded_bands
+
+    def test_copy_without_bounds_inherits(self, monkeypatch):
+        model, calls = self._model(monkeypatch)
+        model.copyRadiationBand("red", "red_copy")
+        assert calls == [("red", "red_copy", None, None)]
+        assert "red_copy" in model._bounded_bands
+
+    def test_negative_bound_is_rejected_before_the_native_call(self, monkeypatch):
+        model, calls = self._model(monkeypatch)
+        with pytest.raises(ValidationError, match="(?i)negative"):
+            model.copyRadiationBand("red", "bad", -5, 700)
+        assert calls == []
+
+
+@pytest.mark.cross_platform
+class TestCameraAtmosphereValidation:
+    """enableCameraAtmosphere()/disableCameraAtmosphere() argument checks and library guard."""
+
+    def _model(self, monkeypatch):
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        model.context = MagicMock()
+        return model
+
+    def test_methods_exist(self):
+        assert callable(getattr(RadiationModel, "enableCameraAtmosphere", None))
+        assert callable(getattr(RadiationModel, "disableCameraAtmosphere", None))
+
+    @pytest.mark.parametrize("camera_label", [None, 3, b"cam", "", "   "])
+    def test_enable_rejects_bad_camera_label(self, monkeypatch, camera_label):
+        model = self._model(monkeypatch)
+        with pytest.raises(ValueError, match="Camera label must be a non-empty string"):
+            model.enableCameraAtmosphere(camera_label, "atmosphere")
+
+    @pytest.mark.parametrize("atmosphere_label", [None, 3, b"atm", "", "   "])
+    def test_enable_rejects_bad_atmosphere_label(self, monkeypatch, atmosphere_label):
+        model = self._model(monkeypatch)
+        with pytest.raises(ValueError, match="Atmosphere label must be a non-empty string"):
+            model.enableCameraAtmosphere("cam", atmosphere_label)
+
+    @pytest.mark.parametrize("camera_label", [None, 3, b"cam", "", "   "])
+    def test_disable_rejects_bad_camera_label(self, monkeypatch, camera_label):
+        model = self._model(monkeypatch)
+        with pytest.raises(ValueError, match="Camera label must be a non-empty string"):
+            model.disableCameraAtmosphere(camera_label)
+
+    def test_labels_are_forwarded_to_the_wrapper(self, monkeypatch):
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        model = self._model(monkeypatch)
+        calls = []
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'enableCameraAtmosphere',
+                            lambda *a: calls.append(('enable',) + a[1:]))
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'disableCameraAtmosphere',
+                            lambda *a: calls.append(('disable',) + a[1:]))
+        model.enableCameraAtmosphere("cam", "satellite_atmosphere")
+        model.disableCameraAtmosphere("cam")
+        assert calls == [('enable', "cam", "satellite_atmosphere"), ('disable', "cam")]
+
+    def test_guard_names_the_required_version(self, monkeypatch):
+        from pyhelios.wrappers import URadiationModelWrapper as w
+        monkeypatch.setattr(w, '_CAMERA_ATMOSPHERE_AVAILABLE', False)
+        with pytest.raises(RuntimeError, match="1.3.90"):
+            w.enableCameraAtmosphere(object(), "cam", "atmosphere")
+        with pytest.raises(RuntimeError, match="1.3.90"):
+            w.disableCameraAtmosphere(object(), "cam")
+
+    def test_missing_library_support_is_not_reported_as_a_model_error(self, monkeypatch):
+        from pyhelios.wrappers import URadiationModelWrapper as w
+        monkeypatch.setattr(w, '_CAMERA_ATMOSPHERE_AVAILABLE', False)
+        model = self._model(monkeypatch)
+        with pytest.raises(RuntimeError, match="1.3.90"):
+            model.enableCameraAtmosphere("cam", "atmosphere")
+
+    def test_symbols_are_registered(self):
+        from pyhelios.wrappers import URadiationModelWrapper as w
+        if not w._RADIATION_MODEL_FUNCTIONS_AVAILABLE:
+            pytest.skip("radiation wrapper functions not available")
+        assert w._CAMERA_ATMOSPHERE_AVAILABLE, (
+            "enableCameraAtmosphere/disableCameraAtmosphere are missing from the native library; "
+            "rebuild against helios-core v1.3.90 or newer")
+
+
+@pytest.mark.native_only
+class TestCameraAtmosphereNative:
+    """helios-core 1.3.90 sensor atmosphere applied to camera images.
+
+    Constructed through radiation_model_or_skip() rather than marked requires_gpu: the
+    atmosphere is applied host-side to the traced pixels, so it runs on the Vulkan
+    software BVH too.
+    """
+
+    BAND = "red"
+    BOUNDS = (600.0, 700.0)
+    PATH_RADIANCE = 0.01        # W/m^2/sr/nm
+    ADJACENCY_RADIANCE = 0.002  # W/m^2/sr/nm
+    TRANSMITTANCE = 0.8
+    CAMERA_POSITION = (0.0, 0.0, 50.0)
+
+    @classmethod
+    def _load_flat_atmosphere(cls, context, tmp_path, label, direction=(0.0, 0.0, 1.0)):
+        """Spectrally flat sensor atmosphere spectra, written the way
+        SolarPosition.calculateSensorAtmosphereSpectra() stores them."""
+        spectra = {
+            "_path_radiance": cls.PATH_RADIANCE,
+            "_adjacency_radiance": cls.ADJACENCY_RADIANCE,
+            "_upward_direct_transmittance": cls.TRANSMITTANCE,
+            "_global_irradiance": 1.0,
+        }
+        blocks = "".join(
+            f'<globaldata_vec2 label="{label}{suffix}">\n300 {value}\n2600 {value}\n</globaldata_vec2>\n'
+            for suffix, value in spectra.items())
+        xml_path = tmp_path / f"{label}.xml"
+        xml_path.write_text(f"<helios>\n{blocks}</helios>\n")
+        context.loadXML(str(xml_path), quiet=True)
+        context.setGlobalDataVec3(f"{label}_direction_to_sensor", DataTypes.vec3(*direction))
+
+    def _scene(self, context, radiation):
+        """A lit ground patch filling the view of a narrow nadir camera."""
+        from pyhelios.RadiationModel import CameraProperties
+        ground = context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(20, 20))
+        context.setPrimitiveDataFloat(ground, f"reflectivity_{self.BAND}", 0.5)
+
+        radiation.disableMessages()
+        radiation.addRadiationBand(self.BAND, *self.BOUNDS)
+        radiation.disableEmission(self.BAND)
+        # Cameras record scattered radiation, so a depth of 0 renders black.
+        radiation.setScatteringDepth(self.BAND, 1)
+        source = radiation.addCollimatedRadiationSource(DataTypes.vec3(0, 0, 1))
+        radiation.setSourceFlux(source, self.BAND, 100.0)
+
+        props = CameraProperties(camera_resolution=(8, 8), HFOV=5.0, lens_diameter=0.0,
+                                 exposure="manual", white_balance="off")
+        radiation.addRadiationCamera("satellite", [self.BAND], DataTypes.vec3(*self.CAMERA_POSITION),
+                                     DataTypes.vec3(0, 0, 0), props, antialiasing_samples=1)
+
+    def _pixels(self, radiation):
+        radiation.runBand(self.BAND)
+        return np.array(radiation.getCameraPixelData("satellite", self.BAND), dtype=np.float64)
+
+    def test_enable_on_missing_camera_raises(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                with pytest.raises(RadiationModelError, match="does not exist"):
+                    radiation.enableCameraAtmosphere("no_such_camera", "atmosphere")
+
+    def test_disable_on_missing_camera_raises(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                with pytest.raises(RadiationModelError, match="does not exist"):
+                    radiation.disableCameraAtmosphere("no_such_camera")
+
+    def test_enable_and_disable_on_existing_camera(self):
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                self._scene(context, radiation)
+                radiation.disableCameraAtmosphere("satellite")
+                radiation.enableCameraAtmosphere("satellite", "atmosphere")
+                radiation.disableCameraAtmosphere("satellite")
+
+    def test_pixels_become_sensor_radiance(self, tmp_path):
+        """Each pixel becomes L_path + T * L_pixel + L_adj, integrated over the band."""
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                self._scene(context, radiation)
+                self._load_flat_atmosphere(context, tmp_path, "atmosphere")
+
+                surface = self._pixels(radiation)
+                assert surface.min() > 0, "the ground must be lit for the transmittance term to be tested"
+
+                radiation.enableCameraAtmosphere("satellite", "atmosphere")
+                sensor = self._pixels(radiation)
+
+                bandwidth = self.BOUNDS[1] - self.BOUNDS[0]
+                expected = ((self.PATH_RADIANCE + self.ADJACENCY_RADIANCE) * bandwidth
+                            + self.TRANSMITTANCE * surface)
+                np.testing.assert_allclose(sensor, expected, rtol=1e-3)
+
+    def test_disable_restores_surface_radiance(self, tmp_path):
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                self._scene(context, radiation)
+                self._load_flat_atmosphere(context, tmp_path, "atmosphere")
+
+                surface = self._pixels(radiation)
+                radiation.enableCameraAtmosphere("satellite", "atmosphere")
+                assert not np.allclose(self._pixels(radiation), surface, rtol=1e-3)
+
+                radiation.disableCameraAtmosphere("satellite")
+                np.testing.assert_allclose(self._pixels(radiation), surface, rtol=1e-3)
+
+    def test_missing_atmosphere_spectra_raise_at_run(self):
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                self._scene(context, radiation)
+                radiation.enableCameraAtmosphere("satellite", "never_computed")
+                with pytest.raises(Exception, match="never_computed"):
+                    radiation.runBand(self.BAND)
+
+    def test_atmosphere_for_another_view_direction_raises_at_run(self, tmp_path):
+        with Context() as context:
+            with radiation_model_or_skip(context) as radiation:
+                self._scene(context, radiation)
+                self._load_flat_atmosphere(context, tmp_path, "oblique", direction=(0.5, 0.0, 0.866))
+                radiation.enableCameraAtmosphere("satellite", "oblique")
+                with pytest.raises(Exception, match="viewing direction"):
+                    radiation.runBand(self.BAND)
+
+    def test_with_solar_position_sensor_atmosphere(self):
+        """End to end with spectra from SolarPosition.calculateSensorAtmosphereSpectra():
+        a black scene shows only the path and adjacency radiance."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('solarposition'):
+            pytest.skip("solarposition plugin not available")
+        from pyhelios import SolarPosition
+        if not hasattr(SolarPosition, "calculateSensorAtmosphereSpectra"):
+            pytest.skip("SolarPosition.calculateSensorAtmosphereSpectra not available")
+        from pyhelios.RadiationModel import CameraProperties
+        skip_without_radiation_backend()
+
+        with Context() as context:
+            context.setDate(2024, 6, 21)
+            context.setTime(12, 0)
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(20, 20))
+
+            with SolarPosition(context, utc_offset=8, latitude=38.5, longitude=121.7) as solar:
+                solar.setAtmosphericConditions(101325.0, 298.0, 0.5, 0.1)
+                solar.calculateSensorAtmosphereSpectra("satellite_atmosphere", DataTypes.vec3(0, 0, 1))
+                sun_direction = solar.getSunDirectionVector()
+
+            with radiation_model_or_skip(context) as radiation:
+                radiation.disableMessages()
+                radiation.addRadiationBand(self.BAND, 620.0, 670.0)
+                radiation.disableEmission(self.BAND)
+                radiation.setScatteringDepth(self.BAND, 1)
+                source = radiation.addCollimatedRadiationSource(sun_direction)
+                radiation.setSourceSpectrum(source, "satellite_atmosphere_direct_irradiance")
+                radiation.setDiffuseSpectrum(self.BAND, "satellite_atmosphere_diffuse_irradiance")
+
+                props = CameraProperties(camera_resolution=(8, 8), HFOV=5.0, lens_diameter=0.0,
+                                         exposure="manual", white_balance="off")
+                radiation.addRadiationCamera("satellite", [self.BAND], DataTypes.vec3(0, 0, 50),
+                                             DataTypes.vec3(0, 0, 0), props, antialiasing_samples=1)
+
+                surface = self._pixels(radiation)
+                np.testing.assert_allclose(surface, 0.0, atol=1e-6)
+
+                radiation.enableCameraAtmosphere("satellite", "satellite_atmosphere")
+                sensor = self._pixels(radiation)
+                assert np.all(np.isfinite(sensor))
+                assert sensor.min() > 0, "path radiance must reach the sensor over a black scene"
+                np.testing.assert_allclose(sensor, sensor[0], rtol=1e-5)
