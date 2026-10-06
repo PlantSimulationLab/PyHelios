@@ -1,0 +1,149 @@
+{
+  "comparisons": {
+    "reachable_union_vs_fixed_rig": {
+      "name": "reachable_union_vs_fixed_rig",
+      "reachable_union_ci": {
+        "mean": 0.3207475465523748,
+        "ci_low": 0.2818449874439116,
+        "ci_high": 0.35896701838576633,
+        "n_canopies": 24,
+        "n_boot": 2000,
+        "alpha": 0.05
+      },
+      "fixed_rig_ci": {
+        "mean": 0.1564852957366956,
+        "ci_low": 0.12594317537843588,
+        "ci_high": 0.18724194694639495,
+        "n_canopies": 24,
+        "n_boot": 2000,
+        "alpha": 0.05
+      },
+      "paired_wilcoxon": {
+        "statistic": 300.0,
+        "w_minus": 0.0,
+        "z": 4.271428571428571,
+        "p_value": 1.9422473917174443e-05,
+        "n_effective": 24,
+        "n_ties_dropped": 0
+      },
+      "cliffs_delta": {
+        "delta": 0.78125,
+        "magnitude": "large",
+        "n_x": 24,
+        "n_y": 24
+      },
+      "n_pairs": 24,
+      "holm_adjusted_p": 5.826742175152333e-05,
+      "holm_reject_at_0.05": true
+    },
+    "look_away_vs_fixed_rig": {
+      "name": "look_away_vs_fixed_rig (T8.5 degenerate-baseline check)",
+      "look_away_ci": {
+        "mean": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "n_canopies": 24,
+        "n_boot": 2000,
+        "alpha": 0.05
+      },
+      "fixed_rig_ci": {
+        "mean": 0.1564852957366956,
+        "ci_low": 0.12594317537843588,
+        "ci_high": 0.18724194694639495,
+        "n_canopies": 24,
+        "n_boot": 2000,
+        "alpha": 0.05
+      },
+      "paired_wilcoxon": {
+        "statistic": 0.0,
+        "w_minus": 300.0,
+        "z": -4.271428571428571,
+        "p_value": 1.9422473917174443e-05,
+        "n_effective": 24,
+        "n_ties_dropped": 0
+      },
+      "cliffs_delta": {
+        "delta": -1.0,
+        "magnitude": "large",
+        "n_x": 24,
+        "n_y": 24
+      },
+      "n_pairs": 24,
+      "holm_adjusted_p": 5.826742175152333e-05,
+      "holm_reject_at_0.05": true
+    },
+    "apple_vs_fruitingwall_interpenetration": {
+      "name": "apple_vs_fruitingwall_interpenetration (T8.3, n=3, small-n caveat)",
+      "apple_ci": {
+        "mean": 0.2887359127209088,
+        "ci_low": 0.2208057553390713,
+        "ci_high": 0.34138302119036296,
+        "n_canopies": 3,
+        "n_boot": 2000,
+        "alpha": 0.05
+      },
+      "fruitingwall_ci": {
+        "mean": 0.036101668583448966,
+        "ci_low": 0.0,
+        "ci_high": 0.0946187435931456,
+        "n_canopies": 3,
+        "n_boot": 2000,
+        "alpha": 0.05
+      },
+      "paired_wilcoxon": {
+        "statistic": 6.0,
+        "w_minus": 0.0,
+        "z": 1.3363062095621219,
+        "p_value": 0.18144920772142026,
+        "n_effective": 3,
+        "n_ties_dropped": 0
+      },
+      "cliffs_delta": {
+        "delta": 1.0,
+        "magnitude": "large",
+        "n_x": 3,
+        "n_y": 3
+      },
+      "n_pairs": 3,
+      "holm_adjusted_p": 0.18144920772142026,
+      "holm_reject_at_0.05": false
+    }
+  },
+  "holm_bonferroni_summary": {
+    "adjusted_p": [
+      5.826742175152333e-05,
+      5.826742175152333e-05,
+      0.18144920772142026
+    ],
+    "reject": [
+      true,
+      true,
+      false
+    ],
+    "alpha": 0.05,
+    "n_comparisons": 3
+  },
+  "canopy_vs_view_resampling_illustration": {
+    "note": "SYNTHETIC illustrative data, not real Phase 8 canopies -- see module docstring",
+    "true_between_canopy_std": 0.0748839768495335,
+    "wrong_view_level_bootstrap": {
+      "mean": 0.28732396932783305,
+      "ci_low": 0.2736445866261496,
+      "ci_high": 0.30045474690006463,
+      "n_views_pooled": 100,
+      "n_boot": 2000,
+      "alpha": 0.05
+    },
+    "right_canopy_level_bootstrap": {
+      "mean": 0.287323969327833,
+      "ci_low": 0.22581508302048264,
+      "ci_high": 0.34322772051730166,
+      "n_canopies": 5,
+      "n_boot": 2000,
+      "alpha": 0.05
+    },
+    "wrong_ci_width": 0.02681016027391503,
+    "right_ci_width": 0.11741263749681902,
+    "wrong_ci_is_narrower": true
+  }
+}

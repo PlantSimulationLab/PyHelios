@@ -1,0 +1,14 @@
+{
+  "pre_registered_prediction": "look_away's mean_coverage_frac must be statistically indistinguishable from 0 and far below fixed_rig's (PREREGISTRATION.md)",
+  "n_canopies_checked": 24,
+  "n_canopies_look_away_scored_exactly_zero": 24,
+  "look_away_min": 0.0,
+  "look_away_max": 0.0,
+  "fixed_rig_mean": 0.1564852957366956,
+  "paired_wilcoxon_p_value": 1.9422473917174443e-05,
+  "holm_adjusted_p_value": 5.826742175152333e-05,
+  "cliffs_delta": -1.0,
+  "cliffs_delta_magnitude": "large",
+  "prediction_confirmed": true,
+  "conclusion": "PASS: mean_coverage_frac does NOT reward a policy that looks at nothing -- the degenerate baseline scored exactly 0.0 on all 24/24 real canopies, significantly below fixed_rig (Holm-adjusted p=5.83e-05, Cliff's delta=-1.00). The headline metric is not degenerate."
+}

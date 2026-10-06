@@ -1,0 +1,302 @@
+{
+  "celf_based_compute_negligible": {
+    "arm_mid": {
+      "budget_s": 120.0,
+      "paused_clock": {
+        "mode": "paused_clock",
+        "budget_s": 120.0,
+        "steps_completed": 5,
+        "forfeited_at_step": null,
+        "final_elapsed_s": 56.91489158827262,
+        "final_coverage": 1.0,
+        "per_step": [
+          {
+            "step": 1,
+            "elapsed_s": 18.333256236420215,
+            "cumulative_coverage": 0.6947791164658634
+          },
+          {
+            "step": 2,
+            "elapsed_s": 32.24155426679609,
+            "cumulative_coverage": 0.9477911646586346
+          },
+          {
+            "step": 3,
+            "elapsed_s": 35.39963694651871,
+            "cumulative_coverage": 0.9759036144578314
+          },
+          {
+            "step": 4,
+            "elapsed_s": 44.207415702678084,
+            "cumulative_coverage": 0.9959839357429718
+          },
+          {
+            "step": 5,
+            "elapsed_s": 56.91489158827262,
+            "cumulative_coverage": 1.0
+          }
+        ]
+      },
+      "closed_loop": {
+        "mode": "closed_loop",
+        "budget_s": 120.0,
+        "steps_completed": 5,
+        "forfeited_at_step": null,
+        "final_elapsed_s": 56.91485498727361,
+        "final_coverage": 1.0,
+        "per_step": [
+          {
+            "step": 1,
+            "elapsed_s": 18.333239697419135,
+            "cumulative_coverage": 0.6947791164658634
+          },
+          {
+            "step": 2,
+            "elapsed_s": 32.24152621279537,
+            "cumulative_coverage": 0.9477911646586346
+          },
+          {
+            "step": 3,
+            "elapsed_s": 35.399604417520294,
+            "cumulative_coverage": 0.9759036144578314
+          },
+          {
+            "step": 4,
+            "elapsed_s": 44.20738067567971,
+            "cumulative_coverage": 0.9959839357429718
+          },
+          {
+            "step": 5,
+            "elapsed_s": 56.91485498727361,
+            "cumulative_coverage": 1.0
+          }
+        ]
+      },
+      "coverage_gap_closed_loop_minus_paused": 0.0,
+      "steps_gap_closed_loop_minus_paused": 0,
+      "elapsed_time_gap_at_full_sequence_s": 3.660099901026115e-05
+    },
+    "arm_high": {
+      "budget_s": 120.0,
+      "paused_clock": {
+        "mode": "paused_clock",
+        "budget_s": 120.0,
+        "steps_completed": 8,
+        "forfeited_at_step": null,
+        "final_elapsed_s": 58.33227819115738,
+        "final_coverage": 1.0,
+        "per_step": [
+          {
+            "step": 1,
+            "elapsed_s": 15.133074625768485,
+            "cumulative_coverage": 0.42633053221288514
+          },
+          {
+            "step": 2,
+            "elapsed_s": 17.066476524102946,
+            "cumulative_coverage": 0.5983193277310924
+          },
+          {
+            "step": 3,
+            "elapsed_s": 22.157929737162032,
+            "cumulative_coverage": 0.6952380952380952
+          },
+          {
+            "step": 4,
+            "elapsed_s": 24.091296645496364,
+            "cumulative_coverage": 0.8095238095238095
+          },
+          {
+            "step": 5,
+            "elapsed_s": 30.08294335220657,
+            "cumulative_coverage": 0.861624649859944
+          },
+          {
+            "step": 6,
+            "elapsed_s": 32.016294094538154,
+            "cumulative_coverage": 0.8980392156862745
+          },
+          {
+            "step": 7,
+            "elapsed_s": 45.43236871007316,
+            "cumulative_coverage": 0.9988795518207283
+          },
+          {
+            "step": 8,
+            "elapsed_s": 58.33227819115738,
+            "cumulative_coverage": 1.0
+          }
+        ]
+      },
+      "closed_loop": {
+        "mode": "closed_loop",
+        "budget_s": 120.0,
+        "steps_completed": 8,
+        "forfeited_at_step": null,
+        "final_elapsed_s": 58.332031911157095,
+        "final_coverage": 1.0,
+        "per_step": [
+          {
+            "step": 1,
+            "elapsed_s": 15.133031386767824,
+            "cumulative_coverage": 0.42633053221288514
+          },
+          {
+            "step": 2,
+            "elapsed_s": 17.066364720101156,
+            "cumulative_coverage": 0.5983193277310924
+          },
+          {
+            "step": 3,
+            "elapsed_s": 22.157776258159412,
+            "cumulative_coverage": 0.6952380952380952
+          },
+          {
+            "step": 4,
+            "elapsed_s": 24.091109591492746,
+            "cumulative_coverage": 0.8095238095238095
+          },
+          {
+            "step": 5,
+            "elapsed_s": 30.082729440202314,
+            "cumulative_coverage": 0.861624649859944
+          },
+          {
+            "step": 6,
+            "elapsed_s": 32.01606277353565,
+            "cumulative_coverage": 0.8980392156862745
+          },
+          {
+            "step": 7,
+            "elapsed_s": 45.432125547071294,
+            "cumulative_coverage": 0.9988795518207283
+          },
+          {
+            "step": 8,
+            "elapsed_s": 58.332031911157095,
+            "cumulative_coverage": 1.0
+          }
+        ]
+      },
+      "coverage_gap_closed_loop_minus_paused": 0.0,
+      "steps_gap_closed_loop_minus_paused": 0,
+      "elapsed_time_gap_at_full_sequence_s": 0.00024628000028315
+    }
+  },
+  "ilp_based_compute_nontrivial": {
+    "arm": "arm_high",
+    "budget_s": 30.0,
+    "trace_with_real_ilp_compute_times": [
+      {
+        "step": 1,
+        "travel_time_s": 15.133031386767824,
+        "compute_time_s": 0.04844723800124484,
+        "cumulative_coverage": 0.42633053221288514
+      },
+      {
+        "step": 2,
+        "travel_time_s": 1.9333333333333318,
+        "compute_time_s": 0.037598497001454234,
+        "cumulative_coverage": 0.5983193277310924
+      },
+      {
+        "step": 3,
+        "travel_time_s": 5.0914115380582565,
+        "compute_time_s": 0.03438294700026745,
+        "cumulative_coverage": 0.6952380952380952
+      },
+      {
+        "step": 4,
+        "travel_time_s": 1.9333333333333336,
+        "compute_time_s": 0.03257637299975613,
+        "cumulative_coverage": 0.8095238095238095
+      },
+      {
+        "step": 5,
+        "travel_time_s": 5.991619848709568,
+        "compute_time_s": 0.03225037399897701,
+        "cumulative_coverage": 0.861624649859944
+      },
+      {
+        "step": 6,
+        "travel_time_s": 1.9333333333333371,
+        "compute_time_s": 0.0324362729988934,
+        "cumulative_coverage": 0.8980392156862745
+      },
+      {
+        "step": 7,
+        "travel_time_s": 13.416062773535643,
+        "compute_time_s": 0.03647454399833805,
+        "cumulative_coverage": 0.9988795518207283
+      },
+      {
+        "step": 8,
+        "travel_time_s": 12.899906364085801,
+        "compute_time_s": 0.031974381003237795,
+        "cumulative_coverage": 1.0
+      }
+    ],
+    "paused_clock": {
+      "mode": "paused_clock",
+      "budget_s": 30.0,
+      "steps_completed": 4,
+      "forfeited_at_step": 5,
+      "final_elapsed_s": 24.24411464649547,
+      "final_coverage": 0.8095238095238095,
+      "per_step": [
+        {
+          "step": 1,
+          "elapsed_s": 15.181478624769069,
+          "cumulative_coverage": 0.42633053221288514
+        },
+        {
+          "step": 2,
+          "elapsed_s": 17.152410455103855,
+          "cumulative_coverage": 0.5983193277310924
+        },
+        {
+          "step": 3,
+          "elapsed_s": 22.27820494016238,
+          "cumulative_coverage": 0.6952380952380952
+        },
+        {
+          "step": 4,
+          "elapsed_s": 24.24411464649547,
+          "cumulative_coverage": 0.8095238095238095
+        }
+      ]
+    },
+    "closed_loop": {
+      "mode": "closed_loop",
+      "budget_s": 30.0,
+      "steps_completed": 4,
+      "forfeited_at_step": 5,
+      "final_elapsed_s": 24.091109591492746,
+      "final_coverage": 0.8095238095238095,
+      "per_step": [
+        {
+          "step": 1,
+          "elapsed_s": 15.133031386767824,
+          "cumulative_coverage": 0.42633053221288514
+        },
+        {
+          "step": 2,
+          "elapsed_s": 17.066364720101156,
+          "cumulative_coverage": 0.5983193277310924
+        },
+        {
+          "step": 3,
+          "elapsed_s": 22.157776258159412,
+          "cumulative_coverage": 0.6952380952380952
+        },
+        {
+          "step": 4,
+          "elapsed_s": 24.091109591492746,
+          "cumulative_coverage": 0.8095238095238095
+        }
+      ]
+    },
+    "coverage_gap_closed_loop_minus_paused": 0.0,
+    "steps_gap_closed_loop_minus_paused": 0
+  }
+}

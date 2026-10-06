@@ -1,0 +1,100 @@
+{
+ "seed": 12000,
+ "stages": [
+  540.0,
+  545.0,
+  550.0,
+  555.0,
+  560.0,
+  565.0,
+  570.0,
+  580.0
+ ],
+ "rows": [
+  {
+   "stage": 0,
+   "age_days": 540.0,
+   "repeat_rgb_psnr_db": 21.025866734227144,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0
+  },
+  {
+   "stage": 1,
+   "age_days": 545.0,
+   "repeat_rgb_psnr_db": 23.50953357536883,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 18.224790652455933,
+   "stage_step_depth_mae_m": 0.3123659361153841,
+   "stage_step_semantic_agreement": 0.9325027465820312
+  },
+  {
+   "stage": 2,
+   "age_days": 550.0,
+   "repeat_rgb_psnr_db": 23.379316969993845,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 21.042039898705113,
+   "stage_step_depth_mae_m": 0.20884119346737862,
+   "stage_step_semantic_agreement": 0.9487266540527344
+  },
+  {
+   "stage": 3,
+   "age_days": 555.0,
+   "repeat_rgb_psnr_db": 23.14867798698431,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 20.907432542265138,
+   "stage_step_depth_mae_m": 0.18869474437087774,
+   "stage_step_semantic_agreement": 0.9497718811035156
+  },
+  {
+   "stage": 4,
+   "age_days": 560.0,
+   "repeat_rgb_psnr_db": 22.887705773657864,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 20.66128763774912,
+   "stage_step_depth_mae_m": 0.16236614994704723,
+   "stage_step_semantic_agreement": 0.9483909606933594
+  },
+  {
+   "stage": 5,
+   "age_days": 565.0,
+   "repeat_rgb_psnr_db": 22.832415769968662,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 20.937467293714384,
+   "stage_step_depth_mae_m": 0.11423740023747087,
+   "stage_step_semantic_agreement": 0.9572715759277344
+  },
+  {
+   "stage": 6,
+   "age_days": 570.0,
+   "repeat_rgb_psnr_db": 22.719100947255864,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 20.7175857408616,
+   "stage_step_depth_mae_m": 0.10763282468542457,
+   "stage_step_semantic_agreement": 0.9530487060546875
+  },
+  {
+   "stage": 7,
+   "age_days": 580.0,
+   "repeat_rgb_psnr_db": 22.51825442117378,
+   "repeat_depth_mae_m": 0.0,
+   "repeat_semantic_agreement": 1.0,
+   "stage_step_rgb_psnr_db": 20.388551492430643,
+   "stage_step_depth_mae_m": 0.11193145858123899,
+   "stage_step_semantic_agreement": 0.9520530700683594
+  }
+ ],
+ "mean_repeat_rgb_psnr_db": 22.752609022328787,
+ "mean_stage_step_rgb_psnr_db": 20.41130789402599,
+ "repeat_rms_levels": 18.57418339552564,
+ "stage_step_rms_levels": 24.320628042819713,
+ "implied_growth_signal_rms_levels": 15.700084699980707,
+ "signal_to_noise_rms": 0.8452637925262825,
+ "mean_repeat_depth_mae_m": 0.0,
+ "mean_stage_step_depth_mae_m": 0.17229567248640315
+}

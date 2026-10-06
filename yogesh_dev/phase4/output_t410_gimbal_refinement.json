@@ -1,0 +1,139 @@
+{
+  "arm": "arm_high",
+  "base_xyz": [
+    -0.2,
+    -0.85,
+    1.6
+  ],
+  "start_pan_deg": 20.0,
+  "start_tilt_deg": 0.0,
+  "h_deg": 2.0,
+  "lr_deg": 8.0,
+  "n_iters_requested": 12,
+  "n_renders_total": 61,
+  "elapsed_s": 9.067561864852905,
+  "s_per_render": 0.14864855516152303,
+  "trace": [
+    {
+      "iter": 0,
+      "pan_deg": 20.0,
+      "tilt_deg": 0.0,
+      "utility_fruit_pixels": 9220
+    },
+    {
+      "iter": 1,
+      "pan_deg": 12.15373992777553,
+      "tilt_deg": 1.5608340331425523,
+      "utility_fruit_pixels": 13035,
+      "grad_pan": -559.25,
+      "grad_tilt": 111.25,
+      "grad_norm": 570.2079664473305
+    },
+    {
+      "iter": 2,
+      "pan_deg": 18.80244148004276,
+      "tilt_deg": -2.8882970807806307,
+      "utility_fruit_pixels": 9770,
+      "grad_pan": 33.25,
+      "grad_tilt": -22.25,
+      "grad_norm": 40.00781173720952
+    },
+    {
+      "iter": 3,
+      "pan_deg": 10.807676479993052,
+      "tilt_deg": -2.5989312327953775,
+      "utility_fruit_pixels": 13303,
+      "grad_pan": -725.25,
+      "grad_tilt": 26.25,
+      "grad_norm": 725.7248962244578
+    },
+    {
+      "iter": 4,
+      "pan_deg": 14.661511644850378,
+      "tilt_deg": -9.609491447365189,
+      "utility_fruit_pixels": 14602,
+      "grad_pan": 73.25,
+      "grad_tilt": -133.25,
+      "grad_norm": 152.0563218021533
+    },
+    {
+      "iter": 5,
+      "pan_deg": 7.416753383020304,
+      "tilt_deg": -13.002643039564521,
+      "utility_fruit_pixels": 14743,
+      "grad_pan": -620.25,
+      "grad_tilt": -290.5,
+      "grad_norm": 684.9089811792513
+    },
+    {
+      "iter": 6,
+      "pan_deg": 10.502100530169372,
+      "tilt_deg": -5.6215433260002134,
+      "utility_fruit_pixels": 13709,
+      "grad_pan": 97.5,
+      "grad_tilt": 233.25,
+      "grad_norm": 252.8078568794886
+    },
+    {
+      "iter": 7,
+      "pan_deg": 12.164005696299522,
+      "tilt_deg": -13.447019108263547,
+      "utility_fruit_pixels": 15339,
+      "grad_pan": 51.5,
+      "grad_tilt": -242.5,
+      "grad_norm": 247.90824915682012
+    },
+    {
+      "iter": 8,
+      "pan_deg": 16.39703467396043,
+      "tilt_deg": -6.658686052624406,
+      "utility_fruit_pixels": 12144,
+      "grad_pan": 123.0,
+      "grad_tilt": 197.25,
+      "grad_norm": 232.45765743463906
+    },
+    {
+      "iter": 9,
+      "pan_deg": 8.82647694781767,
+      "tilt_deg": -9.244542915472802,
+      "utility_fruit_pixels": 14892,
+      "grad_pan": -819.75,
+      "grad_tilt": -280.0,
+      "grad_norm": 866.2505772003849
+    },
+    {
+      "iter": 10,
+      "pan_deg": 9.468692847673239,
+      "tilt_deg": -17.218723672012793,
+      "utility_fruit_pixels": 14139,
+      "grad_pan": 21.0,
+      "grad_tilt": -260.75,
+      "grad_norm": 261.5942707705962
+    },
+    {
+      "iter": 11,
+      "pan_deg": 17.00340268507257,
+      "tilt_deg": -19.90724513672119,
+      "utility_fruit_pixels": 14143,
+      "grad_pan": 110.0,
+      "grad_tilt": -39.25,
+      "grad_norm": 116.79281870046634
+    },
+    {
+      "iter": 12,
+      "pan_deg": 9.070201593979636,
+      "tilt_deg": -20.938904212328016,
+      "utility_fruit_pixels": 14722,
+      "grad_pan": -694.0,
+      "grad_tilt": -90.25,
+      "grad_norm": 699.8435985990012
+    }
+  ],
+  "initial_utility": 9220,
+  "final_utility": 14722,
+  "improvement_ratio": 1.5967462039045552,
+  "best_utility_in_trace": 15339,
+  "best_utility_iter": 7,
+  "best_improvement_ratio": 1.6636659436008676,
+  "note_fixed_step_oscillation": "Utility peaks at iter 7 then oscillates -- a real, honestly-reported consequence of a FIXED ascent step size (LR_DEG=8) near a local maximum (no step-size decay/backtracking implemented); a keep-best-seen policy recovers the peak utility, reported separately from the raw final-iterate utility above."
+}

@@ -1,0 +1,15 @@
+R2-B noise floor at growth probe poses  2026-07-31 03:02:13
+  seed=12000 stages=[540.0, 545.0, 550.0, 555.0, 560.0, 565.0, 570.0, 580.0] exposure=0.048977 orientation=fliplr
+  stage 0 age=540d prims=717954  repeat: RGB  21.03 dB, depth MAE 0.0000 m, sem agree 1.000000
+  stage 1 age=545d prims=471737  repeat: RGB  23.51 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  18.22 dB, depth MAE 0.3124 m, sem agree 0.9325
+  stage 2 age=550d prims=545078  repeat: RGB  23.38 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  21.04 dB, depth MAE 0.2088 m, sem agree 0.9487
+  stage 3 age=555d prims=601968  repeat: RGB  23.15 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  20.91 dB, depth MAE 0.1887 m, sem agree 0.9498
+  stage 4 age=560d prims=669093  repeat: RGB  22.89 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  20.66 dB, depth MAE 0.1624 m, sem agree 0.9484
+  stage 5 age=565d prims=720977  repeat: RGB  22.83 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  20.94 dB, depth MAE 0.1142 m, sem agree 0.9573
+  stage 6 age=570d prims=783033  repeat: RGB  22.72 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  20.72 dB, depth MAE 0.1076 m, sem agree 0.9530
+  stage 7 age=580d prims=804863  repeat: RGB  22.52 dB, depth MAE 0.0000 m, sem agree 1.000000  |  vs previous stage: RGB  20.39 dB, depth MAE 0.1119 m, sem agree 0.9521
+
+  RGB: repeat 22.75 dB (18.57 RMS levels), stage step 20.41 dB (24.32 RMS levels)
+  => growth signal RMS = sqrt(step^2 - noise^2) = 15.70 levels, SNR = 0.85
+  depth: repeat MAE 0.000000 m, stage step MAE 0.1723 m
+wrote /home/yogesh/PyHelios/yogesh_dev/world_model/output/r2/r2_noise_floor.json

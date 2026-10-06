@@ -1,0 +1,85 @@
+{
+  "seed": 0,
+  "n_views": 42,
+  "n_views_per_ring": 14,
+  "elevations_deg": [
+    -5.0,
+    20.0,
+    40.0
+  ],
+  "hfov_deg": 57.82240163683314,
+  "resolution": [
+    480,
+    360
+  ],
+  "pixel_stride": 2,
+  "scene_margin_m": 0.15,
+  "wai_scene_dir": "output/wai_dataset/helios_apple_tree/tree_t76_mvs_rig",
+  "branch_segment_counts": {
+    "shoot": {
+      "n_objects": 54,
+      "n_tube": 54,
+      "n_other": 0
+    },
+    "petiole": {
+      "n_objects": 834,
+      "n_tube": 0,
+      "n_other": 834
+    },
+    "peduncle": {
+      "n_objects": 33,
+      "n_tube": 33,
+      "n_other": 0
+    }
+  },
+  "n_branch_landmarks": 1177,
+  "n_fruit_landmarks": 33,
+  "fusion_coarse": {
+    "voxel_m": 0.02,
+    "dims": [
+      132,
+      93,
+      147
+    ],
+    "counts": {
+      "unknown": 1749707,
+      "free": 69,
+      "occupied": 54796,
+      "total": 1804572
+    },
+    "fusion_time_s": 0.19104957580566406,
+    "n_valid_pixels_total": 438773
+  },
+  "fusion_fine": {
+    "voxel_m": 0.005,
+    "dims": [
+      525,
+      372,
+      587
+    ],
+    "counts": {
+      "unknown": 114608159,
+      "free": 0,
+      "occupied": 32941,
+      "total": 114641100
+    },
+    "fusion_time_s": 10.722967147827148,
+    "n_valid_pixels_total": 438773
+  },
+  "branch_recovery_rate_fine_grid": 0.5420560747663551,
+  "fruit_recovery_rate_fine_grid": 1.0,
+  "occupied_centers_coarse_path": "t76_occupied_centers_coarse.npy",
+  "occupied_centers_fine_path": "t76_occupied_centers_fine.npy",
+  "n_occupied_voxels_coarse": 54796,
+  "n_occupied_voxels_fine": 32941,
+  "scene_bmin": [
+    -1.2597745895385741,
+    -0.8096626043319702,
+    -0.1300238348543644
+  ],
+  "scene_bmax": [
+    1.3618767499923705,
+    1.0469610035419463,
+    2.804443025588989
+  ]
+}

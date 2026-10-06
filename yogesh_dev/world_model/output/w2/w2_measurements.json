@@ -1,0 +1,95 @@
+{
+  "script": "run_w2.py",
+  "n_traj_per_family": 200,
+  "n_steps": 128,
+  "extent": {
+    "x_min": -6.75,
+    "x_max": 6.75,
+    "y_min": -1.75,
+    "y_max": 1.75,
+    "lane_y": 0.0,
+    "row_y": [
+      -1.75,
+      1.75
+    ],
+    "tree_x": [
+      -6.75,
+      -5.25,
+      -3.75,
+      -2.25,
+      -0.75,
+      0.75,
+      2.25,
+      3.75,
+      5.25,
+      6.75
+    ]
+  },
+  "per_family": {
+    "row_traversal": {
+      "in_bounds_fraction_mean": 1.0,
+      "in_bounds_all_trajectories": true,
+      "replay_max_error": 4.7127207736252785e-07,
+      "replay_mean_error": 2.3816726919090314e-07,
+      "action_abs_mean_dx_dy_dz_dyaw": [
+        0.09243757788091898,
+        0.0016657936277015058,
+        0.0024492641066345853,
+        0.010742442963718289
+      ],
+      "action_abs_max_dx_dy_dz_dyaw": [
+        0.1140924021601677,
+        0.008711450733244419,
+        0.011400827206671238,
+        0.04686150327324867
+      ]
+    },
+    "orbit": {
+      "in_bounds_fraction_mean": 1.0,
+      "in_bounds_all_trajectories": true,
+      "replay_max_error": 2.3590397146833197e-07,
+      "replay_mean_error": 9.24762319293171e-08,
+      "action_abs_mean_dx_dy_dz_dyaw": [
+        0.04155251701571837,
+        0.041179842667755866,
+        0.0021313869313185027,
+        0.03073666210286319
+      ],
+      "action_abs_max_dx_dy_dz_dyaw": [
+        0.12386463582515717,
+        0.12386253476142883,
+        0.007361553143709898,
+        0.049223680049180984
+      ],
+      "canopy_intrusion_fraction_mean": 0.4180859375,
+      "canopy_intrusion_fraction_max": 0.765625
+    },
+    "random_walk": {
+      "in_bounds_fraction_mean": 1.0,
+      "in_bounds_all_trajectories": true,
+      "replay_max_error": 1.3808771903711659e-07,
+      "replay_mean_error": 4.751176621173303e-08,
+      "action_abs_mean_dx_dy_dz_dyaw": [
+        0.10454283904637732,
+        0.02389050782098588,
+        0.023439375674714727,
+        0.05518760890833598
+      ],
+      "action_abs_max_dx_dy_dz_dyaw": [
+        0.7590427398681641,
+        0.1919638067483902,
+        0.16196751594543457,
+        0.48100730776786804
+      ]
+    }
+  },
+  "sampler_determinism": {
+    "same_seed_identical": true,
+    "different_seed_differs": true
+  },
+  "acceptance": {
+    "A1_all_in_bounds": true,
+    "A2_replay_under_1e-6": true,
+    "worst_replay_error": 4.7127207736252785e-07
+  }
+}

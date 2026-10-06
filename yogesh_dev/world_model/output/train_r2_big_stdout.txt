@@ -1,0 +1,98 @@
+==============================================================================
+train.py 2026-07-31 04:32:43 device=cuda
+args: {'data': 'yogesh_dev/world_model/output/dataset', 'out': '/home/yogesh/PyHelios/yogesh_dev/world_model/output/train', 'steps': 30000, 'batch_size': 24, 'seq_len': 32, 'image_size': 64, 'base_channels': 64, 'deter': 1024, 'stoch': 48, 'classes': 48, 'lr': 0.0003, 'adam_eps': 1e-05, 'grad_clip': 100.0, 'weight_decay': 0.0, 'sem_class_weights': 'none', 'depth_loss': 'mse', 'class_weight_batches': 20, 'growth_fraction': 0.25, 'growth_subsample': False, 'growth_max_stride': 3, 'free_bits': 1.0, 'kl_dyn': 0.5, 'kl_rep': 0.1, 'seed': 0, 'log_every': 500, 'val_every': 1000, 'val_batches': 8, 'ckpt_every': 2000, 'resume': False, 'overfit_one': False, 'amp': False, 'cache_size': 1200, 'prefetch': True, 'zero_actions': False, 'tag': 'r2_big'}
+train data: {'split': 'train', 'n_view_episodes': 1056, 'n_growth_episodes': 704, 'n_frames': 140800, 'growth_fraction_requested': 0.25, 'growth_fraction_realised': None, 'growth_subsample': False, 'growth_dt_histogram': {}}
+val data: {'split': 'val', 'n_view_episodes': 96, 'n_growth_episodes': 64, 'n_frames': 12800, 'growth_fraction_requested': 0.25, 'growth_fraction_realised': None, 'growth_subsample': False, 'growth_dt_histogram': {}}
+model parameters: 48,016,012
+  step    500  loss=1.9926  rgb=0.02519  depth=0.27890  sem=0.8064  fruit=0.1351  kl_dyn=1.245  kl_rep=1.245  |g|=1.3  4.88 it/s
+  step   1000  loss=1.8049  rgb=0.01893  depth=0.23975  sem=0.6866  fruit=0.0689  kl_dyn=1.318  kl_rep=1.318  |g|=1.5  5.35 it/s
+  VAL step 1000: loss=1.81267  rgb=0.01793  depth=0.22222  semantic=0.64893  fruit=0.09268  kl_dyn=1.38487  kl_rep=1.38487
+  step   1500  loss=1.7107  rgb=0.01792  depth=0.22163  sem=0.6461  fruit=0.0519  kl_dyn=1.288  kl_rep=1.288  |g|=1.6  5.42 it/s
+  step   2000  loss=1.6658  rgb=0.01756  depth=0.21790  sem=0.6378  fruit=0.0401  kl_dyn=1.254  kl_rep=1.254  |g|=1.4  5.52 it/s
+  VAL step 2000: loss=1.66185  rgb=0.01695  depth=0.22091  semantic=0.62661  fruit=0.04579  kl_dyn=1.25264  kl_rep=1.25264
+  step   2500  loss=1.6449  rgb=0.01745  depth=0.21690  sem=0.6366  fruit=0.0356  kl_dyn=1.231  kl_rep=1.231  |g|=1.3  5.53 it/s
+  step   3000  loss=1.6261  rgb=0.01738  depth=0.21586  sem=0.6355  fruit=0.0324  kl_dyn=1.208  kl_rep=1.208  |g|=1.1  5.58 it/s
+  VAL step 3000: loss=1.65371  rgb=0.01692  depth=0.22037  semantic=0.62390  fruit=0.03985  kl_dyn=1.25445  kl_rep=1.25445
+  step   3500  loss=1.6071  rgb=0.01719  depth=0.21408  sem=0.6251  fruit=0.0292  kl_dyn=1.203  kl_rep=1.203  |g|=1.0  5.60 it/s
+  step   4000  loss=1.6268  rgb=0.01718  depth=0.21148  sem=0.6255  fruit=0.0299  kl_dyn=1.238  kl_rep=1.238  |g|=1.1  5.62 it/s
+  VAL step 4000: loss=1.69581  rgb=0.01685  depth=0.20549  semantic=0.61692  fruit=0.03276  kl_dyn=1.37298  kl_rep=1.37298
+  step   4500  loss=1.6484  rgb=0.01689  depth=0.19724  sem=0.6157  fruit=0.0300  kl_dyn=1.314  kl_rep=1.314  |g|=1.2  5.63 it/s
+  step   5000  loss=1.6322  rgb=0.01658  depth=0.18818  sem=0.6012  fruit=0.0280  kl_dyn=1.330  kl_rep=1.330  |g|=1.0  5.65 it/s
+  VAL step 5000: loss=1.61513  rgb=0.01577  depth=0.18831  semantic=0.59219  fruit=0.02725  kl_dyn=1.31934  kl_rep=1.31934
+  step   5500  loss=1.6046  rgb=0.01635  depth=0.18486  sem=0.5969  fruit=0.0271  kl_dyn=1.299  kl_rep=1.299  |g|=0.9  5.65 it/s
+  step   6000  loss=1.6044  rgb=0.01616  depth=0.18286  sem=0.5896  fruit=0.0267  kl_dyn=1.315  kl_rep=1.315  |g|=1.0  5.66 it/s
+  VAL step 6000: loss=1.62527  rgb=0.01573  depth=0.17934  semantic=0.57618  fruit=0.03179  kl_dyn=1.37038  kl_rep=1.37038
+  step   6500  loss=1.6125  rgb=0.01606  depth=0.17985  sem=0.5836  fruit=0.0255  kl_dyn=1.346  kl_rep=1.346  |g|=1.0  5.66 it/s
+  step   7000  loss=1.5915  rgb=0.01594  depth=0.17604  sem=0.5772  fruit=0.0253  kl_dyn=1.328  kl_rep=1.328  |g|=0.9  5.67 it/s
+  VAL step 7000: loss=1.60725  rgb=0.01586  depth=0.17927  semantic=0.56422  fruit=0.02542  kl_dyn=1.37081  kl_rep=1.37081
+  step   7500  loss=1.5811  rgb=0.01576  depth=0.17414  sem=0.5706  fruit=0.0236  kl_dyn=1.328  kl_rep=1.328  |g|=0.8  5.67 it/s
+  step   8000  loss=1.5813  rgb=0.01573  depth=0.17261  sem=0.5711  fruit=0.0238  kl_dyn=1.330  kl_rep=1.330  |g|=0.9  5.68 it/s
+  VAL step 8000: loss=1.60480  rgb=0.01499  depth=0.17464  semantic=0.55266  fruit=0.02147  kl_dyn=1.40173  kl_rep=1.40173
+  step   8500  loss=1.5872  rgb=0.01560  depth=0.16995  sem=0.5650  fruit=0.0234  kl_dyn=1.355  kl_rep=1.355  |g|=0.9  5.68 it/s
+  step   9000  loss=1.5894  rgb=0.01552  depth=0.16659  sem=0.5630  fruit=0.0238  kl_dyn=1.368  kl_rep=1.368  |g|=0.9  5.69 it/s
+  VAL step 9000: loss=1.63675  rgb=0.01539  depth=0.17003  semantic=0.56139  fruit=0.02817  kl_dyn=1.43628  kl_rep=1.43628
+  step   9500  loss=1.5833  rgb=0.01544  depth=0.16492  sem=0.5586  fruit=0.0230  kl_dyn=1.369  kl_rep=1.369  |g|=0.8  5.69 it/s
+  step  10000  loss=1.5846  rgb=0.01536  depth=0.16483  sem=0.5595  fruit=0.0229  kl_dyn=1.370  kl_rep=1.370  |g|=0.9  5.70 it/s
+  VAL step 10000: loss=1.59230  rgb=0.01516  depth=0.16595  semantic=0.54369  fruit=0.02411  kl_dyn=1.40566  kl_rep=1.40566
+  step  10500  loss=1.5792  rgb=0.01537  depth=0.16261  sem=0.5550  fruit=0.0223  kl_dyn=1.373  kl_rep=1.373  |g|=0.8  5.70 it/s
+  step  11000  loss=1.5794  rgb=0.01530  depth=0.16144  sem=0.5522  fruit=0.0214  kl_dyn=1.382  kl_rep=1.382  |g|=0.8  5.70 it/s
+  VAL step 11000: loss=1.59862  rgb=0.01470  depth=0.16207  semantic=0.53119  fruit=0.02578  kl_dyn=1.44147  kl_rep=1.44147
+  step  11500  loss=1.5726  rgb=0.01514  depth=0.15926  sem=0.5461  fruit=0.0210  kl_dyn=1.385  kl_rep=1.385  |g|=0.8  5.70 it/s
+  step  12000  loss=1.5793  rgb=0.01520  depth=0.15904  sem=0.5487  fruit=0.0209  kl_dyn=1.392  kl_rep=1.392  |g|=0.8  5.70 it/s
+  VAL step 12000: loss=1.63774  rgb=0.01515  depth=0.16858  semantic=0.55694  fruit=0.02554  kl_dyn=1.45253  kl_rep=1.45253
+  step  12500  loss=1.5731  rgb=0.01516  depth=0.15776  sem=0.5455  fruit=0.0206  kl_dyn=1.390  kl_rep=1.390  |g|=0.8  5.70 it/s
+  step  13000  loss=1.5680  rgb=0.01509  depth=0.15713  sem=0.5437  fruit=0.0200  kl_dyn=1.387  kl_rep=1.387  |g|=0.8  5.71 it/s
+  VAL step 13000: loss=1.59453  rgb=0.01450  depth=0.15718  semantic=0.53123  fruit=0.02914  kl_dyn=1.43747  kl_rep=1.43747
+  step  13500  loss=1.5601  rgb=0.01505  depth=0.15498  sem=0.5403  fruit=0.0196  kl_dyn=1.384  kl_rep=1.384  |g|=0.8  5.71 it/s
+  step  14000  loss=1.5688  rgb=0.01509  depth=0.15579  sem=0.5421  fruit=0.0200  kl_dyn=1.393  kl_rep=1.393  |g|=0.8  5.71 it/s
+  VAL step 14000: loss=1.54722  rgb=0.01460  depth=0.15011  semantic=0.51588  fruit=0.02053  kl_dyn=1.41017  kl_rep=1.41017
+  step  14500  loss=1.5587  rgb=0.01502  depth=0.15510  sem=0.5418  fruit=0.0193  kl_dyn=1.379  kl_rep=1.379  |g|=0.8  5.71 it/s
+  step  15000  loss=1.5601  rgb=0.01507  depth=0.15549  sem=0.5411  fruit=0.0189  kl_dyn=1.382  kl_rep=1.382  |g|=0.7  5.71 it/s
+  VAL step 15000: loss=1.58366  rgb=0.01441  depth=0.15714  semantic=0.52542  fruit=0.02457  kl_dyn=1.43686  kl_rep=1.43686
+  step  15500  loss=1.5586  rgb=0.01492  depth=0.15473  sem=0.5401  fruit=0.0194  kl_dyn=1.382  kl_rep=1.382  |g|=0.8  5.71 it/s
+  step  16000  loss=1.5520  rgb=0.01494  depth=0.15409  sem=0.5405  fruit=0.0184  kl_dyn=1.374  kl_rep=1.374  |g|=0.7  5.71 it/s
+  VAL step 16000: loss=1.57535  rgb=0.01450  depth=0.15118  semantic=0.52852  fruit=0.02173  kl_dyn=1.43238  kl_rep=1.43238
+  step  16500  loss=1.5552  rgb=0.01498  depth=0.15398  sem=0.5397  fruit=0.0183  kl_dyn=1.380  kl_rep=1.380  |g|=0.7  5.71 it/s
+  step  17000  loss=1.5584  rgb=0.01500  depth=0.15420  sem=0.5406  fruit=0.0192  kl_dyn=1.382  kl_rep=1.382  |g|=0.8  5.71 it/s
+  VAL step 17000: loss=1.63776  rgb=0.01498  depth=0.16108  semantic=0.55681  fruit=0.02756  kl_dyn=1.46221  kl_rep=1.46221
+  step  17500  loss=1.5596  rgb=0.01495  depth=0.15377  sem=0.5395  fruit=0.0184  kl_dyn=1.388  kl_rep=1.388  |g|=0.7  5.71 it/s
+  step  18000  loss=1.5597  rgb=0.01497  depth=0.15350  sem=0.5398  fruit=0.0181  kl_dyn=1.389  kl_rep=1.389  |g|=0.7  5.72 it/s
+  VAL step 18000: loss=1.67650  rgb=0.01593  depth=0.16621  semantic=0.57484  fruit=0.02341  kl_dyn=1.49351  kl_rep=1.49351
+  step  18500  loss=1.5590  rgb=0.01496  depth=0.15320  sem=0.5388  fruit=0.0179  kl_dyn=1.390  kl_rep=1.390  |g|=0.7  5.72 it/s
+  step  19000  loss=1.5597  rgb=0.01489  depth=0.15262  sem=0.5355  fruit=0.0179  kl_dyn=1.398  kl_rep=1.398  |g|=0.7  5.72 it/s
+  VAL step 19000: loss=1.61225  rgb=0.01473  depth=0.15538  semantic=0.53784  fruit=0.02479  kl_dyn=1.46583  kl_rep=1.46583
+  step  19500  loss=1.5556  rgb=0.01483  depth=0.15191  sem=0.5335  fruit=0.0175  kl_dyn=1.396  kl_rep=1.396  |g|=0.7  5.72 it/s
+  step  20000  loss=1.5655  rgb=0.01494  depth=0.15233  sem=0.5381  fruit=0.0179  kl_dyn=1.404  kl_rep=1.404  |g|=0.7  5.72 it/s
+  VAL step 20000: loss=1.61866  rgb=0.01449  depth=0.15380  semantic=0.53436  fruit=0.02292  kl_dyn=1.48848  kl_rep=1.48848
+  step  20500  loss=1.5590  rgb=0.01477  depth=0.15144  sem=0.5328  fruit=0.0175  kl_dyn=1.404  kl_rep=1.404  |g|=0.7  5.72 it/s
+  step  21000  loss=1.5593  rgb=0.01485  depth=0.15163  sem=0.5341  fruit=0.0174  kl_dyn=1.402  kl_rep=1.402  |g|=0.7  5.72 it/s
+  VAL step 21000: loss=1.68174  rgb=0.01550  depth=0.15905  semantic=0.56552  fruit=0.02716  kl_dyn=1.52419  kl_rep=1.52419
+  step  21500  loss=1.5631  rgb=0.01485  depth=0.15152  sem=0.5342  fruit=0.0171  kl_dyn=1.409  kl_rep=1.409  |g|=0.7  5.72 it/s
+  step  22000  loss=1.5647  rgb=0.01478  depth=0.15036  sem=0.5314  fruit=0.0173  kl_dyn=1.418  kl_rep=1.418  |g|=0.7  5.72 it/s
+  VAL step 22000: loss=1.64517  rgb=0.01464  depth=0.15309  semantic=0.52248  fruit=0.02916  kl_dyn=1.54298  kl_rep=1.54298
+  step  22500  loss=1.5680  rgb=0.01478  depth=0.15094  sem=0.5336  fruit=0.0167  kl_dyn=1.420  kl_rep=1.420  |g|=0.7  5.72 it/s
+  step  23000  loss=1.5634  rgb=0.01472  depth=0.15027  sem=0.5309  fruit=0.0171  kl_dyn=1.417  kl_rep=1.417  |g|=0.7  5.72 it/s
+  VAL step 23000: loss=1.60535  rgb=0.01470  depth=0.15342  semantic=0.52206  fruit=0.02287  kl_dyn=1.48718  kl_rep=1.48718
+  step  23500  loss=1.5629  rgb=0.01475  depth=0.15033  sem=0.5308  fruit=0.0171  kl_dyn=1.417  kl_rep=1.417  |g|=0.7  5.72 it/s
+  step  24000  loss=1.5618  rgb=0.01474  depth=0.15033  sem=0.5303  fruit=0.0168  kl_dyn=1.416  kl_rep=1.416  |g|=0.7  5.72 it/s
+  VAL step 24000: loss=1.65443  rgb=0.01503  depth=0.15510  semantic=0.53715  fruit=0.02595  kl_dyn=1.53533  kl_rep=1.53533
+  step  24500  loss=1.5620  rgb=0.01477  depth=0.14981  sem=0.5313  fruit=0.0165  kl_dyn=1.416  kl_rep=1.416  |g|=0.7  5.72 it/s
+  step  25000  loss=1.5638  rgb=0.01480  depth=0.14969  sem=0.5319  fruit=0.0169  kl_dyn=1.417  kl_rep=1.417  |g|=0.7  5.73 it/s
+  VAL step 25000: loss=1.62900  rgb=0.01463  depth=0.15258  semantic=0.52724  fruit=0.02204  kl_dyn=1.52085  kl_rep=1.52085
+  step  25500  loss=1.5625  rgb=0.01468  depth=0.14960  sem=0.5291  fruit=0.0166  kl_dyn=1.421  kl_rep=1.421  |g|=0.7  5.73 it/s
+  step  26000  loss=1.5656  rgb=0.01478  depth=0.14947  sem=0.5307  fruit=0.0167  kl_dyn=1.423  kl_rep=1.423  |g|=0.7  5.73 it/s
+  VAL step 26000: loss=1.62984  rgb=0.01414  depth=0.14935  semantic=0.50708  fruit=0.02290  kl_dyn=1.56063  kl_rep=1.56063
+  step  26500  loss=1.5606  rgb=0.01466  depth=0.14842  sem=0.5268  fruit=0.0163  kl_dyn=1.424  kl_rep=1.424  |g|=0.6  5.73 it/s
+  step  27000  loss=1.5664  rgb=0.01472  depth=0.14895  sem=0.5283  fruit=0.0160  kl_dyn=1.431  kl_rep=1.431  |g|=0.7  5.73 it/s
+  VAL step 27000: loss=1.63812  rgb=0.01468  depth=0.14988  semantic=0.52738  fruit=0.02411  kl_dyn=1.53676  kl_rep=1.53676
+  step  27500  loss=1.5682  rgb=0.01468  depth=0.14867  sem=0.5274  fruit=0.0162  kl_dyn=1.435  kl_rep=1.435  |g|=0.7  5.73 it/s
+  step  28000  loss=1.5717  rgb=0.01475  depth=0.14916  sem=0.5311  fruit=0.0162  kl_dyn=1.434  kl_rep=1.434  |g|=0.7  5.73 it/s
+  VAL step 28000: loss=1.64332  rgb=0.01446  depth=0.15174  semantic=0.52791  fruit=0.02123  kl_dyn=1.54664  kl_rep=1.54664
+  step  28500  loss=1.5654  rgb=0.01468  depth=0.14853  sem=0.5245  fruit=0.0159  kl_dyn=1.436  kl_rep=1.436  |g|=0.6  5.74 it/s
+  step  29000  loss=1.5748  rgb=0.01465  depth=0.14861  sem=0.5279  fruit=0.0162  kl_dyn=1.446  kl_rep=1.446  |g|=0.7  5.77 it/s
+  VAL step 29000: loss=1.70292  rgb=0.01550  depth=0.15781  semantic=0.55131  fruit=0.02624  kl_dyn=1.58679  kl_rep=1.58679
+  step  29500  loss=1.5713  rgb=0.01474  depth=0.14822  sem=0.5278  fruit=0.0158  kl_dyn=1.441  kl_rep=1.441  |g|=0.7  5.80 it/s
+  step  30000  loss=1.5766  rgb=0.01475  depth=0.14865  sem=0.5279  fruit=0.0158  kl_dyn=1.449  kl_rep=1.449  |g|=0.7  5.83 it/s
+  VAL step 30000: loss=1.66584  rgb=0.01454  depth=0.15578  semantic=0.52986  fruit=0.01926  kl_dyn=1.57734  kl_rep=1.57734
+done in 5147s; final ckpt at /home/yogesh/PyHelios/yogesh_dev/world_model/output/train/r2_big/ckpt.pt
+train sampler stats: {'split': 'train', 'n_view_episodes': 1056, 'n_growth_episodes': 704, 'n_frames': 140800, 'growth_fraction_requested': 0.25, 'growth_fraction_realised': 0.2500984699708196, 'growth_subsample': False, 'growth_dt_histogram': {}}

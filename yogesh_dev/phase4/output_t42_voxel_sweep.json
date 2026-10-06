@@ -1,0 +1,327 @@
+{
+  "recall": {
+    "n_segments_total": 1336,
+    "n_by_class": {
+      "<5mm": 27,
+      "5-10mm": 862,
+      "10-20mm": 290,
+      ">20mm": 157
+    },
+    "sweep": [
+      {
+        "voxel_size_m": 0.05,
+        "n_hit_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 19
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 0
+        },
+        "recall_one_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 0.12101910828025478
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 0.0
+        }
+      },
+      {
+        "voxel_size_m": 0.03,
+        "n_hit_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 38
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 0
+        },
+        "recall_one_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 0.24203821656050956
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 0.0
+        }
+      },
+      {
+        "voxel_size_m": 0.02,
+        "n_hit_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 157
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 20
+        },
+        "recall_one_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 1.0
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 0.12738853503184713
+        }
+      },
+      {
+        "voxel_size_m": 0.01,
+        "n_hit_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 0,
+          ">20mm": 157
+        },
+        "recall_one_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 0.0,
+          ">20mm": 1.0
+        }
+      },
+      {
+        "voxel_size_m": 0.005,
+        "n_hit_by_class": {
+          "<5mm": 0,
+          "5-10mm": 862,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 0,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "recall_one_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 1.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 0.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        }
+      },
+      {
+        "voxel_size_m": 0.003,
+        "n_hit_by_class": {
+          "<5mm": 0,
+          "5-10mm": 862,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 862,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "recall_one_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 1.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 1.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        }
+      },
+      {
+        "voxel_size_m": 0.002,
+        "n_hit_by_class": {
+          "<5mm": 27,
+          "5-10mm": 862,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "n_robust_by_class": {
+          "<5mm": 0,
+          "5-10mm": 862,
+          "10-20mm": 290,
+          ">20mm": 157
+        },
+        "recall_one_voxel": {
+          "<5mm": 1.0,
+          "5-10mm": 1.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        },
+        "recall_two_voxel": {
+          "<5mm": 0.0,
+          "5-10mm": 1.0,
+          "10-20mm": 1.0,
+          ">20mm": 1.0
+        }
+      }
+    ]
+  },
+  "update_time": {
+    "n_views": 42,
+    "pixel_stride": 4,
+    "sweep": [
+      {
+        "voxel_size_m": 0.05,
+        "dims": [
+          26,
+          25,
+          27
+        ],
+        "n_voxels": 17550,
+        "update_time_s": 0.01806187629699707,
+        "s_per_view": 0.00043004467373802547,
+        "counts": {
+          "unknown": 15135,
+          "free": 1536,
+          "occupied": 879,
+          "total": 17550
+        }
+      },
+      {
+        "voxel_size_m": 0.03,
+        "dims": [
+          42,
+          42,
+          44
+        ],
+        "n_voxels": 77616,
+        "update_time_s": 0.018398523330688477,
+        "s_per_view": 0.0004380600793021066,
+        "counts": {
+          "unknown": 72126,
+          "free": 3165,
+          "occupied": 2325,
+          "total": 77616
+        }
+      },
+      {
+        "voxel_size_m": 0.02,
+        "dims": [
+          63,
+          62,
+          66
+        ],
+        "n_voxels": 257796,
+        "update_time_s": 0.020551443099975586,
+        "s_per_view": 0.0004893200738089425,
+        "counts": {
+          "unknown": 249726,
+          "free": 3940,
+          "occupied": 4130,
+          "total": 257796
+        }
+      },
+      {
+        "voxel_size_m": 0.01,
+        "dims": [
+          126,
+          124,
+          132
+        ],
+        "n_voxels": 2062368,
+        "update_time_s": 0.05661749839782715,
+        "s_per_view": 0.0013480356761387416,
+        "counts": {
+          "unknown": 2051576,
+          "free": 2145,
+          "occupied": 8647,
+          "total": 2062368
+        }
+      },
+      {
+        "voxel_size_m": 0.005,
+        "dims": [
+          251,
+          247,
+          263
+        ],
+        "n_voxels": 16305211,
+        "update_time_s": 0.6480987071990967,
+        "s_per_view": 0.015430921599978492,
+        "counts": {
+          "unknown": 16292009,
+          "free": 882,
+          "occupied": 12320,
+          "total": 16305211
+        }
+      },
+      {
+        "voxel_size_m": 0.003,
+        "dims": [
+          419,
+          411,
+          437
+        ],
+        "n_voxels": 75255333,
+        "update_time_s": 3.262148380279541,
+        "s_per_view": 0.07767019953046526,
+        "counts": {
+          "unknown": 75241714,
+          "free": 949,
+          "occupied": 12670,
+          "total": 75255333
+        }
+      },
+      {
+        "voxel_size_m": 0.002,
+        "dims": [
+          628,
+          616,
+          656
+        ],
+        "n_voxels": 253772288,
+        "update_time_s": 11.029563426971436,
+        "s_per_view": 0.2626086530231294,
+        "counts": {
+          "unknown": 253760925,
+          "free": 864,
+          "occupied": 10499,
+          "total": 253772288
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+==============================================================================
+W3 verification of yogesh_dev/world_model/output/dataset
+==============================================================================
+episodes=800  frames=64000  bytes=1.61 GB
+config: {"stages": [540.0, 545.0, 550.0, 555.0, 560.0, 565.0, 570.0, 580.0], "families": ["row_traversal", "orbit", "random_walk"], "n_steps": 128, "n_growth_probes": 16, "resolution": [128, 128], "sun_zenith": 30.0, "sun_azimuth": 120.0, "exposure_scale": 0.04897742718458176, "orientation": "fliplr", "semantic_classes": {"0": "other/ground", "1": "fruit", "2": "leaf", "3": "shoot", "4": "petiole", "5": "peduncle", "6": "sky"}, "depth_sky_sentinel": -1.0, "sky_rgb": [135, 170, 205]}
+
+[A2] declared seed streams
+  {'n_train': 999, 'n_val': 499, 'n_test': 499, 'train_val_overlap': 0, 'train_test_overlap': 0, 'val_test_overlap': 0, 'disjoint': True}
+
+[A3] seeds actually used per split
+  train: 12 seeds -> [10000, 10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011]
+  val: 4 seeds -> [11000, 11001, 11002, 11003]
+  test: 4 seeds -> [12000, 12001, 12002, 12003]
+  overlaps: {'train&val': [], 'train&test': [], 'val&test': []}
+  A3 no cross-split seed reuse: True
+
+[A4] content sanity over a sample of episodes
+  sampled 24 episodes / 1992 frames
+    other/ground     14055517   43.07%
+    fruit              715016    2.19%
+    leaf              6705738   20.55%
+    shoot             2061226    6.32%
+    petiole             75437    0.23%
+    peduncle             8016    0.02%
+    sky               9015978   27.63%
+  depth range over non-sky pixels: [0.149, 31.062] m
+  depth NaNs: 0
+  depth-sky vs semantic-sky pixel agreement: 1.000000
+  fruit visibility: mean=0.02191 max=0.09082 frames with zero fruit=0.134
+  action |mean| per dim (dx,dy,dz,dyaw,dgrow): [0.08100000023841858, 0.01769999973475933, 0.010700000450015068, 0.027300000190734863, 0.18070000410079956]
+
+[balance] view frames=61440  growth frames=2560  growth share=0.0400
+
+[A1] byte-identical regeneration of one orchard
+    build age=540.0: 752201 prims in 11.4s
+    stage 0 age=540d prims=752201 solve=3.4s
+    stage 1 age=545d prims=485145 solve=2.8s
+    stage 2 age=550d prims=561096 solve=3.3s
+    stage 3 age=555d prims=619871 solve=3.8s
+    stage 4 age=560d prims=689544 solve=4.2s
+    stage 5 age=565d prims=743468 solve=4.6s
+    stage 6 age=570d prims=807859 solve=5.0s
+    stage 7 age=580d prims=830392 solve=5.2s
+  0/40 episodes byte-identical
+  DIFFERING: ['train/view_s10000_g0_row_traversal.npz', 'train/view_s10000_g0_orbit.npz', 'train/view_s10000_g0_random_walk.npz', 'train/view_s10000_g1_row_traversal.npz', 'train/view_s10000_g1_orbit.npz']
+    array 'rgb' identical: False
+    array 'depth' identical: True
+    array 'semantic' identical: True
+    array 'instance' identical: False
+    array 'a_view' identical: True
+
+ACCEPTANCE: A1=False A2=True A3=True

@@ -1,0 +1,51 @@
+{
+  "per_arm": {
+    "arm_low": {
+      "n_frames": 14,
+      "n_detections": 0,
+      "n_predicted_tracks_spawned": 0,
+      "score": null
+    },
+    "arm_mid": {
+      "n_frames": 14,
+      "n_detections": 16,
+      "n_predicted_tracks_spawned": 9,
+      "score": {
+        "n_true_ids": 8,
+        "n_predicted_tracks": 9,
+        "n_detections_total": 16,
+        "IDTP": 15.0,
+        "IDFP": 1.0,
+        "IDFN": 1.0,
+        "IDF1": 0.9375,
+        "n_id_switches": 1
+      }
+    },
+    "arm_high": {
+      "n_frames": 14,
+      "n_detections": 75,
+      "n_predicted_tracks_spawned": 26,
+      "score": {
+        "n_true_ids": 21,
+        "n_predicted_tracks": 26,
+        "n_detections_total": 75,
+        "IDTP": 68.0,
+        "IDFP": 7.0,
+        "IDFN": 7.0,
+        "IDF1": 0.9066666666666666,
+        "n_id_switches": 5
+      }
+    }
+  },
+  "combined_all_arms": {
+    "n_true_ids": 21,
+    "n_predicted_tracks": 26,
+    "n_detections_total": 91,
+    "IDTP": 68.0,
+    "IDFP": 23.0,
+    "IDFN": 23.0,
+    "IDF1": 0.7472527472527473,
+    "n_id_switches": 14
+  },
+  "gate_m": 0.06
+}

@@ -1,0 +1,60 @@
+{
+  "n_candidate_poses": 468,
+  "n_rays_per_pose": 48,
+  "n_march_steps": 20,
+  "batched_eval_time_s": 0.03625941276550293,
+  "time_per_pose_ms": 0.0774773777040661,
+  "gain_mean": 72.37834860813071,
+  "gain_std": 11.584316253284639,
+  "gain_min": 47.193925837731115,
+  "gain_max": 121.31764924583378,
+  "top5_highest_gain_nodes": [
+    {
+      "node_index": 196,
+      "total_gain": 121.31764924583378,
+      "mean_gain_per_ray": 2.5274510259548704
+    },
+    {
+      "node_index": 184,
+      "total_gain": 117.73284278492623,
+      "mean_gain_per_ray": 2.4527675580192967
+    },
+    {
+      "node_index": 197,
+      "total_gain": 115.19334337624781,
+      "mean_gain_per_ray": 2.399861320338496
+    },
+    {
+      "node_index": 187,
+      "total_gain": 113.54035873601285,
+      "mean_gain_per_ray": 2.365424140333601
+    },
+    {
+      "node_index": 290,
+      "total_gain": 111.81691340018799,
+      "mean_gain_per_ray": 2.329519029170583
+    }
+  ],
+  "bottom5_lowest_gain_nodes": [
+    {
+      "node_index": 0,
+      "total_gain": 66.54206587423504
+    },
+    {
+      "node_index": 465,
+      "total_gain": 66.54206587423504
+    },
+    {
+      "node_index": 466,
+      "total_gain": 66.54206587423504
+    },
+    {
+      "node_index": 255,
+      "total_gain": 66.54189939851548
+    },
+    {
+      "node_index": 294,
+      "total_gain": 47.193925837731115
+    }
+  ]
+}

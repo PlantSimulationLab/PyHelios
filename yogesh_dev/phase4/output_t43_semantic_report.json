@@ -1,0 +1,22 @@
+{
+  "n_views": 42,
+  "n_pixel_observations": 75557,
+  "update_time_s": 0.043030738830566406,
+  "grid_dims": [
+    63,
+    62,
+    66
+  ],
+  "n_observed_voxels": 5771,
+  "majority_class_voxel_counts": {
+    "other": 0,
+    "fruit": 917,
+    "leaf": 3569,
+    "shoot": 1233,
+    "petiole": 45,
+    "peduncle": 7
+  },
+  "mean_entropy_observed": 1.3575205540948903,
+  "mean_entropy_unobserved": 1.7917594692220549,
+  "max_entropy_possible": 1.791759469228055
+}

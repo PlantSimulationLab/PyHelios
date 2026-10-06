@@ -1,0 +1,9 @@
+[00:47:27] waiting for run_r2.sh (pid 307193)
+[04:32:31] run_r2.sh exited
+[04:32:31] === R2-G: class-weighted semantics + L1 depth ===
+[05:55:18] r2_best exit=0
+[05:55:18] === W6 evaluation of the combined model ===
+[05:56:17] evaluation exit=0
+[05:56:17] === R2-C: reconstruction floor / per-class IoU / sharpness for the combined model ===
+[05:56:30] recon floor exit=0
+[05:56:30] ROUND 2 PHASE D DONE

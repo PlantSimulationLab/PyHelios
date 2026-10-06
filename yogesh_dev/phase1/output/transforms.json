@@ -1,0 +1,562 @@
+{
+  "camera_model": "PINHOLE",
+  "width": 640,
+  "height": 480,
+  "fl_x": 579.4112549695428,
+  "fl_y": 579.4112549695428,
+  "cx": 320.0,
+  "cy": 240.0,
+  "hfov_deg": 57.82240163683314,
+  "pose_convention": "World-to-camera matrix is OpenCV convention (X-right, Y-down, Z-forward), world_up=(0,0,1), standard top-left-origin pixel indexing (row=v, col=u). Empirically validated sub-pixel accurate (<1px mean reprojection error) against the RadiationCamera in Phase 0 T0.3 using two independent poses (axis-aligned and off-axis) -- see PHASE0_LOG.md. transform_matrix (per frame) is camera-to-world = inv(world_to_camera_matrix).",
+  "frames": [
+    {
+      "file_path": "rgb/above_tree0_above.jpeg",
+      "camera_label": "above",
+      "plant_id": 0,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          -0.3826834277362373,
+          0.9238795344286201,
+          -4.28356647491455
+        ],
+        [
+          -0.0,
+          -0.9238795344286204,
+          -0.38268342773623726,
+          3.138116598129273
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          -0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          -0.38268342773623726,
+          -0.9238795344286203,
+          1.2599918001060668
+        ],
+        [
+          0.0,
+          0.9238795344286203,
+          -0.38268342773623726,
+          5.158404616946191
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "test",
+      "depth_path": "depth/above_tree0_above.exr",
+      "semantic_path": "labels/tree0_above_semantic.npy",
+      "instance_path": "labels/tree0_above_instance.npy"
+    },
+    {
+      "file_path": "rgb/level_tree0_level.jpeg",
+      "camera_label": "level",
+      "plant_id": 0,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          -4.283566474914551
+        ],
+        [
+          -0.0,
+          -1.0,
+          -0.0,
+          1.3638052940368652
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          -1.0,
+          1.3638052940368652
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          4.283566474914551
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/level_tree0_level.exr",
+      "semantic_path": "labels/tree0_level_semantic.npy",
+      "instance_path": "labels/tree0_level_instance.npy"
+    },
+    {
+      "file_path": "rgb/below_tree0_below.jpeg",
+      "camera_label": "below",
+      "plant_id": 0,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.27565320175047997,
+          0.9612571520486646,
+          -4.283566474914552
+        ],
+        [
+          -0.0,
+          -0.9612571520486644,
+          0.2756532017504799,
+          0.1354359537363049
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.27565320175047997,
+          -0.9612571520486645,
+          1.3109675928947684
+        ],
+        [
+          0.0,
+          0.9612571520486645,
+          0.27565320175047997,
+          4.080275556007956
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/below_tree0_below.exr",
+      "semantic_path": "labels/tree0_below_semantic.npy",
+      "instance_path": "labels/tree0_below_instance.npy"
+    },
+    {
+      "file_path": "rgb/above_tree1_above.jpeg",
+      "camera_label": "above",
+      "plant_id": 1,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          1.5
+        ],
+        [
+          0.0,
+          -0.3826834392340004,
+          0.923879529666091,
+          -4.3467984199523935
+        ],
+        [
+          -0.0,
+          -0.9238795296660909,
+          -0.38268343923400033,
+          3.183576345443726
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          -0.0,
+          0.0,
+          -1.5
+        ],
+        [
+          0.0,
+          -0.3826834392340003,
+          -0.9238795296660908,
+          1.2777932476803415
+        ],
+        [
+          0.0,
+          0.9238795296660908,
+          -0.3826834392340003,
+          5.234220024717338
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/above_tree1_above.exr",
+      "semantic_path": "labels/tree1_above_semantic.npy",
+      "instance_path": "labels/tree1_above_instance.npy"
+    },
+    {
+      "file_path": "rgb/level_tree1_level.jpeg",
+      "camera_label": "level",
+      "plant_id": 1,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          1.5
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          -4.346798419952393
+        ],
+        [
+          -0.0,
+          -1.0,
+          -0.0,
+          1.3830734491348267
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -1.5
+        ],
+        [
+          0.0,
+          0.0,
+          -1.0,
+          1.3830734491348267
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          4.346798419952393
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/level_tree1_level.exr",
+      "semantic_path": "labels/tree1_level_semantic.npy",
+      "instance_path": "labels/tree1_level_instance.npy"
+    },
+    {
+      "file_path": "rgb/below_tree1_below.jpeg",
+      "camera_label": "below",
+      "plant_id": 1,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          1.5
+        ],
+        [
+          0.0,
+          0.2756532110230287,
+          0.9612571493896381,
+          -4.346798419952393
+        ],
+        [
+          -0.0,
+          -0.9612571493896384,
+          0.27565321102302875,
+          0.1365714669227599
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -1.5
+        ],
+        [
+          0.0,
+          0.2756532110230288,
+          -0.9612571493896385,
+          1.3294892411118386
+        ],
+        [
+          0.0,
+          0.9612571493896385,
+          0.2756532110230288,
+          4.140744694743438
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/below_tree1_below.exr",
+      "semantic_path": "labels/tree1_below_semantic.npy",
+      "instance_path": "labels/tree1_below_instance.npy"
+    },
+    {
+      "file_path": "rgb/above_tree2_above.jpeg",
+      "camera_label": "above",
+      "plant_id": 2,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          3.0
+        ],
+        [
+          0.0,
+          -0.3826834299620033,
+          0.9238795335066777,
+          -4.363980293273926
+        ],
+        [
+          -0.0,
+          -0.9238795335066777,
+          -0.3826834299620033,
+          3.1973235607147217
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          -0.0,
+          0.0,
+          -3.0
+        ],
+        [
+          0.0,
+          -0.3826834299620033,
+          -0.9238795335066778,
+          1.2839188528263723
+        ],
+        [
+          0.0,
+          0.9238795335066778,
+          -0.3826834299620033,
+          5.2553548244948844
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/above_tree2_above.exr",
+      "semantic_path": "labels/tree2_above_semantic.npy",
+      "instance_path": "labels/tree2_above_instance.npy"
+    },
+    {
+      "file_path": "rgb/level_tree2_level.jpeg",
+      "camera_label": "level",
+      "plant_id": 2,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          3.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          -4.363980293273926
+        ],
+        [
+          -0.0,
+          -1.0,
+          -0.0,
+          1.3897037506103516
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -3.0
+        ],
+        [
+          0.0,
+          0.0,
+          -1.0,
+          1.3897037506103516
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          4.363980293273926
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "train",
+      "depth_path": "depth/level_tree2_level.exr",
+      "semantic_path": "labels/tree2_level_semantic.npy",
+      "instance_path": "labels/tree2_level_instance.npy"
+    },
+    {
+      "file_path": "rgb/below_tree2_below.jpeg",
+      "camera_label": "below",
+      "plant_id": 2,
+      "transform_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          3.0
+        ],
+        [
+          0.0,
+          0.27565321687609773,
+          0.9612571477111935,
+          -4.363980293273926
+        ],
+        [
+          -0.0,
+          -0.9612571477111934,
+          0.27565321687609773,
+          0.13827461004257202
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "world_to_camera_matrix": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          -3.0
+        ],
+        [
+          0.0,
+          0.2756532168760977,
+          -0.9612571477111933,
+          1.3358626634752542
+        ],
+        [
+          0.0,
+          0.9612571477111933,
+          0.2756532168760977,
+          4.156791408309828
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "split": "test",
+      "depth_path": "depth/below_tree2_below.exr",
+      "semantic_path": "labels/tree2_below_semantic.npy",
+      "instance_path": "labels/tree2_below_instance.npy"
+    }
+  ]
+}

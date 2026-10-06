@@ -1,0 +1,18 @@
+{
+  "main": {
+    "n_train_points": 174,
+    "n_val_points": 36,
+    "final_step": 42000,
+    "best_val_recon_step": 14000,
+    "best_val_recon": 0.7398388850269839,
+    "final_val_recon": 0.8341181201394647
+  },
+  "noaction": {
+    "n_train_points": 174,
+    "n_val_points": 36,
+    "final_step": 42000,
+    "best_val_recon_step": 14000,
+    "best_val_recon": 0.7605482914950699,
+    "final_val_recon": 0.8405693863751367
+  }
+}

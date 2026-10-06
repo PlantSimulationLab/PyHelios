@@ -1,0 +1,1545 @@
+{
+  "design": "resolution-IV half-fraction (generator trellis=lai*fruit_density*clustering)",
+  "n_screening_cells": 8,
+  "n_full_cells": 16,
+  "full_spec_note": "Full spec would run all 16 cells x >=20 canopies/cell (task doc's stated minimum) = 320+ canopy builds. This run executes the 8-cell screening design x 3 canopies/cell = 24 canopy builds -- see PHASE8_LOG.md for the real measured per-canopy cost this reduction is based on and the resulting full-scale cost estimate.",
+  "dev_seeds_used": [
+    1000,
+    1001,
+    1002
+  ],
+  "n_trees_per_canopy": 1,
+  "cells": [
+    {
+      "label": "lai=0.3_fruit=0.3_clust=clustered_trellis=apple",
+      "cell": {
+        "lai": 0.3,
+        "fruit_density": 0.3,
+        "clustering": "clustered",
+        "trellis": "apple"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 0.3,
+            "clustering": "clustered",
+            "trellis": "apple"
+          },
+          "seed": 1000,
+          "n_fruit": 8,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 799,
+            "n_leaf_kept": 240,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "clustered",
+            "n_fruit_total": 28,
+            "n_fruit_kept": 8,
+            "n_leaf_total_pre_thin": 799,
+            "n_fruit_total_pre_thin": 28,
+            "gt_report": {
+              "n_fruit_primitives": 5768,
+              "n_fruit_objects": 28,
+              "n_fruit_records_written": 28,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpx8e9mvtn/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.9376327991485596,
+          "total_s": 2.3714380264282227,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.14598963168650653,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.26878418523504966,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.42420998302683854,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.0913357734680176
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 0.3,
+            "clustering": "clustered",
+            "trellis": "apple"
+          },
+          "seed": 1001,
+          "n_fruit": 8,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 963,
+            "n_leaf_kept": 289,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "clustered",
+            "n_fruit_total": 25,
+            "n_fruit_kept": 8,
+            "n_leaf_total_pre_thin": 963,
+            "n_fruit_total_pre_thin": 25,
+            "gt_report": {
+              "n_fruit_primitives": 5150,
+              "n_fruit_objects": 25,
+              "n_fruit_records_written": 25,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpn1adr6wz/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.9827923774719238,
+          "total_s": 2.401359796524048,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.1321429998502399,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.23612986577020165,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.402472283126783,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.3230931758880615
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 0.3,
+            "clustering": "clustered",
+            "trellis": "apple"
+          },
+          "seed": 1002,
+          "n_fruit": 8,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1275,
+            "n_leaf_kept": 382,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "clustered",
+            "n_fruit_total": 27,
+            "n_fruit_kept": 8,
+            "n_leaf_total_pre_thin": 1275,
+            "n_fruit_total_pre_thin": 27,
+            "gt_report": {
+              "n_fruit_primitives": 5562,
+              "n_fruit_objects": 27,
+              "n_fruit_records_written": 27,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpf2ruk5h7/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.4289882183074951,
+          "total_s": 3.2489535808563232,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.10322107888647428,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.19780149310267475,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.3771103281494483,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.7121508121490479
+        }
+      ]
+    },
+    {
+      "label": "lai=0.3_fruit=0.3_clust=dispersed_trellis=apple_fruitingwall",
+      "cell": {
+        "lai": 0.3,
+        "fruit_density": 0.3,
+        "clustering": "dispersed",
+        "trellis": "apple_fruitingwall"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 0.3,
+            "clustering": "dispersed",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1000,
+          "n_fruit": 10,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1724,
+            "n_leaf_kept": 517,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "dispersed",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 10,
+            "n_leaf_total_pre_thin": 1724,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpjgud8isc/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 2.0219480991363525,
+          "total_s": 4.48140287399292,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.056852134122931317,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.11534034927957001,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.31322917960963204,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.3170745372772217
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 0.3,
+            "clustering": "dispersed",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1001,
+          "n_fruit": 10,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1736,
+            "n_leaf_kept": 521,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "dispersed",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 10,
+            "n_leaf_total_pre_thin": 1736,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp33xox14h/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 2.3679001331329346,
+          "total_s": 5.054039239883423,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.0574483080089188,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.13261082728637136,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.34301463005590566,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.5349295139312744
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 0.3,
+            "clustering": "dispersed",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1002,
+          "n_fruit": 13,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1557,
+            "n_leaf_kept": 467,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "dispersed",
+            "n_fruit_total": 43,
+            "n_fruit_kept": 13,
+            "n_leaf_total_pre_thin": 1557,
+            "n_fruit_total_pre_thin": 43,
+            "gt_report": {
+              "n_fruit_primitives": 8858,
+              "n_fruit_objects": 43,
+              "n_fruit_records_written": 43,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp51vl64q0/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.6448771953582764,
+          "total_s": 4.188892841339111,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.0438056242181432,
+              "n_fruit_observed_at_all": 13,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.10489547914843984,
+              "n_fruit_observed_at_all": 13,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.33144125759595267,
+              "n_fruit_observed_at_all": 13,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.3982372283935547
+        }
+      ]
+    },
+    {
+      "label": "lai=0.3_fruit=1.0_clust=clustered_trellis=apple_fruitingwall",
+      "cell": {
+        "lai": 0.3,
+        "fruit_density": 1.0,
+        "clustering": "clustered",
+        "trellis": "apple_fruitingwall"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 1.0,
+            "clustering": "clustered",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1000,
+          "n_fruit": 35,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1724,
+            "n_leaf_kept": 517,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "clustered",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 35,
+            "n_leaf_total_pre_thin": 1724,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpmpxfwkvs/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 2.1113975048065186,
+          "total_s": 4.975900173187256,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.04456384859397086,
+              "n_fruit_observed_at_all": 31,
+              "fraction_fruit_observed": 0.8857142857142857
+            },
+            "fixed_rig": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.09655618936799938,
+              "n_fruit_observed_at_all": 34,
+              "fraction_fruit_observed": 0.9714285714285714
+            },
+            "reachable_union": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.26153266930399166,
+              "n_fruit_observed_at_all": 35,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.703836441040039
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 1.0,
+            "clustering": "clustered",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1001,
+          "n_fruit": 35,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1736,
+            "n_leaf_kept": 521,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "clustered",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 35,
+            "n_leaf_total_pre_thin": 1736,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpaca2uoph/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.7610101699829102,
+          "total_s": 4.829056978225708,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.043785579924028664,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 0.8
+            },
+            "fixed_rig": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.10159653751217997,
+              "n_fruit_observed_at_all": 32,
+              "fraction_fruit_observed": 0.9142857142857143
+            },
+            "reachable_union": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.2838952277315823,
+              "n_fruit_observed_at_all": 35,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.9030091762542725
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 1.0,
+            "clustering": "clustered",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1002,
+          "n_fruit": 43,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1557,
+            "n_leaf_kept": 467,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "clustered",
+            "n_fruit_total": 43,
+            "n_fruit_kept": 43,
+            "n_leaf_total_pre_thin": 1557,
+            "n_fruit_total_pre_thin": 43,
+            "gt_report": {
+              "n_fruit_primitives": 8858,
+              "n_fruit_objects": 43,
+              "n_fruit_records_written": 43,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpb65ghp_a/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.6728184223175049,
+          "total_s": 3.3572189807891846,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.028202360022206836,
+              "n_fruit_observed_at_all": 34,
+              "fraction_fruit_observed": 0.7906976744186046
+            },
+            "fixed_rig": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.0763921018161263,
+              "n_fruit_observed_at_all": 41,
+              "fraction_fruit_observed": 0.9534883720930233
+            },
+            "reachable_union": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.24566903490427,
+              "n_fruit_observed_at_all": 43,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.5274388790130615
+        }
+      ]
+    },
+    {
+      "label": "lai=0.3_fruit=1.0_clust=dispersed_trellis=apple",
+      "cell": {
+        "lai": 0.3,
+        "fruit_density": 1.0,
+        "clustering": "dispersed",
+        "trellis": "apple"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 1.0,
+            "clustering": "dispersed",
+            "trellis": "apple"
+          },
+          "seed": 1000,
+          "n_fruit": 28,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 799,
+            "n_leaf_kept": 240,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "dispersed",
+            "n_fruit_total": 28,
+            "n_fruit_kept": 28,
+            "n_leaf_total_pre_thin": 799,
+            "n_fruit_total_pre_thin": 28,
+            "gt_report": {
+              "n_fruit_primitives": 5768,
+              "n_fruit_objects": 28,
+              "n_fruit_records_written": 28,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpw2s9p27c/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.9083735942840576,
+          "total_s": 2.4374618530273438,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.1464103277246455,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.26948821453977956,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.44929887880417974,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.412827730178833
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 1.0,
+            "clustering": "dispersed",
+            "trellis": "apple"
+          },
+          "seed": 1001,
+          "n_fruit": 25,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 963,
+            "n_leaf_kept": 289,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "dispersed",
+            "n_fruit_total": 25,
+            "n_fruit_kept": 25,
+            "n_leaf_total_pre_thin": 963,
+            "n_fruit_total_pre_thin": 25,
+            "gt_report": {
+              "n_fruit_primitives": 5150,
+              "n_fruit_objects": 25,
+              "n_fruit_records_written": 25,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpx5a444pc/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.2734532356262207,
+          "total_s": 3.023110866546631,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.13449288753712715,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.24135495563546866,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.4202108264700033,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.6371419429779053
+        },
+        {
+          "cell": {
+            "lai": 0.3,
+            "fruit_density": 1.0,
+            "clustering": "dispersed",
+            "trellis": "apple"
+          },
+          "seed": 1002,
+          "n_fruit": 27,
+          "thinning_report": {
+            "lai_keep_frac_requested": 0.3,
+            "n_leaf_total": 1275,
+            "n_leaf_kept": 382,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "dispersed",
+            "n_fruit_total": 27,
+            "n_fruit_kept": 27,
+            "n_leaf_total_pre_thin": 1275,
+            "n_fruit_total_pre_thin": 27,
+            "gt_report": {
+              "n_fruit_primitives": 5562,
+              "n_fruit_objects": 27,
+              "n_fruit_records_written": 27,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp1devkfc5/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.215914249420166,
+          "total_s": 3.368802547454834,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.10556368739646499,
+              "n_fruit_observed_at_all": 26,
+              "fraction_fruit_observed": 0.9629629629629629
+            },
+            "fixed_rig": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.20715454376002937,
+              "n_fruit_observed_at_all": 27,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.38295596440458995,
+              "n_fruit_observed_at_all": 27,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.0246872901916504
+        }
+      ]
+    },
+    {
+      "label": "lai=1.0_fruit=0.3_clust=clustered_trellis=apple_fruitingwall",
+      "cell": {
+        "lai": 1.0,
+        "fruit_density": 0.3,
+        "clustering": "clustered",
+        "trellis": "apple_fruitingwall"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 0.3,
+            "clustering": "clustered",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1000,
+          "n_fruit": 10,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1724,
+            "n_leaf_kept": 1724,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "clustered",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 10,
+            "n_leaf_total_pre_thin": 1724,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpi3_z6_r4/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.8229384422302246,
+          "total_s": 5.33493185043335,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.06785634081482608,
+              "n_fruit_observed_at_all": 9,
+              "fraction_fruit_observed": 0.9
+            },
+            "fixed_rig": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.13587691688681897,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.2852463301080009,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 3.3447189331054688
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 0.3,
+            "clustering": "clustered",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1001,
+          "n_fruit": 10,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1736,
+            "n_leaf_kept": 1736,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "clustered",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 10,
+            "n_leaf_total_pre_thin": 1736,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp4mvm01i2/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.677386999130249,
+          "total_s": 5.2200517654418945,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.023979664144779547,
+              "n_fruit_observed_at_all": 5,
+              "fraction_fruit_observed": 0.5
+            },
+            "fixed_rig": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.05597496514019227,
+              "n_fruit_observed_at_all": 5,
+              "fraction_fruit_observed": 0.5
+            },
+            "reachable_union": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.15197888764821108,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 10,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 3.369797945022583
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 0.3,
+            "clustering": "clustered",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1002,
+          "n_fruit": 13,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1557,
+            "n_leaf_kept": 1557,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "clustered",
+            "n_fruit_total": 43,
+            "n_fruit_kept": 13,
+            "n_leaf_total_pre_thin": 1557,
+            "n_fruit_total_pre_thin": 43,
+            "gt_report": {
+              "n_fruit_primitives": 8858,
+              "n_fruit_objects": 43,
+              "n_fruit_records_written": 43,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmphozwggx5/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.770996332168579,
+          "total_s": 4.946141004562378,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.015287267725483646,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 0.6153846153846154
+            },
+            "fixed_rig": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.04159428877742848,
+              "n_fruit_observed_at_all": 10,
+              "fraction_fruit_observed": 0.7692307692307693
+            },
+            "reachable_union": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.11862251530769817,
+              "n_fruit_observed_at_all": 13,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 13,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 3.0064709186553955
+        }
+      ]
+    },
+    {
+      "label": "lai=1.0_fruit=0.3_clust=dispersed_trellis=apple",
+      "cell": {
+        "lai": 1.0,
+        "fruit_density": 0.3,
+        "clustering": "dispersed",
+        "trellis": "apple"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 0.3,
+            "clustering": "dispersed",
+            "trellis": "apple"
+          },
+          "seed": 1000,
+          "n_fruit": 8,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 799,
+            "n_leaf_kept": 799,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "dispersed",
+            "n_fruit_total": 28,
+            "n_fruit_kept": 8,
+            "n_leaf_total_pre_thin": 799,
+            "n_fruit_total_pre_thin": 28,
+            "gt_report": {
+              "n_fruit_primitives": 5768,
+              "n_fruit_objects": 28,
+              "n_fruit_records_written": 28,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpot1oqm2r/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.887721061706543,
+          "total_s": 2.5408554077148438,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.14454677079910996,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.2684544215336549,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.4331794437836888,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.551281452178955
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 0.3,
+            "clustering": "dispersed",
+            "trellis": "apple"
+          },
+          "seed": 1001,
+          "n_fruit": 8,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 963,
+            "n_leaf_kept": 963,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "dispersed",
+            "n_fruit_total": 25,
+            "n_fruit_kept": 8,
+            "n_leaf_total_pre_thin": 963,
+            "n_fruit_total_pre_thin": 25,
+            "gt_report": {
+              "n_fruit_primitives": 5150,
+              "n_fruit_objects": 25,
+              "n_fruit_records_written": 25,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpgcmlxuow/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.0062658786773682,
+          "total_s": 3.0415918827056885,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.10792937447858586,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.19144218573612118,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.3795356177047212,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.9193401336669922
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 0.3,
+            "clustering": "dispersed",
+            "trellis": "apple"
+          },
+          "seed": 1002,
+          "n_fruit": 8,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1275,
+            "n_leaf_kept": 1275,
+            "fruit_keep_frac_requested": 0.3,
+            "clustering": "dispersed",
+            "n_fruit_total": 27,
+            "n_fruit_kept": 8,
+            "n_leaf_total_pre_thin": 1275,
+            "n_fruit_total_pre_thin": 27,
+            "gt_report": {
+              "n_fruit_primitives": 5562,
+              "n_fruit_objects": 27,
+              "n_fruit_records_written": 27,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmput0akufh/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.2797675132751465,
+          "total_s": 3.850998878479004,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.11073797074148196,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.2172791423454786,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.41014177534992713,
+              "n_fruit_observed_at_all": 8,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 8,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.4434213638305664
+        }
+      ]
+    },
+    {
+      "label": "lai=1.0_fruit=1.0_clust=clustered_trellis=apple",
+      "cell": {
+        "lai": 1.0,
+        "fruit_density": 1.0,
+        "clustering": "clustered",
+        "trellis": "apple"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 1.0,
+            "clustering": "clustered",
+            "trellis": "apple"
+          },
+          "seed": 1000,
+          "n_fruit": 28,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 799,
+            "n_leaf_kept": 799,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "clustered",
+            "n_fruit_total": 28,
+            "n_fruit_kept": 28,
+            "n_leaf_total_pre_thin": 799,
+            "n_fruit_total_pre_thin": 28,
+            "gt_report": {
+              "n_fruit_primitives": 5768,
+              "n_fruit_objects": 28,
+              "n_fruit_records_written": 28,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp3wxhkm9g/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.6043899059295654,
+          "total_s": 2.5003669261932373,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.13226399754641666,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.24442165745732905,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.4121413241458444,
+              "n_fruit_observed_at_all": 28,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 28,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 1.774587869644165
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 1.0,
+            "clustering": "clustered",
+            "trellis": "apple"
+          },
+          "seed": 1001,
+          "n_fruit": 25,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 963,
+            "n_leaf_kept": 963,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "clustered",
+            "n_fruit_total": 25,
+            "n_fruit_kept": 25,
+            "n_leaf_total_pre_thin": 963,
+            "n_fruit_total_pre_thin": 25,
+            "gt_report": {
+              "n_fruit_primitives": 5150,
+              "n_fruit_objects": 25,
+              "n_fruit_records_written": 25,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpikxxj1ze/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.8499042987823486,
+          "total_s": 3.0293726921081543,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.11424554776352286,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 1.0
+            },
+            "fixed_rig": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.20013278562877082,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.37614900080047653,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 25,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.0565130710601807
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 1.0,
+            "clustering": "clustered",
+            "trellis": "apple"
+          },
+          "seed": 1002,
+          "n_fruit": 27,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1275,
+            "n_leaf_kept": 1275,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "clustered",
+            "n_fruit_total": 27,
+            "n_fruit_kept": 27,
+            "n_leaf_total_pre_thin": 1275,
+            "n_fruit_total_pre_thin": 27,
+            "gt_report": {
+              "n_fruit_primitives": 5562,
+              "n_fruit_objects": 27,
+              "n_fruit_records_written": 27,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp5tyjk1s6/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 0.8609516620635986,
+          "total_s": 3.552229404449463,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.09032143835069605,
+              "n_fruit_observed_at_all": 26,
+              "fraction_fruit_observed": 0.9629629629629629
+            },
+            "fixed_rig": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.18106060989180894,
+              "n_fruit_observed_at_all": 27,
+              "fraction_fruit_observed": 1.0
+            },
+            "reachable_union": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.3532016349961633,
+              "n_fruit_observed_at_all": 27,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 27,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 2.551213026046753
+        }
+      ]
+    },
+    {
+      "label": "lai=1.0_fruit=1.0_clust=dispersed_trellis=apple_fruitingwall",
+      "cell": {
+        "lai": 1.0,
+        "fruit_density": 1.0,
+        "clustering": "dispersed",
+        "trellis": "apple_fruitingwall"
+      },
+      "results": [
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 1.0,
+            "clustering": "dispersed",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1000,
+          "n_fruit": 35,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1724,
+            "n_leaf_kept": 1724,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "dispersed",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 35,
+            "n_leaf_total_pre_thin": 1724,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpcj3_u96q/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.7305195331573486,
+          "total_s": 5.468334436416626,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.031366093368627106,
+              "n_fruit_observed_at_all": 22,
+              "fraction_fruit_observed": 0.6285714285714286
+            },
+            "fixed_rig": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.06635408899353644,
+              "n_fruit_observed_at_all": 30,
+              "fraction_fruit_observed": 0.8571428571428571
+            },
+            "reachable_union": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.1862561369336955,
+              "n_fruit_observed_at_all": 34,
+              "fraction_fruit_observed": 0.9714285714285714
+            },
+            "look_away": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 3.554492712020874
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 1.0,
+            "clustering": "dispersed",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1001,
+          "n_fruit": 35,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1736,
+            "n_leaf_kept": 1736,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "dispersed",
+            "n_fruit_total": 35,
+            "n_fruit_kept": 35,
+            "n_leaf_total_pre_thin": 1736,
+            "n_fruit_total_pre_thin": 35,
+            "gt_report": {
+              "n_fruit_primitives": 7210,
+              "n_fruit_objects": 35,
+              "n_fruit_records_written": 35,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmpnb_ow5cl/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.6919081211090088,
+          "total_s": 5.624402046203613,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.028787743211866664,
+              "n_fruit_observed_at_all": 25,
+              "fraction_fruit_observed": 0.7142857142857143
+            },
+            "fixed_rig": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.06589182582315002,
+              "n_fruit_observed_at_all": 30,
+              "fraction_fruit_observed": 0.8571428571428571
+            },
+            "reachable_union": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.20271952721078115,
+              "n_fruit_observed_at_all": 35,
+              "fraction_fruit_observed": 1.0
+            },
+            "look_away": {
+              "n_fruit": 35,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 3.741008758544922
+        },
+        {
+          "cell": {
+            "lai": 1.0,
+            "fruit_density": 1.0,
+            "clustering": "dispersed",
+            "trellis": "apple_fruitingwall"
+          },
+          "seed": 1002,
+          "n_fruit": 43,
+          "thinning_report": {
+            "lai_keep_frac_requested": 1.0,
+            "n_leaf_total": 1557,
+            "n_leaf_kept": 1557,
+            "fruit_keep_frac_requested": 1.0,
+            "clustering": "dispersed",
+            "n_fruit_total": 43,
+            "n_fruit_kept": 43,
+            "n_leaf_total_pre_thin": 1557,
+            "n_fruit_total_pre_thin": 43,
+            "gt_report": {
+              "n_fruit_primitives": 8858,
+              "n_fruit_objects": 43,
+              "n_fruit_records_written": 43,
+              "n_trees": 1,
+              "plant_id_lookup_misses": 0,
+              "output_path": "/tmp/tmp7v59_rif/_tmp_fruit_gt.json"
+            }
+          },
+          "build_s": 1.7818176746368408,
+          "total_s": 5.333545923233032,
+          "policies": {
+            "single_fixed": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.014006277212806546,
+              "n_fruit_observed_at_all": 24,
+              "fraction_fruit_observed": 0.5581395348837209
+            },
+            "fixed_rig": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.0390594670125139,
+              "n_fruit_observed_at_all": 34,
+              "fraction_fruit_observed": 0.7906976744186046
+            },
+            "reachable_union": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.15372866008460956,
+              "n_fruit_observed_at_all": 41,
+              "fraction_fruit_observed": 0.9534883720930233
+            },
+            "look_away": {
+              "n_fruit": 43,
+              "mean_coverage_frac": 0.0,
+              "n_fruit_observed_at_all": 0,
+              "fraction_fruit_observed": 0.0
+            }
+          },
+          "n_fixed_rig_poses": 3,
+          "n_reachable_poses": 18,
+          "render_s": 3.373723030090332
+        }
+      ]
+    }
+  ],
+  "total_time_s": 94.19017672538757,
+  "mean_per_canopy_total_s": 3.924185832341512,
+  "n_canopies_built": 24
+}

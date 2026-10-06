@@ -1,0 +1,87 @@
+{
+  "seed": 0,
+  "n_views": 8,
+  "arc_width_deg": 180.0,
+  "elevation_deg": 15.0,
+  "pixel_noise_sigma_px": 0.5,
+  "hfov_deg": 57.82240163683314,
+  "resolution": [
+    480,
+    360
+  ],
+  "n_landmarks_total": 79,
+  "n_landmarks_in_frame_all_views": 79,
+  "branch_segment_counts": {
+    "shoot": {
+      "n_objects": 62,
+      "n_tube": 62,
+      "n_other": 0
+    },
+    "petiole": {
+      "n_objects": 1002,
+      "n_tube": 0,
+      "n_other": 1002
+    },
+    "peduncle": {
+      "n_objects": 19,
+      "n_tube": 19,
+      "n_other": 0
+    }
+  },
+  "azimuths_deg": [
+    -90.0,
+    -64.28571428571428,
+    -38.57142857142857,
+    -12.857142857142861,
+    12.857142857142861,
+    38.571428571428584,
+    64.28571428571428,
+    90.0
+  ],
+  "condition_C_intrinsics_extrinsics": {
+    "method": "N-view linear (DLT) triangulation, real K/R/t, no alignment",
+    "rmse_m": 0.004645100644237657,
+    "rmse_mm": 4.645100644237657
+  },
+  "condition_D_plus_depth": {
+    "method": "single-view back-projection from REAL rendered depth (view 0), real K/R/t, occlusion-consistency gated (see OCCLUSION_TOL_M in source)",
+    "n_points_hit_and_unoccluded": 41,
+    "n_excluded_occluded": 30,
+    "rmse_m": 0.03157895382103164,
+    "rmse_mm": 31.57895382103164,
+    "note": "nonzero error expected even with perfect pose/depth: landmark points are tube/sphere CENTERS, depth camera sees nearest SURFACE -- mean expected surface offset ~ mean landmark radius",
+    "mean_landmark_radius_mm": 22.232887187400163
+  },
+  "condition_B_plus_intrinsics": {
+    "method": "two-view essential matrix (8-point, K known), cheirality-resolved pose, DLT triangulation, evaluated after Umeyama similarity alignment",
+    "view_pair_azimuth_deg": [
+      -90.0,
+      90.0
+    ],
+    "cheirality_inliers": 79,
+    "n_points": 79,
+    "recovered_scale_factor": 10.200034559584083,
+    "rmse_after_similarity_align_m": 0.047550567657146235,
+    "rmse_after_similarity_align_mm": 47.55056765714623,
+    "note": "recovered_scale_factor far from 1.0 is EXPECTED and is the finding: absolute scale is unrecoverable from images+intrinsics alone without a 3rd view or known baseline."
+  },
+  "condition_A_images_only": {
+    "method": "two-view uncalibrated fundamental matrix (8-point), canonical projective reconstruction, evaluated after best-fit AFFINE alignment (generous upper bound -- true projective ambiguity is usually worse than affine-recoverable)",
+    "view_pair_azimuth_deg": [
+      -90.0,
+      90.0
+    ],
+    "rmse_after_affine_align_m": 0.07441804134049153,
+    "rmse_after_affine_align_mm": 74.41804134049153
+  },
+  "summary_rmse_mm_ordering": {
+    "A_images_only": 74.41804134049153,
+    "B_plus_intrinsics": 47.55056765714623,
+    "C_plus_extrinsics": 4.645100644237657,
+    "D_plus_depth": 31.57895382103164
+  },
+  "hypothesis_A_B_C_pose_conditioning_monotonic": true,
+  "hypothesis_D_depth_beats_unconditioned": true,
+  "hypothesis_supported": true,
+  "D_vs_C_caveat": "D (single-view, 1 depth sample) is not directly comparable to C (N_VIEWS=8-view triangulation) on raw RMSE -- see hypothesis_D_depth_beats_unconditioned for D's actual comparison point (vs A, the unconditioned baseline)."
+}

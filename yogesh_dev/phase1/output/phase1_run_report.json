@@ -1,0 +1,243 @@
+{
+  "T1.1_verification": {
+    "checked_object_id": 1299,
+    "labels_present": [
+      "age",
+      "fruitID",
+      "phenology_stage",
+      "rank"
+    ],
+    "expected_labels": [
+      "fruitID",
+      "rank",
+      "age",
+      "phenology_stage"
+    ],
+    "all_expected_present": true
+  },
+  "T1.2_fruit_ground_truth": {
+    "n_fruit_primitives": 15038,
+    "n_fruit_objects": 73,
+    "n_fruit_records_written": 73,
+    "n_trees": 3,
+    "plant_id_lookup_misses": 0,
+    "output_path": "/home/yogesh/PyHelios/.claude/worktrees/phase1-groundtruth/yogesh_dev/phase1/output/fruit_ground_truth.json"
+  },
+  "T1.3_semantic_class_counts": {
+    "fruit": 15038,
+    "leaf": 30580,
+    "shoot": 53662,
+    "petiole": 16680,
+    "peduncle": 1022
+  },
+  "render_total_s": 3.419067144393921,
+  "render_per_view_s": 0.3798963493771023,
+  "n_views": 9,
+  "T1.3_per_view": [
+    {
+      "view": "tree0_above",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 48,
+      "background_fraction": 0.8203125
+    },
+    {
+      "view": "tree0_level",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 46,
+      "background_fraction": 0.8092350260416666
+    },
+    {
+      "view": "tree0_below",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 46,
+      "background_fraction": 0.8259765625
+    },
+    {
+      "view": "tree1_above",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 73,
+      "background_fraction": 0.756376953125
+    },
+    {
+      "view": "tree1_level",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 72,
+      "background_fraction": 0.7306640625
+    },
+    {
+      "view": "tree1_below",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 70,
+      "background_fraction": 0.7570930989583333
+    },
+    {
+      "view": "tree2_above",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 51,
+      "background_fraction": 0.8304622395833333
+    },
+    {
+      "view": "tree2_level",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 49,
+      "background_fraction": 0.8163151041666666
+    },
+    {
+      "view": "tree2_below",
+      "shape": [
+        480,
+        640
+      ],
+      "semantic_classes_present": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "n_fruit_instances_visible": 48,
+      "background_fraction": 0.8284342447916667
+    }
+  ],
+  "T1.5_transforms": {
+    "n_frames": 9,
+    "hfov_deg": 57.82240163683314,
+    "fl_x": 579.4112549695428,
+    "fl_y": 579.4112549695428,
+    "cx": 320.0,
+    "cy": 240.0
+  },
+  "T1.6_noise_demo": [
+    {
+      "n_valid_pixels": 55200,
+      "mean_abs_diff_m": 0.04349133989806011,
+      "max_abs_diff_m": 0.5804277768409163,
+      "rmse_m": 0.06978243353324726,
+      "fraction_changed_gt_1mm": 0.977445652173913,
+      "fraction_changed_gt_1cm": 0.7829347826086956,
+      "view": "tree0_above",
+      "clean_depth_stats": {
+        "min": 3.114745855331421,
+        "max": 5.382086277008057,
+        "mean": 4.312344551086426,
+        "n_pixels": 307200,
+        "n_valid": 55200,
+        "sky_fraction": 0.8203125
+      }
+    },
+    {
+      "n_valid_pixels": 58603,
+      "mean_abs_diff_m": 0.04171728422253548,
+      "max_abs_diff_m": 0.637616739831949,
+      "rmse_m": 0.07003461264437288,
+      "fraction_changed_gt_1mm": 0.9750865996621333,
+      "fraction_changed_gt_1cm": 0.7556780369605651,
+      "view": "tree0_level",
+      "clean_depth_stats": {
+        "min": 2.9865498542785645,
+        "max": 5.4068603515625,
+        "mean": 4.084132671356201,
+        "n_pixels": 307200,
+        "n_valid": 58603,
+        "sky_fraction": 0.8092350260416666
+      }
+    },
+    {
+      "n_valid_pixels": 53460,
+      "mean_abs_diff_m": 0.041497540346465744,
+      "max_abs_diff_m": 0.5921132197040366,
+      "rmse_m": 0.06599021415561183,
+      "fraction_changed_gt_1mm": 0.9765619154508043,
+      "fraction_changed_gt_1cm": 0.777085671530116,
+      "view": "tree0_below",
+      "clean_depth_stats": {
+        "min": 3.4695630073547363,
+        "max": 5.723987102508545,
+        "mean": 4.365110397338867,
+        "n_pixels": 307200,
+        "n_valid": 53460,
+        "sky_fraction": 0.8259765625
+      }
+    }
+  ]
+}

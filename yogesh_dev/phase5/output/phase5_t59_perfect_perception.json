@@ -1,0 +1,93 @@
+{
+  "baseline": "T5.9_perfect_perception_ablation",
+  "label": "Perfect-perception (ground-truth identity) vs tracker-driven (real ID-confusion) exploit planning",
+  "budget_s": 45.0,
+  "data_source": "yogesh_dev/phase4/data (real seeded single-tree scene, 27 fruit, 42 real rendered views)",
+  "per_arm": {
+    "arm_low": {
+      "note": "zero coverage possible from this arm -- real Phase 4 finding, not an error"
+    },
+    "arm_mid": {
+      "n_fruit_total": 27,
+      "tracker_idf1": {
+        "n_true_ids": 8,
+        "n_predicted_tracks": 9,
+        "n_detections_total": 16,
+        "IDTP": 15.0,
+        "IDFP": 1.0,
+        "IDFN": 1.0,
+        "IDF1": 0.9375,
+        "n_id_switches": 1
+      },
+      "perfect_perception": {
+        "selected_nodes": [
+          33,
+          165,
+          264,
+          297
+        ],
+        "final_value": 2.5489702566440626,
+        "total_time_s": 44.20738067567971,
+        "n_views_used": 4
+      },
+      "noisy_perception_tracker_driven": {
+        "selected_nodes": [
+          33,
+          165,
+          264,
+          297
+        ],
+        "self_reported_final_value": 2.5740477232203656,
+        "true_value_of_same_selected_views": 2.5489702566440626,
+        "total_time_s": 44.20738067567971,
+        "n_views_used": 4
+      },
+      "perception_driven_value_gap": 0.0,
+      "perception_driven_value_gap_fraction_of_perfect": 0.0,
+      "note": null
+    },
+    "arm_high": {
+      "n_fruit_total": 27,
+      "tracker_idf1": {
+        "n_true_ids": 21,
+        "n_predicted_tracks": 26,
+        "n_detections_total": 75,
+        "IDTP": 68.0,
+        "IDFP": 7.0,
+        "IDFN": 7.0,
+        "IDF1": 0.9066666666666666,
+        "n_id_switches": 5
+      },
+      "perfect_perception": {
+        "selected_nodes": [
+          165,
+          66,
+          264,
+          363,
+          396,
+          297
+        ],
+        "final_value": 8.243543962553415,
+        "total_time_s": 32.01606277353565,
+        "n_views_used": 6
+      },
+      "noisy_perception_tracker_driven": {
+        "selected_nodes": [
+          165,
+          66,
+          264,
+          363,
+          33,
+          132
+        ],
+        "self_reported_final_value": 9.39579545212519,
+        "true_value_of_same_selected_views": 9.126703382538647,
+        "total_time_s": 40.26555251631882,
+        "n_views_used": 6
+      },
+      "perception_driven_value_gap": -0.8831594199852315,
+      "perception_driven_value_gap_fraction_of_perfect": -0.10713346395640198,
+      "note": "Negative gap: the tracker-driven run's DIFFERENT node selection scored HIGHER under the true value function than the 'perfect' run's own greedy choice. This is a real, legitimate consequence of CELF/greedy submodular selection being only an approximation (not a global optimum, see T5.7's ILP for the actual ceiling) -- a different (noise-perturbed) candidate ranking can occasionally land on a better local optimum by chance. It does NOT mean perception noise helps in general; see tracker_idf1/n_id_switches for how much identity confusion actually occurred on this arm."
+    }
+  }
+}

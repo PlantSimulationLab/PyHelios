@@ -1,0 +1,262 @@
+{
+  "source_tree": "same tree instance as t76_classical_baseline.json (reused, not rebuilt)",
+  "canopy_volume": {
+    "ground_truth_bbox_m3": 13.207558042631295,
+    "reconstructed_occupied_voxel_volume_m3": 0.004117625000000001,
+    "relative_error": -0.9996882372209376,
+    "note": "ground truth is a bounding-box volume (a real but crude convex proxy -- no scipy.spatial.ConvexHull in this env, see PHASE7_LOG.md); reconstructed is occupied-fine-voxel count x voxel^3, which measures FILLED volume, not the canopy's convex envelope -- these are related but not identical quantities, so relative_error here reflects that definitional gap as well as reconstruction error, not reconstruction error alone."
+  },
+  "leaf_area": {
+    "ground_truth_m2": 4.648734849637549,
+    "reconstructed_m2": null,
+    "note": "NOT cross-checked -- see module docstring (no per-primitive surface classification recoverable from a sparse occupancy voxel grid)."
+  },
+  "fruit_diameter": {
+    "n_fruit_total": 33,
+    "n_fruit_used": 33,
+    "n_fruit_skipped_too_few_voxels": 0,
+    "mean_gt_diameter_m": 0.09735281901539268,
+    "mean_absolute_relative_error": 0.22450420505465235,
+    "per_fruit": [
+      {
+        "gt_diameter_m": 0.09735282320452474,
+        "recon_diameter_m": 0.11879015128593559,
+        "n_nearby_voxels": 69,
+        "skipped": false,
+        "rel_err": 0.22020242840183496
+      },
+      {
+        "gt_diameter_m": 0.09735282298892921,
+        "recon_diameter_m": 0.11801706718514976,
+        "n_nearby_voxels": 50,
+        "skipped": false,
+        "rel_err": 0.21226137631951827
+      },
+      {
+        "gt_diameter_m": 0.09735280345151139,
+        "recon_diameter_m": 0.12326747256260574,
+        "n_nearby_voxels": 90,
+        "skipped": false,
+        "rel_err": 0.26619335234656805
+      },
+      {
+        "gt_diameter_m": 0.09735282750751409,
+        "recon_diameter_m": 0.12494872450931838,
+        "n_nearby_voxels": 47,
+        "skipped": false,
+        "rel_err": 0.2834627170913379
+      },
+      {
+        "gt_diameter_m": 0.09735281209168956,
+        "recon_diameter_m": 0.11945566179559325,
+        "n_nearby_voxels": 93,
+        "skipped": false,
+        "rel_err": 0.22703863636816798
+      },
+      {
+        "gt_diameter_m": 0.09735280971716467,
+        "recon_diameter_m": 0.11644663678004015,
+        "n_nearby_voxels": 100,
+        "skipped": false,
+        "rel_err": 0.19613021050289178
+      },
+      {
+        "gt_diameter_m": 0.09735282066347115,
+        "recon_diameter_m": 0.12034510121153989,
+        "n_nearby_voxels": 57,
+        "skipped": false,
+        "rel_err": 0.23617477533135248
+      },
+      {
+        "gt_diameter_m": 0.09735282189756975,
+        "recon_diameter_m": 0.11545215313952216,
+        "n_nearby_voxels": 77,
+        "skipped": false,
+        "rel_err": 0.18591480851983638
+      },
+      {
+        "gt_diameter_m": 0.09735282885610125,
+        "recon_diameter_m": 0.11618610538731046,
+        "n_nearby_voxels": 76,
+        "skipped": false,
+        "rel_err": 0.19345381898503405
+      },
+      {
+        "gt_diameter_m": 0.09735281503419715,
+        "recon_diameter_m": 0.12015366500395366,
+        "n_nearby_voxels": 82,
+        "skipped": false,
+        "rel_err": 0.23420843004639616
+      },
+      {
+        "gt_diameter_m": 0.09735281487658937,
+        "recon_diameter_m": 0.1251897724405909,
+        "n_nearby_voxels": 80,
+        "skipped": false,
+        "rel_err": 0.2859389078712253
+      },
+      {
+        "gt_diameter_m": 0.09735282503336957,
+        "recon_diameter_m": 0.1139203569378103,
+        "n_nearby_voxels": 117,
+        "skipped": false,
+        "rel_err": 0.1701802890543945
+      },
+      {
+        "gt_diameter_m": 0.09735283416569836,
+        "recon_diameter_m": 0.11602136940494097,
+        "n_nearby_voxels": 138,
+        "skipped": false,
+        "rel_err": 0.19176159994960218
+      },
+      {
+        "gt_diameter_m": 0.09735280917743233,
+        "recon_diameter_m": 0.12597367992473027,
+        "n_nearby_voxels": 48,
+        "skipped": false,
+        "rel_err": 0.29399121596105554
+      },
+      {
+        "gt_diameter_m": 0.09735281699834694,
+        "recon_diameter_m": 0.12266164818419452,
+        "n_nearby_voxels": 57,
+        "skipped": false,
+        "rel_err": 0.25997019876967015
+      },
+      {
+        "gt_diameter_m": 0.0973528162816776,
+        "recon_diameter_m": 0.12046679855296452,
+        "n_nearby_voxels": 52,
+        "skipped": false,
+        "rel_err": 0.23742489590038812
+      },
+      {
+        "gt_diameter_m": 0.09735280734115287,
+        "recon_diameter_m": 0.12640663739178962,
+        "n_nearby_voxels": 61,
+        "skipped": false,
+        "rel_err": 0.29843854372708106
+      },
+      {
+        "gt_diameter_m": 0.09735280464843854,
+        "recon_diameter_m": 0.11917147320794404,
+        "n_nearby_voxels": 63,
+        "skipped": false,
+        "rel_err": 0.2241195683914531
+      },
+      {
+        "gt_diameter_m": 0.09735281864133367,
+        "recon_diameter_m": 0.11435985503179065,
+        "n_nearby_voxels": 121,
+        "skipped": false,
+        "rel_err": 0.17469485350099762
+      },
+      {
+        "gt_diameter_m": 0.09735281984420811,
+        "recon_diameter_m": 0.12396681380707943,
+        "n_nearby_voxels": 96,
+        "skipped": false,
+        "rel_err": 0.27337671374554107
+      },
+      {
+        "gt_diameter_m": 0.09735282144258882,
+        "recon_diameter_m": 0.11668262285369116,
+        "n_nearby_voxels": 79,
+        "skipped": false,
+        "rel_err": 0.19855409555337403
+      },
+      {
+        "gt_diameter_m": 0.09735283465636399,
+        "recon_diameter_m": 0.12067254752519281,
+        "n_nearby_voxels": 85,
+        "skipped": false,
+        "rel_err": 0.23953809820887842
+      },
+      {
+        "gt_diameter_m": 0.09735283093176568,
+        "recon_diameter_m": 0.11458298891298706,
+        "n_nearby_voxels": 50,
+        "skipped": false,
+        "rel_err": 0.17698671745147243
+      },
+      {
+        "gt_diameter_m": 0.0973528071300179,
+        "recon_diameter_m": 0.12571553227248763,
+        "n_nearby_voxels": 53,
+        "skipped": false,
+        "rel_err": 0.291339571796737
+      },
+      {
+        "gt_diameter_m": 0.09735281245745858,
+        "recon_diameter_m": 0.10861110816742908,
+        "n_nearby_voxels": 60,
+        "skipped": false,
+        "rel_err": 0.11564427802114266
+      },
+      {
+        "gt_diameter_m": 0.09735282942557079,
+        "recon_diameter_m": 0.12296597196795883,
+        "n_nearby_voxels": 77,
+        "skipped": false,
+        "rel_err": 0.26309602600682575
+      },
+      {
+        "gt_diameter_m": 0.09735282244324948,
+        "recon_diameter_m": 0.12157662505956908,
+        "n_nearby_voxels": 97,
+        "skipped": false,
+        "rel_err": 0.2488248620674612
+      },
+      {
+        "gt_diameter_m": 0.09735282400891909,
+        "recon_diameter_m": 0.12599421105082112,
+        "n_nearby_voxels": 133,
+        "skipped": false,
+        "rel_err": 0.2942019128205055
+      },
+      {
+        "gt_diameter_m": 0.09735282126565178,
+        "recon_diameter_m": 0.11078341630242884,
+        "n_nearby_voxels": 61,
+        "skipped": false,
+        "rel_err": 0.13795794371616907
+      },
+      {
+        "gt_diameter_m": 0.09735280046737119,
+        "recon_diameter_m": 0.11930276600485136,
+        "n_nearby_voxels": 81,
+        "skipped": false,
+        "rel_err": 0.2254682498305422
+      },
+      {
+        "gt_diameter_m": 0.09735282316586623,
+        "recon_diameter_m": 0.11422926829010323,
+        "n_nearby_voxels": 72,
+        "skipped": false,
+        "rel_err": 0.17335342289440872
+      },
+      {
+        "gt_diameter_m": 0.09735282059953593,
+        "recon_diameter_m": 0.11160962865325887,
+        "n_nearby_voxels": 93,
+        "skipped": false,
+        "rel_err": 0.14644473540596006
+      },
+      {
+        "gt_diameter_m": 0.09735282709267856,
+        "recon_diameter_m": 0.11996706251943137,
+        "n_nearby_voxels": 90,
+        "skipped": false,
+        "rel_err": 0.23229151224570363
+      }
+    ]
+  },
+  "internode_length": {
+    "n_segments_checked": 200,
+    "n_segments_snapped_both_ends": 111,
+    "ground_truth_mean_m": 0.0340789310119358,
+    "reconstructed_mean_m": 0.03791035875077588,
+    "relative_error": 0.11242804938623688
+  },
+  "t72_cross_reference": "T7.2 (D1) found metric scale is only correct under conditions C/D (known extrinsics); condition B (intrinsics only) recovered correct shape but an arbitrary global scale factor (see t72_pose_conditioning_ablation.json condition_B_plus_intrinsics.recovered_scale_factor). T7.6's fusion uses exact poses throughout (C/D territory), so small relative errors here are the expected regime; this check is what would have caught a discretization-driven scale bias that T7.2's baseline-only argument could not."
+}

@@ -1,0 +1,23 @@
+
+=== r2_best  (step 26000, 64x64, split=test) ===
+  variant             PSNR dB    SSIM  depth MAE m    mIoU  fruitMAE
+  posterior_recon       18.30  0.5299        0.881  0.2836    0.0039
+  openloop_t1           18.23  0.5285        0.909  0.2807    0.0045
+  copy_last_t1          16.71  0.5591        0.657  0.3329    0.0016
+  per-class IoU (pooled over the split); gt% / pred% = share of pixels in ground truth / prediction
+    class                 posterior_recon              copy_last_t1
+    ground      IoU 0.857  gt 42.23% pred 42.30%  IoU 0.870  gt 42.23% pred 42.04%
+    fruit       IoU 0.097  gt  2.01% pred  2.13%  IoU 0.192  gt  2.01% pred  1.96%
+    leaf        IoU 0.403  gt 19.64% pred 23.52%  IoU 0.433  gt 19.64% pred 19.63%
+    shoot       IoU 0.099  gt  6.22% pred  3.57%  IoU 0.137  gt  6.22% pred  6.43%
+    petiole     IoU 0.000  gt  0.22% pred  0.00%  IoU 0.007  gt  0.22% pred  0.23%
+    peduncle    IoU 0.000  gt  0.03% pred  0.00%  IoU 0.014  gt  0.03% pred  0.03%
+    sky         IoU 0.614  gt 29.65% pred 28.48%  IoU 0.653  gt 29.65% pred 29.69%
+  classes the model ever predicts: 5 of 7
+  depth MAE by ground-truth distance (posterior recon / copy-last):
+       0-   2 m  ( 35.0% of pixels)  0.857 m   vs copy-last 0.681 m
+       2-   4 m  ( 39.8% of pixels)  0.574 m   vs copy-last 0.449 m
+       4-   8 m  ( 18.7% of pixels)  0.832 m   vs copy-last 0.668 m
+       8- inf m  (  6.5% of pixels)  3.061 m   vs copy-last 1.841 m
+  RGB sharpness (mean |gradient| relative to ground truth): posterior recon 0.105, open-loop t+1 0.105, copy-last 0.992
+  attribution: of the depth error at t+1, 0.881 m is already present in the teacher-forced reconstruction (97% of it); one step of dynamics adds +0.028 m.

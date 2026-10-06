@@ -1,0 +1,20 @@
+running: /home/yogesh/anaconda3/envs/gsplat/bin/python -m yogesh_dev.world_model.train --overfit-one --data /home/yogesh/PyHelios/yogesh_dev/world_model/output/dataset --steps 12000 --image-size 64 --seq-len 32 --log-every 500 --ckpt-every 12000 --tag overfit
+using checkpoint /home/yogesh/PyHelios/yogesh_dev/world_model/output/train/overfit/ckpt_best.pt
+
+episode: train/view_s10000_g0_row_traversal.npz (row_traversal, seed 10000, stage 0), T=32, image_size=64, trained 12000 steps
+
+[teacher-forced reconstruction over the whole trajectory]
+  psnr_db        30.66945
+  ssim           0.95563
+  depth_mae_m    0.04729
+  miou           1.00000
+  rgb_mse        0.00086
+
+[open-loop imagination on the SAME trajectory, context=5]
+  t+1   PSNR= 31.00dB  SSIM=0.9543  depthMAE=0.043m  mIoU=1.0000
+  t+5   PSNR= 30.89dB  SSIM=0.9517  depthMAE=0.045m  mIoU=1.0000
+  t+10  PSNR= 31.07dB  SSIM=0.9479  depthMAE=0.046m  mIoU=1.0000
+  t+25  PSNR= 30.14dB  SSIM=0.9573  depthMAE=0.053m  mIoU=1.0000
+
+ACCEPTANCE (recon PSNR > 25 dB and mIoU > 0.7): True  [PSNR 30.67 dB, mIoU 1.0000]
+wrote /home/yogesh/PyHelios/yogesh_dev/world_model/output/w4/overfit_recon.png (top = Helios, bottom = model)

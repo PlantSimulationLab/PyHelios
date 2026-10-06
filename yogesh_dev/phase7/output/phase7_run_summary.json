@@ -1,0 +1,12 @@
+{
+  "timings_s": {
+    "T7.1_wai_writer": 2.551595687866211,
+    "T7.2_D1_pose_conditioning_ablation": 1.372964859008789,
+    "T7.3_D2_baseline_angle_sweep": 1.4114110469818115,
+    "T7.4_D3_lai_sweep": 5.54978084564209,
+    "T7.6_D5_classical_baseline": 14.546346426010132,
+    "T7.5_D4_thin_structure_recall": 0.1309833526611328,
+    "T7.7_D6_metric_scale_integrity": 0.2519247531890869
+  },
+  "total_s": 25.815006971359253
+}
