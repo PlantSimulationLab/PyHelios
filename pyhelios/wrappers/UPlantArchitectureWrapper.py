@@ -1109,6 +1109,41 @@ try:
 except AttributeError:
     _PLANTARCHITECTURE_POSING_AVAILABLE = False
 
+# Plant-level queries: name, phenology stage, base position, stem height, shoot node count,
+# internode object IDs and leaf angle distributions.
+# NOTE: guard with _require_plantarch_plant_queries(); an older flag would call the symbol with no argtypes set.
+_PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = False
+try:
+    def _register_plant_query(name, argtypes, restype):
+        f = getattr(helios_lib, name)
+        f.argtypes = [ctypes.POINTER(UPlantArchitecture)] + argtypes
+        f.restype = restype
+        f.errcheck = _check_error
+
+    _register_plant_query("determinePhenologyStage", [ctypes.c_uint], ctypes.c_char_p)
+    _register_plant_query("getPlantName", [ctypes.c_uint], ctypes.c_char_p)
+    _register_plant_query("getShootNodeCount", [ctypes.c_uint, ctypes.c_uint], ctypes.c_uint)
+    _register_plant_query("getPlantStemHeight", [ctypes.c_uint], ctypes.c_float)
+    _register_plant_query("getPlantBasePosition", [ctypes.c_uint, ctypes.POINTER(ctypes.c_float)], ctypes.c_int)
+    _register_plant_query("getPlantBasePositions",
+                          [ctypes.POINTER(ctypes.c_uint), ctypes.c_int, ctypes.POINTER(ctypes.c_int)],
+                          ctypes.POINTER(ctypes.c_float))
+    _register_plant_query("setPlantBasePosition", [ctypes.c_uint, ctypes.POINTER(ctypes.c_float)], ctypes.c_int)
+    # plantID, shoot_type_label (NULL = all shoots), count
+    _register_plant_query("getPlantInternodeObjectIDs",
+                          [ctypes.c_uint, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)],
+                          ctypes.POINTER(ctypes.c_uint))
+    for _dist_fn in ("getPlantLeafInclinationAngleDistribution", "getPlantLeafAzimuthAngleDistribution"):
+        # plantIDs, plant_count, Nbins, normalize, count
+        _register_plant_query(_dist_fn,
+                              [ctypes.POINTER(ctypes.c_uint), ctypes.c_int, ctypes.c_uint, ctypes.c_int,
+                               ctypes.POINTER(ctypes.c_int)],
+                              ctypes.POINTER(ctypes.c_float))
+
+    _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = False
+
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
     """Create PlantArchitecture instance"""
@@ -3761,3 +3796,129 @@ def resamplePhytomerParameters(context_ptr, phytomer_parameters: dict) -> dict:
     if not result:
         raise RuntimeError("PhytomerParameters::resample returned no parameters")
     return json.loads(result.decode('utf-8'))
+
+
+# ---------------------------------------------------------------------------
+# Plant-level queries
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_plant_queries() -> None:
+    """Raise if the native library predates the plant-level query bindings."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture plant query is not available in the current native library. "
+            "Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def _check_plant_id(plant_id: int) -> None:
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+
+
+def determinePhenologyStage(plantarch_ptr, plant_id: int) -> str:
+    """'dormant', 'vegetative', 'reproductive' or 'senescent'."""
+    _require_plantarch_plant_queries()
+    _check_plant_id(plant_id)
+    result = helios_lib.determinePhenologyStage(plantarch_ptr, plant_id)
+    if result is None:
+        raise RuntimeError(f"determinePhenologyStage returned no stage for plant {plant_id}")
+    return result.decode('utf-8')
+
+
+def getPlantName(plantarch_ptr, plant_id: int) -> str:
+    """Plant model label the plant was built from."""
+    _require_plantarch_plant_queries()
+    _check_plant_id(plant_id)
+    result = helios_lib.getPlantName(plantarch_ptr, plant_id)
+    if result is None:
+        raise RuntimeError(f"getPlantName returned no name for plant {plant_id}")
+    return result.decode('utf-8')
+
+
+def getShootNodeCount(plantarch_ptr, plant_id: int, shoot_id: int) -> int:
+    _require_plantarch_plant_queries()
+    if plant_id < 0 or shoot_id < 0:
+        raise ValueError("Plant ID and shoot ID must be non-negative")
+    return int(helios_lib.getShootNodeCount(plantarch_ptr, plant_id, shoot_id))
+
+
+def getPlantStemHeight(plantarch_ptr, plant_id: int) -> float:
+    _require_plantarch_plant_queries()
+    _check_plant_id(plant_id)
+    return float(helios_lib.getPlantStemHeight(plantarch_ptr, plant_id))
+
+
+def getPlantBasePosition(plantarch_ptr, plant_id: int) -> Tuple[float, float, float]:
+    _require_plantarch_plant_queries()
+    _check_plant_id(plant_id)
+    position = (ctypes.c_float * 3)()
+    helios_lib.getPlantBasePosition(plantarch_ptr, plant_id, position)
+    return (position[0], position[1], position[2])
+
+
+def getPlantBasePositions(plantarch_ptr, plant_ids: List[int]) -> List[Tuple[float, float, float]]:
+    _require_plantarch_plant_queries()
+    ids = [int(p) for p in plant_ids]
+    if not ids:
+        raise ValueError("Plant ID list must not be empty")
+    if any(p < 0 for p in ids):
+        raise ValueError("Plant IDs must be non-negative")
+    arr = (ctypes.c_uint * len(ids))(*ids)
+    count = ctypes.c_int()
+    ptr = helios_lib.getPlantBasePositions(plantarch_ptr, arr, len(ids), ctypes.byref(count))
+    if not ptr or count.value != len(ids):
+        raise RuntimeError(f"getPlantBasePosition returned {count.value} positions for {len(ids)} plants")
+    return [(ptr[3 * i], ptr[3 * i + 1], ptr[3 * i + 2]) for i in range(count.value)]
+
+
+def setPlantBasePosition(plantarch_ptr, plant_id: int, position) -> None:
+    _require_plantarch_plant_queries()
+    _check_plant_id(plant_id)
+    pos = (ctypes.c_float * 3)(float(position[0]), float(position[1]), float(position[2]))
+    helios_lib.setPlantBasePosition(plantarch_ptr, plant_id, pos)
+
+
+def getPlantInternodeObjectIDs(plantarch_ptr, plant_id: int, shoot_type_label: Optional[str] = None) -> List[int]:
+    """Internode (tube) object IDs of a plant, optionally only those on shoots of one type."""
+    _require_plantarch_plant_queries()
+    _check_plant_id(plant_id)
+    label = None if shoot_type_label is None else shoot_type_label.encode('utf-8')
+    count = ctypes.c_int()
+    ptr = helios_lib.getPlantInternodeObjectIDs(plantarch_ptr, plant_id, label, ctypes.byref(count))
+    if ptr and count.value > 0:
+        return [ptr[i] for i in range(count.value)]
+    return []
+
+
+def _plantAngleDistribution(fn_name: str, plantarch_ptr, plant_ids: List[int], n_bins: int,
+                            normalize: bool) -> List[float]:
+    _require_plantarch_plant_queries()
+    ids = [int(p) for p in plant_ids]
+    if not ids:
+        raise ValueError("Plant ID list must not be empty")
+    if any(p < 0 for p in ids):
+        raise ValueError("Plant IDs must be non-negative")
+    if n_bins < 1:
+        raise ValueError(f"Number of bins must be at least 1, got {n_bins}")
+    arr = (ctypes.c_uint * len(ids))(*ids)
+    count = ctypes.c_int()
+    ptr = getattr(helios_lib, fn_name)(plantarch_ptr, arr, len(ids), n_bins, 1 if normalize else 0,
+                                       ctypes.byref(count))
+    if not ptr or count.value != n_bins:
+        raise RuntimeError(f"{fn_name} returned {count.value} bins, expected {n_bins}")
+    return [float(ptr[i]) for i in range(count.value)]
+
+
+def getPlantLeafInclinationAngleDistribution(plantarch_ptr, plant_ids: List[int], n_bins: int,
+                                             normalize: bool = True) -> List[float]:
+    """Leaf-area-weighted inclination histogram, bins evenly spaced over 0-90 degrees."""
+    return _plantAngleDistribution("getPlantLeafInclinationAngleDistribution", plantarch_ptr, plant_ids,
+                                   n_bins, normalize)
+
+
+def getPlantLeafAzimuthAngleDistribution(plantarch_ptr, plant_ids: List[int], n_bins: int,
+                                         normalize: bool = True) -> List[float]:
+    """Leaf-area-weighted azimuth histogram, bins evenly spaced over 0-360 degrees."""
+    return _plantAngleDistribution("getPlantLeafAzimuthAngleDistribution", plantarch_ptr, plant_ids,
+                                   n_bins, normalize)

@@ -906,7 +906,13 @@ class LiDARCloud:
         lidar_wrapper.setLiDARScanPulseWidth(self._cloud_ptr, scanID, float(pulse_width))
 
     def getScanDetectionThreshold(self, scanID: int) -> float:
-        """Get the detection threshold (energy fraction, noise floor) of a scan."""
+        """Get the detection threshold (energy fraction, noise floor) of a scan.
+
+        The default is 0.001 (-30 dB) as of helios-core 1.3.92 (it was 0.05), matching the noise
+        floor of terrestrial RIEGL scans. A threshold under 1/N has no effect with N sub-rays per
+        pulse, so at ~40 rays/pulse every resolved return is reported. Only used for synthetic
+        scan generation.
+        """
         if scanID < 0:
             raise ValueError("Scan ID must be non-negative")
         return lidar_wrapper.getLiDARScanDetectionThreshold(self._cloud_ptr, scanID)
@@ -918,6 +924,49 @@ class LiDARCloud:
         if detection_threshold < 0:
             raise ValueError("detection_threshold must be non-negative")
         lidar_wrapper.setLiDARScanDetectionThreshold(self._cloud_ptr, scanID, float(detection_threshold))
+
+    def getScanRecordPartialMisses(self, scanID: int) -> bool:
+        """Whether a scan's partly intercepted multi-return pulses also record a partial-miss point.
+
+        See :meth:`setScanRecordPartialMisses`. The default is True.
+
+        Raises:
+            ValueError: If ``scanID`` is negative
+            RuntimeError: If the native library predates helios-core v1.3.92
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        return lidar_wrapper.getLiDARScanRecordPartialMisses(self._cloud_ptr, scanID)
+
+    def setScanRecordPartialMisses(self, scanID: int, record_partial_misses: bool):
+        """Set whether a scan's partly intercepted multi-return pulses record the escaped energy as a miss.
+
+        With miss recording on, a multi-return pulse that is only partly intercepted also writes
+        a miss point (intensity 0) for the part of the beam that left the scene. A real
+        instrument never records that point: it reports the returns it detected and nothing for
+        the escaped energy. Set this to False to produce the record a real instrument provides
+        (plus a gap-filled miss for each fully transmitted pulse, which is always recorded when
+        miss recording is on). Single-return mode never records a partial miss.
+
+        Leaf-area inversion that weights a pulse's returns equally reads close to unbiased with
+        these points and high without them, so validating an inversion only on default
+        synthetic scans understates its bias on real data. Only used for synthetic scan
+        generation; the XML equivalent is ``<recordPartialMisses>``.
+
+        Args:
+            scanID: ID of the scan
+            record_partial_misses: True (default) to record partial-miss points
+
+        Raises:
+            ValueError: If ``scanID`` is negative or ``record_partial_misses`` is not a bool
+            RuntimeError: If the native library predates helios-core v1.3.92
+        """
+        if scanID < 0:
+            raise ValueError("Scan ID must be non-negative")
+        if not isinstance(record_partial_misses, bool):
+            raise ValueError(
+                f"record_partial_misses must be a bool, got {type(record_partial_misses).__name__}")
+        lidar_wrapper.setLiDARScanRecordPartialMisses(self._cloud_ptr, scanID, record_partial_misses)
 
     def addHitPoint(self, scanID: int,
                     xyz: Union[vec3, List[float], Tuple[float, float, float]],

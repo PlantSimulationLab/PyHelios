@@ -179,6 +179,31 @@ PYHELIOS_API void leafOpticsEnableMessages(LeafOptics* leafoptics);
  */
 PYHELIOS_API void leafOpticsOptionalOutputPrimitiveData(LeafOptics* leafoptics, const char* label);
 
+//=============================================================================
+// Nitrogen-Based Automatic Mode
+//=============================================================================
+
+/**
+ * @brief Run nitrogen-based automatic leaf optics (LeafOptics::run with LeafOpticsProperties_Nauto)
+ * @param leafoptics Pointer to the LeafOptics instance
+ * @param uuids Array of leaf primitive UUIDs (primitives must belong to compound objects carrying
+ *              "leaf_nitrogen_gN_m2" object data)
+ * @param uuid_count Number of UUIDs in the array
+ * @param params Array of 14 floats: [f_photosynthetic, N_to_Cab_coefficient, Car_to_Cab_ratio,
+ *               numberlayers, anthocyancontent, brownpigments, watermass, drymass, protein,
+ *               carbonconstituents, V2Z, fqe, reassignment_threshold, min_reassignment_change]
+ * @param num_bins Number of spectrum bins
+ */
+PYHELIOS_API void leafOpticsRunNitrogen(LeafOptics* leafoptics, const unsigned int* uuids, unsigned int uuid_count,
+                                         const float* params, unsigned int num_bins);
+
+/**
+ * @brief Re-read leaf nitrogen for tracked primitives and reassign spectra (LeafOptics::updateNitrogenBasedSpectra)
+ * @param leafoptics Pointer to the LeafOptics instance
+ * @note Fails if nitrogen mode has not been initialized by leafOpticsRunNitrogen
+ */
+PYHELIOS_API void leafOpticsUpdateNitrogenBasedSpectra(LeafOptics* leafoptics);
+
 #ifdef __cplusplus
 }
 #endif

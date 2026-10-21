@@ -430,3 +430,46 @@ with Context() as context:
 </table>
 
 */
+## Nitrogen-Based Automatic Leaf Optics {#LONitrogenAuto}
+
+Instead of specifying pigments directly, LeafOptics can derive each leaf's chlorophyll and carotenoid content from its nitrogen content. Pass a `LeafOpticsProperties_Nauto` to `run()` **without a label**. The plug-in groups the primitives by parent object, reads the `"leaf_nitrogen_gN_m2"` object data (g N m\f$^{-2}\f$, normally written by the PlantArchitecture nitrogen model) from each object, and computes:
+
+- \f$C_{ab}\f$ (\f$\mu\f$g cm\f$^{-2}\f$) = \f$N_{area}\f$ \f$\times\f$ 100 \f$\times\f$ `f_photosynthetic` \f$\times\f$ `N_to_Cab_coefficient`, clamped to [5, 80]
+- \f$C_{ar}\f$ = \f$C_{ab}\f$ \f$\times\f$ `Car_to_Cab_ratio`
+
+All other PROSPECT parameters are fixed at the values in `LeafOpticsProperties_Nauto`. To limit the number of spectra, leaves are grouped into `num_bins` bins spaced evenly across the nitrogen range; each bin gets one spectrum stored as global data `leaf_reflectivity_Nauto_<i>`, `leaf_transmissivity_Nauto_<i>` and `fluspect_biochem_Nauto_<i>`, and every primitive of an object is assigned its bin's spectrum.
+
+```python
+from pyhelios import Context, LeafOptics
+from pyhelios.LeafOptics import LeafOpticsProperties_Nauto
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    leaf = context.addTileObject(center=vec3(0, 0, 1), size=vec2(0.1, 0.1))
+    context.setObjectDataFloat(leaf, "leaf_nitrogen_gN_m2", 2.0)
+    leaf_uuids = context.getObjectPrimitiveUUIDs(leaf)
+
+    with LeafOptics(context) as leafoptics:
+        leafoptics.run(leaf_uuids, LeafOpticsProperties_Nauto(num_bins=20))
+
+        # ... nitrogen changes (e.g. PlantArchitecture.advanceTime) ...
+        leafoptics.updateNitrogenBasedSpectra()  # reassign leaves whose nitrogen moved
+```
+
+| Member | Default | Description |
+|---|---|---|
+| `f_photosynthetic` | 0.50 | Fraction of leaf N in photosynthetic machinery [0-1] |
+| `N_to_Cab_coefficient` | 0.40 | Empirical N-to-chlorophyll coefficient |
+| `Car_to_Cab_ratio` | 0.25 | Carotenoid to chlorophyll ratio |
+| `numberlayers`, `anthocyancontent`, `brownpigments`, `watermass`, `drymass`, `protein`, `carbonconstituents` | 1.5, 1.0, 0.0, 0.015, 0.006, 0.0, 0.0 | Fixed PROSPECT parameters (note the lower `drymass` default than `LeafOpticsProperties`) |
+| `V2Z`, `fqe` | 0.0, 1.0 | SIF parameters, fixed across bins |
+| `num_bins` | 20 | Number of spectrum bins (one bin if all leaves share the same nitrogen) |
+| `reassignment_threshold` | 0.0 | Relative N change (fraction of bin centre) required before reassignment; 0 disables it |
+| `min_reassignment_change` | 0.05 | Absolute N change (g m\f$^{-2}\f$) required before reassignment; the new bin must also be closer by half this amount |
+
+Behavior notes:
+
+- The first nitrogen-mode `run()` creates the bins and fixes the parameters; parameters passed on later calls are ignored. Later calls track added and removed primitives, reassign leaves whose nitrogen changed, and rebuild the bins if any leaf's nitrogen moves outside their range.
+- `updateNitrogenBasedSpectra()` is a faster update for an unchanged primitive set; it never rebuilds bins, and raises `LeafOpticsError` if nitrogen mode has not been started.
+- A leaf object without `"leaf_nitrogen_gN_m2"` data raises `LeafOpticsError`. Primitives that are not part of a compound object are skipped with a warning.
+- Optional output primitive data (see \ref LOOptionalOutput) is written from each bin's derived pigments.

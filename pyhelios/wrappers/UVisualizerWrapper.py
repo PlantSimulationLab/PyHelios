@@ -364,6 +364,42 @@ except AttributeError:
     _VISUALIZER_FUNCTIONS_AVAILABLE = False
     _ERROR_MANAGEMENT_AVAILABLE = False
 
+# Annotation and depth image functions (helios-core 1.3.91). Registered separately so a library
+# built before they existed keeps the rest of the visualizer instead of falling back to mock mode.
+try:
+    helios_lib.visualizerGetDepthImage.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.visualizerGetDepthImage.restype = ctypes.POINTER(ctypes.c_float)
+
+    helios_lib.visualizerGetPixelUUIDs.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.visualizerGetPixelUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.visualizerWriteImageBoundingBoxes.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t, ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool,
+    ]
+    helios_lib.visualizerWriteImageBoundingBoxes.restype = None
+
+    helios_lib.visualizerWriteImageSegmentationMasks.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t, ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t, ctypes.c_bool, ctypes.c_bool,
+    ]
+    helios_lib.visualizerWriteImageSegmentationMasks.restype = None
+
+    for _fn in ("visualizerWriteDepthImageData", "visualizerWriteDepthImageDataEXR"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_char_p]
+        getattr(helios_lib, _fn).restype = None
+
+    helios_lib.visualizerWriteNormDepthImage.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_char_p, ctypes.c_float]
+    helios_lib.visualizerWriteNormDepthImage.restype = None
+
+    _ANNOTATION_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _ANNOTATION_FUNCTIONS_AVAILABLE = False
+
 def _check_for_helios_error():
     """Check for and raise Helios errors if error management is available."""
     if _ERROR_MANAGEMENT_AVAILABLE:
@@ -1537,6 +1573,101 @@ def get_point_rendering_metrics(visualizer: ctypes.POINTER(UVisualizer)) -> dict
         'rendered_points': rendered_points.value,
         'culling_time_ms': culling_time_ms.value
     }
+
+
+def _require_annotation(visualizer) -> None:
+    """Guard shared by the 1.3.91 annotation and depth image wrappers."""
+    if not _ANNOTATION_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer annotation and depth image functions are not available in the current Helios library. "
+            "Rebuild PyHelios with the visualizer plugin against helios-core 1.3.91 or later: build_scripts/build_helios --clean"
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+
+def _encode_string_array(strings: List[str]):
+    """Build a ctypes char* array from a list of Python strings."""
+    return (ctypes.c_char_p * len(strings))(*[s.encode('utf-8') for s in strings])
+
+
+def get_depth_image(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[List[float], int, int]:
+    """Return (depth_pixels, width, height) of the current view, row 0 at the top, -1 where nothing is visible."""
+    _require_annotation(visualizer)
+    width = ctypes.c_uint()
+    height = ctypes.c_uint()
+    size = ctypes.c_uint()
+    ptr = helios_lib.visualizerGetDepthImage(visualizer, ctypes.byref(width), ctypes.byref(height), ctypes.byref(size))
+    _check_for_helios_error()
+    if not ptr or size.value == 0:
+        raise RuntimeError(f"getDepthImage() returned no data; the framebuffer reported {width.value}x{height.value}")
+    return (ptr[:size.value], width.value, height.value)
+
+
+def get_pixel_uuids(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[List[int], int, int]:
+    """Return (pixel_UUIDs, width, height) of the current view: UUID+1 per pixel, 0 where none, row 0 at the top."""
+    _require_annotation(visualizer)
+    width = ctypes.c_uint()
+    height = ctypes.c_uint()
+    size = ctypes.c_uint()
+    ptr = helios_lib.visualizerGetPixelUUIDs(visualizer, ctypes.byref(width), ctypes.byref(height), ctypes.byref(size))
+    _check_for_helios_error()
+    if not ptr or size.value == 0:
+        raise RuntimeError(f"getPixelUUIDs() returned no data; the framebuffer reported {width.value}x{height.value}")
+    return (ptr[:size.value], width.value, height.value)
+
+
+def write_image_bounding_boxes(visualizer: ctypes.POINTER(UVisualizer), data_labels: List[str], object_class_ids: List[int],
+                               image_file: str, classes_txt_file: str, image_path: str, use_object_data: bool) -> None:
+    """Write YOLO bounding boxes for the current view from primitive (or object) data labels."""
+    _require_annotation(visualizer)
+    if len(data_labels) != len(object_class_ids):
+        raise ValueError("data_labels and object_class_ids must have the same length")
+    label_array = _encode_string_array(data_labels)
+    class_array = (ctypes.c_uint * len(object_class_ids))(*object_class_ids)
+    helios_lib.visualizerWriteImageBoundingBoxes(visualizer, label_array, len(data_labels), class_array,
+                                                 image_file.encode('utf-8'), classes_txt_file.encode('utf-8'),
+                                                 image_path.encode('utf-8'), bool(use_object_data))
+    _check_for_helios_error()
+
+
+def write_image_segmentation_masks(visualizer: ctypes.POINTER(UVisualizer), data_labels: List[str], object_class_ids: List[int],
+                                   json_filename: str, image_file: str, data_attribute_labels: List[str],
+                                   append_file: bool, use_object_data: bool) -> None:
+    """Write COCO segmentation masks for the current view from primitive (or object) data labels."""
+    _require_annotation(visualizer)
+    if len(data_labels) != len(object_class_ids):
+        raise ValueError("data_labels and object_class_ids must have the same length")
+    label_array = _encode_string_array(data_labels)
+    class_array = (ctypes.c_uint * len(object_class_ids))(*object_class_ids)
+    attribute_array = _encode_string_array(data_attribute_labels) if data_attribute_labels else None
+    helios_lib.visualizerWriteImageSegmentationMasks(visualizer, label_array, len(data_labels), class_array,
+                                                     json_filename.encode('utf-8'), image_file.encode('utf-8'),
+                                                     attribute_array, len(data_attribute_labels),
+                                                     bool(append_file), bool(use_object_data))
+    _check_for_helios_error()
+
+
+def write_depth_image_data(visualizer: ctypes.POINTER(UVisualizer), filename: str) -> None:
+    """Write the depth image of the current view to a text file."""
+    _require_annotation(visualizer)
+    helios_lib.visualizerWriteDepthImageData(visualizer, filename.encode('utf-8'))
+    _check_for_helios_error()
+
+
+def write_depth_image_data_exr(visualizer: ctypes.POINTER(UVisualizer), filename: str) -> None:
+    """Write the depth image of the current view to an EXR file."""
+    _require_annotation(visualizer)
+    helios_lib.visualizerWriteDepthImageDataEXR(visualizer, filename.encode('utf-8'))
+    _check_for_helios_error()
+
+
+def write_norm_depth_image(visualizer: ctypes.POINTER(UVisualizer), filename: str, max_depth: float) -> None:
+    """Write the depth image of the current view as a normalized grayscale JPEG."""
+    _require_annotation(visualizer)
+    helios_lib.visualizerWriteNormDepthImage(visualizer, filename.encode('utf-8'), float(max_depth))
+    _check_for_helios_error()
+
 
 # Mock implementations when visualizer is not available
 if not _VISUALIZER_FUNCTIONS_AVAILABLE:

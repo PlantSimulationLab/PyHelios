@@ -44,11 +44,12 @@ except Exception as e:
 
 # Optional plugin imports - only load if the native functions are available
 try:
-    from .WeberPennTree import WeberPennTree, WPTType
+    from .WeberPennTree import WeberPennTree, WPTType, WeberPennTreeParameters
 except (AttributeError, ImportError):
     # WeberPennTree functions not available in current library
     WeberPennTree = None
     WPTType = None
+    WeberPennTreeParameters = None
 
 try:
     from .RadiationModel import (
@@ -172,12 +173,13 @@ from .plant_architecture_params import (
 )
 
 try:
-    from .LeafOptics import LeafOptics, LeafOpticsError, LeafOpticsProperties
+    from .LeafOptics import LeafOptics, LeafOpticsError, LeafOpticsProperties, LeafOpticsProperties_Nauto
 except (AttributeError, ImportError):
     # LeafOptics functions not available in current library
     LeafOptics = None
     LeafOpticsError = None
     LeafOpticsProperties = None
+    LeafOpticsProperties_Nauto = None
 
 try:
     from .LiDARCloud import (
@@ -227,6 +229,7 @@ except (AttributeError, ImportError):
 
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
+from . import annotation
 from .exceptions import (
     HeliosError,
     HeliosRuntimeError,

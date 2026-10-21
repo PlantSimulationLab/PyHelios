@@ -572,6 +572,25 @@ center, radius = context.getDomainBoundingSphere()
 xb, yb, zb = context.getDomainBoundingBox(uuids=[uuid1, uuid2])
 ```
 
+#### Detecting Geometry Changes {#GeometryRevision}
+
+Two counters tell in constant time whether anything has changed since they were last read, without scanning the primitives. If two calls return the same value, nothing of the kind they track happened in between.
+
+- [getGeometryRevision()](pyhelios.Context.Context.getGeometryRevision) advances whenever any primitive is modified or deleted, including setting its primitive data or color.
+- [getShapeRevision()](pyhelios.Context.Context.getShapeRevision) advances only when a primitive is moved, rotated, scaled, given new vertices, texture, (u,v) coordinates or solid fraction, or deleted. Setting primitive data or color does not advance it, so a cache of geometry can tell that it is stale without being invalidated by data writes.
+
+Creating a primitive is not guaranteed to advance either counter, so compare [getPrimitiveCount()](pyhelios.Context.Context.getPrimitiveCount) as well to detect new primitives. Unlike the dirty flags, neither counter is reset by `markGeometryClean()`.
+
+```python
+shape = context.getShapeRevision()
+count = context.getPrimitiveCount()
+
+context.setPrimitiveDataFloat(uuid, "temperature", 25.0)  # does not change the shape revision
+
+if context.getShapeRevision() != shape or context.getPrimitiveCount() != count:
+    rebuild_geometry_cache()
+```
+
 ## Data Structures {#Data}
 
 Data structures that are moved in and out of plugins are managed by the Context.  There are three types of Context data structures that serve different purposes:

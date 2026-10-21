@@ -1,5 +1,97 @@
 # Changelog
 
+# [v0.1.37] 2026-10-21
+
+- Updated helios-core to v1.3.92
+
+## Context
+- Added `Context.getGeometryRevision()`, a counter that advances whenever a primitive is modified or deleted
+- Added `Context.getShapeRevision()`, a counter that advances only when a primitive is moved, reshaped, re-textured or deleted
+- Fixed `writeOBJ()` writing `primitive_dat_fields` rows out of order with the faces when primitives carry `object_label` data, as plants from PlantArchitecture do
+- `writeOBJ()` now raises before writing anything when a primitive lacks a requested `primitive_dat_fields` label or that data is not a scalar
+- Fixed `writeOBJ()` silently writing a truncated `.obj` file in builds without OpenMP or with a limited thread count
+- `writePrimitiveData()` now raises when the output file cannot be opened
+
+## Annotation
+- Added the `pyhelios.annotation` module, writing YOLO bounding boxes and COCO segmentation masks from any pixel-to-primitive map: `labelBoundingBoxes()`, `writeLabelBoundingBoxes()`, `labelMasks()` and `writeLabelSegmentationMasks()`
+
+## Visualizer
+- Added `Visualizer.writeImageBoundingBoxes()` and `writeImageSegmentationMasks()`, writing YOLO boxes and COCO masks for the current view from primitive or object data labels
+- Added `Visualizer.getDepthImage()`, the distance from the camera to the visible surface in each pixel
+- Added `Visualizer.writeDepthImageData()`, `writeDepthImageDataEXR()` and `writeNormDepthImage()`, writing that depth image to a text, EXR or grayscale JPEG file
+- Added `Visualizer.getPixelUUIDs()`, the primitive visible in each pixel of the current view
+- Fixed `getDepthMap()` returning only part of the depth map on a high-DPI display
+- Fixed Context voxels being drawn as a single rectangle instead of a box
+- Corrected the documentation of `setLightDirection()`: the vector points from the scene toward the light
+
+## Radiation
+- Added `RadiationModel.enableBelowHorizonDiffuseRadiation()` and `disableBelowHorizonDiffuseRadiation()`
+- **Behavior change:** diffuse sky radiation now fills only the upper hemisphere, so isolated objects and the edges of finite domains receive less diffuse flux; `enableBelowHorizonDiffuseRadiation()` restores the previous behavior
+- Added `RadiationModel.enableScatteringRayReduction()` and `disableScatteringRayReduction()`; later scattering iterations now launch fewer rays by default
+- Fixed `runBand()` overestimating absorption in scattering bands by absorbing the energy left after the last iteration in place
+- `setMinScatterEnergy()` now takes effect (it previously did nothing) and accepts a threshold of 0, the default
+- `getSkyEnergy()` is deprecated and now raises; it always returned 0
+- `runBand()` now rebuilds the geometry automatically when primitives have been moved, rotated, scaled or reshaped since the last run
+- Added the `invisibility_flag` primitive data, which hides a primitive from the radiation model
+- Seeding the Context with `seedRandomGenerator()` now makes `runBand()` fluxes and camera images reproducible
+- **Behavior change:** rays now wrap through periodic boundaries up to 999 times, so low-sun-angle fluxes in narrow periodic domains are no longer too low
+- **Behavior change:** the period of a periodic domain is now exactly the width of the geometry's bounding box, closing a 20 µm gap between neighbouring copies
+- Fixed a radiation camera placed laterally outside a periodic domain disabling periodicity for the whole model
+- Fixed a radiation camera above or below a periodic domain changing the radiation fluxes
+- `updateGeometry()` now raises for scenes containing voxels on every backend
+- `updateGeometry()` now raises for a triangle with a transparency-channel texture but no texture (u,v) coordinates
+- `runBand()` now raises when a band's scattered energy does not decrease between its last two iterations
+- Fixed one-sided primitives emitting twice the direct radiation they scattered
+- Fixed repeated `runBand()` calls on the Vulkan backend giving increasing fluxes for diffuse-only or emission-only scattering bands
+- Fixed sparsely texture-masked primitives absorbing far too little radiation on the Vulkan backend
+- Fixed primitives with `twosided_flag` 3 still blocking rays on the OptiX 8 and Vulkan backends
+- Fixed bounding boxes and segmentation mask `bbox` values from camera annotation methods ending one pixel short of the object
+- Fixed `writeImageSegmentationMasks()` attaching another object's attribute values to masks when the image held very small labeled regions
+- Sped up diffuse, emission and scattering calculations on the Vulkan backend by about 2x
+- Added `RadiationModel.applyCameraImageCorrections()`, adjusting a camera image's brightness, contrast and saturation
+- Added `RadiationModel.applyCameraColorCorrectionMatrix()`, applying a color correction matrix file such as the one written by `autoCalibrateCameraImage()`
+
+## LiDAR
+- Added `LiDARCloud.getScanRecordPartialMisses()` and `setScanRecordPartialMisses()`, controlling whether a partly intercepted multi-return pulse also records a miss point
+- The default synthetic-scan detection threshold is now 0.001 instead of 0.05
+
+## Leaf Optics
+- Added nitrogen-based automatic leaf spectra: `LeafOptics.run()` with `LeafOpticsProperties_Nauto` derives each leaf's pigments from its `leaf_nitrogen_gN_m2` object data
+- Added `LeafOptics.updateNitrogenBasedSpectra()`, updating nitrogen-based spectra after leaf nitrogen changes
+
+## Energy Balance
+- Fixed transpiration of two-sided primitives being overestimated, giving leaf temperatures that were too low
+- **Behavior change:** `EnergyBalanceModel.run()` now raises when the same UUID appears more than once
+
+## Photosynthesis
+- Fixed `net_photosynthesis` and `Ci` being overestimated for two-sided leaves
+- **Behavior change:** the CO₂ conductance now uses the conventional ratios of 1.6 (stomatal) and 1.37 (boundary layer), lowering light-saturated assimilation by about 5%
+- Stomatal sidedness now falls back to the `evaporating_faces` primitive data when `stomatal_sidedness` is not set
+
+## Stomatal Conductance
+- Fixed leaf-surface humidity and CO₂ of two-sided primitives using the boundary-layer conductance of both faces
+- **Behavior change:** the default boundary-layer conductance when none is set was raised from 0.1 to 1.0 mol/m²-s
+- Added a `material_label` argument to the `StomatalConductanceModel` coefficient setters and `setBMFCoefficientsFromLibrary()`, assigning coefficients to every primitive with that material
+- `setBMFCoefficients()` now accepts a list of coefficients, one per UUID
+- Added `StomatalConductanceModel.getBMFCoefficientsFromLibrary(species)`
+- `setBMFCoefficients()` now accepts `b = 0`, as used by some library species
+
+## Plant Architecture
+- Fixed `buildPlantCanopyFromLibrary()` ignoring its `build_parameters`
+- Fixed shoots growing through large obstacles such as the ground or a wall when obstacle avoidance was enabled
+- Fixed the lateral leaflets of the bean and cowpea models being mirrored about their midrib
+- Petioles of emerging leaves are no longer thinner than three tenths of their full radius
+- Redrew the cowpea embryonic leaf image as symmetric about its midrib
+- Added `PlantArchitecture.determinePhenologyStage()`, returning a plant's current phenological stage
+- Added `PlantArchitecture.getPlantInternodeObjectIDs()`, optionally limited to one shoot type
+- Added `PlantArchitecture.getPlantLeafInclinationAngleDistribution()` and `getPlantLeafAzimuthAngleDistribution()`, histograms of a plant's leaf angles
+- Added `PlantArchitecture.getPlantBasePosition()` and `setPlantBasePosition()`; setting the position affects only shoots added afterward
+- Added `PlantArchitecture.getPlantStemHeight()`, `getPlantName()` and `getShootNodeCount()`
+
+## Weber-Penn Tree
+- Added `WeberPennTree.getTreeParameters()` and `setTreeParameters()` with the `WeberPennTreeParameters` class, allowing species parameters to be read, modified, or defined under a new name
+- Added `WeberPennTree.seedRandomGenerator()`, making generated trees reproducible
+
 # [v0.1.36] 2026-10-05
 
 - Updated helios-core to v1.3.90

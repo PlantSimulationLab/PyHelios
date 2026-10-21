@@ -628,7 +628,36 @@ for name in ("Leaf", "Petiole", "Peduncle", "Flower", "Fruit"):
     print(f"{name}: {len(ids)}")
 ```
 
+`getPlantInternodeObjectIDs(plant_id, shoot_type_label=None)` returns the stem counterpart: one tube object per shoot that has geometry, optionally only for shoots of one type (it raises if the plant has no shoot of that type). These are disjoint from the leaf, petiole, peduncle, flower and fruit IDs.
+
 > **An empty list is a normal result, not a failure.** The reproductive organs — peduncles, flowers and fruit — exist only once a plant reaches the corresponding growth stage, so a plant built at a young age returns `[]` for them. Flowers additionally disappear as they set fruit, so a mature plant can legitimately report many fruit and no flowers. If you expect an organ and get none, advance the plant further with `advanceTime()` rather than treating the empty list as an error.
+
+### Plant-Level Queries
+
+| Method | Returns |
+|---|---|
+| `getPlantName(plant_id)` | Plant model label the plant was built from, e.g. `"bean"` |
+| `determinePhenologyStage(plant_id)` | `"dormant"`, `"vegetative"`, `"reproductive"` (has flowers or fruit) or `"senescent"` (past 90% of the way to dormancy) |
+| `getShootNodeCount(plant_id, shoot_id)` | Current number of nodes on one shoot |
+| `getPlantStemHeight(plant_id)` | Vertical extent (m) of the main stem only; `getPlantHeight()` includes everything above it |
+| `getPlantBasePosition(plant_ids)` | `vec3` for one plant ID, or a list of `vec3` for a sequence of IDs |
+| `setPlantBasePosition(plant_id, base_position)` | Sets where the stem is rooted (see note) |
+| `getPlantLeafInclinationAngleDistribution(plant_ids, num_bins, normalize=True)` | Leaf-area-weighted histogram of blade inclination, `num_bins` bins over 0–90° |
+| `getPlantLeafAzimuthAngleDistribution(plant_ids, num_bins, normalize=True)` | Leaf-area-weighted histogram of blade azimuth, `num_bins` bins over 0–360° |
+
+The two distributions accept one plant ID or a sequence of IDs pooled into one histogram. With `normalize=True` the bins sum to 1; with `False` they hold leaf area (m²). A plant without leaves gives all-zero bins.
+
+```python
+plantarch.loadPlantModelFromLibrary("bean")
+plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 30.0)
+
+print(plantarch.getPlantName(plant_id), plantarch.determinePhenologyStage(plant_id))
+print(f"stem {plantarch.getPlantStemHeight(plant_id):.2f} m, "
+      f"{plantarch.getShootNodeCount(plant_id, 0)} nodes on the main stem")
+incl = plantarch.getPlantLeafInclinationAngleDistribution(plant_id, 9)   # 10-degree bins
+```
+
+> **`setPlantBasePosition()` does not move existing geometry.** It sets the position the base stem is rooted at, so call it on an empty plant from `addPlantInstance()` before `addBaseStemShoot()`. On a plant that already has shoots, `getPlantBasePosition()` reports the new value while the geometry stays where it was built; move a finished plant with `context.translateObject(plantarch.getAllPlantObjectIDs(plant_id), shift)` instead.
 
 ### Multi-Species Simulation
 

@@ -430,6 +430,28 @@ PYHELIOS_API float getShadowLightExposureAtPoint(PlantArchitecture* plantarch, u
 // field of the input phytomer-parameters JSON comes back as a constant holding its draw. nullptr on error.
 PYHELIOS_API const char* resamplePhytomerParametersJSON(helios::Context* context, const char* json_params);
 
+// ---- Plant-level queries ----
+// "dormant", "vegetative", "reproductive" or "senescent"; nullptr on error.
+PYHELIOS_API const char* determinePhenologyStage(PlantArchitecture* plantarch, unsigned int plantID);
+// Plant model label the plant was built from; nullptr on error.
+PYHELIOS_API const char* getPlantName(PlantArchitecture* plantarch, unsigned int plantID);
+// Current node count of one shoot; 0 on error (check getLastErrorCode()).
+PYHELIOS_API unsigned int getShootNodeCount(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
+// Vertical extent of the base stem (plus any same-rank shoot appended to it); -1 on error.
+PYHELIOS_API float getPlantStemHeight(PlantArchitecture* plantarch, unsigned int plantID);
+// Writes the plant's base position (3 floats); 0 on success, -1 on error.
+PYHELIOS_API int getPlantBasePosition(PlantArchitecture* plantarch, unsigned int plantID, float* position);
+// Base positions of several plants as x,y,z triples; *count is the number of positions. nullptr on error.
+PYHELIOS_API float* getPlantBasePositions(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, int* count);
+// Sets the stored base position (3 floats); does not move existing geometry. 0 on success, -1 on error.
+PYHELIOS_API int setPlantBasePosition(PlantArchitecture* plantarch, unsigned int plantID, const float* position);
+// Internode (tube) object IDs of a plant; a non-null shoot_type_label restricts them to shoots of that type. nullptr on error.
+PYHELIOS_API unsigned int* getPlantInternodeObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, const char* shoot_type_label, int* count);
+// Leaf-area-weighted histogram of leaf inclination (Nbins bins over 0-90 deg) or azimuth (0-360 deg) pooled over
+// plant_count plants; *count is Nbins. nullptr on error.
+PYHELIOS_API float* getPlantLeafInclinationAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count);
+PYHELIOS_API float* getPlantLeafAzimuthAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count);
+
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 

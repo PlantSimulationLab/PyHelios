@@ -161,6 +161,44 @@ with Context() as context:
 
 User-specified XML tree library files can be utilized via the \ref pyhelios.WeberPennTree.WeberPennTree::loadXML "loadXML()" function. The argument to this function is an absolute or relative path to the XML file to be loaded. Note that relative file paths are relative to the current working directory.
 
+### Querying and Modifying Tree Parameters {#WPTParameters}
+
+The parameters of any tree in the library can be read with \ref pyhelios.WeberPennTree.WeberPennTree::getTreeParameters "getTreeParameters()", which returns a `WeberPennTreeParameters` dataclass (importable from `pyhelios.WeberPennTree`). Its fields have the same names and meanings as the C++ `WeberPennTreeParameters` struct and the XML tags described [below](#WPTreeXML): scalar fields such as `Scale` and `Levels`, per-level lists such as `nLength` and `nBranches` (indexed by recursion level, at least `Levels+1` entries), the strings `label`, `LeafFile` and `WoodFile`, `WoodColor` as an `RGBcolor`, and `leafAngleCDF`, the cumulative leaf inclination distribution computed from `<LeafAngleDist>` (empty means uniform).
+
+\ref pyhelios.WeberPennTree.WeberPennTree::setTreeParameters "setTreeParameters()" stores a modified parameter set. If the name is not yet in the library, a new species is added under that name, and \ref pyhelios.WeberPennTree.WeberPennTree::buildTree "buildTree()" can then build it. Parameters are checked before they are stored (types, `Levels` between 1 and 3, per-level list lengths, and the native checks such as `Scale > 0` and `nCurveRes >= 1`); a rejected set raises an error and leaves the library unchanged. Changes affect only the WeberPennTree instance they are made on.
+
+```python
+from pyhelios import Context, WeberPennTree, WPTType
+
+with Context() as context:
+    wpt = WeberPennTree(context)
+
+    params = wpt.getTreeParameters(WPTType.LEMON)
+    params.Scale *= 1.5
+    params.nBranches[1] = 40
+    wpt.setTreeParameters("BigLemon", params)   # defines a new species
+
+    tree_id = wpt.buildTree("BigLemon")
+```
+
+### Reproducible Trees {#WPTSeed}
+
+Tree geometry is randomized (e.g. by the `*V` variation parameters and leaf placement) using a random number generator that belongs to the WeberPennTree instance, separate from the Context's generator, so `Context.seedRandomGenerator()` does **not** make trees repeatable. Use \ref pyhelios.WeberPennTree.WeberPennTree::seedRandomGenerator "WeberPennTree.seedRandomGenerator(seed)" instead. The generator advances with each tree built, so re-seed before every build that should be reproduced:
+
+```python
+wpt.seedRandomGenerator(42)
+tree_a = wpt.buildTree(WPTType.APPLE)
+wpt.seedRandomGenerator(42)
+tree_b = wpt.buildTree(WPTType.APPLE)   # identical geometry to tree_a
+```
+
+<table>
+ <tr><th>Parameter and Seed Functions</th></tr>
+ <tr><td>\ref pyhelios.WeberPennTree.WeberPennTree::getTreeParameters "getTreeParameters(tree_name)"</td></tr>
+ <tr><td>\ref pyhelios.WeberPennTree.WeberPennTree::setTreeParameters "setTreeParameters(tree_name, parameters)"</td></tr>
+ <tr><td>\ref pyhelios.WeberPennTree.WeberPennTree::seedRandomGenerator "seedRandomGenerator(seed)"</td></tr>
+</table>
+
 ## Creating Custom XML Files {#WPTreeXML}
 
 ### General Overview {#WPTOverview}

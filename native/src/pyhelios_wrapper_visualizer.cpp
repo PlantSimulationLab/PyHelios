@@ -766,6 +766,211 @@ extern "C" {
         }
     }
 
+    // Annotation and Depth Image Functions (helios-core 1.3.91)
+    PYHELIOS_API float* visualizerGetDepthImage(Visualizer* visualizer, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* size) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!width_pixels || !height_pixels || !size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Width, height and size output pointers cannot be null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+
+            static thread_local std::vector<float> buf;
+            uint w = 0, h = 0;
+            visualizer->getDepthImage(buf, w, h);
+            *width_pixels = w;
+            *height_pixels = h;
+            *size = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::getDepthImage): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::getDepthImage): Unknown error");
+        }
+        if (size) *size = 0;
+        return nullptr;
+    }
+
+    PYHELIOS_API unsigned int* visualizerGetPixelUUIDs(Visualizer* visualizer, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* size) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!width_pixels || !height_pixels || !size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Width, height and size output pointers cannot be null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+
+            static thread_local std::vector<uint> buf;
+            uint w = 0, h = 0;
+            visualizer->getPixelUUIDs(buf, w, h);
+            *width_pixels = w;
+            *height_pixels = h;
+            *size = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::getPixelUUIDs): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::getPixelUUIDs): Unknown error");
+        }
+        if (size) *size = 0;
+        return nullptr;
+    }
+
+    PYHELIOS_API void visualizerWriteImageBoundingBoxes(Visualizer* visualizer, const char** data_labels, size_t label_count, const unsigned int* object_class_ids,
+                                                        const char* image_file, const char* classes_txt_file, const char* image_path, bool use_object_data) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!data_labels || !object_class_ids || !image_file || !classes_txt_file || !image_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+
+            std::vector<std::string> labels;
+            std::vector<uint> class_ids;
+            labels.reserve(label_count);
+            class_ids.reserve(label_count);
+            for (size_t i = 0; i < label_count; i++) {
+                if (!data_labels[i]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Data label cannot be null");
+                    return;
+                }
+                labels.emplace_back(data_labels[i]);
+                class_ids.push_back(object_class_ids[i]);
+            }
+
+            if (use_object_data) {
+                visualizer->writeImageBoundingBoxes_ObjectData(labels, class_ids, image_file, classes_txt_file, image_path);
+            } else {
+                visualizer->writeImageBoundingBoxes(labels, class_ids, image_file, classes_txt_file, image_path);
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::writeImageBoundingBoxes): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::writeImageBoundingBoxes): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerWriteImageSegmentationMasks(Visualizer* visualizer, const char** data_labels, size_t label_count, const unsigned int* object_class_ids,
+                                                            const char* json_filename, const char* image_file, const char** data_attribute_labels, size_t attribute_count,
+                                                            bool append_file, bool use_object_data) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!data_labels || !object_class_ids || !json_filename || !image_file || (attribute_count > 0 && !data_attribute_labels)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+
+            std::vector<std::string> labels;
+            std::vector<uint> class_ids;
+            labels.reserve(label_count);
+            class_ids.reserve(label_count);
+            for (size_t i = 0; i < label_count; i++) {
+                if (!data_labels[i]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Data label cannot be null");
+                    return;
+                }
+                labels.emplace_back(data_labels[i]);
+                class_ids.push_back(object_class_ids[i]);
+            }
+
+            std::vector<std::string> attribute_labels;
+            attribute_labels.reserve(attribute_count);
+            for (size_t i = 0; i < attribute_count; i++) {
+                if (!data_attribute_labels[i]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Data attribute label cannot be null");
+                    return;
+                }
+                attribute_labels.emplace_back(data_attribute_labels[i]);
+            }
+
+            if (use_object_data) {
+                visualizer->writeImageSegmentationMasks_ObjectData(labels, class_ids, json_filename, image_file, attribute_labels, append_file);
+            } else {
+                visualizer->writeImageSegmentationMasks(labels, class_ids, json_filename, image_file, attribute_labels, append_file);
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::writeImageSegmentationMasks): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::writeImageSegmentationMasks): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerWriteDepthImageData(Visualizer* visualizer, const char* filename) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename cannot be null");
+                return;
+            }
+            visualizer->writeDepthImageData(filename);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::writeDepthImageData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::writeDepthImageData): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerWriteDepthImageDataEXR(Visualizer* visualizer, const char* filename) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename cannot be null");
+                return;
+            }
+            visualizer->writeDepthImageDataEXR(filename);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::writeDepthImageDataEXR): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::writeDepthImageDataEXR): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerWriteNormDepthImage(Visualizer* visualizer, const char* filename, float max_depth) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!filename) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Filename cannot be null");
+                return;
+            }
+            visualizer->writeNormDepthImage(filename, max_depth);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::writeNormDepthImage): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::writeNormDepthImage): Unknown error");
+        }
+    }
+
     // Geometry Management Functions
     PYHELIOS_API void clearGeometry(Visualizer* visualizer) {
         try {

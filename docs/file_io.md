@@ -238,6 +238,13 @@ context.addPatch()
 context.writeOBJ("file")
 ```
 
+Primitive data can be written alongside the geometry by passing the UUIDs to export and a list of data labels. For each label, an ASCII file `<stem>_<label>.dat` is written next to the `.obj` file with one value per line: line *i* holds the value for face *i* of the `.obj` file, counting faces in the order they appear. A patch is written as two triangular faces, so its value appears on two consecutive lines. Every exported primitive must carry each requested label with type int, uint, float, double or string; otherwise an error naming the label and primitive is raised before any file is written.
+
+```python
+# Also writes "file_temperature.dat", one value per OBJ face
+context.writeOBJ("file", context.getAllUUIDs(), ["temperature"])
+```
+
 ## Mesh Topology {#MeshTopology}
 
 Triangles read from an OBJ or PLY file are grouped into a `Polymesh` compound object that retains the connectivity of the source file: a deduplicated vertex list, a face table, and optional per-vertex normals and texture coordinates. The vector of UUIDs returned by [loadOBJ()](pyhelios.Context.Context.loadOBJ) and [loadPLY()](pyhelios.Context.Context.loadPLY) is unchanged; the object ID is obtained with [getPrimitiveParentObjectID()](pyhelios.Context.Context.getPrimitiveParentObjectID).
@@ -359,6 +366,42 @@ context.setPolymeshObjectVertices(objID, [vec3(v.x, v.y, v.z * 1.5) for v in ver
 ```
 
 \note Vertex normals are not recomputed and no longer describe the deformed surface. Call [computePolymeshObjectVertexNormals()](pyhelios.Context.Context.computePolymeshObjectVertexNormals) again if exact normals are needed.
+
+## Writing Image Annotations from a Pixel Map {#PixelMapAnnotation}
+
+The [pyhelios.annotation](pyhelios.annotation) module writes machine-learning labels for an image from a *pixel-to-primitive map*: a record of which Context primitive is visible in each pixel. It does not depend on how the image was produced, so any renderer that can produce such a map writes the same annotations for the same labeled Context. The radiation model's camera annotations and the Visualizer's annotation output use the same routines.
+
+The map holds `width * height` unsigned integers, row-major with row 0 at the **top** of the image. Each element is the UUID of the visible primitive **plus one**, and 0 means no primitive is visible. A flat list, a nested list or a NumPy array is accepted; [Visualizer.getPixelUUIDs()](pyhelios.Visualizer.Visualizer.getPixelUUIDs) returns one in exactly this form.
+
+Objects are identified by primitive data (or, with `use_object_data=True`, object data of each primitive's parent object) of type `uint` or `int`: every primitive carrying the same value of a label belongs to one object, and primitives without the label are not annotated.
+
+| Function | Output |
+|----------|--------|
+| `labelBoundingBoxes()` | List of `YOLOBox` (class ID, normalized center and size) |
+| `writeLabelBoundingBoxes()` | YOLO `.txt` file named after the image, plus a class file |
+| `labelMasks()` | Dict of label value to a boolean `(height, width)` NumPy mask |
+| `writeLabelSegmentationMasks()` | COCO JSON segmentation masks, optionally with per-mask data attributes |
+
+A bounding box encloses whole every pixel in which its object is visible, so an object visible in a single pixel still gets a one-pixel box. Each connected region of a segmentation label becomes its own COCO annotation; a region of one or two pixels is too small to outline and is not written.
+
+```python
+from pyhelios import annotation
+from pyhelios.types import int2
+
+pixel_uuids, width, height = visualizer.getPixelUUIDs()
+resolution = int2(width, height)
+
+boxes = annotation.labelBoundingBoxes(context, pixel_uuids, resolution, "leaf_id", 0)
+annotation.writeLabelBoundingBoxes(context, pixel_uuids, resolution, ["leaf_id", "fruit_id"], [0, 1],
+                                   image_file="scene.jpeg", image_path="./labels/")
+
+masks = annotation.labelMasks(context, pixel_uuids, resolution, "leaf_id")
+annotation.writeLabelSegmentationMasks(context, pixel_uuids, resolution, "leaf_id", 0,
+                                       json_filename="masks.json", image_file="scene.jpeg",
+                                       data_attribute_labels=["temperature"])
+```
+
+\note `writeLabelSegmentationMasks()` requires `image_file` to exist; `writeLabelBoundingBoxes()` only uses its name.
 
 ## Exporting Project to XML File Format {#Export}
 

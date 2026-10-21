@@ -8,6 +8,7 @@ capabilities with graceful plugin handling and informative error messages.
 import logging
 import math
 import tempfile
+import warnings
 from typing import Dict, List, Optional, Union
 from contextlib import contextmanager
 from pathlib import Path
@@ -1326,7 +1327,22 @@ class RadiationModel:
     
     @require_plugin('radiation', 'set radiation flux')
     def setDiffuseRadiationFlux(self, label: str, flux: float):
-        """Set diffuse radiation flux for band."""
+        """
+        Set the diffuse (ambient sky) radiation flux for a band.
+
+        The flux is that incident on a horizontal surface above all geometry in the domain.
+
+        Args:
+            label: Band label
+            flux: Diffuse radiative flux (W/m²)
+
+        Note:
+            The diffuse sky fills the upper hemisphere only (helios-core 1.3.92+): rays that
+            leave all geometry heading below the horizon -- past the edge of a finite ground, or
+            from the underside of an isolated object -- receive no diffuse radiation. Use
+            :meth:`enforcePeriodicBoundary` to remove domain edge effects, or
+            :meth:`enableBelowHorizonDiffuseRadiation` to restore the previous full-sphere sky.
+        """
         validate_band_label(label, "label", "setDiffuseRadiationFlux")
         validate_flux_value(flux, "flux", "setDiffuseRadiationFlux")
         self._check_context_alive()
@@ -1460,8 +1476,11 @@ class RadiationModel:
 
         - ``updateGeometry()`` (no argument) is **optional**. :meth:`runBand` builds
           the geometry itself before tracing and rebuilds it whenever primitives have
-          been added to or deleted from the Context since the last build. Call it
-          explicitly only to control when the cost of the build is paid.
+          been added to or deleted from the Context, or moved, rotated, scaled,
+          reshaped or re-textured (helios-core v1.3.92+), since the last build. Call it
+          explicitly only to control when the cost of the build is paid. Setting
+          primitive data does not trigger a rebuild, so it is still required after
+          changing ``twosided_flag`` or ``invisibility_flag`` on existing primitives.
         - ``updateGeometry(uuids)`` restricts the model to a subset of Context
           primitives, and that subset is **never** rebuilt automatically -- doing so
           would silently discard the subset you asked for. You must call it again
@@ -1474,6 +1493,11 @@ class RadiationModel:
             Passing ``uuids`` latches the model into subset mode natively. Calling
             ``updateGeometry()`` with no argument afterwards clears that latch and
             returns the model to tracking the full Context.
+
+        Raises:
+            HeliosRuntimeError: If the scene contains voxels, which no ray-tracing backend
+                supports, or a triangle whose texture has a transparency channel but which has
+                no texture (u,v) coordinates (e.g. one textured with ``setPrimitiveTextureFile()``).
         """
         if uuids is None:
             self._check_context_alive()
@@ -1763,15 +1787,19 @@ class RadiationModel:
     @require_plugin('radiation', 'get sky energy')
     def getSkyEnergy(self) -> float:
         """
-        Get total sky energy.
+        Get the radiative energy lost to the sky (deprecated).
 
-        Returns:
-            Total sky energy value
+        .. deprecated::
+            No ray-tracing backend computes the energy lost to the sky, so this always returned
+            0. As of helios-core 1.3.92 it raises, and it will be removed in helios-core v2.0.
 
-        Example:
-            >>> energy = radiation.getSkyEnergy()
-            >>> print(f"Sky energy: {energy}")
+        Raises:
+            HeliosRuntimeError: Always, from the native library
         """
+        warnings.warn(
+            "RadiationModel.getSkyEnergy() is deprecated: it is not implemented by any "
+            "ray-tracing backend, raises an error, and will be removed in helios-core v2.0.",
+            DeprecationWarning, stacklevel=2)
         self._check_context_alive()
         return radiation_wrapper.getSkyEnergy(self.radiation_model)
 
@@ -1878,18 +1906,119 @@ class RadiationModel:
         radiation_wrapper.enforcePeriodicBoundary(self.radiation_model, boundary)
         logger.debug(f"Enforced periodic boundary: {boundary}")
 
+    @require_plugin('radiation', 'configure diffuse radiation')
+    def enableBelowHorizonDiffuseRadiation(self) -> None:
+        """
+        Apply the diffuse (ambient) sky radiation to rays that leave the domain below the horizon.
+
+        By default the diffuse sky fills only the upper hemisphere, so a ray that leaves all
+        geometry heading downward (past the edge of a finite ground, or from the underside of an
+        isolated object) receives no ambient radiation. This restores the behavior of
+        helios-core before 1.3.92, in which the sky filled the full sphere and such rays received
+        the same ambient radiation as rays leaving upward. It applies to all bands and to camera
+        rays.
+
+        Note:
+            To avoid dark domain edges from a finite ground, use
+            :meth:`enforcePeriodicBoundary` rather than this method.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.92
+
+        Example:
+            >>> radiation.enableBelowHorizonDiffuseRadiation()
+        """
+        self._check_context_alive()
+        radiation_wrapper.enableBelowHorizonDiffuseRadiation(self.radiation_model)
+
+    @require_plugin('radiation', 'configure diffuse radiation')
+    def disableBelowHorizonDiffuseRadiation(self) -> None:
+        """
+        Restrict the diffuse (ambient) sky radiation to the upper hemisphere (the default).
+
+        See :meth:`enableBelowHorizonDiffuseRadiation`.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.92
+        """
+        self._check_context_alive()
+        radiation_wrapper.disableBelowHorizonDiffuseRadiation(self.radiation_model)
+
+    @require_plugin('radiation', 'configure radiation simulation')
+    def enableScatteringRayReduction(self) -> None:
+        """
+        Reduce the diffuse rays per primitive in later scattering iterations (on by default).
+
+        Each scattering iteration launches less energy than the one before, so later iterations
+        contribute less to the noise in the absorbed flux. With this on, iteration ``s`` uses
+        ``N * E_s / E_0`` rays per primitive, where ``N`` is the diffuse ray count, ``E_s`` the
+        energy launched in iteration ``s`` and ``E_0`` that of the first scattering iteration,
+        with a minimum of 16. This makes strongly scattering bands faster, at the cost of
+        somewhat noisier scattered flux -- most for deeply shaded primitives and camera images,
+        whose light comes mostly from scattering.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.92
+        """
+        self._check_context_alive()
+        radiation_wrapper.enableScatteringRayReduction(self.radiation_model)
+
+    @require_plugin('radiation', 'configure radiation simulation')
+    def disableScatteringRayReduction(self) -> None:
+        """
+        Launch the full diffuse ray count in every scattering iteration.
+
+        See :meth:`enableScatteringRayReduction`.
+
+        Raises:
+            RuntimeError: If the native library predates helios-core v1.3.92
+        """
+        self._check_context_alive()
+        radiation_wrapper.disableScatteringRayReduction(self.radiation_model)
+
     # Configuration methods
     @require_plugin('radiation', 'configure radiation simulation')
     @validate_scattering_depth_params
     def setScatteringDepth(self, label: str, depth: int):
-        """Set scattering depth for radiation band."""
+        """
+        Set the maximum number of scattering iterations for a band.
+
+        Args:
+            label: Band label
+            depth: Maximum number of scattering iterations (0 turns scattering off)
+
+        Note:
+            The energy that would still be scattered after the last iteration is not dropped:
+            the remaining iterations are summed as a geometric series, each primitive receiving
+            its absorption in the last iteration times ``q/(1-q)``, where ``q`` is the ratio of
+            the energy launched in the last two iterations. A depth of 3 to 5 is therefore
+            usually enough for absorbed fluxes, even for strongly scattering bands.
+
+            Radiation camera images are not extrapolated: they include only the scattering
+            iterations that were traced, so images of strongly scattering bands need a higher
+            depth.
+        """
         self._check_context_alive()
         radiation_wrapper.setScatteringDepth(self.radiation_model, label, depth)
     
     @require_plugin('radiation', 'configure radiation simulation')
     @validate_min_scatter_energy_params
     def setMinScatterEnergy(self, label: str, energy: float):
-        """Set minimum scatter energy for radiation band."""
+        """
+        Set the flux threshold that stops a band's scattering iterations early.
+
+        Scattering iterations for the band stop once no primitive has more than ``energy`` flux
+        left to scatter. The energy still in flight when they stop is accounted for as described
+        in :meth:`setScatteringDepth`.
+
+        Args:
+            label: Band label
+            energy: Flux threshold, in the units of the band's flux (W/m² for a shortwave band).
+                The default of 0 never stops early, so the band runs to its scattering depth.
+
+        Raises:
+            ValueError: If ``energy`` is negative or not a number
+        """
         self._check_context_alive()
         radiation_wrapper.setMinScatterEnergy(self.radiation_model, label, energy)
     
@@ -2563,6 +2692,155 @@ class RadiationModel:
         self._check_context_alive()
         radiation_wrapper.setCameraPixelData(self.radiation_model, camera_label, band_label, pixel_data)
         logger.debug(f"Set pixel data for camera '{camera_label}', band '{band_label}': {len(pixel_data)} pixels")
+
+    @staticmethod
+    def _validate_rgb_camera_labels(camera_label, red_band_label, green_band_label, blue_band_label, function_name):
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError(f"Camera label must be a non-empty string, got {camera_label!r}")
+        validate_band_label(red_band_label, "red_band_label", function_name)
+        validate_band_label(green_band_label, "green_band_label", function_name)
+        validate_band_label(blue_band_label, "blue_band_label", function_name)
+
+    @require_plugin('radiation', 'apply camera image corrections')
+    def applyCameraImageCorrections(self, camera_label: str, red_band_label: str, green_band_label: str,
+                                    blue_band_label: str, saturation_adjustment: float = 1.0,
+                                    brightness_adjustment: float = 1.0,
+                                    contrast_adjustment: float = 1.0) -> None:
+        """
+        Apply brightness, contrast, and saturation corrections to an RGB camera image.
+
+        Modifies the camera's stored pixel data for the three bands in place, in this order:
+
+        1. Lens flare, if lens flare is enabled for the camera.
+        2. Brightness and contrast, in linear space:
+           ``v = 0.5 + (v * brightness_adjustment - 0.5) * contrast_adjustment``.
+        3. Saturation: each channel is moved away from (or toward) the pixel's luminance,
+           ``v = L + saturation_adjustment * (v - L)``.
+
+        Values are not clamped. A factor of exactly 1.0 skips its step, so calling with all
+        defaults changes nothing (apart from lens flare, when enabled).
+
+        Call it after :meth:`runBand` has rendered the camera (or after
+        :meth:`setCameraPixelData`) and before :meth:`writeCameraImage`. Auto exposure and
+        white balance are not applied here: they are applied during rendering according to
+        the camera's ``exposure`` and ``white_balance`` :class:`CameraProperties`. sRGB gamma
+        compression is applied by :meth:`writeCameraImage` when it writes a 3-band image. If
+        you also apply a color correction matrix, apply it first with
+        :meth:`applyCameraColorCorrectionMatrix`.
+
+        The corrections change the stored pixel data permanently, so calling this twice
+        compounds them. The factors are recorded in the camera metadata when metadata export
+        is enabled with :meth:`enableCameraMetadata`.
+
+        Args:
+            camera_label: Label of an existing camera.
+            red_band_label: Band holding the red channel.
+            green_band_label: Band holding the green channel.
+            blue_band_label: Band holding the blue channel.
+            saturation_adjustment: Saturation factor; 0 gives grayscale, >1 more saturated.
+                Default 1.0 (no change).
+            brightness_adjustment: Multiplier applied to every channel. Default 1.0 (no change).
+            contrast_adjustment: Contrast factor about a midpoint of 0.5. Default 1.0 (no change).
+
+        Raises:
+            ValueError: If a label is not a non-empty string, or an adjustment is not a
+                finite, non-negative number
+            RadiationModelError: If the camera does not exist or has no pixel data for one of
+                the bands (e.g. it has not been rendered)
+
+        Example:
+            >>> radiation.runBand(["red", "green", "blue"])
+            >>> radiation.applyCameraImageCorrections("cam", "red", "green", "blue",
+            ...                                       saturation_adjustment=1.2,
+            ...                                       brightness_adjustment=1.1,
+            ...                                       contrast_adjustment=1.05)
+            >>> radiation.writeCameraImage("cam", ["red", "green", "blue"], "corrected")
+        """
+        self._validate_rgb_camera_labels(camera_label, red_band_label, green_band_label, blue_band_label,
+                                         "applyCameraImageCorrections")
+        for name, value in (("saturation_adjustment", saturation_adjustment),
+                            ("brightness_adjustment", brightness_adjustment),
+                            ("contrast_adjustment", contrast_adjustment)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be a finite, non-negative number, got {value}")
+
+        self._check_context_alive()
+        try:
+            radiation_wrapper.applyCameraImageCorrections(
+                self.radiation_model, camera_label, red_band_label, green_band_label, blue_band_label,
+                saturation_adjustment, brightness_adjustment, contrast_adjustment)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to apply image corrections to camera '{camera_label}': {e}")
+
+    @require_plugin('radiation', 'apply camera color correction matrix')
+    def applyCameraColorCorrectionMatrix(self, camera_label: str, red_band_label: str, green_band_label: str,
+                                         blue_band_label: str, ccm_file_path: Union[str, os.PathLike]) -> None:
+        """
+        Apply a color correction matrix (CCM) from an XML file to an RGB camera image.
+
+        Each pixel's ``(r, g, b)`` is replaced in place by ``M @ (r, g, b)`` for a 3x3 matrix,
+        or ``M[:, :3] @ (r, g, b) + M[:, 3]`` for a matrix with a fourth, affine offset column
+        (3 rows of 4 values, labelled ``matrix_type="4x3"`` in the file).
+        Values are not clamped. The matrix file is the XML format written by
+        :meth:`autoCalibrateCameraImage` through its ``ccm_export_file_path`` argument::
+
+            <helios>
+              <ColorCorrectionMatrix camera_label="cam" matrix_type="3x3">
+                <row>1.0 0.0 0.0</row>
+                <row>0.0 1.0 0.0</row>
+                <row>0.0 0.0 1.0</row>
+              </ColorCorrectionMatrix>
+            </helios>
+
+        Each ``<row>`` must be on its own line. Apply it after :meth:`runBand` and before
+        :meth:`applyCameraImageCorrections` and :meth:`writeCameraImage`. The change to the
+        stored pixel data is permanent, so applying the matrix twice applies it twice.
+
+        Args:
+            camera_label: Label of an existing camera.
+            red_band_label: Band holding the red channel.
+            green_band_label: Band holding the green channel.
+            blue_band_label: Band holding the blue channel.
+            ccm_file_path: Path to the color correction matrix XML file.
+
+        Raises:
+            ValueError: If a label is not a non-empty string or the path is empty
+            FileNotFoundError: If ccm_file_path does not exist
+            RadiationModelError: If the camera or a band does not exist, the camera has no
+                pixel data for a band, or the file holds no valid 3x3 or 4x3 matrix
+
+        Example:
+            >>> radiation.autoCalibrateCameraImage("cam", "red", "green", "blue", "calibrated.jpeg",
+            ...                                    ccm_export_file_path="cam_ccm.xml")
+            >>> # Later, apply the same correction to a new render of that camera
+            >>> radiation.runBand(["red", "green", "blue"])
+            >>> radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", "cam_ccm.xml")
+            >>> radiation.writeCameraImage("cam", ["red", "green", "blue"], "corrected")
+        """
+        self._validate_rgb_camera_labels(camera_label, red_band_label, green_band_label, blue_band_label,
+                                         "applyCameraColorCorrectionMatrix")
+        if not isinstance(ccm_file_path, (str, os.PathLike)):
+            raise ValueError(f"ccm_file_path must be a string or path, got {type(ccm_file_path).__name__}")
+        ccm_file_path = os.fspath(ccm_file_path)
+        if not ccm_file_path.strip():
+            raise ValueError("ccm_file_path must be a non-empty path")
+        if not os.path.isfile(ccm_file_path):
+            raise FileNotFoundError(f"Color correction matrix file not found: {ccm_file_path}")
+
+        self._check_context_alive()
+        try:
+            radiation_wrapper.applyCameraColorCorrectionMatrix(
+                self.radiation_model, camera_label, red_band_label, green_band_label, blue_band_label,
+                ccm_file_path)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(
+                f"Failed to apply color correction matrix '{ccm_file_path}' to camera '{camera_label}': {e}")
 
     # =========================================================================
     # Camera Library Functions (v1.3.58+)

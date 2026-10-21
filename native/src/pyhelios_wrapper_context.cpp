@@ -4,6 +4,7 @@
 #include "../include/pyhelios_wrapper_common.h"
 #include "../include/pyhelios_wrapper_context.h"
 #include "Context.h"
+#include "annotation_io.h"
 #include <string>
 #include <exception>
 #include <cstring>
@@ -48,6 +49,30 @@ extern "C" {
     
     PYHELIOS_API bool isGeometryDirty(helios::Context* context) {
         return context->isGeometryDirty();
+    }
+
+    PYHELIOS_API uint64_t getGeometryRevision(helios::Context* context) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return context->getGeometryRevision();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getGeometryRevision): ") + e.what()); return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getGeometryRevision): Unknown error."); return 0;
+        }
+    }
+
+    PYHELIOS_API uint64_t getShapeRevision(helios::Context* context) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return context->getShapeRevision();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getShapeRevision): ") + e.what()); return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getShapeRevision): Unknown error."); return 0;
+        }
     }
 
     // Random number generator seeding
@@ -12234,6 +12259,140 @@ extern "C" {
         } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (size) *size = 0; return nullptr; }
         catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getObjectPrimitiveVertexNormals): ") + e.what()); if (size) *size = 0; return nullptr; }
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getObjectPrimitiveVertexNormals): Unknown error."); if (size) *size = 0; return nullptr; }
+    }
+
+    //=============================================================================
+    // Image annotation from a pixel-to-primitive map (helios::annotation, helios-core 1.3.91)
+    //=============================================================================
+
+    namespace {
+        thread_local std::vector<float> s_annotation_box_geometry;
+        thread_local std::vector<unsigned int> s_annotation_box_class_IDs;
+        thread_local std::vector<int> s_annotation_mask_values;
+        thread_local std::vector<unsigned char> s_annotation_mask_pixels;
+
+        //! Copy the C-ABI annotation inputs into the containers helios::annotation takes; returns false (with the error set) if a required pointer is null
+        bool unpackAnnotationInputs(const char* caller, helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, const char** data_labels, const unsigned int* class_IDs, unsigned int label_count,
+                                    std::vector<uint>& pixel_vec, std::vector<std::string>& label_vec, std::vector<uint>& class_vec) {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (") + caller + "): Context pointer is null"); return false; }
+            if (pixel_count > 0 && !pixel_UUIDs) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (") + caller + "): Pixel map pointer is null"); return false; }
+            if (label_count > 0 && (!data_labels || !class_IDs)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (") + caller + "): Data label or class ID pointer is null"); return false; }
+            pixel_vec.assign(pixel_UUIDs, pixel_UUIDs + pixel_count);
+            label_vec.clear();
+            label_vec.reserve(label_count);
+            for (unsigned int i = 0; i < label_count; ++i) {
+                if (!data_labels[i]) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (") + caller + "): Data label is null"); return false; }
+                label_vec.emplace_back(data_labels[i]);
+            }
+            class_vec.assign(class_IDs, class_IDs + label_count);
+            return true;
+        }
+    }
+
+    PYHELIOS_API float* annotationLabelBoundingBoxes(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char** data_labels, const unsigned int* class_IDs,
+                                                     unsigned int label_count, bool use_object_data, unsigned int** box_class_IDs, unsigned int* box_count) {
+        clearError();
+        try {
+            if (!box_class_IDs || !box_count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::labelBoundingBoxes): Output pointer is null"); return nullptr; }
+            *box_class_IDs = nullptr;
+            *box_count = 0;
+            std::vector<uint> pixel_vec, class_vec;
+            std::vector<std::string> label_vec;
+            if (!unpackAnnotationInputs("annotation::labelBoundingBoxes", context, pixel_UUIDs, pixel_count, data_labels, class_IDs, label_count, pixel_vec, label_vec, class_vec)) { return nullptr; }
+
+            const std::vector<helios::annotation::YOLOBox> boxes = helios::annotation::labelBoundingBoxes(context, pixel_vec, helios::make_int2(width, height), label_vec, class_vec, use_object_data);
+
+            s_annotation_box_geometry.clear();
+            s_annotation_box_class_IDs.clear();
+            s_annotation_box_geometry.reserve(boxes.size() * 4);
+            s_annotation_box_class_IDs.reserve(boxes.size());
+            for (const auto& box : boxes) {
+                s_annotation_box_class_IDs.push_back(box.class_ID);
+                s_annotation_box_geometry.push_back(box.center.x);
+                s_annotation_box_geometry.push_back(box.center.y);
+                s_annotation_box_geometry.push_back(box.size.x);
+                s_annotation_box_geometry.push_back(box.size.y);
+            }
+            *box_count = static_cast<unsigned int>(boxes.size());
+            *box_class_IDs = s_annotation_box_class_IDs.empty() ? nullptr : s_annotation_box_class_IDs.data();
+            return s_annotation_box_geometry.empty() ? nullptr : s_annotation_box_geometry.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (box_count) *box_count = 0; return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (annotation::labelBoundingBoxes): ") + e.what()); if (box_count) *box_count = 0; return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (annotation::labelBoundingBoxes): Unknown error."); if (box_count) *box_count = 0; return nullptr; }
+    }
+
+    PYHELIOS_API void annotationWriteLabelBoundingBoxes(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char** data_labels, const unsigned int* class_IDs,
+                                                        unsigned int label_count, const char* image_file, const char* classes_txt_file, const char* image_path, bool use_object_data) {
+        clearError();
+        try {
+            if (!image_file || !classes_txt_file || !image_path) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeLabelBoundingBoxes): File name pointer is null"); return; }
+            std::vector<uint> pixel_vec, class_vec;
+            std::vector<std::string> label_vec;
+            if (!unpackAnnotationInputs("annotation::writeLabelBoundingBoxes", context, pixel_UUIDs, pixel_count, data_labels, class_IDs, label_count, pixel_vec, label_vec, class_vec)) { return; }
+
+            helios::annotation::writeLabelBoundingBoxes(context, pixel_vec, helios::make_int2(width, height), label_vec, class_vec, image_file, classes_txt_file, image_path, use_object_data,
+                                                        "pyhelios.annotation.writeLabelBoundingBoxes");
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (annotation::writeLabelBoundingBoxes): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (annotation::writeLabelBoundingBoxes): Unknown error."); }
+    }
+
+    PYHELIOS_API unsigned int annotationLabelMasks(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char* data_label, bool use_object_data, int** label_values,
+                                                   unsigned char** mask_pixels) {
+        clearError();
+        try {
+            if (!label_values || !mask_pixels) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::labelMasks): Output pointer is null"); return 0; }
+            *label_values = nullptr;
+            *mask_pixels = nullptr;
+            if (!data_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::labelMasks): Data label is null"); return 0; }
+            std::vector<uint> pixel_vec, class_vec;
+            std::vector<std::string> label_vec;
+            if (!unpackAnnotationInputs("annotation::labelMasks", context, pixel_UUIDs, pixel_count, nullptr, nullptr, 0, pixel_vec, label_vec, class_vec)) { return 0; }
+
+            const std::map<int, std::vector<std::vector<bool>>> masks = helios::annotation::labelMasks(context, pixel_vec, helios::make_int2(width, height), data_label, use_object_data);
+
+            s_annotation_mask_values.clear();
+            s_annotation_mask_pixels.clear();
+            s_annotation_mask_values.reserve(masks.size());
+            s_annotation_mask_pixels.reserve(masks.size() * size_t(std::max(width, 0)) * size_t(std::max(height, 0)));
+            for (const auto& entry : masks) {
+                s_annotation_mask_values.push_back(entry.first);
+                for (const auto& row : entry.second) {
+                    for (bool pixel : row) {
+                        s_annotation_mask_pixels.push_back(pixel ? 1 : 0);
+                    }
+                }
+            }
+            *label_values = s_annotation_mask_values.empty() ? nullptr : s_annotation_mask_values.data();
+            *mask_pixels = s_annotation_mask_pixels.empty() ? nullptr : s_annotation_mask_pixels.data();
+            return static_cast<unsigned int>(masks.size());
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (annotation::labelMasks): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (annotation::labelMasks): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API void annotationWriteLabelSegmentationMasks(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char** data_labels, const unsigned int* class_IDs,
+                                                            unsigned int label_count, const char* json_filename, const char* image_file, const char** data_attribute_labels, unsigned int attribute_count, bool append_file,
+                                                            bool use_object_data) {
+        clearError();
+        try {
+            if (!json_filename || !image_file) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeLabelSegmentationMasks): File name pointer is null"); return; }
+            if (attribute_count > 0 && !data_attribute_labels) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeLabelSegmentationMasks): Attribute label pointer is null"); return; }
+            std::vector<uint> pixel_vec, class_vec;
+            std::vector<std::string> label_vec;
+            if (!unpackAnnotationInputs("annotation::writeLabelSegmentationMasks", context, pixel_UUIDs, pixel_count, data_labels, class_IDs, label_count, pixel_vec, label_vec, class_vec)) { return; }
+            std::vector<std::string> attribute_vec;
+            attribute_vec.reserve(attribute_count);
+            for (unsigned int i = 0; i < attribute_count; ++i) {
+                if (!data_attribute_labels[i]) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeLabelSegmentationMasks): Attribute label is null"); return; }
+                attribute_vec.emplace_back(data_attribute_labels[i]);
+            }
+
+            helios::annotation::writeLabelSegmentationMasks(context, pixel_vec, helios::make_int2(width, height), label_vec, class_vec, json_filename, image_file, attribute_vec, append_file, use_object_data,
+                                                            "pyhelios.annotation.writeLabelSegmentationMasks");
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (annotation::writeLabelSegmentationMasks): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (annotation::writeLabelSegmentationMasks): Unknown error."); }
     }
 
 } //extern "C"

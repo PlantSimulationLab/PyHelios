@@ -552,3 +552,249 @@ class TestLeafOpticsAssets:
         # isAvailable should work without instance
         is_available = LeafOptics.isAvailable()
         assert isinstance(is_available, bool)
+
+
+# ---------------------------------------------------------------------------
+# Nitrogen-based automatic mode (LeafOpticsProperties_Nauto)
+# ---------------------------------------------------------------------------
+
+def _import_nauto():
+    try:
+        from pyhelios.LeafOptics import LeafOpticsProperties_Nauto
+    except ImportError:
+        pytest.skip("pyhelios.LeafOptics not importable in this environment")
+    return LeafOpticsProperties_Nauto
+
+
+@pytest.mark.cross_platform
+class TestLeafOpticsNautoProperties:
+    """Pure-Python behavior of LeafOpticsProperties_Nauto and nitrogen-mode argument checks"""
+
+    def test_defaults_mirror_cpp_header(self):
+        """Every default must match the LeafOpticsProperties_Nauto struct in LeafOptics.h"""
+        import re
+        from pathlib import Path
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        header = Path(__file__).resolve().parent.parent / "helios-core" / "plugins" / "leafoptics" / "include" / "LeafOptics.h"
+        if not header.exists():
+            pytest.skip("helios-core LeafOptics.h not present")
+        text = header.read_text()
+        body = text[text.index("struct LeafOpticsProperties_Nauto"):]
+        body = body[:body.index("};")]
+        cpp_defaults = {name: float(value.rstrip("fF"))
+                        for name, value in re.findall(r"^\s*(?:float|uint)\s+(\w+)\s*=\s*([0-9.eE+-]+f?)\s*;", body, re.M)}
+
+        props = LeafOpticsProperties_Nauto()
+        assert len(cpp_defaults) == 15
+        for name, value in cpp_defaults.items():
+            assert getattr(props, name) == pytest.approx(value), f"default for {name} differs from C++"
+
+    def test_to_list_order(self):
+        LeafOpticsProperties_Nauto = _import_nauto()
+        props = LeafOpticsProperties_Nauto(
+            f_photosynthetic=0.1, N_to_Cab_coefficient=0.2, Car_to_Cab_ratio=0.3, numberlayers=1.4,
+            anthocyancontent=0.5, brownpigments=0.6, watermass=0.7, drymass=0.8, protein=0.9,
+            carbonconstituents=1.0, V2Z=0.11, fqe=1.2, num_bins=7, reassignment_threshold=1.3,
+            min_reassignment_change=1.4)
+        assert props.to_list() == pytest.approx(
+            [0.1, 0.2, 0.3, 1.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 0.11, 1.2, 1.3, 1.4])
+
+    @pytest.mark.parametrize("field,value", [
+        ("numberlayers", 0.5),
+        ("drymass", -0.001),
+        ("f_photosynthetic", 1.5),
+        ("V2Z", 2.0),
+        ("min_reassignment_change", -0.1),
+        ("watermass", float("nan")),
+        ("N_to_Cab_coefficient", "0.4"),
+        ("num_bins", 0),
+        ("num_bins", 2.5),
+        ("num_bins", True),
+    ])
+    def test_validate_rejects_bad_values(self, field, value):
+        LeafOpticsProperties_Nauto = _import_nauto()
+        props = LeafOpticsProperties_Nauto(**{field: value})
+        with pytest.raises(ValueError, match=field):
+            props.validate()
+
+    def test_validate_accepts_defaults(self):
+        LeafOpticsProperties_Nauto = _import_nauto()
+        LeafOpticsProperties_Nauto().validate()
+
+    def test_run_argument_validation_without_native(self):
+        """run() rejects bad nitrogen-mode arguments before touching the native layer"""
+        LeafOpticsProperties_Nauto = _import_nauto()
+        from pyhelios.LeafOptics import LeafOptics
+
+        lo = object.__new__(LeafOptics)  # no native instance; only argument checks are exercised
+        lo._leafoptics_ptr = None
+        with pytest.raises(ValueError, match="label must not be given"):
+            lo.run([1], LeafOpticsProperties_Nauto(), "my_label")
+        with pytest.raises(ValueError, match="empty"):
+            lo.run([], LeafOpticsProperties_Nauto())
+        with pytest.raises(ValueError, match="num_bins"):
+            lo.run([1], LeafOpticsProperties_Nauto(num_bins=0))
+        with pytest.raises(ValueError, match="LeafOpticsProperties_Nauto"):
+            lo.run([1], {"f_photosynthetic": 0.5})
+
+    def test_wrapper_functions_fail_loudly_without_instance(self):
+        from pyhelios.wrappers import ULeafOpticsWrapper as w
+        params = [0.0] * w.LEAF_OPTICS_NAUTO_FLOAT_COUNT
+        with pytest.raises((ValueError, RuntimeError, NotImplementedError)):
+            w.leafOpticsRunNitrogen(None, [1], params, 1)
+        with pytest.raises((ValueError, RuntimeError, NotImplementedError)):
+            w.leafOpticsUpdateNitrogenBasedSpectra(None)
+
+
+@pytest.mark.native_only
+class TestLeafOpticsNitrogenMode:
+    """Nitrogen-based automatic leaf optics against the native library"""
+
+    @staticmethod
+    def _leaf(context, x, nitrogen):
+        from pyhelios.types import vec2, int2
+        objID = context.addTileObject(center=vec3(x, 0, 1), size=vec2(0.1, 0.1), subdiv=int2(2, 2))
+        if nitrogen is not None:
+            context.setObjectDataFloat(objID, "leaf_nitrogen_gN_m2", nitrogen)
+        return objID, context.getObjectPrimitiveUUIDs(objID)
+
+    def test_assigns_binned_spectra_per_object(self, basic_context):
+        from pyhelios import LeafOptics
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        low_obj, low_uuids = self._leaf(basic_context, 0, 1.0)
+        high_obj, high_uuids = self._leaf(basic_context, 1, 3.0)
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.run(low_uuids + high_uuids, LeafOpticsProperties_Nauto(num_bins=2))
+
+        for i in range(2):
+            assert basic_context.doesGlobalDataExist(f"leaf_reflectivity_Nauto_{i}")
+            assert basic_context.doesGlobalDataExist(f"leaf_transmissivity_Nauto_{i}")
+            assert basic_context.doesGlobalDataExist(f"fluspect_biochem_Nauto_{i}")
+        assert not basic_context.doesGlobalDataExist("leaf_reflectivity_Nauto_2")
+
+        # Every primitive of an object shares that object's bin
+        for uuid in low_uuids:
+            assert basic_context.getPrimitiveData(uuid, "reflectivity_spectrum") == "leaf_reflectivity_Nauto_0"
+            assert basic_context.getPrimitiveData(uuid, "transmissivity_spectrum") == "leaf_transmissivity_Nauto_0"
+        for uuid in high_uuids:
+            assert basic_context.getPrimitiveData(uuid, "reflectivity_spectrum") == "leaf_reflectivity_Nauto_1"
+
+    def test_chlorophyll_follows_nitrogen(self, basic_context):
+        """Cab = N * 100 * f_photosynthetic * N_to_Cab_coefficient, Car = Cab * Car_to_Cab_ratio"""
+        from pyhelios import LeafOptics
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        _, low_uuids = self._leaf(basic_context, 0, 1.0)
+        _, high_uuids = self._leaf(basic_context, 1, 3.0)
+
+        params = LeafOpticsProperties_Nauto(num_bins=2, Car_to_Cab_ratio=0.2)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.optionalOutputPrimitiveData("chlorophyll")
+            lo.optionalOutputPrimitiveData("carotenoid")
+            lo.run(low_uuids + high_uuids, params)
+
+        assert basic_context.getPrimitiveDataFloat(low_uuids[0], "chlorophyll") == pytest.approx(20.0, rel=1e-5)
+        assert basic_context.getPrimitiveDataFloat(high_uuids[0], "chlorophyll") == pytest.approx(60.0, rel=1e-5)
+        assert basic_context.getPrimitiveDataFloat(high_uuids[0], "carotenoid") == pytest.approx(12.0, rel=1e-5)
+
+    def test_chlorophyll_is_clamped(self, basic_context):
+        from pyhelios import LeafOptics
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        _, low_uuids = self._leaf(basic_context, 0, 0.0)
+        _, high_uuids = self._leaf(basic_context, 1, 10.0)
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.optionalOutputPrimitiveData("chlorophyll")
+            lo.run(low_uuids + high_uuids, LeafOpticsProperties_Nauto(num_bins=2))
+
+        assert basic_context.getPrimitiveDataFloat(low_uuids[0], "chlorophyll") == pytest.approx(5.0)
+        assert basic_context.getPrimitiveDataFloat(high_uuids[0], "chlorophyll") == pytest.approx(80.0)
+
+    def test_spectra_respond_to_nitrogen(self, basic_context):
+        """A high-nitrogen leaf is greener: more chlorophyll, lower visible reflectance"""
+        from pyhelios import LeafOptics, LeafOpticsProperties
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        _, low_uuids = self._leaf(basic_context, 0, 0.5)
+        _, high_uuids = self._leaf(basic_context, 1, 3.0)
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.optionalOutputPrimitiveData("chlorophyll")
+            lo.optionalOutputPrimitiveData("carotenoid")
+            lo.run(low_uuids + high_uuids, LeafOpticsProperties_Nauto(num_bins=2))
+
+            def spectrum_of(uuid):
+                props = LeafOpticsProperties(
+                    numberlayers=1.5, chlorophyllcontent=basic_context.getPrimitiveDataFloat(uuid, "chlorophyll"),
+                    carotenoidcontent=basic_context.getPrimitiveDataFloat(uuid, "carotenoid"),
+                    anthocyancontent=1.0, watermass=0.015, drymass=0.006)
+                return props.chlorophyllcontent, lo.getLeafSpectra(props)
+
+            cab_low, (wl, refl_low, _) = spectrum_of(low_uuids[0])
+            cab_high, (_, refl_high, _) = spectrum_of(high_uuids[0])
+
+        assert cab_low == pytest.approx(10.0, rel=1e-5)
+        assert cab_high == pytest.approx(60.0, rel=1e-5)
+        i550 = wl.index(550.0)
+        assert refl_high[i550] < refl_low[i550]
+
+    def test_missing_nitrogen_data_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        _, uuids = self._leaf(basic_context, 0, None)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(LeafOpticsError, match="leaf_nitrogen_gN_m2"):
+                lo.run(uuids, LeafOpticsProperties_Nauto())
+
+    def test_update_before_run_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+
+        with LeafOptics(basic_context) as lo:
+            with pytest.raises(LeafOpticsError, match="[Nn]itrogen mode is not active"):
+                lo.updateNitrogenBasedSpectra()
+
+    def test_update_reassigns_after_nitrogen_change(self, basic_context):
+        from pyhelios import LeafOptics
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        low_obj, low_uuids = self._leaf(basic_context, 0, 1.0)
+        _, high_uuids = self._leaf(basic_context, 1, 3.0)
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.run(low_uuids + high_uuids, LeafOpticsProperties_Nauto(num_bins=2))
+            assert basic_context.getPrimitiveData(low_uuids[0], "reflectivity_spectrum") == "leaf_reflectivity_Nauto_0"
+
+            basic_context.setObjectDataFloat(low_obj, "leaf_nitrogen_gN_m2", 3.0)
+            lo.updateNitrogenBasedSpectra()
+
+        for uuid in low_uuids:
+            assert basic_context.getPrimitiveData(uuid, "reflectivity_spectrum") == "leaf_reflectivity_Nauto_1"
+
+    def test_rerun_rebuilds_bins_when_nitrogen_leaves_range(self, basic_context):
+        from pyhelios import LeafOptics
+        LeafOpticsProperties_Nauto = _import_nauto()
+
+        obj, uuids = self._leaf(basic_context, 0, 1.0)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.optionalOutputPrimitiveData("chlorophyll")
+            lo.run(uuids, LeafOpticsProperties_Nauto())
+            assert basic_context.getPrimitiveDataFloat(uuids[0], "chlorophyll") == pytest.approx(20.0, rel=1e-5)
+
+            basic_context.setObjectDataFloat(obj, "leaf_nitrogen_gN_m2", 2.5)
+            lo.run(uuids, LeafOpticsProperties_Nauto())
+
+        assert basic_context.getPrimitiveDataFloat(uuids[0], "chlorophyll") == pytest.approx(50.0, rel=1e-5)

@@ -6,6 +6,7 @@
 #include "Context.h"
 #include <string>
 #include <exception>
+#include <vector>
 
 #ifdef STOMATALCONDUCTANCE_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_stomatalconductance.h"
@@ -480,6 +481,224 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setBMFCoefficientsFromLibrary): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setBMFCoefficientsFromLibrary): Unknown error setting BMF coefficients from library for UUIDs.");
+        }
+    }
+
+    // Material-label coefficient assignment
+    PYHELIOS_API void setStomatalConductanceBWBCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float gs0, float a1) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!material_label || material_label[0] == '\0') {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null or empty");
+                return;
+            }
+
+            BWBcoefficients coeffs;
+            coeffs.gs0 = gs0;
+            coeffs.a1 = a1;
+            model->setModelCoefficients(std::string(material_label), coeffs);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setModelCoefficients): Unknown error setting BWB coefficients for material.");
+        }
+    }
+
+    PYHELIOS_API void setStomatalConductanceBBLCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float gs0, float a1, float D0) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!material_label || material_label[0] == '\0') {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null or empty");
+                return;
+            }
+
+            BBLcoefficients coeffs;
+            coeffs.gs0 = gs0;
+            coeffs.a1 = a1;
+            coeffs.D0 = D0;
+            model->setModelCoefficients(std::string(material_label), coeffs);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setModelCoefficients): Unknown error setting BBL coefficients for material.");
+        }
+    }
+
+    PYHELIOS_API void setStomatalConductanceMOPTCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float gs0, float g1) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!material_label || material_label[0] == '\0') {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null or empty");
+                return;
+            }
+
+            MOPTcoefficients coeffs;
+            coeffs.gs0 = gs0;
+            coeffs.g1 = g1;
+            model->setModelCoefficients(std::string(material_label), coeffs);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setModelCoefficients): Unknown error setting MOPT coefficients for material.");
+        }
+    }
+
+    PYHELIOS_API void setStomatalConductanceBMFCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float Em, float i0, float k, float b) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!material_label || material_label[0] == '\0') {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null or empty");
+                return;
+            }
+
+            BMFcoefficients coeffs;
+            coeffs.Em = Em;
+            coeffs.i0 = i0;
+            coeffs.k = k;
+            coeffs.b = b;
+            model->setModelCoefficients(std::string(material_label), coeffs);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setModelCoefficients): Unknown error setting BMF coefficients for material.");
+        }
+    }
+
+    PYHELIOS_API void setStomatalConductanceBBCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float pi_0, float pi_m, float theta, float sigma, float chi) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!material_label || material_label[0] == '\0') {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null or empty");
+                return;
+            }
+
+            BBcoefficients coeffs;
+            coeffs.pi_0 = pi_0;
+            coeffs.pi_m = pi_m;
+            coeffs.theta = theta;
+            coeffs.sigma = sigma;
+            coeffs.chi = chi;
+            model->setModelCoefficients(std::string(material_label), coeffs);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setModelCoefficients): Unknown error setting BB coefficients for material.");
+        }
+    }
+
+    PYHELIOS_API void setStomatalConductanceBMFCoefficientsFromLibraryForMaterial(StomatalConductanceModel* model, const char* species, const char* material_label) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!species) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Species name is null");
+                return;
+            }
+            if (!material_label || material_label[0] == '\0') {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Material label is null or empty");
+                return;
+            }
+
+            model->setBMFCoefficientsFromLibrary(std::string(species), std::string(material_label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setBMFCoefficientsFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setBMFCoefficientsFromLibrary): Unknown error setting BMF coefficients from library for material.");
+        }
+    }
+
+    PYHELIOS_API void setStomatalConductanceBMFCoefficientsPerUUID(StomatalConductanceModel* model, const float* coeffs, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!coeffs) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficient array is null");
+                return;
+            }
+            if (!uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null");
+                return;
+            }
+            if (uuid_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID count must be greater than 0");
+                return;
+            }
+
+            std::vector<BMFcoefficients> coeff_vector(uuid_count);
+            for (unsigned int i = 0; i < uuid_count; i++) {
+                coeff_vector[i].Em = coeffs[4 * i + 0];
+                coeff_vector[i].i0 = coeffs[4 * i + 1];
+                coeff_vector[i].k = coeffs[4 * i + 2];
+                coeff_vector[i].b = coeffs[4 * i + 3];
+            }
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+            model->setModelCoefficients(coeff_vector, uuid_vector);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::setModelCoefficients): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::setModelCoefficients): Unknown error setting per-UUID BMF coefficients.");
+        }
+    }
+
+    PYHELIOS_API void getStomatalConductanceBMFCoefficientsFromLibrary(StomatalConductanceModel* model, const char* species, float* coeffs_out) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null");
+                return;
+            }
+            if (!species) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Species name is null");
+                return;
+            }
+            if (!coeffs_out) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output coefficient array is null");
+                return;
+            }
+
+            BMFcoefficients coeffs = model->getBMFCoefficientsFromLibrary(std::string(species));
+            coeffs_out[0] = coeffs.Em;
+            coeffs_out[1] = coeffs.i0;
+            coeffs_out[2] = coeffs.k;
+            coeffs_out[3] = coeffs.b;
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::getBMFCoefficientsFromLibrary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::getBMFCoefficientsFromLibrary): Unknown error getting BMF coefficients from library.");
         }
     }
 

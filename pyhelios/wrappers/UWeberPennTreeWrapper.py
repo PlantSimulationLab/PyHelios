@@ -74,6 +74,55 @@ try:
 except AttributeError:
     _WPT_FUNCTIONS_AVAILABLE = False
 
+# Flat-array layout used to exchange WeberPennTreeParameters with the native library.
+# The order must match native/include/pyhelios_wrapper_weberpenntree.h.
+WPT_PARAM_FLOAT_FIELDS = (
+    'BaseSize', 'BaseSizeV', 'BaseSplitSize', 'BaseSplitSizeV', 'Scale', 'ScaleV', 'ZScale', 'ZScaleV',
+    'Ratio', 'RatioPower', 'LobeDepth', 'Flare', 'LeafScale', 'LeafScaleX',
+)  # followed by WoodColor.r, WoodColor.g, WoodColor.b
+WPT_PARAM_NUM_FLOATS = len(WPT_PARAM_FLOAT_FIELDS) + 3
+WPT_PARAM_INT_FIELDS = ('Shape', 'BaseSplits', 'BaseSplitsV', 'Lobes', 'Levels', 'Leaves', 'LeafShape')
+WPT_PARAM_FLOAT_VECTOR_FIELDS = (
+    'nSegSplits', 'nSplitAngle', 'nSplitAngleV', 'nCurve', 'nCurveV', 'nCurveBack', 'nLength', 'nLengthV',
+    'nTaper', 'nDownAngle', 'nDownAngleV', 'nRotate', 'nRotateV', 'leafAngleCDF',
+)
+WPT_PARAM_INT_VECTOR_FIELDS = ('nCurveRes', 'nBranches')
+WPT_PARAM_STRING_FIELDS = ('label', 'LeafFile', 'WoodFile')
+
+try:
+    helios_lib.getWeberPennTreeParameters.argtypes = [
+        ctypes.POINTER(UWeberPennTree), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int64),
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.POINTER(ctypes.c_float)),
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.POINTER(ctypes.c_int)),
+        ctypes.POINTER(ctypes.c_char_p),
+    ]
+    helios_lib.getWeberPennTreeParameters.restype = None
+    helios_lib.getWeberPennTreeParameters.errcheck = _check_error_wpt
+
+    helios_lib.setWeberPennTreeParameters.argtypes = [
+        ctypes.POINTER(UWeberPennTree), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_int64),
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_int),
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+    ]
+    helios_lib.setWeberPennTreeParameters.restype = None
+    helios_lib.setWeberPennTreeParameters.errcheck = _check_error_wpt
+
+    helios_lib.seedWeberPennTreeRandomGenerator.argtypes = [ctypes.POINTER(UWeberPennTree), ctypes.c_uint]
+    helios_lib.seedWeberPennTreeRandomGenerator.restype = None
+    helios_lib.seedWeberPennTreeRandomGenerator.errcheck = _check_error_wpt
+
+    _WPT_PARAMETER_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _WPT_PARAMETER_FUNCTIONS_AVAILABLE = False
+
+_WPT_PARAMETER_UNAVAILABLE_MSG = (
+    "WeberPennTree parameter/seed functions are not available in the current Helios library. "
+    "Rebuild PyHelios with the weberpenntree plugin: build_scripts/build_helios"
+)
+
 # Function definitions
 def createWeberPennTree(context : UContext):
     if not _WPT_FUNCTIONS_AVAILABLE:
@@ -160,3 +209,74 @@ def loadXML(uweberPennTree, filename: str, silent: bool = False):
         raise NotImplementedError("WeberPennTree functions not available in current Helios library.")
     filename_bytes = filename.encode('utf-8')
     helios_lib.loadXMLWeberPennTree(uweberPennTree, filename_bytes, silent)
+
+def getTreeParameters(uweberPennTree, treename: str) -> dict:
+    """Return the raw parameter fields of a tree as a dict keyed by C++ field name.
+
+    WoodColor is returned as a list [r, g, b]; vectors as lists.
+    """
+    if not _WPT_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_WPT_PARAMETER_UNAVAILABLE_MSG)
+    scalars = (ctypes.c_float * WPT_PARAM_NUM_FLOATS)()
+    ints = (ctypes.c_int64 * len(WPT_PARAM_INT_FIELDS))()
+    fvec_lengths = (ctypes.c_uint * len(WPT_PARAM_FLOAT_VECTOR_FIELDS))()
+    fvec_data = ctypes.POINTER(ctypes.c_float)()
+    ivec_lengths = (ctypes.c_uint * len(WPT_PARAM_INT_VECTOR_FIELDS))()
+    ivec_data = ctypes.POINTER(ctypes.c_int)()
+    strings = (ctypes.c_char_p * len(WPT_PARAM_STRING_FIELDS))()
+
+    helios_lib.getWeberPennTreeParameters(
+        uweberPennTree, treename.encode('utf-8'), scalars, ints,
+        fvec_lengths, ctypes.byref(fvec_data), ivec_lengths, ctypes.byref(ivec_data), strings)
+
+    result = {}
+    for i, name in enumerate(WPT_PARAM_FLOAT_FIELDS):
+        result[name] = scalars[i]
+    n = len(WPT_PARAM_FLOAT_FIELDS)
+    result['WoodColor'] = [scalars[n], scalars[n + 1], scalars[n + 2]]
+    for i, name in enumerate(WPT_PARAM_INT_FIELDS):
+        result[name] = int(ints[i])
+    offset = 0
+    for i, name in enumerate(WPT_PARAM_FLOAT_VECTOR_FIELDS):
+        length = fvec_lengths[i]
+        result[name] = [fvec_data[offset + j] for j in range(length)]
+        offset += length
+    offset = 0
+    for i, name in enumerate(WPT_PARAM_INT_VECTOR_FIELDS):
+        length = ivec_lengths[i]
+        result[name] = [int(ivec_data[offset + j]) for j in range(length)]
+        offset += length
+    for i, name in enumerate(WPT_PARAM_STRING_FIELDS):
+        value = strings[i]
+        result[name] = value.decode('utf-8') if value is not None else ''
+    return result
+
+
+def setTreeParameters(uweberPennTree, treename: str, fields: dict) -> None:
+    """Set a tree's parameters from a dict keyed by C++ field name (same layout as getTreeParameters)."""
+    if not _WPT_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_WPT_PARAMETER_UNAVAILABLE_MSG)
+    scalar_values = [fields[name] for name in WPT_PARAM_FLOAT_FIELDS] + list(fields['WoodColor'])
+    scalars = (ctypes.c_float * WPT_PARAM_NUM_FLOATS)(*scalar_values)
+    ints = (ctypes.c_int64 * len(WPT_PARAM_INT_FIELDS))(*[fields[name] for name in WPT_PARAM_INT_FIELDS])
+
+    fvecs = [list(fields[name]) for name in WPT_PARAM_FLOAT_VECTOR_FIELDS]
+    fvec_lengths = (ctypes.c_uint * len(fvecs))(*[len(v) for v in fvecs])
+    flat_f = [x for v in fvecs for x in v]
+    fvec_data = (ctypes.c_float * max(len(flat_f), 1))(*flat_f)
+
+    ivecs = [list(fields[name]) for name in WPT_PARAM_INT_VECTOR_FIELDS]
+    ivec_lengths = (ctypes.c_uint * len(ivecs))(*[len(v) for v in ivecs])
+    flat_i = [x for v in ivecs for x in v]
+    ivec_data = (ctypes.c_int * max(len(flat_i), 1))(*flat_i)
+
+    helios_lib.setWeberPennTreeParameters(
+        uweberPennTree, treename.encode('utf-8'), scalars, ints,
+        fvec_lengths, fvec_data, ivec_lengths, ivec_data,
+        fields['label'].encode('utf-8'), fields['LeafFile'].encode('utf-8'), fields['WoodFile'].encode('utf-8'))
+
+
+def seedRandomGenerator(uweberPennTree, seed: int) -> None:
+    if not _WPT_PARAMETER_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_WPT_PARAMETER_UNAVAILABLE_MSG)
+    helios_lib.seedWeberPennTreeRandomGenerator(uweberPennTree, seed)

@@ -493,6 +493,267 @@ class TestStomatalConductanceIntegration:
                 stomatal.setBMFCoefficients(bmf_coeffs, uuids=[patch_uuid])
                 stomatal.run()
 
+def _bare_stomatal_model():
+    """A StomatalConductanceModel that skips __init__, for exercising pure-Python validation
+    that runs before any native call (works in mock mode)."""
+    from pyhelios.StomatalConductance import StomatalConductanceModel
+    model = object.__new__(StomatalConductanceModel)
+    model.context = None
+    model.stomatal_model = None
+    return model
+
+
+@pytest.mark.cross_platform
+class TestStomatalCoefficientTargetValidation:
+    """Validation of material_label / per-UUID coefficient assignment (no native library needed)"""
+
+    def _all_setters(self):
+        from pyhelios.StomatalConductance import (BWBCoefficients, BBLCoefficients, MOPTCoefficients,
+                                                  BMFCoefficients, BBCoefficients)
+        return [
+            ("setBWBCoefficients", BWBCoefficients(gs0=0.07, a1=9.0)),
+            ("setBBLCoefficients", BBLCoefficients(gs0=0.07, a1=4.0, D0=14570.0)),
+            ("setMOPTCoefficients", MOPTCoefficients(gs0=0.08, g1=2.6)),
+            ("setBMFCoefficients", BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)),
+            ("setBBCoefficients", BBCoefficients(pi_0=1.0, pi_m=1.67, theta=211.22, sigma=0.44, chi=2.08)),
+        ]
+
+    def test_uuids_and_material_label_mutually_exclusive(self):
+        model = _bare_stomatal_model()
+        for name, coeffs in self._all_setters():
+            with pytest.raises(ValueError, match="not both"):
+                getattr(model, name)(coeffs, uuids=[0], material_label="leaf")
+            with pytest.raises(ValueError, match="not both"):
+                getattr(model, name)(coeffs, [0], "leaf")
+        with pytest.raises(ValueError, match="not both"):
+            model.setBMFCoefficientsFromLibrary("Almond", uuids=[0], material_label="leaf")
+        with pytest.raises(ValueError, match="not both"):
+            model.setBMFCoefficientsFromLibrary("Almond", [0], "leaf")
+
+    def test_wrong_coefficient_type_positional_and_keyword(self):
+        from pyhelios.StomatalConductance import BWBCoefficients, BBLCoefficients
+        model = _bare_stomatal_model()
+        wrong = BBLCoefficients(gs0=0.07, a1=4.0, D0=14570.0)
+        for name, _ in self._all_setters():
+            if name == "setBBLCoefficients":
+                bad = BWBCoefficients(gs0=0.07, a1=9.0)
+            else:
+                bad = wrong
+            with pytest.raises(ValueError, match="Coefficients"):
+                getattr(model, name)(bad, None, "leaf")
+            with pytest.raises(ValueError, match="Coefficients"):
+                getattr(model, name)(coeffs=bad, material_label="leaf")
+
+    def test_wrong_material_label_type(self):
+        model = _bare_stomatal_model()
+        for name, coeffs in self._all_setters():
+            with pytest.raises(ValueError, match="material_label"):
+                getattr(model, name)(coeffs, None, 42)
+            with pytest.raises(ValueError, match="material_label"):
+                getattr(model, name)(coeffs, material_label="")
+        with pytest.raises(ValueError, match="material_label"):
+            model.setBMFCoefficientsFromLibrary("Almond", material_label=3)
+
+    def test_string_passed_as_uuids_is_rejected_with_hint(self):
+        model = _bare_stomatal_model()
+        for name, coeffs in self._all_setters():
+            with pytest.raises(ValueError, match="material_label="):
+                getattr(model, name)(coeffs, "leaf")
+            with pytest.raises(ValueError, match="uuids"):
+                getattr(model, name)(coeffs, uuids=[1.5])
+
+    def test_bmf_list_form_validation(self):
+        from pyhelios.StomatalConductance import BMFCoefficients, BWBCoefficients
+        model = _bare_stomatal_model()
+        c = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
+        with pytest.raises(ValueError, match="requires uuids"):
+            model.setBMFCoefficients([c, c])
+        with pytest.raises(ValueError, match="does not match"):
+            model.setBMFCoefficients([c, c], [1, 2, 3])
+        with pytest.raises(ValueError, match="does not match"):
+            model.setBMFCoefficients(coeffs=[c], uuids=[1, 2])
+        with pytest.raises(ValueError, match="material_label"):
+            model.setBMFCoefficients([c], material_label="leaf")
+        with pytest.raises(ValueError, match="BMFCoefficients"):
+            model.setBMFCoefficients([c, BWBCoefficients(gs0=0.1, a1=1.0)], [1, 2])
+        with pytest.raises(ValueError, match="BMFCoefficients"):
+            model.setBMFCoefficients([], [])
+        with pytest.raises(ValueError, match="Em"):
+            model.setBMFCoefficients([c, c._replace(Em=-1.0)], [1, 2])
+
+    def test_bmf_zero_b_accepted_by_validation(self):
+        """Library species such as Elderberry have b == 0, so b must not be rejected."""
+        from pyhelios.StomatalConductance import StomatalConductanceModel, BMFCoefficients
+        StomatalConductanceModel._validate_bmf(BMFCoefficients(Em=41.28, i0=305.3, k=102490.0, b=0.0))
+        with pytest.raises(ValueError, match="b must be non-negative"):
+            StomatalConductanceModel._validate_bmf(BMFCoefficients(Em=41.28, i0=305.3, k=102490.0, b=-1.0))
+
+    def test_library_getter_species_validation(self):
+        model = _bare_stomatal_model()
+        with pytest.raises(ValueError, match="Species"):
+            model.getBMFCoefficientsFromLibrary("")
+        with pytest.raises(ValueError, match="Species"):
+            model.getBMFCoefficientsFromLibrary(5)
+
+    def test_wrapper_functions_mock_or_unavailable(self):
+        """Without a model pointer the new wrapper functions fail loudly, never silently."""
+        from pyhelios.wrappers import UStomatalConductanceWrapper as w
+        calls = [
+            lambda: w.setBWBCoefficientsForMaterial(None, "leaf", 0.1, 1.0),
+            lambda: w.setBBLCoefficientsForMaterial(None, "leaf", 0.1, 1.0, 1.0),
+            lambda: w.setMOPTCoefficientsForMaterial(None, "leaf", 0.1, 1.0),
+            lambda: w.setBMFCoefficientsForMaterial(None, "leaf", 1.0, 1.0, 1.0, 1.0),
+            lambda: w.setBBCoefficientsForMaterial(None, "leaf", 1.0, 1.0, 1.0, 1.0, 1.0),
+            lambda: w.setBMFCoefficientsFromLibraryForMaterial(None, "Almond", "leaf"),
+            lambda: w.setBMFCoefficientsPerUUID(None, [[1.0, 1.0, 1.0, 1.0]], [0]),
+            lambda: w.getBMFCoefficientsFromLibrary(None, "Almond"),
+        ]
+        for call in calls:
+            with pytest.raises((ValueError, NotImplementedError)):
+                call()
+
+
+def _bmf_gs(context, uuid):
+    return context.getPrimitiveData(uuid, "moisture_conductance")
+
+
+@pytest.mark.native_only
+class TestStomatalMaterialAndPerUUIDCoefficients:
+    """Material-label and per-UUID coefficient assignment against the native library"""
+
+    def _leaves(self, context, n):
+        uuids = [context.addPatch(center=vec3(i, 0, 1), size=[0.1, 0.1]) for i in range(n)]
+        context.setPrimitiveDataFloat(uuids, "radiation_flux_PAR", 300.0)
+        context.setPrimitiveDataFloat(uuids, "air_humidity", 0.4)
+        return uuids
+
+    def test_material_label_coefficients_change_gs_by_material(self):
+        from pyhelios import StomatalConductanceModel, BMFCoefficients
+        with Context() as context:
+            a, b = self._leaves(context, 2)
+            context.addMaterial("leaf_a")
+            context.addMaterial("leaf_b")
+            context.assignMaterialToPrimitive(a, "leaf_a")
+            context.assignMaterialToPrimitive(b, "leaf_b")
+            with StomatalConductanceModel(context) as stomatal:
+                stomatal.setBMFCoefficientsFromLibrary("Almond")
+                stomatal.run()
+                baseline_a, baseline_b = _bmf_gs(context, a), _bmf_gs(context, b)
+                assert baseline_a == pytest.approx(baseline_b)
+
+                low = stomatal.getBMFCoefficientsFromLibrary("Almond")
+                stomatal.setBMFCoefficients(low._replace(Em=low.Em * 0.25), material_label="leaf_a")
+                stomatal.run()
+                gs_a, gs_b = _bmf_gs(context, a), _bmf_gs(context, b)
+                assert gs_b == pytest.approx(baseline_b)
+                assert gs_a == pytest.approx(0.25 * baseline_a, rel=0.05)
+
+    def test_material_label_takes_precedence_over_uuid(self):
+        from pyhelios import StomatalConductanceModel, BMFCoefficients
+        with Context() as context:
+            (a,) = self._leaves(context, 1)
+            context.addMaterial("leaf_a")
+            context.assignMaterialToPrimitive(a, "leaf_a")
+            with StomatalConductanceModel(context) as stomatal:
+                stomatal.setBMFCoefficientsFromLibrary("Walnut", material_label="leaf_a")
+                stomatal.run()
+                gs_material = _bmf_gs(context, a)
+                stomatal.setBMFCoefficientsFromLibrary("Almond", uuids=[a])
+                stomatal.run()
+                assert _bmf_gs(context, a) == pytest.approx(gs_material)
+
+    def test_material_label_for_every_model_type_runs(self):
+        from pyhelios import (StomatalConductanceModel, BWBCoefficients, BBLCoefficients,
+                              MOPTCoefficients, BBCoefficients)
+        with Context() as context:
+            (a,) = self._leaves(context, 1)
+            context.addMaterial("leaf_a")
+            context.assignMaterialToPrimitive(a, "leaf_a")
+            with StomatalConductanceModel(context) as stomatal:
+                stomatal.setBWBCoefficients(BWBCoefficients(gs0=0.0733, a1=9.422), material_label="leaf_a")
+                stomatal.run()
+                stomatal.setBBLCoefficients(BBLCoefficients(gs0=0.0743, a1=4.265, D0=14570.0), material_label="leaf_a")
+                stomatal.run()
+                stomatal.setMOPTCoefficients(MOPTCoefficients(gs0=0.0825, g1=2.637), material_label="leaf_a")
+                stomatal.run()
+                stomatal.setBBCoefficients(BBCoefficients(pi_0=1.0, pi_m=1.67, theta=211.22, sigma=0.4408, chi=2.076),
+                                           material_label="leaf_a")
+                stomatal.run()
+                assert _bmf_gs(context, a) > 0.0
+
+    def test_unknown_material_label_raises(self):
+        from pyhelios import StomatalConductanceModel, StomatalConductanceModelError, BWBCoefficients
+        with Context() as context:
+            self._leaves(context, 1)
+            with StomatalConductanceModel(context) as stomatal:
+                with pytest.raises(StomatalConductanceModelError, match="no_such_material"):
+                    stomatal.setBWBCoefficients(BWBCoefficients(gs0=0.07, a1=9.0), material_label="no_such_material")
+                with pytest.raises(StomatalConductanceModelError, match="no_such_material"):
+                    stomatal.setBMFCoefficientsFromLibrary("Almond", material_label="no_such_material")
+
+    def test_per_uuid_coefficient_list_gives_per_primitive_gs(self):
+        from pyhelios import StomatalConductanceModel
+        with Context() as context:
+            uuids = self._leaves(context, 3)
+            with StomatalConductanceModel(context) as stomatal:
+                species = ["Almond", "Walnut", "Grape"]
+                sets = [stomatal.getBMFCoefficientsFromLibrary(sp) for sp in species]
+                stomatal.setBMFCoefficients(sets, uuids=uuids)
+                stomatal.run()
+                gs_list = [_bmf_gs(context, u) for u in uuids]
+
+                for u, sp, gs in zip(uuids, species, gs_list):
+                    stomatal.setBMFCoefficientsFromLibrary(sp, uuids=[u])
+                stomatal.run()
+                expected = [_bmf_gs(context, u) for u in uuids]
+                assert gs_list == pytest.approx(expected)
+                assert len({round(g, 6) for g in gs_list}) == 3
+
+    def test_per_uuid_length_mismatch_rejected(self):
+        from pyhelios import StomatalConductanceModel
+        with Context() as context:
+            uuids = self._leaves(context, 2)
+            with StomatalConductanceModel(context) as stomatal:
+                c = stomatal.getBMFCoefficientsFromLibrary("Almond")
+                with pytest.raises(ValueError, match="does not match"):
+                    stomatal.setBMFCoefficients([c], uuids=uuids)
+
+    def test_library_getter_round_trips_through_uuid_setter(self):
+        from pyhelios import StomatalConductanceModel, BMFCoefficients
+        with Context() as context:
+            (a,) = self._leaves(context, 1)
+            with StomatalConductanceModel(context) as stomatal:
+                coeffs = stomatal.getBMFCoefficientsFromLibrary("Almond")
+                assert isinstance(coeffs, BMFCoefficients)
+                assert coeffs.Em == pytest.approx(865.52, rel=1e-5)
+                assert coeffs.i0 == pytest.approx(38.65, rel=1e-5)
+                assert coeffs.k == pytest.approx(780320.1, rel=1e-5)
+                assert coeffs.b == pytest.approx(2086.07, rel=1e-5)
+
+                stomatal.setBMFCoefficientsFromLibrary("Almond")
+                stomatal.run()
+                gs_library = _bmf_gs(context, a)
+
+                stomatal.setBMFCoefficientsFromLibrary("Walnut")
+                stomatal.run()
+                assert _bmf_gs(context, a) != pytest.approx(gs_library)
+
+                stomatal.setBMFCoefficients(coeffs, uuids=[a])
+                stomatal.run()
+                assert _bmf_gs(context, a) == pytest.approx(gs_library)
+
+    def test_library_getter_for_zero_b_species_is_settable(self):
+        from pyhelios import StomatalConductanceModel
+        with Context() as context:
+            (a,) = self._leaves(context, 1)
+            with StomatalConductanceModel(context) as stomatal:
+                elder = stomatal.getBMFCoefficientsFromLibrary("Elderberry")
+                assert elder.b == 0.0
+                stomatal.setBMFCoefficients(elder, uuids=[a])
+                stomatal.run()
+                assert _bmf_gs(context, a) > 0.0
+
+
 @pytest.mark.slow
 class TestStomatalConductancePerformance:
     """Performance tests for plugin operations"""

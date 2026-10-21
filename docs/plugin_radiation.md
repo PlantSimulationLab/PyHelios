@@ -283,12 +283,68 @@ radiation.setDiffuseRayCount("PAR", config["diffuse"])
 ### Scattering Control
 
 ```python
-# Set scattering depth (number of bounces)
+# Set the maximum number of scattering iterations
 radiation.setScatteringDepth("PAR", 3)
 
-# Set minimum scatter energy threshold
+# Optionally stop early once no primitive has more than this flux (W/m²) left to scatter.
+# The default of 0 never stops early.
 radiation.setMinScatterEnergy("PAR", 0.01)
 ```
+
+The energy still waiting to be scattered after the last iteration is not dropped: the remaining
+iterations are summed as a geometric series. A scattering depth of 3 to 5 is therefore usually
+enough for absorbed fluxes, even in strongly scattering bands such as near-infrared. Radiation
+camera images are not extrapolated this way, so images of strongly scattering bands need a
+higher depth.
+
+Later scattering iterations launch fewer diffuse rays per primitive, in proportion to the energy
+left to scatter (minimum 16). This makes strongly scattering bands faster, at the cost of somewhat
+noisier scattered flux on deeply shaded primitives and in camera images. Call
+`radiation.disableScatteringRayReduction()` to launch the full diffuse ray count in every
+iteration, and `enableScatteringRayReduction()` to restore the default.
+
+> **Note:** Before helios-core 1.3.92 the energy left after the last iteration was absorbed where
+> it sat, which overstated near-infrared leaf absorption by about 20% at a scattering depth of 3,
+> and `setMinScatterEnergy()` had no effect.
+
+### Diffuse Sky Hemisphere
+
+The diffuse (ambient) sky set by `setDiffuseRadiationFlux()` fills only the upper hemisphere.
+Rays that leave all geometry heading below the horizon -- past the edge of a finite ground, or
+from the underside of an isolated object -- receive no diffuse radiation, and camera pixels
+looking below the horizon show no sky.
+
+```python
+# Remove domain edge effects (recommended)
+radiation.enforcePeriodicBoundary("xy")
+
+# Or restore the full-sphere sky of helios-core before 1.3.92
+radiation.enableBelowHorizonDiffuseRadiation()
+radiation.disableBelowHorizonDiffuseRadiation()   # back to the default
+```
+
+> **Note:** Before helios-core 1.3.92 the sky filled the full sphere, so an isolated two-sided
+> horizontal patch absorbed twice the diffuse flux. Diffuse fluxes near the edges of finite
+> domains and on isolated objects are lower than in earlier versions.
+
+### Invisible Primitives
+
+Setting the `uint` primitive data `invisibility_flag` to 1 makes a primitive invisible to the
+radiation model: it is not intersected by any ray, does not appear in camera images, and neither
+absorbs nor emits radiation. It takes precedence over `twosided_flag`, including one set through
+a material. Call `updateGeometry()` after setting it on existing primitives.
+
+```python
+context.setPrimitiveDataUInt(uuid, "invisibility_flag", 1)
+radiation.updateGeometry()
+```
+
+### Reproducibility
+
+The ray tracer draws its random numbers from the Context's random generator, so seeding the
+Context with `context.seedRandomGenerator(seed)` makes `runBand()` fluxes and camera images
+reproducible on a given backend (helios-core 1.3.92+). Results are not identical across
+backends.
 
 ### Emission Control {#RadEmissionControl}
 
@@ -326,7 +382,10 @@ The value exists only for bands that have actually been run, since `runBand()` i
 
 As of helios-core v1.3.79 the no-argument form is **optional**: `runBand()` builds the
 geometry itself before tracing, and rebuilds it whenever primitives have been added to
-or deleted from the Context since the last build.
+or deleted from the Context since the last build. As of v1.3.92 it also rebuilds when
+primitives have been moved, rotated, scaled, reshaped or re-textured. Setting primitive
+data does not trigger a rebuild, so call `updateGeometry()` yourself after changing
+`twosided_flag` or `invisibility_flag` on existing primitives.
 
 ```python
 # Optional - runBand() would do this itself. Call it explicitly only to control
@@ -352,6 +411,10 @@ radiation.updateGeometry([patch_uuid, new_uuid])  # required to widen the subset
 
 Calling `updateGeometry()` with no argument clears the subset and returns the model to
 tracking the full Context.
+
+`updateGeometry()` raises for a scene containing voxels, which no ray-tracing backend
+supports, and for a triangle whose texture has a transparency channel but which has no
+texture (u,v) coordinates, such as one textured with `setPrimitiveTextureFile()`.
 
 ### Running Simulations
 
@@ -902,19 +965,17 @@ print(f"G-function (horizontal): {g_horizontal}")
 
 \note The one case it will *not* auto-build is a model holding a primitive subset from `updateGeometry(uuids)` that has not been traced yet: building the full Context there would silently discard the subset, so it raises instead and tells you to call `updateGeometry(uuids)` again (or `updateGeometry()` if you want the whole Context). After a `runBand()` the geometry is already built, so the G-function is simply reported over the subset you selected.
 
-### Sky Energy and Optional Outputs
+### Optional Outputs
 
 ```python
-# Get total sky energy
-sky_energy = radiation.getSkyEnergy()
-print(f"Sky energy: {sky_energy} W")
-
 # Enable optional primitive data outputs.
 # Only "reflectivity" and "transmissivity" are recognized; any other label
 # prints a warning and enables nothing.
 radiation.optionalOutputPrimitiveData("reflectivity")
 radiation.optionalOutputPrimitiveData("transmissivity")
 ```
+
+\note `getSkyEnergy()` is deprecated: no ray-tracing backend computes the energy lost to the sky, so it always returned 0. As of helios-core 1.3.92 it emits a `DeprecationWarning` and raises, and it will be removed in helios-core v2.0.
 
 ## Spectral Modeling Workflows
 
@@ -1618,6 +1679,37 @@ radiation.addRadiationCamera("fixed_exposure_cam", ["red", "green", "blue"], pos
 ```python
 props = CameraProperties(exposure="auto", exposure_target=0.10)   # darker target for a nadir canopy view
 radiation.addRadiationCamera("nadir_cam", ["red", "green", "blue"], position, lookat, props)
+```
+
+### Camera Image Corrections
+
+Two methods post-process a rendered RGB camera image before it is written. Both change the camera's stored pixel data in place, so applying one twice applies it twice, and neither clamps values.
+
+- `applyCameraColorCorrectionMatrix(camera_label, red, green, blue, ccm_file_path)` multiplies each pixel's `(r, g, b)` by a 3x3 matrix, or by a 3x3 matrix plus an offset column (`matrix_type="4x3"`), read from an XML file such as the one `autoCalibrateCameraImage(..., ccm_export_file_path=...)` exports. A missing file raises `FileNotFoundError`.
+- `applyCameraImageCorrections(camera_label, red, green, blue, saturation_adjustment=1.0, brightness_adjustment=1.0, contrast_adjustment=1.0)` applies lens flare (if enabled for the camera), then brightness and contrast in linear space (`0.5 + (v * brightness - 0.5) * contrast`), then saturation about each pixel's luminance (0 gives grayscale). A factor of 1.0 skips its step. The factors are recorded in camera metadata when `enableCameraMetadata()` is on.
+
+Auto exposure and white balance are not part of these calls: they are applied during `runBand()` according to the camera's `exposure` and `white_balance` `CameraProperties`. sRGB gamma compression is applied by `writeCameraImage()` when it writes a 3-band image. The full order is therefore:
+
+```python
+radiation.runBand(["red", "green", "blue"])          # render; exposure and white balance applied here
+radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", "cam_ccm.xml")   # optional
+radiation.applyCameraImageCorrections("cam", "red", "green", "blue",
+                                      saturation_adjustment=1.5,
+                                      brightness_adjustment=1.2,
+                                      contrast_adjustment=1.1)
+radiation.writeCameraImage("cam", ["red", "green", "blue"], "corrected")   # sRGB gamma applied here
+```
+
+A CCM file has one `<row>` per line:
+
+```xml
+<helios>
+  <ColorCorrectionMatrix camera_label="cam" matrix_type="3x3">
+    <row>1.10 -0.05 0.02</row>
+    <row>-0.03 1.08 0.01</row>
+    <row>0.01 -0.04 1.12</row>
+  </ColorCorrectionMatrix>
+</helios>
 ```
 
 ### Auto-Calibrated Camera Images

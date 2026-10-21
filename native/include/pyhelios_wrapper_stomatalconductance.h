@@ -52,6 +52,20 @@ PYHELIOS_API void setStomatalConductanceBBCoefficientsForUUIDs(StomatalConductan
 PYHELIOS_API void setStomatalConductanceBMFCoefficientsFromLibrary(StomatalConductanceModel* model, const char* species);
 PYHELIOS_API void setStomatalConductanceBMFCoefficientsFromLibraryForUUIDs(StomatalConductanceModel* model, const char* species, const unsigned int* uuids, unsigned int uuid_count);
 
+// Material-label coefficient assignment (stored as material data; resolved per primitive at run time)
+PYHELIOS_API void setStomatalConductanceBWBCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float gs0, float a1);
+PYHELIOS_API void setStomatalConductanceBBLCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float gs0, float a1, float D0);
+PYHELIOS_API void setStomatalConductanceMOPTCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float gs0, float g1);
+PYHELIOS_API void setStomatalConductanceBMFCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float Em, float i0, float k, float b);
+PYHELIOS_API void setStomatalConductanceBBCoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, float pi_0, float pi_m, float theta, float sigma, float chi);
+PYHELIOS_API void setStomatalConductanceBMFCoefficientsFromLibraryForMaterial(StomatalConductanceModel* model, const char* species, const char* material_label);
+
+// Per-UUID BMF coefficient sets: coeffs is a flat array of 4*uuid_count floats laid out [Em, i0, k, b] per UUID
+PYHELIOS_API void setStomatalConductanceBMFCoefficientsPerUUID(StomatalConductanceModel* model, const float* coeffs, const unsigned int* uuids, unsigned int uuid_count);
+
+// Species library lookup: writes [Em, i0, k, b] into coeffs_out (must hold 4 floats)
+PYHELIOS_API void getStomatalConductanceBMFCoefficientsFromLibrary(StomatalConductanceModel* model, const char* species, float* coeffs_out);
+
 // Dynamic Time Constants
 PYHELIOS_API void setStomatalConductanceDynamicTimeConstants(StomatalConductanceModel* model, float tau_open, float tau_close);
 PYHELIOS_API void setStomatalConductanceDynamicTimeConstantsForUUIDs(StomatalConductanceModel* model, float tau_open, float tau_close, const unsigned int* uuids, unsigned int uuid_count);

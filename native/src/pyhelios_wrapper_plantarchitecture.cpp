@@ -4675,6 +4675,130 @@ extern "C" {
         return joinedRegistryNames(libraryPhytomerCallbackRegistry());
     }
 
+    // =========================================================================
+    // Plant-level queries: name, phenology stage, base position, stem height,
+    // shoot node count, internode object IDs and leaf angle distributions
+    // =========================================================================
+
+    PYHELIOS_API const char* determinePhenologyStage(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "determinePhenologyStage", static_cast<const char*>(nullptr), [&]() -> const char* {
+            static thread_local std::string stage;
+            stage = plantarch->determinePhenologyStage(plantID);
+            return stage.c_str();
+        });
+    }
+
+    PYHELIOS_API const char* getPlantName(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "getPlantName", static_cast<const char*>(nullptr), [&]() -> const char* {
+            static thread_local std::string name;
+            name = plantarch->getPlantName(plantID);
+            return name.c_str();
+        });
+    }
+
+    PYHELIOS_API unsigned int getShootNodeCount(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID) {
+        return guardedPhytomerCall(plantarch, "getShootNodeCount", 0u, [&]() -> unsigned int {
+            return plantarch->getShootNodeCount(plantID, shootID);
+        });
+    }
+
+    PYHELIOS_API float getPlantStemHeight(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "getPlantStemHeight", -1.0f, [&]() -> float {
+            // helios-core dereferences the plant's first shoot without checking that one exists.
+            if (plantarch->getAllShootIDs(plantID).empty()) {
+                throw std::runtime_error("Plant with ID of " + std::to_string(plantID) + " has no shoots, so it has no stem height.");
+            }
+            return plantarch->getPlantStemHeight(plantID);
+        });
+    }
+
+    PYHELIOS_API int getPlantBasePosition(PlantArchitecture* plantarch, unsigned int plantID, float* position) {
+        return guardedPhytomerCall(plantarch, "getPlantBasePosition", -1, [&]() {
+            if (!position) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            const helios::vec3 p = plantarch->getPlantBasePosition(plantID);
+            position[0] = p.x;
+            position[1] = p.y;
+            position[2] = p.z;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API float* getPlantBasePositions(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getPlantBasePosition", static_cast<float*>(nullptr), [&]() {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            if (plant_count <= 0 || !plantIDs) {
+                throw std::invalid_argument("At least one plant ID is required");
+            }
+            const std::vector<uint> ids(plantIDs, plantIDs + plant_count);
+            return flattenVec3(plantarch->getPlantBasePosition(ids), count);
+        });
+    }
+
+    PYHELIOS_API int setPlantBasePosition(PlantArchitecture* plantarch, unsigned int plantID, const float* position) {
+        return guardedPhytomerCall(plantarch, "setPlantBasePosition", -1, [&]() {
+            if (!position) {
+                throw std::invalid_argument("Position pointer is null");
+            }
+            plantarch->setPlantBasePosition(plantID, helios::make_vec3(position[0], position[1], position[2]));
+            return 0;
+        });
+    }
+
+    PYHELIOS_API unsigned int* getPlantInternodeObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, const char* shoot_type_label, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getPlantInternodeObjectIDs", static_cast<unsigned int*>(nullptr), [&]() -> unsigned int* {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            static thread_local std::vector<unsigned int> static_result;
+            static_result = shoot_type_label ? plantarch->getPlantInternodeObjectIDs(plantID, std::string(shoot_type_label)) : plantarch->getPlantInternodeObjectIDs(plantID);
+            *count = static_cast<int>(static_result.size());
+            return static_result.data();
+        });
+    }
+
+    // Shared body for the two angle histograms; one plant uses the single-plant overload, several the multi-plant one.
+    typedef std::vector<float> (PlantArchitecture::*PlantAngleDistributionGetter)(uint, uint, bool) const;
+    typedef std::vector<float> (PlantArchitecture::*PlantsAngleDistributionGetter)(const std::vector<uint> &, uint, bool) const;
+    static float* returnPlantAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count, const char* fn,
+                                               PlantAngleDistributionGetter single, PlantsAngleDistributionGetter multiple) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, fn, static_cast<float*>(nullptr), [&]() -> float* {
+            if (!count) {
+                throw std::invalid_argument("Count pointer is null");
+            }
+            if (plant_count <= 0 || !plantIDs) {
+                throw std::invalid_argument("At least one plant ID is required");
+            }
+            if (Nbins == 0) {
+                throw std::invalid_argument("Number of bins must be at least 1");
+            }
+            static thread_local std::vector<float> static_values;
+            if (plant_count == 1) {
+                static_values = (plantarch->*single)(plantIDs[0], Nbins, normalize != 0);
+            } else {
+                static_values = (plantarch->*multiple)(std::vector<uint>(plantIDs, plantIDs + plant_count), Nbins, normalize != 0);
+            }
+            *count = static_cast<int>(static_values.size());
+            return static_values.data();
+        });
+    }
+
+    PYHELIOS_API float* getPlantLeafInclinationAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count) {
+        return returnPlantAngleDistribution(plantarch, plantIDs, plant_count, Nbins, normalize, count, "getPlantLeafInclinationAngleDistribution",
+                                            &PlantArchitecture::getPlantLeafInclinationAngleDistribution, &PlantArchitecture::getPlantLeafInclinationAngleDistribution);
+    }
+
+    PYHELIOS_API float* getPlantLeafAzimuthAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count) {
+        return returnPlantAngleDistribution(plantarch, plantIDs, plant_count, Nbins, normalize, count, "getPlantLeafAzimuthAngleDistribution",
+                                            &PlantArchitecture::getPlantLeafAzimuthAngleDistribution, &PlantArchitecture::getPlantLeafAzimuthAngleDistribution);
+    }
+
 } // extern "C"
 
 #endif // PLANTARCHITECTURE_PLUGIN_AVAILABLE

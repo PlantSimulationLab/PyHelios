@@ -197,7 +197,9 @@ class EnergyBalanceModel:
             
         Raises:
             ValueError: If parameters are invalid
-            EnergyBalanceModelError: If energy balance calculation fails
+            EnergyBalanceModelError: If energy balance calculation fails, if a UUID does not
+                exist, or if the same UUID appears more than once in ``uuids``
+                (helios-core 1.3.92+)
             
         Example:
             >>> # Steady state for all primitives

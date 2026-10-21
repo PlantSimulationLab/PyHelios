@@ -325,6 +325,76 @@ PYHELIOS_API void getDepthMap(Visualizer* visualizer, float** depth_pixels, unsi
 PYHELIOS_API void plotDepthMap(Visualizer* visualizer);
 
 //=============================================================================
+// Annotation and Depth Image Functions (helios-core 1.3.91)
+//=============================================================================
+
+/**
+ * @brief Get the distance from the camera to the visible surface in each pixel (Visualizer::getDepthImage)
+ * @param visualizer Pointer to the Visualizer
+ * @param width_pixels Output: framebuffer width
+ * @param height_pixels Output: framebuffer height
+ * @param size Output: number of elements in the returned buffer
+ * @return Thread-local buffer, row 0 at the top; -1 where no geometry is visible. Valid until the next call on this thread.
+ */
+PYHELIOS_API float* visualizerGetDepthImage(Visualizer* visualizer, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* size);
+
+/**
+ * @brief Get the Context primitive visible in each pixel (Visualizer::getPixelUUIDs)
+ * @param visualizer Pointer to the Visualizer
+ * @param width_pixels Output: framebuffer width
+ * @param height_pixels Output: framebuffer height
+ * @param size Output: number of elements in the returned buffer
+ * @return Thread-local buffer of UUID+1 per pixel (0 = none), row 0 at the top. Valid until the next call on this thread.
+ */
+PYHELIOS_API unsigned int* visualizerGetPixelUUIDs(Visualizer* visualizer, unsigned int* width_pixels, unsigned int* height_pixels, unsigned int* size);
+
+/**
+ * @brief Write YOLO bounding boxes for the current view (Visualizer::writeImageBoundingBoxes / _ObjectData)
+ * @param visualizer Pointer to the Visualizer
+ * @param data_labels Array of primitive (or object) data labels
+ * @param label_count Number of labels
+ * @param object_class_ids Class ID for each label
+ * @param image_file Image file the boxes annotate (only its stem is used)
+ * @param classes_txt_file Class file name within image_path
+ * @param image_path Output directory
+ * @param use_object_data If true, labels are object data; otherwise primitive data
+ */
+PYHELIOS_API void visualizerWriteImageBoundingBoxes(Visualizer* visualizer, const char** data_labels, size_t label_count, const unsigned int* object_class_ids,
+                                                    const char* image_file, const char* classes_txt_file, const char* image_path, bool use_object_data);
+
+/**
+ * @brief Write COCO segmentation masks for the current view (Visualizer::writeImageSegmentationMasks / _ObjectData)
+ * @param visualizer Pointer to the Visualizer
+ * @param data_labels Array of primitive (or object) data labels
+ * @param label_count Number of labels
+ * @param object_class_ids Class ID for each label
+ * @param json_filename Output JSON file
+ * @param image_file Image file the masks annotate (must exist)
+ * @param data_attribute_labels Array of data labels averaged into each annotation's attributes (may be null if attribute_count is 0)
+ * @param attribute_count Number of attribute labels
+ * @param append_file Append to an existing JSON file
+ * @param use_object_data If true, labels are object data; otherwise primitive data
+ */
+PYHELIOS_API void visualizerWriteImageSegmentationMasks(Visualizer* visualizer, const char** data_labels, size_t label_count, const unsigned int* object_class_ids,
+                                                        const char* json_filename, const char* image_file, const char** data_attribute_labels, size_t attribute_count,
+                                                        bool append_file, bool use_object_data);
+
+/**
+ * @brief Write the depth image of the current view to a text file (Visualizer::writeDepthImageData)
+ */
+PYHELIOS_API void visualizerWriteDepthImageData(Visualizer* visualizer, const char* filename);
+
+/**
+ * @brief Write the depth image of the current view to an EXR file (Visualizer::writeDepthImageDataEXR)
+ */
+PYHELIOS_API void visualizerWriteDepthImageDataEXR(Visualizer* visualizer, const char* filename);
+
+/**
+ * @brief Write the depth image of the current view as a normalized grayscale JPEG (Visualizer::writeNormDepthImage)
+ */
+PYHELIOS_API void visualizerWriteNormDepthImage(Visualizer* visualizer, const char* filename, float max_depth);
+
+//=============================================================================
 // Geometry Management Functions
 //=============================================================================
 

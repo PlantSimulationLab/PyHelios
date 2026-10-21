@@ -394,3 +394,226 @@ class TestWeberPennTreeEdgeCases:
                     stats = GeometryValidator.validate_tree_structure(wpt, tree_id)
                     assert stats['valid']
             # WeberPennTree should be cleaned up here
+
+# ---------------------------------------------------------------------------
+# Tree parameters and random seed
+# ---------------------------------------------------------------------------
+
+from pyhelios.WeberPennTree import WeberPennTreeParameters
+from pyhelios.exceptions import HeliosRuntimeError
+
+
+def _valid_parameters(levels=2):
+    n = levels + 1
+    return WeberPennTreeParameters(
+        label='Test', Shape=0, BaseSize=0.2, Scale=3.0, Ratio=0.02, RatioPower=1.2, Levels=levels,
+        nSegSplits=[0.0] * n, nSplitAngle=[0.0] * n, nSplitAngleV=[0.0] * n, nCurveRes=[5] * n,
+        nCurve=[0.0] * n, nCurveV=[0.0] * n, nCurveBack=[0.0] * n, nLength=[1.0] * n, nLengthV=[0.0] * n,
+        nTaper=[1.0] * n, nDownAngle=[0.0] * n, nDownAngleV=[0.0] * n, nRotate=[0.0] * n, nRotateV=[0.0] * n,
+        nBranches=[0] + [5] * levels, LeafFile='leaf.png', Leaves=10, LeafScale=0.1, LeafScaleX=0.5,
+    )
+
+
+def _bare_wpt():
+    """WeberPennTree instance with no native object, for exercising argument validation."""
+    wpt = object.__new__(WeberPennTree)
+    wpt.wpt = None
+    wpt.context = None
+    return wpt
+
+
+@pytest.mark.cross_platform
+class TestTreeParametersValidation:
+    """Pure-Python validation of WeberPennTreeParameters and the parameter/seed methods."""
+
+    def test_valid_parameters_pass(self):
+        _valid_parameters().validate()
+
+    def test_dataclass_fields_mirror_cpp_struct(self):
+        from dataclasses import fields
+        names = {f.name for f in fields(WeberPennTreeParameters)}
+        expected = {
+            'label', 'Shape', 'BaseSize', 'BaseSizeV', 'BaseSplits', 'BaseSplitsV', 'BaseSplitSize',
+            'BaseSplitSizeV', 'Scale', 'ScaleV', 'ZScale', 'ZScaleV', 'Ratio', 'RatioPower', 'Lobes',
+            'LobeDepth', 'Flare', 'Levels', 'nSegSplits', 'nSplitAngle', 'nSplitAngleV', 'nCurveRes', 'nCurve',
+            'nCurveV', 'nCurveBack', 'nLength', 'nLengthV', 'nTaper', 'nDownAngle', 'nDownAngleV', 'nRotate',
+            'nRotateV', 'nBranches', 'LeafFile', 'Leaves', 'LeafShape', 'LeafScale', 'LeafScaleX', 'WoodColor',
+            'WoodFile', 'leafAngleCDF',
+        }
+        assert names == expected
+
+    def test_equality(self):
+        a, b = _valid_parameters(), _valid_parameters()
+        assert a == b
+        b.WoodColor = DataTypes.RGBcolor(0.1, 0.2, 0.3)
+        assert a != b
+        b = _valid_parameters()
+        b.nLength[1] = 0.5
+        assert a != b
+
+    @pytest.mark.parametrize("levels", [0, 4, -1])
+    def test_levels_out_of_range(self, levels):
+        p = _valid_parameters()
+        p.Levels = levels
+        with pytest.raises(ValueError, match="Levels"):
+            p.validate()
+
+    def test_per_level_array_too_short(self):
+        p = _valid_parameters(levels=3)
+        p.nDownAngle = [0.0, 0.0, 0.0]
+        with pytest.raises(ValueError, match="nDownAngle has 3 entries"):
+            p.validate()
+
+    @pytest.mark.parametrize("field_name,value", [
+        ('Scale', 'big'), ('Scale', float('nan')), ('Scale', True), ('Levels', 2.0), ('BaseSplits', -1),
+        ('nCurveRes', [5, 5.5, 5]), ('nLength', [1.0, 'x', 1.0]), ('label', 5), ('LeafFile', None),
+        ('WoodColor', DataTypes.vec3(0.1, 0.1, 0.1)), ('WoodColor', [0.1, 0.1, 0.1]), ('leafAngleCDF', 0.5),
+    ])
+    def test_wrong_field_types(self, field_name, value):
+        p = _valid_parameters()
+        setattr(p, field_name, value)
+        with pytest.raises(ValueError, match=field_name):
+            p.validate()
+
+    def test_set_rejects_non_parameters_positional_and_keyword(self):
+        wpt = _bare_wpt()
+        with pytest.raises(ValueError, match="WeberPennTreeParameters"):
+            wpt.setTreeParameters('Lemon', {'Scale': 1.0})
+        with pytest.raises(ValueError, match="WeberPennTreeParameters"):
+            wpt.setTreeParameters(tree_name='Lemon', parameters=DataTypes.vec3(1, 2, 3))
+
+    def test_set_validates_parameters_before_native_call(self):
+        p = _valid_parameters()
+        p.Levels = 7
+        with pytest.raises(ValueError, match="Levels"):
+            _bare_wpt().setTreeParameters('Lemon', p)
+
+    @pytest.mark.parametrize("name", ['', '   ', 5, None, DataTypes.vec3(0, 0, 0)])
+    def test_invalid_tree_name(self, name):
+        wpt = _bare_wpt()
+        with pytest.raises(ValueError, match="tree_name"):
+            wpt.getTreeParameters(name)
+        with pytest.raises(ValueError, match="tree_name"):
+            wpt.setTreeParameters(name, _valid_parameters())
+
+    @pytest.mark.parametrize("seed", [-1, 2**32, 1.5, '3', True, None])
+    def test_invalid_seed(self, seed):
+        with pytest.raises(ValueError, match="seed"):
+            _bare_wpt().seedRandomGenerator(seed)
+
+    def test_wrapper_unavailable_raises(self):
+        import pyhelios.wrappers.UWeberPennTreeWrapper as w
+        with patch.object(w, '_WPT_PARAMETER_FUNCTIONS_AVAILABLE', False):
+            with pytest.raises(NotImplementedError, match="build_helios"):
+                w.getTreeParameters(None, 'Lemon')
+            with pytest.raises(NotImplementedError, match="build_helios"):
+                w.setTreeParameters(None, 'Lemon', {})
+            with pytest.raises(NotImplementedError, match="build_helios"):
+                w.seedRandomGenerator(None, 1)
+
+
+def _tree_vertices(context, wpt, tree_id):
+    return [tuple(round(c, 7) for v in context.getPrimitiveVertices(u) for c in v.to_list())
+            for u in wpt.getAllUUIDs(tree_id)]
+
+
+def _max_height(context, wpt, uuids):
+    return max(v.z for u in uuids for v in context.getPrimitiveVertices(u))
+
+
+@pytest.mark.native_only
+class TestTreeParametersNative:
+    """Round-trip, modification and seeding against the native library."""
+
+    @pytest.mark.parametrize("tree_type", list(WPTType) if WPTType is not None else [])
+    def test_round_trip_builtin_species(self, weber_penn_tree, tree_type):
+        params = weber_penn_tree.getTreeParameters(tree_type)
+        assert isinstance(params, WeberPennTreeParameters)
+        assert params.label == tree_type.value
+        assert len(params.nLength) >= params.Levels + 1
+        weber_penn_tree.setTreeParameters(tree_type, params)
+        again = weber_penn_tree.getTreeParameters(tree_type.value)
+        assert again == params
+
+    def test_get_unknown_tree_raises(self, weber_penn_tree):
+        with pytest.raises(HeliosRuntimeError, match="does not exist"):
+            weber_penn_tree.getTreeParameters("NoSuchTree")
+
+    def test_modified_scale_changes_geometry(self, weber_penn_tree, basic_context):
+        weber_penn_tree.seedRandomGenerator(42)
+        base_id = weber_penn_tree.buildTree(WPTType.LEMON)
+        base_height = _max_height(basic_context, weber_penn_tree, weber_penn_tree.getTrunkUUIDs(base_id))
+
+        params = weber_penn_tree.getTreeParameters(WPTType.LEMON)
+        params.Scale = params.Scale * 2.0
+        weber_penn_tree.setTreeParameters(WPTType.LEMON, params)
+        assert weber_penn_tree.getTreeParameters(WPTType.LEMON).Scale == params.Scale
+
+        weber_penn_tree.seedRandomGenerator(42)
+        big_id = weber_penn_tree.buildTree(WPTType.LEMON)
+        big_height = _max_height(basic_context, weber_penn_tree, weber_penn_tree.getTrunkUUIDs(big_id))
+        assert big_height > 1.5 * base_height
+
+    def test_modified_levels_changes_geometry(self, weber_penn_tree):
+        params = weber_penn_tree.getTreeParameters(WPTType.LEMON)
+        assert params.Levels >= 2
+        weber_penn_tree.seedRandomGenerator(7)
+        full_id = weber_penn_tree.buildTree(WPTType.LEMON)
+        params.Levels = 1
+        weber_penn_tree.setTreeParameters(WPTType.LEMON, params)
+        weber_penn_tree.seedRandomGenerator(7)
+        reduced_id = weber_penn_tree.buildTree(WPTType.LEMON)
+        assert len(weber_penn_tree.getBranchUUIDs(reduced_id)) < len(weber_penn_tree.getBranchUUIDs(full_id))
+
+    def test_define_new_species(self, weber_penn_tree, basic_context):
+        params = weber_penn_tree.getTreeParameters(WPTType.LEMON)
+        params.label = 'TallLemon'
+        params.Scale = params.Scale * 3.0
+        weber_penn_tree.setTreeParameters('TallLemon', params)
+        assert weber_penn_tree.getTreeParameters('TallLemon') == params
+        # The original species is untouched
+        assert weber_penn_tree.getTreeParameters(WPTType.LEMON).Scale * 3.0 == pytest.approx(params.Scale)
+
+        weber_penn_tree.seedRandomGenerator(3)
+        lemon_id = weber_penn_tree.buildTree(WPTType.LEMON)
+        weber_penn_tree.seedRandomGenerator(3)
+        tall_id = weber_penn_tree.buildTree('TallLemon')
+        assert len(weber_penn_tree.getLeafUUIDs(tall_id)) > 0
+        assert (_max_height(basic_context, weber_penn_tree, weber_penn_tree.getTrunkUUIDs(tall_id))
+                > 2.0 * _max_height(basic_context, weber_penn_tree, weber_penn_tree.getTrunkUUIDs(lemon_id)))
+
+    def test_new_species_name_with_xml_special_characters(self, weber_penn_tree):
+        params = weber_penn_tree.getTreeParameters(WPTType.OLIVE)
+        name = 'Olive <"A&B\'s">'
+        weber_penn_tree.setTreeParameters(name, params)
+        assert weber_penn_tree.getTreeParameters(name) == params
+
+    def test_invalid_native_parameters_rejected_without_side_effects(self, weber_penn_tree):
+        params = weber_penn_tree.getTreeParameters(WPTType.LEMON)
+        bad = weber_penn_tree.getTreeParameters(WPTType.LEMON)
+        bad.Scale = -1.0
+        with pytest.raises(HeliosRuntimeError, match="Scale"):
+            weber_penn_tree.setTreeParameters(WPTType.LEMON, bad)
+        assert weber_penn_tree.getTreeParameters(WPTType.LEMON) == params
+        with pytest.raises(HeliosRuntimeError, match="Scale"):
+            weber_penn_tree.setTreeParameters('BrandNewBad', bad)
+        with pytest.raises(HeliosRuntimeError, match="does not exist"):
+            weber_penn_tree.getTreeParameters('BrandNewBad')
+
+    def test_same_seed_reproduces_geometry(self, weber_penn_tree, basic_context):
+        weber_penn_tree.seedRandomGenerator(12345)
+        first = weber_penn_tree.buildTree(WPTType.APPLE)
+        weber_penn_tree.seedRandomGenerator(12345)
+        second = weber_penn_tree.buildTree(WPTType.APPLE)
+        v1 = _tree_vertices(basic_context, weber_penn_tree, first)
+        v2 = _tree_vertices(basic_context, weber_penn_tree, second)
+        assert len(v1) > 0
+        assert v1 == v2
+
+    def test_different_seed_changes_geometry(self, weber_penn_tree, basic_context):
+        weber_penn_tree.seedRandomGenerator(1)
+        first = weber_penn_tree.buildTree(WPTType.APPLE)
+        weber_penn_tree.seedRandomGenerator(2)
+        second = weber_penn_tree.buildTree(WPTType.APPLE)
+        assert (_tree_vertices(basic_context, weber_penn_tree, first)
+                != _tree_vertices(basic_context, weber_penn_tree, second))

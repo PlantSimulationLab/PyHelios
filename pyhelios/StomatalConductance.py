@@ -284,33 +284,68 @@ class StomatalConductanceModel:
         except Exception as e:
             raise StomatalConductanceModelError(f"Failed to run stomatal conductance model: {e}")
 
+    # Coefficient target resolution shared by all coefficient setters
+    @staticmethod
+    def _validate_target(method: str, uuids, material_label) -> None:
+        if uuids is not None and material_label is not None:
+            raise ValueError(f"{method}: pass either uuids or material_label, not both.")
+        if uuids is not None:
+            if isinstance(uuids, (str, bytes)) or not isinstance(uuids, (list, tuple)):
+                hint = " (to target a material, pass material_label=...)" if isinstance(uuids, str) else ""
+                raise ValueError(f"{method}: uuids must be a list of int UUIDs, got {type(uuids).__name__}{hint}")
+            if not all(isinstance(u, int) and not isinstance(u, bool) for u in uuids):
+                raise ValueError(f"{method}: uuids must contain only int UUIDs")
+        if material_label is not None and (not isinstance(material_label, str) or not material_label):
+            raise ValueError(f"{method}: material_label must be a non-empty str, got {type(material_label).__name__}")
+
+    @staticmethod
+    def _validate_bmf(coeffs: "BMFCoefficients") -> None:
+        if coeffs.Em <= 0.0:
+            raise ValueError("Em must be positive")
+        if coeffs.i0 < 0.0:
+            raise ValueError("i0 must be non-negative")
+        if coeffs.k <= 0.0:
+            raise ValueError("k must be positive")
+        if coeffs.b < 0.0:
+            raise ValueError("b must be non-negative")
+
     # BWB Model Methods
-    def setBWBCoefficients(self, coeffs: BWBCoefficients, uuids: Optional[List[int]] = None) -> None:
+    def setBWBCoefficients(self, coeffs: BWBCoefficients, uuids: Optional[List[int]] = None,
+                           material_label: Optional[str] = None) -> None:
         """
         Set Ball-Woodrow-Berry model coefficients.
-        
+
         Args:
             coeffs: BWB model coefficients (gs0, a1)
-            uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label. The coefficients are stored on
+                the material and apply to every primitive that references it when run() is
+                called. Mutually exclusive with ``uuids``. See "Coefficient precedence" in
+                docs/plugin_stomatalconductance.md.
+
         Raises:
-            ValueError: If coefficients are invalid
-            StomatalConductanceModelError: If operation fails
-            
+            ValueError: If coefficients are invalid, or both ``uuids`` and ``material_label`` are given
+            StomatalConductanceModelError: If operation fails (e.g. the material does not exist)
+
         Example:
             >>> bwb_coeffs = BWBCoefficients(gs0=0.0733, a1=9.422)
             >>> stomatal.setBWBCoefficients(bwb_coeffs)
+            >>> stomatal.setBWBCoefficients(bwb_coeffs, material_label="sun_leaf")
         """
         if not isinstance(coeffs, BWBCoefficients):
-            raise ValueError("coeffs must be a BWBCoefficients instance")
+            raise ValueError(f"coeffs must be a BWBCoefficients instance, got {type(coeffs).__name__}")
+        self._validate_target("setBWBCoefficients", uuids, material_label)
         if coeffs.gs0 < 0.0:
             raise ValueError("gs0 must be non-negative")
         if coeffs.a1 < 0.0:
             raise ValueError("a1 must be non-negative")
-        
+
         self._check_context_alive()
         try:
-            if uuids is not None:
+            if material_label is not None:
+                stomatal_wrapper.setBWBCoefficientsForMaterial(self.stomatal_model, material_label, coeffs.gs0, coeffs.a1)
+            elif uuids is not None:
                 stomatal_wrapper.setBWBCoefficientsForUUIDs(self.stomatal_model, coeffs.gs0, coeffs.a1, uuids)
             else:
                 stomatal_wrapper.setBWBCoefficients(self.stomatal_model, coeffs.gs0, coeffs.a1)
@@ -318,34 +353,41 @@ class StomatalConductanceModel:
             raise StomatalConductanceModelError(f"Failed to set BWB coefficients: {e}")
 
     # BBL Model Methods
-    def setBBLCoefficients(self, coeffs: BBLCoefficients, uuids: Optional[List[int]] = None) -> None:
+    def setBBLCoefficients(self, coeffs: BBLCoefficients, uuids: Optional[List[int]] = None,
+                           material_label: Optional[str] = None) -> None:
         """
         Set Ball-Berry-Leuning model coefficients.
-        
+
         Args:
             coeffs: BBL model coefficients (gs0, a1, D0)
-            uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label; applies to every primitive that
+                references the material at run() time. Mutually exclusive with ``uuids``.
+
         Raises:
-            ValueError: If coefficients are invalid
+            ValueError: If coefficients are invalid, or both ``uuids`` and ``material_label`` are given
             StomatalConductanceModelError: If operation fails
-            
+
         Example:
             >>> bbl_coeffs = BBLCoefficients(gs0=0.0743, a1=4.265, D0=14570.0)
             >>> stomatal.setBBLCoefficients(bbl_coeffs)
         """
         if not isinstance(coeffs, BBLCoefficients):
-            raise ValueError("coeffs must be a BBLCoefficients instance")
+            raise ValueError(f"coeffs must be a BBLCoefficients instance, got {type(coeffs).__name__}")
+        self._validate_target("setBBLCoefficients", uuids, material_label)
         if coeffs.gs0 < 0.0:
             raise ValueError("gs0 must be non-negative")
         if coeffs.a1 < 0.0:
             raise ValueError("a1 must be non-negative")
         if coeffs.D0 <= 0.0:
             raise ValueError("D0 must be positive")
-        
+
         self._check_context_alive()
         try:
-            if uuids is not None:
+            if material_label is not None:
+                stomatal_wrapper.setBBLCoefficientsForMaterial(self.stomatal_model, material_label, coeffs.gs0, coeffs.a1, coeffs.D0)
+            elif uuids is not None:
                 stomatal_wrapper.setBBLCoefficientsForUUIDs(self.stomatal_model, coeffs.gs0, coeffs.a1, coeffs.D0, uuids)
             else:
                 stomatal_wrapper.setBBLCoefficients(self.stomatal_model, coeffs.gs0, coeffs.a1, coeffs.D0)
@@ -353,32 +395,39 @@ class StomatalConductanceModel:
             raise StomatalConductanceModelError(f"Failed to set BBL coefficients: {e}")
 
     # MOPT Model Methods
-    def setMOPTCoefficients(self, coeffs: MOPTCoefficients, uuids: Optional[List[int]] = None) -> None:
+    def setMOPTCoefficients(self, coeffs: MOPTCoefficients, uuids: Optional[List[int]] = None,
+                            material_label: Optional[str] = None) -> None:
         """
         Set Medlyn et al. optimality model coefficients.
-        
+
         Args:
             coeffs: MOPT model coefficients (gs0, g1)
-            uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label; applies to every primitive that
+                references the material at run() time. Mutually exclusive with ``uuids``.
+
         Raises:
-            ValueError: If coefficients are invalid
+            ValueError: If coefficients are invalid, or both ``uuids`` and ``material_label`` are given
             StomatalConductanceModelError: If operation fails
-            
+
         Example:
             >>> mopt_coeffs = MOPTCoefficients(gs0=0.0825, g1=2.637)
             >>> stomatal.setMOPTCoefficients(mopt_coeffs)
         """
         if not isinstance(coeffs, MOPTCoefficients):
-            raise ValueError("coeffs must be a MOPTCoefficients instance")
+            raise ValueError(f"coeffs must be a MOPTCoefficients instance, got {type(coeffs).__name__}")
+        self._validate_target("setMOPTCoefficients", uuids, material_label)
         if coeffs.gs0 < 0.0:
             raise ValueError("gs0 must be non-negative")
         if coeffs.g1 <= 0.0:
             raise ValueError("g1 must be positive")
-        
+
         self._check_context_alive()
         try:
-            if uuids is not None:
+            if material_label is not None:
+                stomatal_wrapper.setMOPTCoefficientsForMaterial(self.stomatal_model, material_label, coeffs.gs0, coeffs.g1)
+            elif uuids is not None:
                 stomatal_wrapper.setMOPTCoefficientsForUUIDs(self.stomatal_model, coeffs.gs0, coeffs.g1, uuids)
             else:
                 stomatal_wrapper.setMOPTCoefficients(self.stomatal_model, coeffs.gs0, coeffs.g1)
@@ -386,36 +435,62 @@ class StomatalConductanceModel:
             raise StomatalConductanceModelError(f"Failed to set MOPT coefficients: {e}")
 
     # BMF Model Methods
-    def setBMFCoefficients(self, coeffs: BMFCoefficients, uuids: Optional[List[int]] = None) -> None:
+    def setBMFCoefficients(self, coeffs: Union[BMFCoefficients, List[BMFCoefficients]],
+                           uuids: Optional[List[int]] = None,
+                           material_label: Optional[str] = None) -> None:
         """
         Set Buckley-Mott-Farquhar model coefficients.
-        
+
+        ``coeffs`` may be a single :class:`BMFCoefficients` (applied to all primitives, to
+        ``uuids``, or to ``material_label``), or a list of :class:`BMFCoefficients` with one
+        entry per UUID in ``uuids`` (``coeffs[i]`` is applied to ``uuids[i]``).
+
         Args:
-            coeffs: BMF model coefficients (Em, i0, k, b)
-            uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+            coeffs: BMF model coefficients (Em, i0, k, b), or a list of them (per-UUID form)
+            uuids: Optional list of primitive UUIDs. Required for the per-UUID list form.
+                If None and ``material_label`` is also None, applies to all primitives.
+            material_label: Optional Context material label; applies to every primitive that
+                references the material at run() time. Mutually exclusive with ``uuids`` and
+                not accepted with the per-UUID list form.
+
         Raises:
-            ValueError: If coefficients are invalid
+            ValueError: If coefficients are invalid, list and UUID lengths differ, or both
+                ``uuids`` and ``material_label`` are given
             StomatalConductanceModelError: If operation fails
-            
+
         Example:
             >>> bmf_coeffs = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
             >>> stomatal.setBMFCoefficients(bmf_coeffs)
+            >>> # One coefficient set per leaf
+            >>> stomatal.setBMFCoefficients([coeffs_a, coeffs_b], uuids=[leaf_a, leaf_b])
         """
-        if not isinstance(coeffs, BMFCoefficients):
-            raise ValueError("coeffs must be a BMFCoefficients instance")
-        if coeffs.Em <= 0.0:
-            raise ValueError("Em must be positive")
-        if coeffs.i0 < 0.0:
-            raise ValueError("i0 must be non-negative")
-        if coeffs.k <= 0.0:
-            raise ValueError("k must be positive")
-        if coeffs.b <= 0.0:
-            raise ValueError("b must be positive")
-        
+        self._validate_target("setBMFCoefficients", uuids, material_label)
+        if isinstance(coeffs, BMFCoefficients):
+            self._validate_bmf(coeffs)
+            per_uuid = False
+        elif isinstance(coeffs, (list, tuple)) and coeffs and all(isinstance(c, BMFCoefficients) for c in coeffs):
+            if material_label is not None:
+                raise ValueError("setBMFCoefficients: a list of coefficient sets cannot be combined with material_label; "
+                                 "pass a single BMFCoefficients instead.")
+            if uuids is None:
+                raise ValueError("setBMFCoefficients: a list of coefficient sets requires uuids (one UUID per coefficient set).")
+            if len(coeffs) != len(uuids):
+                raise ValueError(f"setBMFCoefficients: number of coefficient sets ({len(coeffs)}) does not match "
+                                 f"number of UUIDs ({len(uuids)}).")
+            for c in coeffs:
+                self._validate_bmf(c)
+            per_uuid = True
+        else:
+            raise ValueError(f"coeffs must be a BMFCoefficients instance or a non-empty list of BMFCoefficients, "
+                             f"got {type(coeffs).__name__}")
+
         self._check_context_alive()
         try:
-            if uuids is not None:
+            if per_uuid:
+                stomatal_wrapper.setBMFCoefficientsPerUUID(self.stomatal_model, [list(c) for c in coeffs], list(uuids))
+            elif material_label is not None:
+                stomatal_wrapper.setBMFCoefficientsForMaterial(self.stomatal_model, material_label, coeffs.Em, coeffs.i0, coeffs.k, coeffs.b)
+            elif uuids is not None:
                 stomatal_wrapper.setBMFCoefficientsForUUIDs(self.stomatal_model, coeffs.Em, coeffs.i0, coeffs.k, coeffs.b, uuids)
             else:
                 stomatal_wrapper.setBMFCoefficients(self.stomatal_model, coeffs.Em, coeffs.i0, coeffs.k, coeffs.b)
@@ -423,24 +498,29 @@ class StomatalConductanceModel:
             raise StomatalConductanceModelError(f"Failed to set BMF coefficients: {e}")
 
     # BB Model Methods
-    def setBBCoefficients(self, coeffs: BBCoefficients, uuids: Optional[List[int]] = None) -> None:
+    def setBBCoefficients(self, coeffs: BBCoefficients, uuids: Optional[List[int]] = None,
+                          material_label: Optional[str] = None) -> None:
         """
         Set Bailey model coefficients.
-        
+
         Args:
             coeffs: BB model coefficients (pi_0, pi_m, theta, sigma, chi)
-            uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label; applies to every primitive that
+                references the material at run() time. Mutually exclusive with ``uuids``.
+
         Raises:
-            ValueError: If coefficients are invalid
+            ValueError: If coefficients are invalid, or both ``uuids`` and ``material_label`` are given
             StomatalConductanceModelError: If operation fails
-            
+
         Example:
             >>> bb_coeffs = BBCoefficients(pi_0=1.0, pi_m=1.67, theta=211.22, sigma=0.4408, chi=2.076)
             >>> stomatal.setBBCoefficients(bb_coeffs)
         """
         if not isinstance(coeffs, BBCoefficients):
-            raise ValueError("coeffs must be a BBCoefficients instance")
+            raise ValueError(f"coeffs must be a BBCoefficients instance, got {type(coeffs).__name__}")
+        self._validate_target("setBBCoefficients", uuids, material_label)
         if coeffs.pi_0 <= 0.0:
             raise ValueError("pi_0 must be positive")
         if coeffs.pi_m <= 0.0:
@@ -451,10 +531,12 @@ class StomatalConductanceModel:
             raise ValueError("sigma must be positive")
         if coeffs.chi <= 0.0:
             raise ValueError("chi must be positive")
-        
+
         self._check_context_alive()
         try:
-            if uuids is not None:
+            if material_label is not None:
+                stomatal_wrapper.setBBCoefficientsForMaterial(self.stomatal_model, material_label, coeffs.pi_0, coeffs.pi_m, coeffs.theta, coeffs.sigma, coeffs.chi)
+            elif uuids is not None:
                 stomatal_wrapper.setBBCoefficientsForUUIDs(self.stomatal_model, coeffs.pi_0, coeffs.pi_m, coeffs.theta, coeffs.sigma, coeffs.chi, uuids)
             else:
                 stomatal_wrapper.setBBCoefficients(self.stomatal_model, coeffs.pi_0, coeffs.pi_m, coeffs.theta, coeffs.sigma, coeffs.chi)
@@ -462,37 +544,50 @@ class StomatalConductanceModel:
             raise StomatalConductanceModelError(f"Failed to set BB coefficients: {e}")
 
     # Species Library Methods
-    def setBMFCoefficientsFromLibrary(self, species: str, uuids: Optional[List[int]] = None) -> None:
+    def setBMFCoefficientsFromLibrary(self, species: str, uuids: Optional[List[int]] = None,
+                                      material_label: Optional[str] = None) -> None:
         """
         Set BMF model coefficients using the built-in species library.
-        
+
+        Note: the native library falls back to Almond coefficients (with a warning when
+        messages are enabled) for an unrecognized species name.
+
         Args:
             species: Species name from the library (e.g., "Almond", "Apple", "Grape", "Walnut")
-            uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label; applies to every primitive that
+                references the material at run() time. Mutually exclusive with ``uuids``.
+
         Raises:
-            ValueError: If species name is invalid
+            ValueError: If species name is invalid, or both ``uuids`` and ``material_label`` are given
             StomatalConductanceModelError: If operation fails
-            
+
         Example:
             >>> # Set coefficients for almond tree
             >>> stomatal.setBMFCoefficientsFromLibrary("Almond")
-            
+
             >>> # Set coefficients for specific leaves only
             >>> stomatal.setBMFCoefficientsFromLibrary("Grape", uuids=[leaf1_uuid, leaf2_uuid])
+
+            >>> # Set coefficients for every primitive using a material
+            >>> stomatal.setBMFCoefficientsFromLibrary("Walnut", material_label="walnut_leaf")
         """
-        if not species:
-            raise ValueError("Species name cannot be empty")
-        
+        if not isinstance(species, str) or not species:
+            raise ValueError("Species name must be a non-empty str")
+        self._validate_target("setBMFCoefficientsFromLibrary", uuids, material_label)
+
         # Common species available in the library
         available_species = [
-            "Almond", "Apple", "Avocado", "Cherry", "Grape", "Lemon", 
+            "Almond", "Apple", "Avocado", "Cherry", "Grape", "Lemon",
             "Olive", "Orange", "Peach", "Pear", "Plum", "Walnut"
         ]
-        
+
         self._check_context_alive()
         try:
-            if uuids is not None:
+            if material_label is not None:
+                stomatal_wrapper.setBMFCoefficientsFromLibraryForMaterial(self.stomatal_model, species, material_label)
+            elif uuids is not None:
                 stomatal_wrapper.setBMFCoefficientsFromLibraryForUUIDs(self.stomatal_model, species, uuids)
             else:
                 stomatal_wrapper.setBMFCoefficientsFromLibrary(self.stomatal_model, species)
@@ -501,6 +596,38 @@ class StomatalConductanceModel:
             if "species not found" in str(e).lower() or "invalid species" in str(e).lower():
                 error_msg += f"\nAvailable species: {', '.join(available_species)}"
             raise StomatalConductanceModelError(error_msg)
+
+    def getBMFCoefficientsFromLibrary(self, species: str) -> BMFCoefficients:
+        """
+        Return the library BMF coefficients for a species without applying them.
+
+        The result can be modified and passed to :meth:`setBMFCoefficients`.
+
+        Note: the native library returns Almond coefficients (with a warning when messages
+        are enabled) for an unrecognized species name.
+
+        Args:
+            species: Species name from the library (e.g., "Almond", "Walnut")
+
+        Returns:
+            BMFCoefficients for the species
+
+        Raises:
+            ValueError: If species name is empty or not a str
+            StomatalConductanceModelError: If operation fails
+
+        Example:
+            >>> almond = stomatal.getBMFCoefficientsFromLibrary("Almond")
+            >>> stomatal.setBMFCoefficients(almond._replace(Em=almond.Em * 0.8), uuids=[leaf])
+        """
+        if not isinstance(species, str) or not species:
+            raise ValueError("Species name must be a non-empty str")
+        self._check_context_alive()
+        try:
+            values = stomatal_wrapper.getBMFCoefficientsFromLibrary(self.stomatal_model, species)
+        except Exception as e:
+            raise StomatalConductanceModelError(f"Failed to get BMF coefficients from library for species '{species}': {e}")
+        return BMFCoefficients(Em=values[0], i0=values[1], k=values[2], b=values[3])
 
     # Dynamic Time Constants
     def setDynamicTimeConstants(self, tau_open: float, tau_close: float, uuids: Optional[List[int]] = None) -> None:

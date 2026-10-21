@@ -642,7 +642,7 @@ To allow for more realistic visualizations, the Phong shading model can be enabl
   </tr>
 </table>
 
-If the Phong shading model is used, the position of the light source should be specified. This is accomplished through the \ref pyhelios.Visualizer.Visualizer::setLightDirection "setLightDirection()" command, which takes a unit vector pointing toward the light source. The example below shows how to enable the Phong lighting model with shadows, with the light position set according to the position of the sun.
+If the Phong shading model is used, the position of the light source should be specified. This is accomplished through the \ref pyhelios.Visualizer.Visualizer::setLightDirection "setLightDirection()" command, which takes a vector pointing from the scene toward the light source (for example, `vec3(0, 0, 1)` places the light directly overhead). It does not need to be a unit vector. The example below shows how to enable the Phong lighting model with shadows, with the light position set according to the position of the sun.
 
 ```python
 from pyhelios import Context, Visualizer
@@ -655,7 +655,7 @@ with Context() as context:
     with Visualizer(width=1200, height=800) as vis:
         vis.buildContextGeometry(context)
 
-        # Set light direction (unit vector pointing toward light source)
+        # Set light direction (vector pointing from the scene toward the light source)
         light_direction = vec3(1, 1, 1)
 
         vis.setLightingModel("phong_shadowed")
@@ -764,7 +764,7 @@ The width is the sum of the glyph advances, so it includes the side bearings; th
 
 ### Viewing Image Annotations {#AnnotationOverlay}
 
-Two methods display an image with machine-learning annotations drawn over it, reading the formats written by the radiation model's camera annotation output.
+Two methods display an image with machine-learning annotations drawn over it, reading the formats written by the radiation model's camera annotation output and by the Visualizer's own annotation output (see \ref AnnotationOutput).
 
 <table>
 <tr><th>Method</th><th>Reads</th></tr>
@@ -782,6 +782,50 @@ Boxes are drawn as colored outlines with the class name on a filled chip, colore
 Masks are drawn as translucent filled polygons with solid outlines, colored by position in the file rather than by class, so two touching objects of the same class stay distinguishable. Pass `fill_opacity=0` for outlines only, or `show_labels=False` when many overlapping chips would cover the image.
 
 Like `displayImageFromFile()`, both methods clear any existing geometry and do not return until the window is closed.
+
+### Writing Image Annotations {#AnnotationOutput}
+
+The Visualizer can write machine-learning labels for the current view, in the same formats and with the same labeling convention as the radiation model's camera annotations, so a Context labeled for one can be annotated by the other without change.
+
+Objects are identified by primitive data (or, with `object_data_labels`, object data of each primitive's parent object) of type `uint` or `int`: all visible primitives carrying the same value of a label form one object. Primitives without the label are not annotated. The annotations are computed from an exact per-pixel record of which primitive is visible, so they do not depend on colors, lighting or anti-aliasing, and writing them does not modify the Context.
+
+<table>
+<tr><th>Method</th><th>Writes</th></tr>
+<tr><td>`writeImageBoundingBoxes(primitive_data_labels=None, object_data_labels=None, object_class_ids=None, image_file="", classes_txt_file="classes.txt", image_path="./")`</td><td>Ultralytics YOLO bounding boxes, to a `.txt` file named after the image, plus a class file</td></tr>
+<tr><td>`writeImageSegmentationMasks(primitive_data_labels=None, object_data_labels=None, object_class_ids=None, json_filename="", image_file="", data_attribute_labels=None, append_file=False)`</td><td>COCO JSON segmentation masks; `image_file` must already exist</td></tr>
+</table>
+
+Each label argument accepts a single string (with an integer class ID) or a list of strings (with a list of class IDs of the same length). Exactly one of `primitive_data_labels` and `object_data_labels` must be given.
+
+```python
+from pyhelios import Context, Visualizer
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    leaf = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+    context.setPrimitiveDataUInt(leaf, "leaf_id", 1)
+
+    with Visualizer(800, 600, headless=True) as vis:
+        vis.buildContextGeometry(context)
+        vis.setCameraPosition(vec3(0, 0, 3), vec3(0, 0, 0))
+        vis.printWindow("scene.jpeg")
+        vis.writeImageBoundingBoxes(primitive_data_labels="leaf_id", object_class_ids=0,
+                                    image_file="scene.jpeg")
+        vis.writeImageSegmentationMasks(primitive_data_labels="leaf_id", object_class_ids=0,
+                                        json_filename="scene.json", image_file="scene.jpeg")
+```
+
+A bounding box encloses whole every pixel in which its object is visible. Each connected region of a mask becomes one COCO annotation, so an object split in two by an occluder yields two annotations; a region of only one or two pixels is too small to outline and is not written. The output can be checked with the overlay methods described in \ref AnnotationOverlay.
+
+#### Pixel-to-Primitive Map and Depth {#PixelUUIDs}
+
+\ref pyhelios.Visualizer.Visualizer::getPixelUUIDs "getPixelUUIDs()" returns `(pixel_UUIDs, width, height)`, the Context primitive visible in each pixel of the current view. Each element is the **UUID plus one**, with 0 where no Context primitive is visible, row-major with row 0 at the top of the image. This is the map the annotations are computed from, and it can be passed directly to the functions in `pyhelios.annotation`.
+
+\ref pyhelios.Visualizer.Visualizer::getDepthImage "getDepthImage()" returns `(depth_pixels, width, height)`, the distance in world units from the camera to the visible surface, measured along the viewing direction (the same definition as the radiation camera depth images), with row 0 at the top and -1 where no geometry is visible. It can be written to file with `writeDepthImageData(filename)` (text), `writeDepthImageDataEXR(filename)` (EXR), or `writeNormDepthImage(filename, max_depth)` (grayscale JPEG, white at the nearest surface and black at `max_depth`).
+
+Both methods render the frame if needed, as `printWindow()` does, and return framebuffer-sized images (see \ref pyhelios.Visualizer.Visualizer::getFramebufferSize "getFramebufferSize()"). Geometry nearer than the near clipping plane, lines, points, the sky dome and 2D overlays are not part of either map, and semi-transparent primitives are treated as opaque.
+
+\ref pyhelios.Visualizer.Visualizer::getDepthMap "getDepthMap()" is different: it returns the normalized depth buffer shown by `plotDepthMap()`, scaled 0-255 with 255 nearest and row 0 at the bottom. It is not a distance.
 
 ## Acknowledgements {#VisAcklowledgements}
 

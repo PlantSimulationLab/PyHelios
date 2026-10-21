@@ -410,6 +410,79 @@ extern "C" {
         }
     }
 
+    //=============================================================================
+    // Nitrogen-Based Automatic Mode
+    //=============================================================================
+
+    PYHELIOS_API void leafOpticsRunNitrogen(LeafOptics* leafoptics, const unsigned int* uuids, unsigned int uuid_count,
+                                             const float* params, unsigned int num_bins) {
+        try {
+            clearError();
+            if (!leafoptics) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LeafOptics pointer is null");
+                return;
+            }
+            if (!uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null");
+                return;
+            }
+            if (uuid_count == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID count must be greater than 0");
+                return;
+            }
+            if (!params) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Nitrogen parameters array is null");
+                return;
+            }
+
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+
+            // Order: [f_photosynthetic, N_to_Cab_coefficient, Car_to_Cab_ratio, numberlayers,
+            //         anthocyancontent, brownpigments, watermass, drymass, protein, carbonconstituents,
+            //         V2Z, fqe, reassignment_threshold, min_reassignment_change]
+            LeafOpticsProperties_Nauto nauto;
+            nauto.f_photosynthetic = params[0];
+            nauto.N_to_Cab_coefficient = params[1];
+            nauto.Car_to_Cab_ratio = params[2];
+            nauto.numberlayers = params[3];
+            nauto.anthocyancontent = params[4];
+            nauto.brownpigments = params[5];
+            nauto.watermass = params[6];
+            nauto.drymass = params[7];
+            nauto.protein = params[8];
+            nauto.carbonconstituents = params[9];
+            nauto.V2Z = params[10];
+            nauto.fqe = params[11];
+            nauto.reassignment_threshold = params[12];
+            nauto.min_reassignment_change = params[13];
+            nauto.num_bins = num_bins;
+
+            leafoptics->run(uuid_vector, nauto);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (LeafOptics::run nitrogen mode): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (LeafOptics::run nitrogen mode): Unknown error running nitrogen-based leaf optics.");
+        }
+    }
+
+    PYHELIOS_API void leafOpticsUpdateNitrogenBasedSpectra(LeafOptics* leafoptics) {
+        try {
+            clearError();
+            if (!leafoptics) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LeafOptics pointer is null");
+                return;
+            }
+
+            leafoptics->updateNitrogenBasedSpectra();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (LeafOptics::updateNitrogenBasedSpectra): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (LeafOptics::updateNitrogenBasedSpectra): Unknown error updating nitrogen-based spectra.");
+        }
+    }
+
 } // extern "C"
 
 #endif // LEAFOPTICS_PLUGIN_AVAILABLE

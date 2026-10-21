@@ -354,7 +354,7 @@ PYHELIOS_API float getLiDARScanPulseWidth(LiDARcloud* cloud, unsigned int scanID
 PYHELIOS_API void setLiDARScanPulseWidth(LiDARcloud* cloud, unsigned int scanID, float pulseWidth);
 
 /**
- * @brief Get the detection threshold (energy fraction, noise floor) of a scan
+ * @brief Get the detection threshold (energy fraction, noise floor) of a scan (default 0.001 as of helios-core 1.3.92)
  */
 PYHELIOS_API float getLiDARScanDetectionThreshold(LiDARcloud* cloud, unsigned int scanID);
 
@@ -1901,6 +1901,25 @@ PYHELIOS_API void getLiDARGridGlobalCount(LiDARcloud* cloud, int* ijk_out);
  * @return Current hit-point capacity (see reserveLiDARHitPoints)
  */
 PYHELIOS_API size_t getLiDARHitPointCapacity(LiDARcloud* cloud);
+
+// ===== helios-core 1.3.92 additions =====
+
+/**
+ * @brief Whether a scan's partly intercepted multi-return pulses also record the escaped energy as a miss point
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID ID of scan
+ * @return True if a partial-miss point is recorded alongside the detected returns (default)
+ */
+PYHELIOS_API bool getLiDARScanRecordPartialMisses(LiDARcloud* cloud, unsigned int scanID);
+
+/**
+ * @brief Set whether a scan's partly intercepted multi-return pulses also record the escaped energy as a miss point
+ * @param cloud Pointer to the LiDARcloud instance
+ * @param scanID ID of scan
+ * @param recordPartialMisses False reproduces what a real instrument records: detected returns only, plus a miss for
+ *        each fully transmitted pulse when miss recording is on
+ */
+PYHELIOS_API void setLiDARScanRecordPartialMisses(LiDARcloud* cloud, unsigned int scanID, bool recordPartialMisses);
 
 #ifdef __cplusplus
 }

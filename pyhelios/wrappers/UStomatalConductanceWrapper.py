@@ -213,6 +213,36 @@ except AttributeError:
     _STOMATAL_CONDUCTANCE_FUNCTIONS_AVAILABLE = False
 
 
+# Material-label, per-UUID vector, and library-getter prototypes. Kept in a separate block so a
+# library built before these symbols existed still exposes the rest of the plugin.
+try:
+    _model_ptr = ctypes.POINTER(UStomatalConductanceModel)
+    _float = ctypes.c_float
+    for _name, _nfloats in (("BWB", 2), ("BBL", 3), ("MOPT", 2), ("BMF", 4), ("BB", 5)):
+        _fn = getattr(helios_lib, f"setStomatalConductance{_name}CoefficientsForMaterial")
+        _fn.argtypes = [_model_ptr, ctypes.c_char_p] + [_float] * _nfloats
+        _fn.restype = None
+        _fn.errcheck = _check_error
+
+    helios_lib.setStomatalConductanceBMFCoefficientsFromLibraryForMaterial.argtypes = [_model_ptr, ctypes.c_char_p, ctypes.c_char_p]
+    helios_lib.setStomatalConductanceBMFCoefficientsFromLibraryForMaterial.restype = None
+    helios_lib.setStomatalConductanceBMFCoefficientsFromLibraryForMaterial.errcheck = _check_error
+
+    helios_lib.setStomatalConductanceBMFCoefficientsPerUUID.argtypes = [
+        _model_ptr, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint
+    ]
+    helios_lib.setStomatalConductanceBMFCoefficientsPerUUID.restype = None
+    helios_lib.setStomatalConductanceBMFCoefficientsPerUUID.errcheck = _check_error
+
+    helios_lib.getStomatalConductanceBMFCoefficientsFromLibrary.argtypes = [_model_ptr, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getStomatalConductanceBMFCoefficientsFromLibrary.restype = None
+    helios_lib.getStomatalConductanceBMFCoefficientsFromLibrary.errcheck = _check_error
+
+    _MATERIAL_COEFFICIENT_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _MATERIAL_COEFFICIENT_FUNCTIONS_AVAILABLE = False
+
+
 # Python wrapper functions with validation and mock mode support
 
 def createStomatalConductanceModel(context) -> ctypes.POINTER(UStomatalConductanceModel):
@@ -468,6 +498,88 @@ def setBMFCoefficientsFromLibraryForUUIDs(model: ctypes.POINTER(UStomatalConduct
     uuid_array = (ctypes.c_uint * len(uuids))(*uuids)
     helios_lib.setStomatalConductanceBMFCoefficientsFromLibraryForUUIDs(model, species.encode('utf-8'), uuid_array, len(uuids))
 
+
+
+def _require_material_functions(model) -> None:
+    if not _STOMATAL_CONDUCTANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("StomatalConductanceModel functions not available. Rebuild with stomatalconductance enabled.")
+    if not _MATERIAL_COEFFICIENT_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Material-label / per-UUID stomatal conductance coefficient functions are not available in the "
+            "current native library. Rebuild PyHelios: build_scripts/build_helios"
+        )
+    if not model:
+        raise ValueError("StomatalConductanceModel instance is None.")
+
+
+def _require_label(label: str, what: str = "Material label") -> bytes:
+    if not isinstance(label, str) or not label:
+        raise ValueError(f"{what} must be a non-empty string.")
+    return label.encode('utf-8')
+
+
+# Material-label coefficient functions
+def setBWBCoefficientsForMaterial(model, material_label: str, gs0: float, a1: float) -> None:
+    """Set Ball-Woodrow-Berry coefficients on a material (applies to every primitive using it)"""
+    _require_material_functions(model)
+    helios_lib.setStomatalConductanceBWBCoefficientsForMaterial(model, _require_label(material_label), gs0, a1)
+
+
+def setBBLCoefficientsForMaterial(model, material_label: str, gs0: float, a1: float, D0: float) -> None:
+    """Set Ball-Berry-Leuning coefficients on a material"""
+    _require_material_functions(model)
+    helios_lib.setStomatalConductanceBBLCoefficientsForMaterial(model, _require_label(material_label), gs0, a1, D0)
+
+
+def setMOPTCoefficientsForMaterial(model, material_label: str, gs0: float, g1: float) -> None:
+    """Set Medlyn optimality coefficients on a material"""
+    _require_material_functions(model)
+    helios_lib.setStomatalConductanceMOPTCoefficientsForMaterial(model, _require_label(material_label), gs0, g1)
+
+
+def setBMFCoefficientsForMaterial(model, material_label: str, Em: float, i0: float, k: float, b: float) -> None:
+    """Set Buckley-Mott-Farquhar coefficients on a material"""
+    _require_material_functions(model)
+    helios_lib.setStomatalConductanceBMFCoefficientsForMaterial(model, _require_label(material_label), Em, i0, k, b)
+
+
+def setBBCoefficientsForMaterial(model, material_label: str, pi_0: float, pi_m: float, theta: float, sigma: float, chi: float) -> None:
+    """Set Bailey coefficients on a material"""
+    _require_material_functions(model)
+    helios_lib.setStomatalConductanceBBCoefficientsForMaterial(model, _require_label(material_label), pi_0, pi_m, theta, sigma, chi)
+
+
+def setBMFCoefficientsFromLibraryForMaterial(model, species: str, material_label: str) -> None:
+    """Set library BMF coefficients for a species on a material"""
+    _require_material_functions(model)
+    species_b = _require_label(species, "Species name")
+    helios_lib.setStomatalConductanceBMFCoefficientsFromLibraryForMaterial(model, species_b, _require_label(material_label))
+
+
+def setBMFCoefficientsPerUUID(model, coeffs: List[List[float]], uuids: List[int]) -> None:
+    """Set one BMF coefficient set [Em, i0, k, b] per UUID"""
+    _require_material_functions(model)
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty.")
+    if len(coeffs) != len(uuids):
+        raise ValueError(f"Number of coefficient sets ({len(coeffs)}) does not match number of UUIDs ({len(uuids)}).")
+    flat = []
+    for c in coeffs:
+        if len(c) != 4:
+            raise ValueError("Each BMF coefficient set must have exactly 4 values [Em, i0, k, b].")
+        flat.extend(float(v) for v in c)
+    coeff_array = (ctypes.c_float * len(flat))(*flat)
+    uuid_array = (ctypes.c_uint * len(uuids))(*uuids)
+    helios_lib.setStomatalConductanceBMFCoefficientsPerUUID(model, coeff_array, uuid_array, len(uuids))
+
+
+def getBMFCoefficientsFromLibrary(model, species: str) -> List[float]:
+    """Return library BMF coefficients [Em, i0, k, b] for a species"""
+    _require_material_functions(model)
+    species_b = _require_label(species, "Species name")
+    out = (ctypes.c_float * 4)()
+    helios_lib.getStomatalConductanceBMFCoefficientsFromLibrary(model, species_b, out)
+    return [out[0], out[1], out[2], out[3]]
 
 # Dynamic Time Constants
 def setDynamicTimeConstants(model: ctypes.POINTER(UStomatalConductanceModel), tau_open: float, tau_close: float) -> None:

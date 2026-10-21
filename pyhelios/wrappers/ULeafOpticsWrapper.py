@@ -27,6 +27,12 @@ LEAF_OPTICS_PROPERTIES_COUNT = 11
 # Number of spectral points (400-2500 nm at 1nm resolution)
 LEAF_OPTICS_SPECTRAL_POINTS = 2101
 
+# Number of float fields in LeafOpticsProperties_Nauto (num_bins is passed separately as uint).
+# Order: [f_photosynthetic, N_to_Cab_coefficient, Car_to_Cab_ratio, numberlayers,
+#        anthocyancontent, brownpigments, watermass, drymass, protein, carbonconstituents,
+#        V2Z, fqe, reassignment_threshold, min_reassignment_change]
+LEAF_OPTICS_NAUTO_FLOAT_COUNT = 14
+
 # Error checking callback
 def _check_error(result, func, args):
     """Automatic error checking for all leaf optics functions"""
@@ -126,6 +132,34 @@ try:
 
 except AttributeError:
     _LEAFOPTICS_FUNCTIONS_AVAILABLE = False
+
+# Nitrogen-based automatic mode (set up separately so an older library without these
+# symbols keeps the rest of LeafOptics usable)
+try:
+    helios_lib.leafOpticsRunNitrogen.argtypes = [
+        ctypes.POINTER(ULeafOptics),
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_uint
+    ]
+    helios_lib.leafOpticsRunNitrogen.restype = None
+    helios_lib.leafOpticsRunNitrogen.errcheck = _check_error
+
+    helios_lib.leafOpticsUpdateNitrogenBasedSpectra.argtypes = [ctypes.POINTER(ULeafOptics)]
+    helios_lib.leafOpticsUpdateNitrogenBasedSpectra.restype = None
+    helios_lib.leafOpticsUpdateNitrogenBasedSpectra.errcheck = _check_error
+
+    _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE = True
+
+except AttributeError:
+    _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE = False
+
+_NITROGEN_NOT_AVAILABLE_MSG = (
+    "LeafOptics nitrogen-mode functions not available in current Helios library. "
+    "Rebuild PyHelios to include them:\n"
+    "  build_scripts/build_helios"
+)
 
 
 # Wrapper functions
@@ -408,6 +442,52 @@ def leafOpticsOptionalOutputPrimitiveData(leafoptics: ctypes.POINTER(ULeafOptics
     helios_lib.leafOpticsOptionalOutputPrimitiveData(leafoptics, label_encoded)
 
 
+def leafOpticsRunNitrogen(leafoptics: ctypes.POINTER(ULeafOptics),
+                          uuids: List[int],
+                          params: List[float],
+                          num_bins: int) -> None:
+    """Run nitrogen-based automatic leaf optics for leaf primitives
+
+    Args:
+        leafoptics: Pointer to LeafOptics instance
+        uuids: List of leaf primitive UUIDs (must belong to objects with "leaf_nitrogen_gN_m2" data)
+        params: List of LEAF_OPTICS_NAUTO_FLOAT_COUNT floats [f_photosynthetic, N_to_Cab_coefficient,
+                Car_to_Cab_ratio, numberlayers, anthocyancontent, brownpigments, watermass, drymass,
+                protein, carbonconstituents, V2Z, fqe, reassignment_threshold, min_reassignment_change]
+        num_bins: Number of spectrum bins
+    """
+    if not _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NITROGEN_NOT_AVAILABLE_MSG)
+    if not leafoptics:
+        raise ValueError("LeafOptics instance is None.")
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty.")
+    if len(params) != LEAF_OPTICS_NAUTO_FLOAT_COUNT:
+        raise ValueError(f"Nitrogen parameters must have exactly {LEAF_OPTICS_NAUTO_FLOAT_COUNT} elements.")
+    if num_bins < 1:
+        raise ValueError("num_bins must be at least 1.")
+
+    uuid_array = (ctypes.c_uint * len(uuids))(*uuids)
+    params_array = (ctypes.c_float * LEAF_OPTICS_NAUTO_FLOAT_COUNT)(*params)
+
+    helios_lib.leafOpticsRunNitrogen(leafoptics, uuid_array, len(uuids), params_array, ctypes.c_uint(num_bins))
+
+
+def leafOpticsUpdateNitrogenBasedSpectra(leafoptics: ctypes.POINTER(ULeafOptics)) -> None:
+    """Re-read leaf nitrogen for tracked primitives and reassign spectra where it changed"""
+    if not _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NITROGEN_NOT_AVAILABLE_MSG)
+    if not leafoptics:
+        raise ValueError("LeafOptics instance is None.")
+
+    helios_lib.leafOpticsUpdateNitrogenBasedSpectra(leafoptics)
+
+
+def is_leafoptics_nitrogen_available() -> bool:
+    """Check if the LeafOptics nitrogen-mode functions are available in the current library"""
+    return _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE
+
+
 def is_leafoptics_available() -> bool:
     """Check if LeafOptics functions are available in the current library"""
     return _LEAFOPTICS_FUNCTIONS_AVAILABLE
@@ -436,3 +516,5 @@ if not _LEAFOPTICS_FUNCTIONS_AVAILABLE:
     leafOpticsGetPropertiesFromSpectrum = mock_method
     leafOpticsGetPropertiesFromSpectrumSingle = mock_method
     leafOpticsGetPropertiesFromLibrary = mock_method
+    leafOpticsRunNitrogen = mock_method
+    leafOpticsUpdateNitrogenBasedSpectra = mock_method

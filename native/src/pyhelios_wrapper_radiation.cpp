@@ -1625,7 +1625,20 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
                 return 0.0f;
             }
 
+            // Deprecated in helios-core 1.3.92: always raises, so the error reaches Python.
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
             return radiation_model->getSkyEnergy();
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getSkyEnergy): ") + e.what());
@@ -3264,6 +3277,129 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableCameraAtmosphere): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableCameraAtmosphere): Unknown error");
+        }
+    }
+
+    //=========================================================================
+    // Below-horizon diffuse sky and scattering ray reduction (v1.3.92)
+    //=========================================================================
+
+    PYHELIOS_API void enableBelowHorizonDiffuseRadiation(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->enableBelowHorizonDiffuseRadiation();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableBelowHorizonDiffuseRadiation): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableBelowHorizonDiffuseRadiation): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableBelowHorizonDiffuseRadiation(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->disableBelowHorizonDiffuseRadiation();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableBelowHorizonDiffuseRadiation): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableBelowHorizonDiffuseRadiation): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void enableScatteringRayReduction(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->enableScatteringRayReduction();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableScatteringRayReduction): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableScatteringRayReduction): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void disableScatteringRayReduction(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+
+            radiation_model->disableScatteringRayReduction();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableScatteringRayReduction): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableScatteringRayReduction): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void applyCameraImageCorrections(RadiationModel* radiation_model, const char* camera_label,
+                                                  const char* red_band_label, const char* green_band_label,
+                                                  const char* blue_band_label, float saturation_adjustment,
+                                                  float brightness_adjustment, float contrast_adjustment) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !red_band_label || !green_band_label || !blue_band_label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera and band labels must not be null");
+                return;
+            }
+
+            radiation_model->applyCameraImageCorrections(std::string(camera_label), std::string(red_band_label),
+                                                         std::string(green_band_label), std::string(blue_band_label),
+                                                         saturation_adjustment, brightness_adjustment, contrast_adjustment);
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::applyCameraImageCorrections): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::applyCameraImageCorrections): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void applyCameraColorCorrectionMatrix(RadiationModel* radiation_model, const char* camera_label,
+                                                       const char* red_band_label, const char* green_band_label,
+                                                       const char* blue_band_label, const char* ccm_file_path) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !red_band_label || !green_band_label || !blue_band_label || !ccm_file_path) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Camera label, band labels, and CCM file path must not be null");
+                return;
+            }
+
+            radiation_model->applyCameraColorCorrectionMatrix(std::string(camera_label), std::string(red_band_label),
+                                                              std::string(green_band_label), std::string(blue_band_label),
+                                                              std::string(ccm_file_path));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::applyCameraColorCorrectionMatrix): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::applyCameraColorCorrectionMatrix): Unknown error");
         }
     }
 

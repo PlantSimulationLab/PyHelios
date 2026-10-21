@@ -659,9 +659,11 @@ class Visualizer:
     def setLightDirection(self, direction: vec3) -> None:
         """
         Set light direction.
-        
+
         Args:
-            direction: Light direction vector as vec3 (will be normalized)
+            direction: Vector pointing from the scene toward the light source; for example,
+                ``vec3(0, 0, 1)`` places the light directly overhead. It does not need to be a
+                unit vector.
             
         Raises:
             VisualizerError: If light direction setting fails
@@ -1662,11 +1664,20 @@ class Visualizer:
 
     def getDepthMap(self) -> Tuple[List[float], int, int]:
         """
-        Get depth map from current window.
-        
+        Get the normalized depth map of the current view.
+
+        The values are the non-linear depth buffer values of the current frame, rescaled
+        between the nearest and farthest of them and inverted, so that 255 is the nearest
+        surface in view and 0 the farthest (including background). This is the image shown
+        by :meth:`plotDepthMap`. It is **not** a distance: use :meth:`getDepthImage` for
+        depth in world units.
+
         Returns:
-            Tuple of (depth_pixels, width, height)
-            
+            Tuple of ``(depth_pixels, width, height)``. ``depth_pixels`` is row-major with
+            row 0 at the BOTTOM of the image. ``width`` and ``height`` are the framebuffer
+            dimensions (see :meth:`getFramebufferSize`), which are larger than the window
+            on a high-DPI display.
+
         Raises:
             VisualizerError: If operation fails
         """
@@ -1680,10 +1691,11 @@ class Visualizer:
             height = ctypes.c_uint()
             buffer_size = ctypes.c_uint()
             
-            helios_lib.getDepthMap(self.visualizer, ctypes.byref(depth_ptr), 
-                                   ctypes.byref(width), ctypes.byref(height), 
+            helios_lib.getDepthMap(self.visualizer, ctypes.byref(depth_ptr),
+                                   ctypes.byref(width), ctypes.byref(height),
                                    ctypes.byref(buffer_size))
-            
+            visualizer_wrapper._check_for_helios_error()
+
             # Convert to Python list
             if depth_ptr and buffer_size.value > 0:
                 depth_data = [depth_ptr[i] for i in range(buffer_size.value)]
@@ -1708,6 +1720,359 @@ class Visualizer:
             helios_lib.plotDepthMap(self.visualizer)
         except Exception as e:
             raise VisualizerError(f"Failed to plot depth map: {e}")
+
+    # Annotation and Depth Image Methods (helios-core 1.3.91)
+
+    def getDepthImage(self) -> Tuple[List[float], int, int]:
+        """
+        Get the distance from the camera to the nearest surface in each pixel of the current view.
+
+        The depth is the distance in world units from the camera to the visible surface,
+        measured along the camera viewing direction, so geometry lying in a plane
+        perpendicular to the viewing direction has one depth across the whole image. This is
+        the same definition as the camera depth images of the radiation plug-in
+        (:meth:`pyhelios.RadiationModel.writeDepthImageData`).
+
+        The frame is rendered as part of the call if needed, as for :meth:`printWindow`.
+
+        Returns:
+            Tuple of ``(depth_pixels, width, height)``. ``depth_pixels`` is row-major with row 0
+            at the TOP of the image (the orientation of an image saved by :meth:`printWindow`).
+            Pixels in which no geometry is visible hold -1. ``width`` and ``height`` are the
+            framebuffer dimensions (see :meth:`getFramebufferSize`).
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Note:
+            - Geometry nearer than the near clipping plane (5% of the camera-to-look-at distance,
+              and no nearer than 0.1) is not visible and is absent here.
+            - Semi-transparent primitives (color alpha < 1) are treated as opaque.
+            - Lines, points, the sky dome and 2D overlays (colorbar, watermark, text) have no
+              depth; a pixel showing only these holds -1.
+
+        Example:
+            >>> depth, width, height = visualizer.getDepthImage()
+            >>> center = depth[(height // 2) * width + width // 2]
+        """
+        self._check_context_alive()
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            with _visualizer_working_directory():
+                return visualizer_wrapper.get_depth_image(self.visualizer)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to get depth image: {e}")
+
+    def getPixelUUIDs(self) -> Tuple[List[int], int, int]:
+        """
+        Get the Context primitive visible in each pixel of the current view.
+
+        This is the pixel-to-primitive map from which bounding boxes and segmentation masks are
+        computed. It is exact: it does not depend on primitive colors, lighting, or the
+        anti-aliasing the Visualizer was created with, and producing it does not modify the
+        Context. The frame is rendered as part of the call if needed, as for :meth:`printWindow`.
+
+        Returns:
+            Tuple of ``(pixel_UUIDs, width, height)``. Each element of ``pixel_UUIDs`` is the
+            **UUID of the visible primitive plus one**; 0 means no Context primitive is visible
+            (background, or geometry added directly to the Visualizer). Subtract 1 from a
+            non-zero value to get the UUID. The map is row-major with row 0 at the TOP of the
+            image, and is in the form the :mod:`pyhelios.annotation` functions accept.
+            ``width`` and ``height`` are the framebuffer dimensions.
+
+        Raises:
+            VisualizerError: If the operation fails
+
+        Note:
+            - A primitive whose texture has a transparency channel is visible only where its
+              texture is opaque.
+            - Semi-transparent primitives (color alpha < 1) are treated as opaque.
+            - Lines, points, the sky dome and 2D overlays are not part of the map and do not
+              hide primitives behind them.
+
+        Example:
+            >>> pixels, width, height = visualizer.getPixelUUIDs()
+            >>> visible = {p - 1 for p in pixels if p != 0}
+        """
+        self._check_context_alive()
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            with _visualizer_working_directory():
+                return visualizer_wrapper.get_pixel_uuids(self.visualizer)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to get pixel UUIDs: {e}")
+
+    @staticmethod
+    def _normalize_annotation_labels(primitive_data_labels, object_data_labels, object_class_ids):
+        """Validate the label arguments shared by the annotation writers.
+
+        Returns:
+            Tuple of (labels list, class ID list, use_object_data flag)
+        """
+        if primitive_data_labels is not None and object_data_labels is not None:
+            raise ValueError("Cannot specify both primitive_data_labels and object_data_labels")
+        if primitive_data_labels is None and object_data_labels is None:
+            raise ValueError("Must specify either primitive_data_labels or object_data_labels")
+
+        use_object_data = object_data_labels is not None
+        labels = object_data_labels if use_object_data else primitive_data_labels
+        name = "object_data_labels" if use_object_data else "primitive_data_labels"
+
+        if isinstance(labels, str):
+            if isinstance(object_class_ids, bool) or not isinstance(object_class_ids, _INT_TYPE):
+                raise TypeError(f"For a single data label, object_class_ids must be an integer, "
+                                f"got {type(object_class_ids).__name__}")
+            labels = [labels]
+            class_ids = [object_class_ids]
+        elif isinstance(labels, list):
+            if not isinstance(object_class_ids, list):
+                raise TypeError(f"For multiple data labels, object_class_ids must be a list, "
+                                f"got {type(object_class_ids).__name__}")
+            if len(labels) != len(object_class_ids):
+                raise ValueError(f"{name} and object_class_ids must have the same length")
+            if not labels:
+                raise ValueError(f"{name} cannot be empty")
+            class_ids = object_class_ids
+        else:
+            raise TypeError(f"{name} must be a string or list of strings, got {type(labels).__name__}")
+
+        if not all(isinstance(label, str) and label.strip() for label in labels):
+            raise TypeError("All data labels must be non-empty strings")
+        if not all(isinstance(cid, _INT_TYPE) and not isinstance(cid, bool) for cid in class_ids):
+            raise TypeError("All object class IDs must be integers")
+        if any(cid < 0 for cid in class_ids):
+            raise ValueError("Object class IDs must be non-negative")
+
+        return list(labels), [int(cid) for cid in class_ids], use_object_data
+
+    def writeImageBoundingBoxes(self, primitive_data_labels=None, object_data_labels=None,
+                                object_class_ids=None, image_file: str = "",
+                                classes_txt_file: str = "classes.txt",
+                                image_path: str = "./") -> None:
+        """
+        Write bounding boxes for the current view in Ultralytics YOLO format.
+
+        Objects are identified by a primitive data label (or, with ``object_data_labels``, an
+        object data label of each primitive's parent object) of type ``uint`` or ``int``: all
+        visible primitives carrying the same value of the label form one object, and one box is
+        written per distinct value. Primitives without the label are not annotated. This is the
+        labeling convention of :meth:`pyhelios.RadiationModel.writeImageBoundingBoxes`, and the
+        boxes are computed by the same native routine.
+
+        A box encloses whole every pixel in which the object is visible, so even an object
+        visible in a single pixel has a box. The boxes are written to a text file named after
+        the image with its extension replaced by ".txt", in ``image_path``, and describe the view
+        at the time of the call. Save the image itself with :meth:`printWindow`, and check the
+        output with :meth:`displayImageWithBoundingBoxes`.
+
+        Supply exactly one of ``primitive_data_labels`` or ``object_data_labels``.
+
+        Args:
+            primitive_data_labels: Primitive data label (str) or list of labels
+            object_data_labels: Object data label (str) or list of labels
+            object_class_ids: Class ID (int) for a single label, or a list of class IDs in the
+                same order as the labels
+            image_file: Name of the image these boxes annotate. Only its stem is used, to name
+                the output file.
+            classes_txt_file: Name of the class file to write within ``image_path``. Each line
+                holds a class ID and the data label it was given for.
+            image_path: Directory in which the output files are written (default: current
+                working directory)
+
+        Raises:
+            ValueError: If both or neither label arguments are given, lengths differ, or a class
+                ID is negative
+            TypeError: If an argument has the wrong type
+            VisualizerError: If writing fails (e.g. the output directory cannot be written)
+
+        Note:
+            Only ``uint`` and ``int`` label data is read. A primitive whose label has another
+            type is treated as unlabeled and gets no box; this is not an error.
+
+        Example:
+            >>> context.setPrimitiveDataUInt(leaf_uuids, "leaf_id", 1)
+            >>> visualizer.printWindow("scene.jpeg")
+            >>> visualizer.writeImageBoundingBoxes(primitive_data_labels="leaf_id",
+            ...                                    object_class_ids=0, image_file="scene.jpeg")
+        """
+        self._check_context_alive()
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        labels, class_ids, use_object_data = self._normalize_annotation_labels(
+            primitive_data_labels, object_data_labels, object_class_ids)
+        if not isinstance(image_file, str) or not image_file.strip():
+            raise TypeError("Image file must be a non-empty string")
+        if not isinstance(classes_txt_file, str) or not classes_txt_file.strip():
+            raise TypeError("Classes txt file must be a non-empty string")
+        if not isinstance(image_path, str) or not image_path.strip():
+            raise TypeError("Image path must be a non-empty string")
+
+        resolved_path = _resolve_user_path(image_path)
+        try:
+            with _visualizer_working_directory():
+                visualizer_wrapper.write_image_bounding_boxes(
+                    self.visualizer, labels, class_ids, image_file, classes_txt_file,
+                    resolved_path, use_object_data)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to write image bounding boxes: {e}")
+
+    def writeImageSegmentationMasks(self, primitive_data_labels=None, object_data_labels=None,
+                                    object_class_ids=None, json_filename: str = "",
+                                    image_file: str = "",
+                                    data_attribute_labels: Optional[List[str]] = None,
+                                    append_file: bool = False) -> None:
+        """
+        Write segmentation masks for the current view in COCO JSON format.
+
+        Objects are identified by a primitive data label (or, with ``object_data_labels``, an
+        object data label) of type ``uint`` or ``int``, as for :meth:`writeImageBoundingBoxes`.
+        Each connected region of pixels sharing one value of the label becomes one annotation
+        holding the outline of that region, so an object split in two by something in front of
+        it yields two annotations. Parts hidden behind other geometry are not included. A region
+        of only one or two pixels is too small to outline and is not written. This is the
+        convention of :meth:`pyhelios.RadiationModel.writeImageSegmentationMasks`.
+
+        Supply exactly one of ``primitive_data_labels`` or ``object_data_labels``. The output
+        can be checked with :meth:`displayImageWithSegmentationMasks`.
+
+        Args:
+            primitive_data_labels: Primitive data label (str) or list of labels
+            object_data_labels: Object data label (str) or list of labels
+            object_class_ids: Class ID (COCO category ID) for a single label, or a list in the
+                same order as the labels
+            json_filename: Output JSON file, which may include a path. ".json" is appended if
+                it has no such extension.
+            image_file: Image file these masks annotate, which must already exist (see
+                :meth:`printWindow`)
+            data_attribute_labels: Optional primitive or object data labels of type int, uint,
+                float or double whose mean over the pixels of each mask is written to that
+                annotation's "attributes". A label that exists as both is read from primitive
+                data. Labels that do not exist are ignored.
+            append_file: If True, annotations are added to an existing JSON file so one file can
+                describe many images. If False, a new file is written.
+
+        Raises:
+            ValueError: If both or neither label arguments are given, lengths differ, or a class
+                ID is negative
+            TypeError: If an argument has the wrong type
+            VisualizerError: If writing fails (e.g. the image file does not exist)
+
+        Example:
+            >>> visualizer.printWindow("scene.jpeg")
+            >>> visualizer.writeImageSegmentationMasks(primitive_data_labels="leaf_id",
+            ...                                        object_class_ids=0,
+            ...                                        json_filename="annotations.json",
+            ...                                        image_file="scene.jpeg")
+        """
+        self._check_context_alive()
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        labels, class_ids, use_object_data = self._normalize_annotation_labels(
+            primitive_data_labels, object_data_labels, object_class_ids)
+        if not isinstance(json_filename, str) or not json_filename.strip():
+            raise TypeError("JSON filename must be a non-empty string")
+        if not isinstance(image_file, str) or not image_file.strip():
+            raise TypeError("Image file must be a non-empty string")
+        if data_attribute_labels is None:
+            data_attribute_labels = []
+        if not isinstance(data_attribute_labels, list) or not all(
+                isinstance(label, str) and label.strip() for label in data_attribute_labels):
+            raise TypeError("data_attribute_labels must be a list of non-empty strings")
+        if not isinstance(append_file, bool):
+            raise TypeError(f"append_file must be a bool, got {type(append_file).__name__}")
+
+        resolved_json = _resolve_user_path(json_filename)
+        resolved_image = _resolve_user_path(image_file)
+        try:
+            with _visualizer_working_directory():
+                visualizer_wrapper.write_image_segmentation_masks(
+                    self.visualizer, labels, class_ids, resolved_json, resolved_image,
+                    data_attribute_labels, append_file, use_object_data)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to write image segmentation masks: {e}")
+
+    def _write_depth_output(self, writer, filename: str, description: str, *args) -> None:
+        """Validate a depth-output filename and call the given wrapper writer."""
+        self._check_context_alive()
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(filename, str) or not filename.strip():
+            raise ValueError("Filename must be a non-empty string")
+        resolved = _resolve_user_path(filename)
+        try:
+            with _visualizer_working_directory():
+                writer(self.visualizer, resolved, *args)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to write {description}: {e}")
+
+    def writeDepthImageData(self, filename: str) -> None:
+        """
+        Write the depth image of the current view to a text file.
+
+        The file holds one line per image row, starting from the top of the image, with the
+        depth of each pixel in that row separated by spaces. See :meth:`getDepthImage` for the
+        definition of depth. Pixels in which no geometry is visible are written as -1.
+
+        Args:
+            filename: Text file to write, which may include a path
+
+        Raises:
+            ValueError: If filename is empty
+            VisualizerError: If writing fails
+        """
+        self._write_depth_output(visualizer_wrapper.write_depth_image_data, filename, "depth image data")
+
+    def writeDepthImageDataEXR(self, filename: str) -> None:
+        """
+        Write the depth image of the current view to an EXR file with lossless float compression.
+
+        See :meth:`getDepthImage` for the definition of depth. Pixels in which no geometry is
+        visible are written as -1.
+
+        Args:
+            filename: EXR file to write, which may include a path
+
+        Raises:
+            ValueError: If filename is empty
+            VisualizerError: If writing fails
+        """
+        self._write_depth_output(visualizer_wrapper.write_depth_image_data_exr, filename, "EXR depth image")
+
+    def writeNormDepthImage(self, filename: str, max_depth: float) -> None:
+        """
+        Write the depth image of the current view as a grayscale JPEG, normalized between the
+        nearest depth and a maximum depth.
+
+        The nearest visible surface is white and anything at or beyond ``max_depth`` is black.
+        Pixels in which no geometry is visible are treated as lying at ``max_depth``.
+
+        Args:
+            filename: JPEG file to write, which may include a path
+            max_depth: Depth that maps to black, in world units (e.g. the far side of the scene).
+                Must be greater than zero.
+
+        Raises:
+            ValueError: If filename is empty or max_depth is not positive
+            VisualizerError: If writing fails
+        """
+        if isinstance(max_depth, bool) or not isinstance(max_depth, _NUMERIC_TYPES):
+            raise ValueError(f"max_depth must be a number, got {type(max_depth).__name__}")
+        if not max_depth > 0:
+            raise ValueError(f"max_depth must be greater than zero, got {max_depth}")
+        self._write_depth_output(visualizer_wrapper.write_norm_depth_image, filename,
+                                 "normalized depth image", float(max_depth))
 
     # Geometry Management Methods
 

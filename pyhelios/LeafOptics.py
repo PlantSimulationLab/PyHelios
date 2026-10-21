@@ -10,7 +10,7 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import ULeafOpticsWrapper as leafoptics_wrapper
@@ -137,6 +137,90 @@ class LeafOpticsProperties:
             V2Z=values[9] if len(values) > 9 else 0.0,
             fqe=values[10] if len(values) > 10 else 1.0,
         )
+
+
+@dataclass
+class LeafOpticsProperties_Nauto:
+    """
+    Parameters for nitrogen-based automatic leaf optics.
+
+    Passed to :meth:`LeafOptics.run` (without a label) to derive each leaf's PROSPECT
+    chlorophyll and carotenoid content from its ``"leaf_nitrogen_gN_m2"`` object data
+    (g N/m^2, typically written by the PlantArchitecture nitrogen model):
+
+    - Cab (ug/cm^2) = N_area (g/m^2) * 100 * f_photosynthetic * N_to_Cab_coefficient,
+      clamped to [5, 80]
+    - Car (ug/cm^2) = Cab * Car_to_Cab_ratio
+
+    All other PROSPECT parameters are fixed at the values given here. Leaves are grouped
+    into ``num_bins`` spectrum bins spaced evenly across the nitrogen range, so at most
+    ``num_bins`` spectra are generated (labelled ``"Nauto_0"``, ``"Nauto_1"``, ...).
+
+    Attributes:
+        f_photosynthetic: Fraction of leaf nitrogen in photosynthetic machinery [0-1]
+        N_to_Cab_coefficient: Empirical nitrogen-to-chlorophyll coefficient
+        Car_to_Cab_ratio: Carotenoid to chlorophyll ratio
+        numberlayers: Leaf structure parameter N (must be >= 1)
+        anthocyancontent: Anthocyanin content in micrograms per square cm
+        brownpigments: Brown pigment content (senescence indicator)
+        watermass: Equivalent water thickness in grams per square cm
+        drymass: Leaf mass per area in grams per square cm
+        protein: Protein content in grams per square cm (PROSPECT-PRO mode)
+        carbonconstituents: Carbon constituents in grams per square cm (PROSPECT-PRO mode)
+        V2Z: Violaxanthin-to-zeaxanthin state [0, 1] for the SIF pipeline (fixed across bins)
+        fqe: Intrinsic fluorescence quantum efficiency scalar for the SIF pipeline (fixed across bins)
+        num_bins: Number of spectrum bins (a single bin is used when all leaves share one nitrogen value)
+        reassignment_threshold: Relative nitrogen change (fraction of bin centre) a leaf must
+            exceed before it is reassigned to another bin; 0 disables the relative test
+        min_reassignment_change: Minimum absolute nitrogen change (g/m^2) before a leaf is
+            reassigned; the new bin must also be closer by at least half this amount (hysteresis)
+    """
+    f_photosynthetic: float = 0.50
+    N_to_Cab_coefficient: float = 0.40
+    Car_to_Cab_ratio: float = 0.25
+    numberlayers: float = 1.5
+    anthocyancontent: float = 1.0     # micrograms/cm^2
+    brownpigments: float = 0.0
+    watermass: float = 0.015          # g/cm^2
+    drymass: float = 0.006            # g/cm^2
+    protein: float = 0.0              # g/cm^2 (PROSPECT-PRO mode)
+    carbonconstituents: float = 0.0   # g/cm^2 (PROSPECT-PRO mode)
+    V2Z: float = 0.0
+    fqe: float = 1.0
+    num_bins: int = 20
+    reassignment_threshold: float = 0.0
+    min_reassignment_change: float = 0.05  # g/m^2
+
+    _FLOAT_FIELDS = (
+        "f_photosynthetic", "N_to_Cab_coefficient", "Car_to_Cab_ratio", "numberlayers",
+        "anthocyancontent", "brownpigments", "watermass", "drymass", "protein",
+        "carbonconstituents", "V2Z", "fqe", "reassignment_threshold", "min_reassignment_change",
+    )
+
+    def validate(self) -> None:
+        """Raise ValueError if any field has the wrong type or an unphysical value."""
+        for name in self._FLOAT_FIELDS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+            if value != value or value in (float("inf"), float("-inf")):
+                raise ValueError(f"{name} must be finite, got {value}")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative, got {value}")
+        if self.numberlayers < 1:
+            raise ValueError(f"numberlayers must be >= 1, got {self.numberlayers}")
+        if self.f_photosynthetic > 1:
+            raise ValueError(f"f_photosynthetic must be in [0, 1], got {self.f_photosynthetic}")
+        if self.V2Z > 1:
+            raise ValueError(f"V2Z must be in [0, 1], got {self.V2Z}")
+        if isinstance(self.num_bins, bool) or not isinstance(self.num_bins, int):
+            raise ValueError(f"num_bins must be an int, got {type(self.num_bins).__name__}")
+        if self.num_bins < 1:
+            raise ValueError(f"num_bins must be at least 1, got {self.num_bins}")
+
+    def to_list(self) -> List[float]:
+        """Convert the float fields to a list in the order expected by the C++ interface (num_bins excluded)."""
+        return [float(getattr(self, name)) for name in self._FLOAT_FIELDS]
 
 
 @contextmanager
@@ -325,32 +409,67 @@ class LeafOptics:
                 import warnings
                 warnings.warn(f"Error in LeafOptics.__del__: {e}")
 
-    def run(self, UUIDs: List[int], leafproperties: LeafOpticsProperties, label: str) -> None:
+    def run(self, UUIDs: List[int],
+            leafproperties: Union[LeafOpticsProperties, LeafOpticsProperties_Nauto],
+            label: Optional[str] = None) -> None:
         """
-        Run the LeafOptics model to generate spectra and assign to primitives.
+        Run the LeafOptics model to generate spectra and assign them to primitives.
 
-        This method computes reflectance and transmittance spectra based on the given
-        leaf properties, creates global data entries, and assigns them to the specified
-        primitives.
+        Two modes, selected by the type of ``leafproperties``:
+
+        - :class:`LeafOpticsProperties` with a ``label``: computes one reflectance and
+          transmittance spectrum, stores it as global data ``"leaf_reflectivity_<label>"`` /
+          ``"leaf_transmissivity_<label>"``, and assigns it to every primitive.
+        - :class:`LeafOpticsProperties_Nauto` without a label (nitrogen mode): groups the
+          primitives by parent object, reads ``"leaf_nitrogen_gN_m2"`` object data from each,
+          derives chlorophyll and carotenoid content from it, and assigns each object the
+          spectrum of its nitrogen bin (global data ``"leaf_reflectivity_Nauto_<i>"`` etc.).
+          The first nitrogen-mode call creates the bins and fixes the parameters; later calls
+          track added/removed primitives, reassign leaves whose nitrogen changed, and rebuild
+          the bins if nitrogen moves outside their range. Parameters passed on later calls are
+          ignored. Primitives without a parent object are skipped with a warning.
 
         Args:
             UUIDs: List of primitive UUIDs to assign spectra to
-            leafproperties: LeafOpticsProperties with biochemical parameters
-            label: Label for the spectra (appended to "leaf_reflectivity_" and "leaf_transmissivity_")
+            leafproperties: LeafOpticsProperties or LeafOpticsProperties_Nauto
+            label: Spectrum label (required for LeafOpticsProperties, must be omitted for
+                LeafOpticsProperties_Nauto)
 
         Raises:
             ValueError: If parameters are invalid
-            LeafOpticsError: If computation fails
+            LeafOpticsError: If computation fails (e.g. an object lacks "leaf_nitrogen_gN_m2")
 
         Example:
             >>> props = LeafOpticsProperties(chlorophyllcontent=40.0, watermass=0.02)
             >>> leafoptics.run([leaf_uuid], props, "my_leaf")
             >>> # Creates: "leaf_reflectivity_my_leaf" and "leaf_transmissivity_my_leaf"
+            >>>
+            >>> context.setObjectDataFloat(leaf_objID, "leaf_nitrogen_gN_m2", 2.0)
+            >>> leafoptics.run(context.getObjectPrimitiveUUIDs(leaf_objID), LeafOpticsProperties_Nauto())
         """
         if not UUIDs:
             raise ValueError("UUIDs list cannot be empty")
+
+        if isinstance(leafproperties, LeafOpticsProperties_Nauto):
+            if label is not None:
+                raise ValueError("label must not be given in nitrogen mode (LeafOpticsProperties_Nauto); "
+                                 "spectra are labelled 'Nauto_<bin>' automatically")
+            leafproperties.validate()
+            self._check_context_alive()
+            try:
+                leafoptics_wrapper.leafOpticsRunNitrogen(
+                    self._leafoptics_ptr,
+                    UUIDs,
+                    leafproperties.to_list(),
+                    leafproperties.num_bins
+                )
+            except Exception as e:
+                raise LeafOpticsError(f"Failed to run nitrogen-based LeafOptics model: {e}")
+            return
+
         if not isinstance(leafproperties, LeafOpticsProperties):
-            raise ValueError("leafproperties must be a LeafOpticsProperties instance")
+            raise ValueError("leafproperties must be a LeafOpticsProperties or LeafOpticsProperties_Nauto instance, "
+                             f"got {type(leafproperties).__name__}")
         if not label:
             raise ValueError("Label cannot be empty")
 
@@ -364,6 +483,26 @@ class LeafOptics:
             )
         except Exception as e:
             raise LeafOpticsError(f"Failed to run LeafOptics model: {e}")
+
+    def updateNitrogenBasedSpectra(self) -> None:
+        """
+        Re-read leaf nitrogen and reassign spectra for the primitives tracked in nitrogen mode.
+
+        Faster than calling :meth:`run` again with the same UUIDs when only nitrogen values
+        have changed (e.g. after advancing the PlantArchitecture nitrogen model): it skips
+        primitive grouping and add/remove processing. A leaf is moved to another bin only when
+        its nitrogen has moved past the configured reassignment thresholds. Bins are not
+        rebuilt here; use :meth:`run` if nitrogen may have left the original range.
+
+        Raises:
+            LeafOpticsError: If nitrogen mode has not been initialized with
+                ``run(UUIDs, LeafOpticsProperties_Nauto(...))``
+        """
+        self._check_context_alive()
+        try:
+            leafoptics_wrapper.leafOpticsUpdateNitrogenBasedSpectra(self._leafoptics_ptr)
+        except Exception as e:
+            raise LeafOpticsError(f"Failed to update nitrogen-based spectra: {e}")
 
     def runNoUUIDs(self, leafproperties: LeafOpticsProperties, label: str) -> None:
         """

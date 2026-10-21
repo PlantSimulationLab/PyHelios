@@ -3180,3 +3180,44 @@ def getLiDARNominalScanGridCell(cloud_ptr, scanID: int, point) -> Tuple[int, int
     out = (ctypes.c_int * 2)()
     helios_lib.getLiDARNominalScanGridCell(cloud_ptr, ctypes.c_uint(int(scanID)), pt, out)
     return (int(out[0]), int(out[1]))
+
+
+# helios-core 1.3.92 additions, probed separately for the same reason as the blocks above.
+# NOTE: every wrapper function below must guard with _require_lidar_1392(); guarding with an
+# older flag would skip the RuntimeError and call a symbol with no argtypes set.
+_LIDAR_1392_AVAILABLE = False
+try:
+    helios_lib.getLiDARScanRecordPartialMisses.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint]
+    helios_lib.getLiDARScanRecordPartialMisses.restype = ctypes.c_bool
+    helios_lib.getLiDARScanRecordPartialMisses.errcheck = _check_error
+
+    helios_lib.setLiDARScanRecordPartialMisses.argtypes = [ctypes.POINTER(ULiDARcloud), ctypes.c_uint, ctypes.c_bool]
+    helios_lib.setLiDARScanRecordPartialMisses.restype = None
+    helios_lib.setLiDARScanRecordPartialMisses.errcheck = _check_error
+
+    _LIDAR_1392_AVAILABLE = True
+except AttributeError:
+    _LIDAR_1392_AVAILABLE = False
+
+
+def _require_lidar_1392() -> None:
+    """Raise if the native library predates the helios-core 1.3.92 LiDAR additions."""
+    if not _LIDAR_FUNCTIONS_AVAILABLE or not _LIDAR_1392_AVAILABLE:
+        raise RuntimeError(
+            "This LiDAR function is not available in the current native library. "
+            "It requires helios-core v1.3.92 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def getLiDARScanRecordPartialMisses(cloud_ptr, scanID: int) -> bool:
+    """Whether a scan's partly intercepted multi-return pulses also record a partial-miss point."""
+    _require_lidar_1392()
+    return bool(helios_lib.getLiDARScanRecordPartialMisses(cloud_ptr, ctypes.c_uint(int(scanID))))
+
+
+def setLiDARScanRecordPartialMisses(cloud_ptr, scanID: int, record_partial_misses: bool) -> None:
+    """Set whether a scan's partly intercepted multi-return pulses also record a partial-miss point."""
+    _require_lidar_1392()
+    helios_lib.setLiDARScanRecordPartialMisses(cloud_ptr, ctypes.c_uint(int(scanID)),
+                                               bool(record_partial_misses))

@@ -3949,6 +3949,40 @@ extern "C" {
         }
     }
 
+    // ===== helios-core 1.3.92 additions =====
+
+    PYHELIOS_API bool getLiDARScanRecordPartialMisses(LiDARcloud* cloud, unsigned int scanID) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return false;
+            }
+            return cloud->getScanRecordPartialMisses(scanID);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getLiDARScanRecordPartialMisses): ") + e.what());
+            return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getLiDARScanRecordPartialMisses): Unknown error");
+            return false;
+        }
+    }
+
+    PYHELIOS_API void setLiDARScanRecordPartialMisses(LiDARcloud* cloud, unsigned int scanID, bool recordPartialMisses) {
+        try {
+            clearError();
+            if (!cloud) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LiDAR cloud pointer is null");
+                return;
+            }
+            cloud->setScanRecordPartialMisses(scanID, recordPartialMisses);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setLiDARScanRecordPartialMisses): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setLiDARScanRecordPartialMisses): Unknown error");
+        }
+    }
+
 } // extern "C"
 
 #endif // LIDAR_PLUGIN_AVAILABLE

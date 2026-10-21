@@ -13,6 +13,7 @@ import os
 import textwrap
 import numpy as np
 from typing import List
+from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 # Add pyhelios to path
@@ -1213,13 +1214,14 @@ class TestBatch1SimpleMethods:
                 assert hasattr(position, 'y')
                 assert hasattr(position, 'z')
 
-    def test_get_sky_energy(self):
-        """Test getSkyEnergy method"""
+    def test_get_sky_energy_is_deprecated_and_raises(self):
+        """getSkyEnergy() is deprecated in helios-core 1.3.92 and always raises."""
+        from pyhelios.exceptions import HeliosError
         with Context() as context:
             with RadiationModel(context) as radiation:
-                energy = radiation.getSkyEnergy()
-                assert isinstance(energy, float)
-                assert energy >= 0
+                with pytest.warns(DeprecationWarning, match="getSkyEnergy"):
+                    with pytest.raises(HeliosError, match="not computed by any ray-tracing backend"):
+                        radiation.getSkyEnergy()
 
     def test_calculate_gtheta(self):
         """Test calculateGtheta method"""
@@ -3986,3 +3988,333 @@ class TestCameraAtmosphereNative:
                 assert np.all(np.isfinite(sensor))
                 assert sensor.min() > 0, "path radiance must reach the sensor over a black scene"
                 np.testing.assert_allclose(sensor, sensor[0], rtol=1e-5)
+
+
+@pytest.mark.cross_platform
+class TestRadiation1392APIStructure:
+    """helios-core 1.3.92 RadiationModel additions exist at every layer."""
+
+    @pytest.mark.parametrize("name", [
+        "enableBelowHorizonDiffuseRadiation", "disableBelowHorizonDiffuseRadiation",
+        "enableScatteringRayReduction", "disableScatteringRayReduction",
+    ])
+    def test_method_and_wrapper_exist(self, name):
+        from pyhelios.wrappers import URadiationModelWrapper as radiation_wrapper
+        assert callable(getattr(RadiationModel, name))
+        assert callable(getattr(radiation_wrapper, name))
+
+
+@pytest.mark.native_only
+class TestRadiation1392:
+    """Below-horizon diffuse sky, scattering ray reduction and setMinScatterEnergy (1.3.92).
+
+    Not marked requires_gpu: these run on the Vulkan software BVH. Constructed through
+    radiation_model_or_skip() so environments with no backend skip.
+    """
+
+    @pytest.mark.parametrize("name", [
+        "enableBelowHorizonDiffuseRadiation", "disableBelowHorizonDiffuseRadiation",
+        "enableScatteringRayReduction", "disableScatteringRayReduction",
+    ])
+    def test_toggles_callable(self, name):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                getattr(radiation, name)()
+
+    @staticmethod
+    def _isolated_patch_diffuse_flux(below_horizon: bool) -> float:
+        """Absorbed diffuse flux on an isolated, two-sided, black horizontal patch."""
+        with Context() as context:
+            uuid = context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.disableMessages()
+                radiation.addRadiationBand("SW")
+                radiation.disableEmission("SW")
+                radiation.setScatteringDepth("SW", 0)
+                radiation.setDiffuseRayCount("SW", 1000)
+                radiation.setDiffuseRadiationFlux("SW", 1000.0)
+                if below_horizon:
+                    radiation.enableBelowHorizonDiffuseRadiation()
+                radiation.updateGeometry()
+                radiation.runBand("SW")
+                return float(radiation.getAbsorbedFlux("SW", [uuid])[0])
+
+    def test_diffuse_sky_fills_upper_hemisphere_by_default(self):
+        """Only the top face sees sky: the patch absorbs the horizontal diffuse flux once."""
+        assert self._isolated_patch_diffuse_flux(False) == pytest.approx(1000.0, rel=0.02)
+
+    def test_below_horizon_diffuse_restores_full_sphere(self):
+        """With the full-sphere sky the underside also absorbs, doubling the flux."""
+        assert self._isolated_patch_diffuse_flux(True) == pytest.approx(2000.0, rel=0.02)
+
+    def test_min_scatter_energy_zero_accepted(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("SW")
+                radiation.setMinScatterEnergy("SW", 0.0)
+                radiation.setMinScatterEnergy("SW", 0.5)
+
+    def test_min_scatter_energy_negative_raises(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.addRadiationBand("SW")
+                with pytest.raises(ValueError, match="non-negative"):
+                    radiation.setMinScatterEnergy("SW", -1.0)
+
+
+
+def _write_ccm_xml(path, rows, camera_label="cam"):
+    """Write a color correction matrix in the XML layout exported by helios-core."""
+    matrix_type = "4x3" if len(rows[0]) == 4 else "3x3"
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<helios>',
+             f'  <ColorCorrectionMatrix camera_label="{camera_label}" matrix_type="{matrix_type}">']
+    lines += ["    <row>" + " ".join(f"{v:.6f}" for v in row) + "</row>" for row in rows]
+    lines += ['  </ColorCorrectionMatrix>', '</helios>']
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+@pytest.mark.cross_platform
+class TestCameraImageCorrectionsAPI:
+    """Argument validation and wrapper plumbing for the camera image correction methods.
+
+    Driven against a stub wrapper so they run without a native library or GPU.
+    """
+
+    def _model_with_stub(self, monkeypatch, fail_with=None):
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        model.context = None
+        calls = []
+
+        def recorder(name):
+            def fake(*args):
+                calls.append((name, args[1:]))
+                if fail_with is not None:
+                    raise fail_with
+            return fake
+
+        for name in ("applyCameraImageCorrections", "applyCameraColorCorrectionMatrix"):
+            monkeypatch.setattr(radiation_module.radiation_wrapper, name, recorder(name))
+        monkeypatch.setattr(RadiationModel, '_check_context_alive', lambda self: None)
+        return model, calls
+
+    def test_methods_present(self):
+        for name in ("applyCameraImageCorrections", "applyCameraColorCorrectionMatrix"):
+            assert callable(getattr(RadiationModel, name))
+
+    def test_image_corrections_forwards_defaults(self, monkeypatch):
+        model, calls = self._model_with_stub(monkeypatch)
+        model.applyCameraImageCorrections("cam", "r", "g", "b")
+        assert calls == [("applyCameraImageCorrections", ("cam", "r", "g", "b", 1.0, 1.0, 1.0))]
+
+    def test_image_corrections_forwards_keyword_factors_in_native_order(self, monkeypatch):
+        model, calls = self._model_with_stub(monkeypatch)
+        model.applyCameraImageCorrections("cam", "r", "g", "b", contrast_adjustment=3.0,
+                                          brightness_adjustment=2.0, saturation_adjustment=0.5)
+        assert calls[0][1] == ("cam", "r", "g", "b", 0.5, 2.0, 3.0)
+
+    @pytest.mark.parametrize("args", [
+        (1, "r", "g", "b"), ("", "r", "g", "b"), ("cam", 1, "g", "b"),
+        ("cam", "r", None, "b"), ("cam", "r", "g", "   "),
+    ])
+    def test_image_corrections_rejects_bad_labels_positionally(self, monkeypatch, args):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(ValueError):
+            model.applyCameraImageCorrections(*args)
+        assert calls == []
+
+    def test_image_corrections_rejects_bad_labels_by_keyword(self, monkeypatch):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(ValueError):
+            model.applyCameraImageCorrections(camera_label="cam", red_band_label="r",
+                                              green_band_label=["g"], blue_band_label="b")
+        assert calls == []
+
+    @pytest.mark.parametrize("value", ["1.0", None, True, float("nan"), float("inf"), -0.5])
+    @pytest.mark.parametrize("name", ["saturation_adjustment", "brightness_adjustment",
+                                      "contrast_adjustment"])
+    def test_image_corrections_rejects_bad_factors(self, monkeypatch, name, value):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(ValueError, match=name):
+            model.applyCameraImageCorrections("cam", "r", "g", "b", **{name: value})
+        assert calls == []
+
+    def test_image_corrections_rejects_bad_factor_positionally(self, monkeypatch):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(ValueError, match="brightness_adjustment"):
+            model.applyCameraImageCorrections("cam", "r", "g", "b", 1.0, "bright")
+        assert calls == []
+
+    def test_image_corrections_native_error_becomes_radiation_model_error(self, monkeypatch):
+        from pyhelios.exceptions import HeliosRuntimeError
+        model, _ = self._model_with_stub(monkeypatch, fail_with=HeliosRuntimeError("Camera 'x' does not exist."))
+        with pytest.raises(RadiationModelError, match="does not exist"):
+            model.applyCameraImageCorrections("x", "r", "g", "b")
+
+    def test_ccm_forwards_path(self, monkeypatch, tmp_path):
+        model, calls = self._model_with_stub(monkeypatch)
+        ccm = _write_ccm_xml(tmp_path / "ccm.xml", [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        model.applyCameraColorCorrectionMatrix("cam", "r", "g", "b", ccm)
+        assert calls == [("applyCameraColorCorrectionMatrix", ("cam", "r", "g", "b", str(ccm)))]
+
+    def test_ccm_missing_file_raises_before_native_call(self, monkeypatch, tmp_path):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(FileNotFoundError, match="nope.xml"):
+            model.applyCameraColorCorrectionMatrix("cam", "r", "g", "b", str(tmp_path / "nope.xml"))
+        assert calls == []
+
+    @pytest.mark.parametrize("path", [None, 3, ""])
+    def test_ccm_rejects_bad_path(self, monkeypatch, path):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(ValueError):
+            model.applyCameraColorCorrectionMatrix("cam", "r", "g", "b", path)
+        assert calls == []
+
+    def test_ccm_rejects_bad_labels_positionally_and_by_keyword(self, monkeypatch, tmp_path):
+        model, calls = self._model_with_stub(monkeypatch)
+        ccm = _write_ccm_xml(tmp_path / "ccm.xml", [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        with pytest.raises(ValueError):
+            model.applyCameraColorCorrectionMatrix("cam", "r", 5, "b", ccm)
+        with pytest.raises(ValueError):
+            model.applyCameraColorCorrectionMatrix(camera_label="", red_band_label="r",
+                                                   green_band_label="g", blue_band_label="b",
+                                                   ccm_file_path=ccm)
+        assert calls == []
+
+    def test_wrapper_raises_when_bindings_missing(self, monkeypatch):
+        from pyhelios.wrappers import URadiationModelWrapper as wrapper
+        monkeypatch.setattr(wrapper, "_CAMERA_IMAGE_CORRECTIONS_AVAILABLE", False)
+        with pytest.raises(RuntimeError, match="not available"):
+            wrapper.applyCameraImageCorrections(object(), "cam", "r", "g", "b")
+        with pytest.raises(RuntimeError, match="not available"):
+            wrapper.applyCameraColorCorrectionMatrix(object(), "cam", "r", "g", "b", "ccm.xml")
+
+
+@pytest.mark.native_only
+class TestCameraImageCorrectionsNative:
+    """applyCameraImageCorrections / applyCameraColorCorrectionMatrix against the real library.
+
+    Pixel data is set directly with setCameraPixelData, so no rendering is needed;
+    only a constructible RadiationModel.
+    """
+
+    RED, GREEN, BLUE = [0.2, 0.6], [0.3, 0.4], [0.4, 0.1]
+
+    @contextmanager
+    def _camera(self):
+        from pyhelios import CameraProperties
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                for band in ("red", "green", "blue"):
+                    radiation.addRadiationBand(band)
+                radiation.addRadiationCamera(
+                    "cam", ["red", "green", "blue"],
+                    DataTypes.vec3(0, 0, 5), DataTypes.vec3(0, 0, 0),
+                    CameraProperties(camera_resolution=(2, 1)), antialiasing_samples=1)
+                for band, values in (("red", self.RED), ("green", self.GREEN), ("blue", self.BLUE)):
+                    radiation.setCameraPixelData("cam", band, values)
+                yield radiation
+
+    @staticmethod
+    def _pixels(radiation):
+        return [np.array(radiation.getCameraPixelData("cam", b)) for b in ("red", "green", "blue")]
+
+    def test_defaults_leave_pixels_unchanged(self):
+        with self._camera() as radiation:
+            radiation.applyCameraImageCorrections("cam", "red", "green", "blue")
+            r, g, b = self._pixels(radiation)
+            np.testing.assert_allclose(r, self.RED, rtol=1e-6)
+            np.testing.assert_allclose(g, self.GREEN, rtol=1e-6)
+            np.testing.assert_allclose(b, self.BLUE, rtol=1e-6)
+
+    def test_brightness_scales_pixels(self):
+        with self._camera() as radiation:
+            radiation.applyCameraImageCorrections("cam", "red", "green", "blue", brightness_adjustment=2.0)
+            r, g, b = self._pixels(radiation)
+            np.testing.assert_allclose(r, 2 * np.array(self.RED), rtol=1e-6)
+            np.testing.assert_allclose(g, 2 * np.array(self.GREEN), rtol=1e-6)
+            np.testing.assert_allclose(b, 2 * np.array(self.BLUE), rtol=1e-6)
+
+    def test_contrast_stretches_about_midpoint(self):
+        with self._camera() as radiation:
+            radiation.applyCameraImageCorrections("cam", "red", "green", "blue", contrast_adjustment=2.0)
+            r, _, _ = self._pixels(radiation)
+            np.testing.assert_allclose(r, 0.5 + (np.array(self.RED) - 0.5) * 2.0, rtol=1e-5)
+
+    def test_zero_saturation_makes_pixels_gray(self):
+        with self._camera() as radiation:
+            radiation.applyCameraImageCorrections("cam", "red", "green", "blue", saturation_adjustment=0.0)
+            r, g, b = self._pixels(radiation)
+            np.testing.assert_allclose(r, g, rtol=1e-5)
+            np.testing.assert_allclose(g, b, rtol=1e-5)
+            assert not np.allclose(r, self.RED)
+
+    def test_corrections_on_missing_camera_raise(self):
+        with self._camera() as radiation:
+            with pytest.raises(RadiationModelError, match="does not exist"):
+                radiation.applyCameraImageCorrections("no_such_cam", "red", "green", "blue")
+
+    def test_corrections_on_band_without_pixel_data_raise(self):
+        with self._camera() as radiation:
+            with pytest.raises(RadiationModelError):
+                radiation.applyCameraImageCorrections("cam", "red", "green", "nir")
+
+    def test_identity_ccm_leaves_pixels_unchanged(self, tmp_path):
+        ccm = _write_ccm_xml(tmp_path / "identity.xml", [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        with self._camera() as radiation:
+            radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", str(ccm))
+            r, g, b = self._pixels(radiation)
+            np.testing.assert_allclose(r, self.RED, rtol=1e-6)
+            np.testing.assert_allclose(g, self.GREEN, rtol=1e-6)
+            np.testing.assert_allclose(b, self.BLUE, rtol=1e-6)
+
+    def test_3x3_ccm_mixes_channels(self, tmp_path):
+        m = np.array([[1.1, -0.05, 0.02], [-0.03, 1.08, 0.01], [0.01, -0.04, 1.12]])
+        ccm = _write_ccm_xml(tmp_path / "ccm.xml", m.tolist())
+        with self._camera() as radiation:
+            radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", ccm)
+            got = np.vstack(self._pixels(radiation))
+            expected = m @ np.vstack([self.RED, self.GREEN, self.BLUE])
+            np.testing.assert_allclose(got, expected, rtol=1e-5)
+
+    def test_4x3_ccm_adds_offset(self, tmp_path):
+        m = np.array([[1.0, 0, 0, 0.1], [0, 1.0, 0, -0.05], [0, 0, 1.0, 0.2]])
+        ccm = _write_ccm_xml(tmp_path / "ccm_affine.xml", m.tolist())
+        with self._camera() as radiation:
+            radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", ccm)
+            got = np.vstack(self._pixels(radiation))
+            expected = np.vstack([self.RED, self.GREEN, self.BLUE]) + m[:, 3:4]
+            np.testing.assert_allclose(got, expected, rtol=1e-5)
+
+    def test_missing_ccm_file_raises(self, tmp_path):
+        with self._camera() as radiation:
+            with pytest.raises(FileNotFoundError):
+                radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue",
+                                                           str(tmp_path / "missing.xml"))
+
+    def test_malformed_ccm_file_raises(self, tmp_path):
+        bad = tmp_path / "bad.xml"
+        bad.write_text("<helios>\n  <ColorCorrectionMatrix>\n  </ColorCorrectionMatrix>\n</helios>\n")
+        with self._camera() as radiation:
+            with pytest.raises(RadiationModelError, match="No matrix data"):
+                radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", bad)
+            r, _, _ = self._pixels(radiation)
+            np.testing.assert_allclose(r, self.RED, rtol=1e-6)
+
+    def test_ccm_with_unknown_band_raises(self, tmp_path):
+        ccm = _write_ccm_xml(tmp_path / "identity.xml", [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        with self._camera() as radiation:
+            with pytest.raises(RadiationModelError, match="not found in camera"):
+                radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "nir", ccm)

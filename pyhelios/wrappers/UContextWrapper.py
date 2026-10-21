@@ -8918,3 +8918,159 @@ def getColormapControlPointsWrapper(name: str):
     colors = [(float(ptr[4*i]), float(ptr[4*i + 1]), float(ptr[4*i + 2])) for i in range(n)]
     positions = [float(ptr[4*i + 3]) for i in range(n)]
     return colors, positions
+
+
+# helios-core 1.3.92 geometry/shape revision counters, probed separately from the blocks above.
+# NOTE: every wrapper function below must guard with _require_ctx_revision_1392().
+_CONTEXT_REVISION_1392_AVAILABLE = False
+try:
+    for _fn in ("getGeometryRevision", "getShapeRevision"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UContext)]
+        getattr(helios_lib, _fn).restype = ctypes.c_uint64
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    _CONTEXT_REVISION_1392_AVAILABLE = True
+except AttributeError:
+    _CONTEXT_REVISION_1392_AVAILABLE = False
+
+
+def _require_ctx_revision_1392():
+    if not _CONTEXT_REVISION_1392_AVAILABLE:
+        raise NotImplementedError(
+            "Geometry revision counters (getGeometryRevision/getShapeRevision) are not available "
+            "in the loaded native library. They require helios-core v1.3.92 or newer; rebuild with: "
+            "build_scripts/build_helios --clean"
+        )
+
+
+def getGeometryRevisionWrapper(context) -> int:
+    _require_ctx_revision_1392()
+    return int(helios_lib.getGeometryRevision(context))
+
+
+def getShapeRevisionWrapper(context) -> int:
+    _require_ctx_revision_1392()
+    return int(helios_lib.getShapeRevision(context))
+
+
+# helios-core 1.3.91 image annotation from a pixel-to-primitive map (helios::annotation).
+# NOTE: every wrapper function below must guard with _require_annotation_1391().
+_ANNOTATION_1391_AVAILABLE = False
+try:
+    helios_lib.annotationLabelBoundingBoxes.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_bool,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.annotationLabelBoundingBoxes.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.annotationLabelBoundingBoxes.errcheck = _check_error
+
+    helios_lib.annotationWriteLabelBoundingBoxes.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool,
+    ]
+    helios_lib.annotationWriteLabelBoundingBoxes.restype = None
+    helios_lib.annotationWriteLabelBoundingBoxes.errcheck = _check_error
+
+    helios_lib.annotationLabelMasks.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ctypes.c_char_p, ctypes.c_bool,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_int)), ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),
+    ]
+    helios_lib.annotationLabelMasks.restype = ctypes.c_uint
+    helios_lib.annotationLabelMasks.errcheck = _check_error
+
+    helios_lib.annotationWriteLabelSegmentationMasks.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint,
+        ctypes.c_bool, ctypes.c_bool,
+    ]
+    helios_lib.annotationWriteLabelSegmentationMasks.restype = None
+    helios_lib.annotationWriteLabelSegmentationMasks.errcheck = _check_error
+
+    _ANNOTATION_1391_AVAILABLE = True
+except AttributeError:
+    _ANNOTATION_1391_AVAILABLE = False
+
+
+def _require_annotation_1391():
+    if not _ANNOTATION_1391_AVAILABLE:
+        raise NotImplementedError(
+            "Image annotation from a pixel-to-primitive map (pyhelios.annotation) is not available "
+            "in the loaded native library. It requires helios-core v1.3.91 or newer; rebuild with: "
+            "build_scripts/build_helios --clean"
+        )
+
+
+def _annotation_pixel_array(pixel_uuids):
+    """Contiguous uint32 copy of the pixel map; the caller must keep it alive across the native call."""
+    import numpy as np
+    return np.ascontiguousarray(pixel_uuids, dtype=np.uint32).ravel()
+
+
+def _annotation_inputs(pixel_uuids, data_labels, class_ids):
+    pixel_array = _annotation_pixel_array(pixel_uuids)
+    label_array = (ctypes.c_char_p * len(data_labels))(*[label.encode('utf-8') for label in data_labels])
+    class_array = (ctypes.c_uint * len(class_ids))(*class_ids)
+    return pixel_array, label_array, class_array
+
+
+def annotationLabelBoundingBoxesWrapper(context, pixel_uuids, width: int, height: int,
+                                        data_labels: List[str], class_ids: List[int], use_object_data: bool):
+    """Return a list of (class_ID, center_x, center_y, width, height) tuples, normalized to [0,1]."""
+    _require_annotation_1391()
+    pixel_array, label_array, class_array = _annotation_inputs(pixel_uuids, data_labels, class_ids)
+    class_ptr = ctypes.POINTER(ctypes.c_uint)()
+    count = ctypes.c_uint()
+    geometry = helios_lib.annotationLabelBoundingBoxes(
+        context, pixel_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)), pixel_array.size, width, height, label_array, class_array, len(data_labels),
+        use_object_data, ctypes.byref(class_ptr), ctypes.byref(count))
+    n = count.value
+    if n == 0:
+        return []
+    return [(int(class_ptr[i]), float(geometry[4*i]), float(geometry[4*i + 1]),
+             float(geometry[4*i + 2]), float(geometry[4*i + 3])) for i in range(n)]
+
+
+def annotationWriteLabelBoundingBoxesWrapper(context, pixel_uuids, width: int, height: int,
+                                             data_labels: List[str], class_ids: List[int], image_file: str,
+                                             classes_txt_file: str, image_path: str, use_object_data: bool) -> None:
+    _require_annotation_1391()
+    pixel_array, label_array, class_array = _annotation_inputs(pixel_uuids, data_labels, class_ids)
+    helios_lib.annotationWriteLabelBoundingBoxes(
+        context, pixel_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)), pixel_array.size, width, height, label_array, class_array, len(data_labels),
+        image_file.encode('utf-8'), classes_txt_file.encode('utf-8'), image_path.encode('utf-8'), use_object_data)
+
+
+def annotationLabelMasksWrapper(context, pixel_uuids, width: int, height: int,
+                                data_label: str, use_object_data: bool):
+    """Return (label_values, masks): a list of ints and a (N, height, width) bool array, row 0 at the top."""
+    import numpy as np
+    _require_annotation_1391()
+    pixel_array = _annotation_pixel_array(pixel_uuids)
+    values_ptr = ctypes.POINTER(ctypes.c_int)()
+    pixels_ptr = ctypes.POINTER(ctypes.c_ubyte)()
+    n = helios_lib.annotationLabelMasks(
+        context, pixel_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)), pixel_array.size, width, height, data_label.encode('utf-8'), use_object_data,
+        ctypes.byref(values_ptr), ctypes.byref(pixels_ptr))
+    if n == 0:
+        return [], np.zeros((0, height, width), dtype=bool)
+    flat = ctypes.string_at(pixels_ptr, n * width * height)
+    masks = np.frombuffer(flat, dtype=np.uint8).reshape(n, height, width).astype(bool)
+    return [int(values_ptr[i]) for i in range(n)], masks
+
+
+def annotationWriteLabelSegmentationMasksWrapper(context, pixel_uuids, width: int, height: int,
+                                                 data_labels: List[str], class_ids: List[int], json_filename: str,
+                                                 image_file: str, data_attribute_labels: List[str],
+                                                 append_file: bool, use_object_data: bool) -> None:
+    _require_annotation_1391()
+    pixel_array, label_array, class_array = _annotation_inputs(pixel_uuids, data_labels, class_ids)
+    attribute_array = (ctypes.c_char_p * len(data_attribute_labels))(
+        *[label.encode('utf-8') for label in data_attribute_labels])
+    helios_lib.annotationWriteLabelSegmentationMasks(
+        context, pixel_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)), pixel_array.size, width, height, label_array, class_array, len(data_labels),
+        json_filename.encode('utf-8'), image_file.encode('utf-8'), attribute_array, len(data_attribute_labels),
+        append_file, use_object_data)

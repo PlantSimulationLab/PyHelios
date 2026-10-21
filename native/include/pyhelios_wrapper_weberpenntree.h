@@ -10,6 +10,16 @@
 #define PYHELIOS_WRAPPER_WEBERPENNTREE_H
 
 #include "pyhelios_wrapper_common.h"
+#include <stdint.h>
+
+// Sizes of the flat arrays used to exchange WeberPennTreeParameters with Python.
+// Field order is documented on getWeberPennTreeParameters() below and must match
+// pyhelios/wrappers/UWeberPennTreeWrapper.py.
+#define WPT_PARAM_NUM_FLOATS 17
+#define WPT_PARAM_NUM_INTS 7
+#define WPT_PARAM_NUM_FLOAT_VECTORS 14
+#define WPT_PARAM_NUM_INT_VECTORS 2
+#define WPT_PARAM_NUM_STRINGS 3
 
 // Forward declarations for WeberPennTree interface
 class WeberPennTree;
@@ -137,6 +147,41 @@ PYHELIOS_API void setLeafSubdivisions(WeberPennTree* wpt, unsigned int leaf_segs
  * @param silent If true, suppress console output during loading
  */
 PYHELIOS_API void loadXMLWeberPennTree(WeberPennTree* wpt, const char* filename, bool silent);
+
+/**
+ * @brief Get the architectural parameters of a tree in the library
+ *
+ * The struct is flattened into fixed-order arrays:
+ * - scalars[17]: BaseSize, BaseSizeV, BaseSplitSize, BaseSplitSizeV, Scale, ScaleV, ZScale, ZScaleV, Ratio, RatioPower,
+ *   LobeDepth, Flare, LeafScale, LeafScaleX, WoodColor.r, WoodColor.g, WoodColor.b
+ * - ints[7]: Shape, BaseSplits, BaseSplitsV, Lobes, Levels, Leaves, LeafShape
+ * - float vectors[14] (lengths in fvec_lengths, concatenated in *fvec_data): nSegSplits, nSplitAngle, nSplitAngleV, nCurve,
+ *   nCurveV, nCurveBack, nLength, nLengthV, nTaper, nDownAngle, nDownAngleV, nRotate, nRotateV, leafAngleCDF
+ * - int vectors[2] (lengths in ivec_lengths, concatenated in *ivec_data): nCurveRes, nBranches
+ * - strings[3]: label, LeafFile, WoodFile
+ * Returned data pointers refer to thread-local buffers valid until the next call on the same thread.
+ */
+PYHELIOS_API void getWeberPennTreeParameters(WeberPennTree* wpt, const char* treename, float* scalars, int64_t* ints,
+                                             unsigned int* fvec_lengths, float** fvec_data,
+                                             unsigned int* ivec_lengths, int** ivec_data,
+                                             const char** strings);
+
+/**
+ * @brief Set the architectural parameters of a tree, adding it to the library if the name is new
+ *
+ * Arrays use the same layout as getWeberPennTreeParameters().
+ */
+PYHELIOS_API void setWeberPennTreeParameters(WeberPennTree* wpt, const char* treename, const float* scalars, const int64_t* ints,
+                                             const unsigned int* fvec_lengths, const float* fvec_data,
+                                             const unsigned int* ivec_lengths, const int* ivec_data,
+                                             const char* label, const char* leaf_file, const char* wood_file);
+
+/**
+ * @brief Seed the WeberPennTree random number generator (independent of the Context generator)
+ * @param wpt Pointer to the WeberPennTree
+ * @param seed Random number seed
+ */
+PYHELIOS_API void seedWeberPennTreeRandomGenerator(WeberPennTree* wpt, unsigned int seed);
 
 #ifdef __cplusplus
 }

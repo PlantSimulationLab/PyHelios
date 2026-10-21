@@ -358,6 +358,57 @@ class Context:
         self._check_context_available()
         return context_wrapper.isGeometryDirty(self.context)
 
+    def getGeometryRevision(self) -> int:
+        """
+        Get a counter that advances whenever any primitive is modified or deleted.
+
+        Any change to a primitive advances it, including setting its primitive data or
+        color. If two calls return the same value, no primitive was modified or deleted in
+        between, so code that tracks geometry changes can skip scanning for them. Unlike
+        the dirty flags, the counter is not reset by :meth:`markGeometryClean`.
+
+        Creating a primitive is not guaranteed to advance the counter; compare
+        :meth:`getPrimitiveCount` as well to detect new primitives.
+
+        Returns:
+            Current geometry revision
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.92
+
+        Example:
+            >>> rev = context.getGeometryRevision()
+            >>> context.setPrimitiveDataFloat(uuid, "temperature", 25.0)
+            >>> context.getGeometryRevision() != rev
+            True
+        """
+        self._check_context_available()
+        return context_wrapper.getGeometryRevisionWrapper(self.context)
+
+    def getShapeRevision(self) -> int:
+        """
+        Get a counter that advances whenever a primitive's shape changes or a primitive is deleted.
+
+        A shape change is any change to a primitive's vertices or transformation
+        (translation, rotation, scaling, setting its vertices or transformation matrix),
+        its texture file or (u,v) coordinates, or its solid fraction. Unlike
+        :meth:`getGeometryRevision`, setting primitive data or color does not advance this
+        counter, so a cache of geometry can tell that it is stale without being invalidated
+        by data writes. :meth:`markGeometryDirty` also advances it, and it is not reset by
+        :meth:`markGeometryClean`.
+
+        Creating a primitive is not guaranteed to advance the counter; compare
+        :meth:`getPrimitiveCount` as well to detect new primitives.
+
+        Returns:
+            Current shape revision
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.92
+        """
+        self._check_context_available()
+        return context_wrapper.getShapeRevisionWrapper(self.context)
+
     def seedRandomGenerator(self, seed: int):
         """
         Seed the random number generator for reproducible stochastic results.
@@ -2474,12 +2525,20 @@ class Context:
         Args:
             filename: Path to the output OBJ file
             UUIDs: Optional list of primitive UUIDs to export. If None, exports all primitives
-            primitive_data_fields: Optional list of primitive data field names to export
+            primitive_data_fields: Optional list of primitive data field names to export. For each
+                label, an ASCII file ``<stem>_<label>.dat`` is written next to the OBJ file with one
+                value per line: line i holds the value for face i of the OBJ file, counting faces in
+                the order they appear. A patch is written as two triangular faces, so its value
+                appears on two consecutive lines. Every primitive in ``UUIDs`` must carry each label
+                with type int, uint, float, double or string; otherwise an error is raised before any
+                file is written.
             write_normals: Whether to include vertex normals in the output
             silent: Whether to suppress output messages during export
 
         Raises:
-            ValueError: If filename is invalid, UUIDs are invalid, or data fields don't exist
+            ValueError: If filename is invalid or UUIDs are invalid
+            HeliosRuntimeError: If a primitive lacks a requested data field or the field is not
+                a scalar type
             PermissionError: If output directory is not writable
             FileNotFoundError: If UUIDs do not exist in context
             RuntimeError: If Context is in mock mode
@@ -2516,8 +2575,8 @@ class Context:
             # Validate the UUIDs exist
             self._validate_uuids(UUIDs)
 
-            # Note: Primitive data field validation is handled by the native library
-            # which will raise appropriate errors if fields don't exist for the specified primitives
+            # Primitive data field validation is handled by the native library, which raises
+            # before writing any file if a primitive lacks a field or the field is not a scalar type
 
             context_wrapper.writeOBJWithPrimitiveData(self.context, validated_filename, UUIDs, primitive_data_fields, write_normals, silent)
 
@@ -2535,13 +2594,15 @@ class Context:
             column_labels: List of primitive data labels to include as columns.
                           Use "UUID" to include primitive UUIDs as a column.
                           The order determines the column order in the output file.
+                          If a primitive does not have a label, or its data is not a scalar
+                          type (int, uint, float, double or string), 0 is written in its
+                          place and a single warning is printed for the call.
             UUIDs: Optional list of primitive UUIDs to include. If None, includes all primitives.
             print_header: If True, writes column labels as the first line of the file
 
         Raises:
             ValueError: If filename is invalid, column_labels is empty, or UUIDs list is empty when provided
-            HeliosFileIOError: If file cannot be written
-            HeliosRuntimeError: If a column label doesn't exist for any primitive
+            HeliosRuntimeError: If the output file cannot be opened for writing
 
         Example:
             >>> # Write temperature and area for all primitives

@@ -1926,11 +1926,10 @@ class TestLiDARMultiReturn:
                     beam_divergence=0.0004   # Small divergence for multi-return
                 )
 
-                # helios-core 1.3.77 changed the default detectionThreshold from 0 to 0.05 (a ~5%
-                # noise floor that pairs with ~40 rays/pulse). This equal-weighting test reports
-                # every return at 100 rays/pulse, where the weakest single-sub-ray return is 0.01 <
-                # 0.05 and would be suppressed, skewing the LAD reconstruction. Disable suppression to
-                # reproduce the "report every detected return" behavior this test validates.
+                # This equal-weighting test needs every detected return reported. The default
+                # detectionThreshold (0.001 since helios-core 1.3.92, 0.05 from 1.3.77) is below
+                # the weakest single-sub-ray return at 100 rays/pulse, but disable suppression
+                # explicitly so the test does not depend on the default.
                 lidar.setScanDetectionThreshold(scan_id, 0.0)
 
                 lidar.addGrid(
@@ -2636,6 +2635,7 @@ class TestLiDARSpinningReturnModeInterface:
                      'getScanMaxReturns', 'setScanMaxReturns',
                      'getScanPulseWidth', 'setScanPulseWidth',
                      'getScanDetectionThreshold', 'setScanDetectionThreshold',
+                     'getScanRecordPartialMisses', 'setScanRecordPartialMisses',
                      'getHitDataColumn', 'getHitDataColumnArray'):
             assert hasattr(LiDARCloud, name), name
 
@@ -4039,3 +4039,82 @@ class TestLiDAR1389Native:
         with LiDARCloud() as lidar:
             with pytest.raises(Exception, match="Invalid scanID"):
                 lidar.getNominalScanGridCell(3, vec3(1, 0, 0))
+
+
+@pytest.mark.cross_platform
+class TestLiDAR1392Validation:
+    """Argument validation for the helios-core 1.3.92 LiDAR additions (pure Python)."""
+
+    def _cloud(self):
+        from pyhelios import LiDARCloud
+        return LiDARCloud.__new__(LiDARCloud)
+
+    def test_wrapper_guard_uses_1392_flag(self):
+        from pyhelios.wrappers import ULiDARWrapper as w
+        with patch.object(w, '_LIDAR_1392_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.92"):
+                w._require_lidar_1392()
+
+    def test_record_partial_misses_rejects_non_bool(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(ValueError, match="bool"):
+            LiDARCloud.setScanRecordPartialMisses(self._cloud(), 0, 1)
+
+    def test_record_partial_misses_rejects_negative_scan(self):
+        from pyhelios import LiDARCloud
+        with pytest.raises(ValueError, match="non-negative"):
+            LiDARCloud.setScanRecordPartialMisses(self._cloud(), -1, True)
+        with pytest.raises(ValueError, match="non-negative"):
+            LiDARCloud.getScanRecordPartialMisses(self._cloud(), -1)
+
+
+@pytest.mark.native_only
+class TestLiDAR1392Native:
+    """The helios-core 1.3.92 LiDAR additions against the native library."""
+
+    @staticmethod
+    def _add_scan(lidar):
+        return lidar.addScan(origin=vec3(0, 0, 2), Ntheta=10, theta_range=(2.8, 3.14),
+                             Nphi=10, phi_range=(0, 6.28),
+                             exit_diameter=0.0, beam_divergence=0.05)
+
+    def test_default_detection_threshold_is_0001(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            scan = self._add_scan(lidar)
+            assert lidar.getScanDetectionThreshold(scan) == pytest.approx(0.001, abs=1e-7)
+
+    def test_record_partial_misses_roundtrip(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            scan = self._add_scan(lidar)
+            assert lidar.getScanRecordPartialMisses(scan) is True
+            lidar.setScanRecordPartialMisses(scan, False)
+            assert lidar.getScanRecordPartialMisses(scan) is False
+            lidar.setScanRecordPartialMisses(scan, True)
+            assert lidar.getScanRecordPartialMisses(scan) is True
+
+    def test_record_partial_misses_invalid_scan_raises(self):
+        from pyhelios import LiDARCloud
+        with LiDARCloud() as lidar:
+            with pytest.raises(HeliosError):
+                lidar.getScanRecordPartialMisses(3)
+
+    def test_disabling_partial_misses_drops_points(self):
+        """Pulses that straddle a small patch's edge lose their partial-miss point."""
+        from pyhelios import Context, LiDARCloud
+
+        def hit_count(record_partial):
+            with Context() as context:
+                context.addPatch(center=vec3(0, 0, 0), size=vec2(0.2, 0.2))
+                with LiDARCloud() as lidar:
+                    lidar.disableMessages()
+                    scan = self._add_scan(lidar)
+                    lidar.setScanRecordPartialMisses(scan, record_partial)
+                    lidar.syntheticScan(context, rays_per_pulse=20, pulse_distance_threshold=0.02)
+                    return lidar.getHitCount()
+
+        with_partial = hit_count(True)
+        without_partial = hit_count(False)
+        assert without_partial < with_partial
+

@@ -58,6 +58,20 @@ PYHELIOS_API void markGeometryDirty(helios::Context* context);
 PYHELIOS_API bool isGeometryDirty(helios::Context* context);
 
 /**
+ * @brief Get a counter that advances whenever any primitive is modified (marked dirty) or deleted
+ * @param context Pointer to the Context
+ * @return Current geometry revision. Not reset by markGeometryClean().
+ */
+PYHELIOS_API uint64_t getGeometryRevision(helios::Context* context);
+
+/**
+ * @brief Get a counter that advances whenever a primitive's shape changes or a primitive is deleted
+ * @param context Pointer to the Context
+ * @return Current shape revision. Setting primitive data or color does not advance it.
+ */
+PYHELIOS_API uint64_t getShapeRevision(helios::Context* context);
+
+/**
  * @brief Add a default patch to the context
  * @param context Pointer to the Context
  * @return UUID of the created patch
@@ -2949,6 +2963,41 @@ PYHELIOS_API float* getObjectPrimitiveVertexNormals(helios::Context* context, un
  * @return Pointer to flattened (x,y,z) vertex normals, grouped consecutively by primitive
  */
 PYHELIOS_API float* getObjectPrimitiveVertexNormalsBatch(helios::Context* context, unsigned int objID, unsigned int* uuids, unsigned int count, unsigned int** normals_per_primitive, unsigned int* size);
+
+// ---- Image annotation from a pixel-to-primitive map (helios::annotation, helios-core 1.3.91) ----
+// The pixel map holds UUID+1 per pixel (0 = no primitive), row-major with row 0 at the top of the image,
+// and must have width*height elements.
+
+/**
+ * @brief Compute a YOLO bounding box for each labeled object visible in a pixel-to-primitive map
+ * @param box_class_IDs Output: pointer to the class index of each box
+ * @param box_count Output: number of boxes
+ * @return Pointer to 4 floats per box (center x, center y, width, height), normalized by the image size
+ */
+PYHELIOS_API float* annotationLabelBoundingBoxes(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char** data_labels, const unsigned int* class_IDs,
+                                                 unsigned int label_count, bool use_object_data, unsigned int** box_class_IDs, unsigned int* box_count);
+
+/**
+ * @brief Write YOLO bounding boxes (<image stem>.txt) and a class file into image_path
+ */
+PYHELIOS_API void annotationWriteLabelBoundingBoxes(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char** data_labels, const unsigned int* class_IDs,
+                                                    unsigned int label_count, const char* image_file, const char* classes_txt_file, const char* image_path, bool use_object_data);
+
+/**
+ * @brief Build a binary mask for each distinct value of a data label visible in a pixel-to-primitive map
+ * @param label_values Output: pointer to the label value of each mask
+ * @param mask_pixels Output: pointer to width*height bytes (0/1) per mask, row-major with row 0 at the top
+ * @return Number of masks
+ */
+PYHELIOS_API unsigned int annotationLabelMasks(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char* data_label, bool use_object_data, int** label_values,
+                                               unsigned char** mask_pixels);
+
+/**
+ * @brief Write COCO JSON segmentation masks for the labeled objects visible in a pixel-to-primitive map
+ */
+PYHELIOS_API void annotationWriteLabelSegmentationMasks(helios::Context* context, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height, const char** data_labels, const unsigned int* class_IDs,
+                                                        unsigned int label_count, const char* json_filename, const char* image_file, const char** data_attribute_labels, unsigned int attribute_count, bool append_file,
+                                                        bool use_object_data);
 
 #ifdef __cplusplus
 }

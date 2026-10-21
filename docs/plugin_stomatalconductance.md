@@ -121,11 +121,21 @@ with Context() as context:
      <td>\f$g_H\f$</td>
      <td>mol air/m<sup>2</sup>-s</td>
      <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
-     <td>Boundary-layer conductance to heat. (Assumed that b.l. conductance to moisture is 1.08 that of heat.)</td>
+     <td>Boundary-layer conductance to heat, summed over both faces of a two-sided primitive. (Assumed that b.l. conductance to moisture is 1.08 that of heat.)</td>
      <td>All</td>
      <td>Can be computed by \ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BLConductanceModel" plug-in, or by \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" plug-in if optional output primitive data "boundarylayer_conductance_out" is enabled.</td>
-     <td>0.1 mol/m<sup>2</sup>-s</td>
+     <td>1.0 mol/m<sup>2</sup>-s</td>
   </tr>
+    <tr>
+        <td>stomatal_sidedness</td>
+        <td>\f$\zeta\f$</td>
+        <td>unitless</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Ratio of stomatal density on the upper leaf surface to the sum of the stomatal density on upper and lower leaf surfaces. Note: if "twosided_flag" is equal to 0, stomatal\_sidedness will be automatically set to 0.</td>
+        <td>All</td>
+        <td>N/A</td>
+        <td>0</td>
+    </tr>
     <tr>
         <td>beta_soil</td>
         <td>\f$\beta\f$</td>
@@ -281,15 +291,21 @@ This model is at odds with several more recent observation of stomatal function,
 
 The CO<sub>2</sub> concentration at the leaf surface is calculated as
 
-\f[C_s = C_a-\frac{A}{0.75g_{bw}},\f]
+\f[C_s = C_a-\frac{A}{g_{bc}},\f]
 
-where \f$0.75g_{bw}\f$ is the boundary-layer conductance to CO<sub>2</sub> (assuming the diffusivity of CO<sub>2</sub> in air is 0.75 that of water vapor), and \f$C_a\f$ is the air CO<sub>2</sub> concentration outside of the leaf boundary-layer.
+where \f$g_{bc}\f$ is the boundary-layer conductance to CO<sub>2</sub> (defined below), and \f$C_a\f$ is the air CO<sub>2</sub> concentration outside of the leaf boundary-layer.
 
 The relative humidity at the leaf surface is calculated by setting up a water vapor flux balance at the leaf surface and iteratively solving for the humidity at the leaf surface:
 
 \f[g_s*e_{sat}(T_L)*(1-h_s) = g_{bw}*(e_{sat}(T_L)h_s-e_{sat}(T_a)h_a),\f]
 
 where \f$e_{sat}(T_L)\f$ and \f$e_{sat}(T_a)\f$ are the saturated vapor pressure evaluated respectively at the leaf surface and air temperature (calculated according to the <a href="https://en.wikipedia.org/wiki/Tetens_equation">Tetens equation</a>), and \f$h_a\f$ is the air relative humidity outside the leaf boundary-layer.
+
+The boundary-layer conductance \f$g_H\f$ is summed over both faces of a two-sided primitive (\f$n_s=2\f$), but the stomata on a face exchange gas only through the boundary layer of that face, whose conductance to water vapor is \f$g_f=1.08g_H/n_s\f$. With a fraction \f$z_1=\zeta\f$ of the stomata on the upper face and \f$z_2=1-\zeta\f$ on the lower face, \f$g_{bw}\f$ is the effective boundary-layer conductance that, in series with \f$g_s\f$, carries the same flux as the stomata of each face in series with the boundary layer of that face:
+
+\f[g_{bw} = g_f\frac{\sum_k z_k/(g_f+z_kg_s)}{\sum_k z_k^2/(g_f+z_kg_s)}.\f]
+
+The leaf-surface humidity \f$h_s\f$ and CO<sub>2</sub> concentration \f$C_s\f$ are then the stomata-weighted means over the two faces. For a hypostomatous leaf (\f$\zeta=0\f$) or a one-sided primitive \f$g_{bw}=g_f\f$, and for an amphistomatous leaf (\f$\zeta=0.5\f$) \f$g_{bw}=2g_f\f$. The boundary-layer conductance to CO<sub>2</sub> \f$g_{bc}\f$ is given by the same expression with \f$g_f\f$ replaced by \f$g_f/1.37\f$ and \f$g_s\f$ by \f$g_s/1.6\f$, where 1.37 and 1.6 are the ratios of the conductances to water vapor and CO<sub>2</sub> through the boundary layer and the stomata, respectively, as conventionally used in leaf gas-exchange analysis (e.g., <a href="https://doi.org/10.1038/s41598-018-25838-2">Cernusak et al. 2018</a>). For other values of \f$\zeta\f$ these conductances depend on \f$g_s\f$, and the self-consistent \f$g_s\f$ is found by bisection. A leaf-surface CO<sub>2</sub> concentration \f$C_s\le 0\f$ is an error only if it occurs even at the largest possible boundary-layer conductance, \f$2g_f\f$. The total moisture conductance implied by \f$g_s\f$ and \f$g_{bw}\f$ is the same one used by the \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" plug-in to calculate the latent heat flux.
 
 Below are example parameter values for several different tree crop species (a description of how calibration data was collected is given in the section below). Note that, as mentioned above, in order to apply the model photosynthesis must also be modeled - coefficients for these species are also given in the photosynthesis model documentation.
 
@@ -680,7 +696,7 @@ stomatal.setBMFCoefficients(modelcoeffs)
 stomatal.setBMFCoefficients(modelcoeffs, uuids=[uuid1, uuid2, uuid3])
 ```
 
-#### UUID-Based Coefficient Setting {#MaterialBasedCoeffs}
+#### UUID-Based Coefficient Setting {#UUIDBasedCoeffs}
 
 PyHelios uses a UUID-based approach for setting coefficients to specific primitives. Coefficients can be applied to all primitives or to a subset specified by their UUIDs.
 
@@ -726,6 +742,45 @@ stomatal.setBMFCoefficients(custom_coeffs, uuids=[uuid1, uuid2, uuid3])
 # Or apply to all primitives
 stomatal.setBMFCoefficients(custom_coeffs)
 ```
+
+#### Per-Primitive Coefficient Lists (BMF) {#PerUUIDCoeffs}
+
+For the BMF model, a list of coefficient sets can be passed together with an equal-length list of UUIDs; `coeffs[i]` is applied to `uuids[i]`. This is convenient for leaf-to-leaf variability. Each primitive in the call is also given the primitive data `twoway_stomatal_conductance_flag = 1`, and a warning is printed if a primitive already carried that flag (its coefficients are being overwritten).
+
+```python
+base = stomatal.getBMFCoefficientsFromLibrary("Almond")
+coeff_sets = [base._replace(Em=base.Em * f) for f in (0.8, 1.0, 1.2)]
+stomatal.setBMFCoefficients(coeff_sets, uuids=[leaf1, leaf2, leaf3])
+```
+
+\ref pyhelios.StomatalConductance.StomatalConductanceModel::getBMFCoefficientsFromLibrary "getBMFCoefficientsFromLibrary()" returns a species' library values as a `BMFCoefficients` without applying them. Note that the native library returns the Almond coefficients for an unrecognized species name (printing a warning only when messages are enabled), so check the spelling of the species name.
+
+#### Material-Based Coefficient Setting {#MaterialBasedCoeffs}
+
+All coefficient setters (`setBWBCoefficients`, `setBBLCoefficients`, `setMOPTCoefficients`, `setBMFCoefficients`, `setBBCoefficients`) and `setBMFCoefficientsFromLibrary` accept an optional `material_label=` keyword, mirroring the material support in the photosynthesis plugin. The coefficients are stored as material data on that Context material and apply to every primitive that references the material. `material_label` and `uuids` are mutually exclusive (passing both raises `ValueError`), and the material must already exist (`context.addMaterial(...)`), otherwise a `StomatalConductanceModelError` is raised.
+
+```python
+context.addMaterial("sun_leaf")
+context.addMaterial("shade_leaf")
+context.assignMaterialToPrimitive(sun_leaf_uuids, "sun_leaf")
+context.assignMaterialToPrimitive(shade_leaf_uuids, "shade_leaf")
+
+with StomatalConductanceModel(context) as stomatal:
+    stomatal.setBMFCoefficientsFromLibrary("Almond", material_label="sun_leaf")
+    shade = stomatal.getBMFCoefficientsFromLibrary("Almond")._replace(Em=300.0)
+    stomatal.setBMFCoefficients(shade, material_label="shade_leaf")
+    stomatal.run()
+```
+
+**Coefficient precedence.** Coefficients are resolved for each primitive when `run()` is called, using the primitive's material at that moment, in this order:
+
+1. Coefficients set on the primitive's material via `material_label=` (all coefficients of the active model must be present on the material).
+2. Coefficients set for the primitive's UUID via `uuids=` (including the per-UUID list form).
+3. Coefficients set for all primitives (no `uuids` / `material_label`), or the built-in defaults.
+
+Material coefficients therefore override per-UUID coefficients, regardless of the order of the calls. Because primitives created without an explicit material may share a common default material, assign a dedicated material (as above) before setting coefficients by label, so that only the intended primitives are affected.
+
+**Active model.** Every coefficient setter, including the material-label form, also selects which of the five models `run()` evaluates for *all* primitives (the model of the most recent call wins). Different materials cannot run different models in the same `run()`; use material labels to vary the coefficients of a single model.
 
 ### Running the Model (steady-state mode) {#StomatalRun}
 

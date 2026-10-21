@@ -764,6 +764,43 @@ except AttributeError:
     _CAMERA_ATMOSPHERE_AVAILABLE = False
 
 
+# Below-horizon diffuse sky and scattering ray reduction toggles (helios-core v1.3.92+).
+# NOTE: every wrapper function below must guard with _require_radiation_1392(); guarding with an
+# older flag would skip the RuntimeError and call a symbol with no argtypes set.
+_RADIATION_1392_AVAILABLE = False
+try:
+    for _fn in ("enableBelowHorizonDiffuseRadiation", "disableBelowHorizonDiffuseRadiation",
+                "enableScatteringRayReduction", "disableScatteringRayReduction"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(URadiationModel)]
+        getattr(helios_lib, _fn).restype = None
+        getattr(helios_lib, _fn).errcheck = _check_error
+
+    _RADIATION_1392_AVAILABLE = True
+except AttributeError:
+    _RADIATION_1392_AVAILABLE = False
+
+
+# Camera image correction bindings. Probed separately so libraries built before these
+# shims existed keep the rest of the RadiationModel API working.
+_CAMERA_IMAGE_CORRECTIONS_AVAILABLE = False
+try:
+    helios_lib.applyCameraImageCorrections.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                       ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+                                                       ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.applyCameraImageCorrections.restype = None
+    helios_lib.applyCameraImageCorrections.errcheck = _check_error
+
+    helios_lib.applyCameraColorCorrectionMatrix.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                            ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+                                                            ctypes.c_char_p]
+    helios_lib.applyCameraColorCorrectionMatrix.restype = None
+    helios_lib.applyCameraColorCorrectionMatrix.errcheck = _check_error
+
+    _CAMERA_IMAGE_CORRECTIONS_AVAILABLE = True
+except AttributeError:
+    _CAMERA_IMAGE_CORRECTIONS_AVAILABLE = False
+
+
 # Python wrapper functions
 
 #=============================================================================
@@ -1180,7 +1217,7 @@ def getSourcePosition(radiation_model, source_id: int):
 #=============================================================================
 
 def getSkyEnergy(radiation_model) -> float:
-    """Get total sky energy"""
+    """Get total sky energy (deprecated: the native method always raises as of helios-core 1.3.92)"""
     if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE:
         raise RuntimeError("RadiationModel functions are not available. Native library missing or radiation plugin not enabled.")
     if radiation_model is None:
@@ -2613,3 +2650,79 @@ def disableCameraAtmosphere(radiation_model, camera_label: str) -> None:
     if radiation_model is None:
         raise ValueError("RadiationModel instance is None.")
     helios_lib.disableCameraAtmosphere(radiation_model, camera_label.encode('utf-8'))
+
+
+def _require_radiation_1392() -> None:
+    """Raise if the native library predates the helios-core 1.3.92 RadiationModel additions."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE or not _RADIATION_1392_AVAILABLE:
+        raise RuntimeError(
+            "This RadiationModel function is not available in the current native library. "
+            "It requires helios-core v1.3.92 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def enableBelowHorizonDiffuseRadiation(radiation_model) -> None:
+    """Apply the diffuse sky radiation to rays leaving the domain below the horizon."""
+    _require_radiation_1392()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.enableBelowHorizonDiffuseRadiation(radiation_model)
+
+
+def disableBelowHorizonDiffuseRadiation(radiation_model) -> None:
+    """Restrict the diffuse sky radiation to the upper hemisphere (default)."""
+    _require_radiation_1392()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.disableBelowHorizonDiffuseRadiation(radiation_model)
+
+
+def enableScatteringRayReduction(radiation_model) -> None:
+    """Reduce diffuse rays per primitive in later scattering iterations (default)."""
+    _require_radiation_1392()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.enableScatteringRayReduction(radiation_model)
+
+
+def disableScatteringRayReduction(radiation_model) -> None:
+    """Launch the full diffuse ray count in every scattering iteration."""
+    _require_radiation_1392()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.disableScatteringRayReduction(radiation_model)
+
+
+def _require_camera_image_corrections() -> None:
+    """Raise if the native library predates the camera image correction bindings."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE or not _CAMERA_IMAGE_CORRECTIONS_AVAILABLE:
+        raise RuntimeError(
+            "Camera image correction functions are not available in the current native library. "
+            "Rebuild PyHelios with the radiation plugin: 'build_scripts/build_helios --clean'."
+        )
+
+
+def applyCameraImageCorrections(radiation_model, camera_label: str, red_band_label: str,
+                                green_band_label: str, blue_band_label: str,
+                                saturation_adjustment: float = 1.0, brightness_adjustment: float = 1.0,
+                                contrast_adjustment: float = 1.0) -> None:
+    """Apply brightness/contrast and saturation corrections to an RGB camera's pixel data in place."""
+    _require_camera_image_corrections()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.applyCameraImageCorrections(radiation_model, camera_label.encode('utf-8'),
+                                           red_band_label.encode('utf-8'), green_band_label.encode('utf-8'),
+                                           blue_band_label.encode('utf-8'), float(saturation_adjustment),
+                                           float(brightness_adjustment), float(contrast_adjustment))
+
+
+def applyCameraColorCorrectionMatrix(radiation_model, camera_label: str, red_band_label: str,
+                                     green_band_label: str, blue_band_label: str, ccm_file_path: str) -> None:
+    """Apply a color correction matrix loaded from an XML file to an RGB camera's pixel data in place."""
+    _require_camera_image_corrections()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    helios_lib.applyCameraColorCorrectionMatrix(radiation_model, camera_label.encode('utf-8'),
+                                                red_band_label.encode('utf-8'), green_band_label.encode('utf-8'),
+                                                blue_band_label.encode('utf-8'), ccm_file_path.encode('utf-8'))

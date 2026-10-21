@@ -1708,6 +1708,184 @@ class TestVisualizerNullPointerGuards:
         )
         assert "SURVIVED" in result.stdout
 
+
+
+@pytest.mark.cross_platform
+class TestVisualizerV1391Validation:
+    """Argument validation for the 1.3.91 annotation and depth image methods, checked before any native call."""
+
+    @pytest.fixture
+    def visualizer(self):
+        """A Visualizer whose validation runs before it touches the native pointer."""
+        instance = Visualizer.__new__(Visualizer)
+        instance.visualizer = object()  # non-None so the init guard passes
+        return instance
+
+    @pytest.mark.parametrize("name", [
+        "getDepthImage", "getPixelUUIDs",
+        "writeImageBoundingBoxes", "writeImageSegmentationMasks",
+        "writeDepthImageData", "writeDepthImageDataEXR", "writeNormDepthImage",
+    ])
+    def test_methods_exist(self, name):
+        assert callable(getattr(Visualizer, name, None)), f"{name}() is missing"
+
+    def test_bounding_boxes_require_exactly_one_label_kind(self, visualizer):
+        with pytest.raises(ValueError, match="either"):
+            visualizer.writeImageBoundingBoxes(object_class_ids=0, image_file="s.jpeg")
+        with pytest.raises(ValueError, match="both"):
+            visualizer.writeImageBoundingBoxes("a", "b", 0, "s.jpeg")
+
+    def test_bounding_boxes_reject_wrong_types_positionally(self, visualizer):
+        with pytest.raises(TypeError, match="string or list"):
+            visualizer.writeImageBoundingBoxes(5, None, 0, "s.jpeg")
+        with pytest.raises(TypeError, match="must be an integer"):
+            visualizer.writeImageBoundingBoxes("leaf_id", None, "0", "s.jpeg")
+        with pytest.raises(TypeError, match="must be a list"):
+            visualizer.writeImageBoundingBoxes(["leaf_id"], None, 0, "s.jpeg")
+        with pytest.raises(TypeError, match="Image file"):
+            visualizer.writeImageBoundingBoxes("leaf_id", None, 0, "")
+
+    def test_bounding_boxes_reject_wrong_types_by_keyword(self, visualizer):
+        with pytest.raises(ValueError, match="same length"):
+            visualizer.writeImageBoundingBoxes(object_data_labels=["a", "b"], object_class_ids=[0],
+                                               image_file="s.jpeg")
+        with pytest.raises(ValueError, match="non-negative"):
+            visualizer.writeImageBoundingBoxes(primitive_data_labels="a", object_class_ids=-1,
+                                               image_file="s.jpeg")
+        with pytest.raises(TypeError, match="integers"):
+            visualizer.writeImageBoundingBoxes(primitive_data_labels=["a"], object_class_ids=[True],
+                                               image_file="s.jpeg")
+
+    def test_segmentation_masks_reject_bad_arguments(self, visualizer):
+        with pytest.raises(TypeError, match="JSON filename"):
+            visualizer.writeImageSegmentationMasks("leaf_id", None, 0, "", "s.jpeg")
+        with pytest.raises(TypeError, match="Image file"):
+            visualizer.writeImageSegmentationMasks("leaf_id", None, 0, "m.json", "")
+        with pytest.raises(TypeError, match="data_attribute_labels"):
+            visualizer.writeImageSegmentationMasks("leaf_id", None, 0, "m.json", "s.jpeg",
+                                                   data_attribute_labels="area")
+        with pytest.raises(TypeError, match="append_file"):
+            visualizer.writeImageSegmentationMasks("leaf_id", None, 0, "m.json", "s.jpeg",
+                                                   append_file=1)
+
+    @pytest.mark.parametrize("bad", [0.0, -1.0, float("nan")])
+    def test_norm_depth_image_rejects_non_positive_max_depth(self, visualizer, bad):
+        with pytest.raises(ValueError, match="max_depth"):
+            visualizer.writeNormDepthImage("depth.jpeg", bad)
+
+    def test_norm_depth_image_rejects_non_numeric_max_depth(self, visualizer):
+        with pytest.raises(ValueError, match="max_depth"):
+            visualizer.writeNormDepthImage("depth.jpeg", "10")
+
+    @pytest.mark.parametrize("name", ["writeDepthImageData", "writeDepthImageDataEXR"])
+    def test_depth_writers_reject_empty_filename(self, visualizer, name):
+        with pytest.raises(ValueError, match="Filename"):
+            getattr(visualizer, name)("")
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(is_headless_environment(), reason="Skipping visualizer tests in headless environment")
+class TestVisualizerV1391Native:
+    """helios-core 1.3.91 visualizer annotation and depth image output."""
+
+    # A 1x1 patch 5 units in front of the camera covers the image center but not its corners.
+    CAMERA_DISTANCE = 5.0
+
+    @pytest.fixture
+    def scene(self):
+        context = Context()
+        uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        context.setPrimitiveDataUInt(uuid, "leaf_id", 7)
+        with Visualizer(200, 150, headless=True) as visualizer:
+            visualizer.buildContextGeometry(context)
+            visualizer.setCameraPosition(vec3(0, 0, self.CAMERA_DISTANCE), vec3(0, 0, 0))
+            yield context, visualizer, uuid
+        context.__exit__(None, None, None)
+
+    def test_pixel_uuids_report_patch_plus_one_and_zero_for_background(self, scene):
+        _, visualizer, uuid = scene
+        pixels, width, height = visualizer.getPixelUUIDs()
+
+        assert len(pixels) == width * height
+        assert (width, height) == visualizer.getFramebufferSize()
+        assert pixels[(height // 2) * width + width // 2] == uuid + 1
+        assert pixels[0] == 0, "the top-left corner shows background"
+        assert set(pixels) == {0, uuid + 1}
+
+    def test_depth_image_is_camera_distance_and_minus_one_for_background(self, scene):
+        _, visualizer, _ = scene
+        depth, width, height = visualizer.getDepthImage()
+
+        assert len(depth) == width * height
+        assert depth[(height // 2) * width + width // 2] == pytest.approx(self.CAMERA_DISTANCE, rel=1e-3)
+        assert depth[0] == -1.0
+
+    def test_write_bounding_boxes_writes_one_centered_box(self, scene, tmp_path):
+        _, visualizer, _ = scene
+        image = tmp_path / "scene.jpeg"
+        visualizer.printWindow(str(image))
+        visualizer.writeImageBoundingBoxes(primitive_data_labels="leaf_id", object_class_ids=3,
+                                           image_file="scene.jpeg", image_path=str(tmp_path))
+
+        lines = (tmp_path / "scene.txt").read_text().split("\n")
+        lines = [line for line in lines if line.strip()]
+        assert len(lines) == 1
+        fields = lines[0].split()
+        assert int(fields[0]) == 3
+        assert float(fields[1]) == pytest.approx(0.5, abs=0.02)
+        assert float(fields[2]) == pytest.approx(0.5, abs=0.02)
+        assert (tmp_path / "classes.txt").exists()
+
+    def test_write_bounding_boxes_from_object_data(self, tmp_path):
+        context = Context()
+        obj = context.addTileObject(center=vec3(0, 0, 0), size=vec2(1, 1))
+        context.setObjectDataUInt(obj, "plant_id", 2)
+        with Visualizer(200, 150, headless=True) as visualizer:
+            visualizer.buildContextGeometry(context)
+            visualizer.setCameraPosition(vec3(0, 0, 5), vec3(0, 0, 0))
+            visualizer.writeImageBoundingBoxes(object_data_labels=["plant_id"], object_class_ids=[1],
+                                               image_file="scene.jpeg", image_path=str(tmp_path))
+        lines = [line for line in (tmp_path / "scene.txt").read_text().split("\n") if line.strip()]
+        assert len(lines) == 1
+        assert int(lines[0].split()[0]) == 1
+
+    def test_write_segmentation_masks_writes_one_annotation(self, scene, tmp_path):
+        import json
+        _, visualizer, _ = scene
+        image = tmp_path / "scene.jpeg"
+        visualizer.printWindow(str(image))
+        json_file = tmp_path / "masks.json"
+        visualizer.writeImageSegmentationMasks(primitive_data_labels="leaf_id", object_class_ids=0,
+                                               json_filename=str(json_file), image_file=str(image))
+
+        data = json.loads(json_file.read_text())
+        assert len(data["annotations"]) == 1
+
+    def test_non_integer_label_is_not_annotated(self, scene, tmp_path):
+        # Native reads only uint/int label data; a float label is treated as absent, not an error.
+        context, visualizer, uuid = scene
+        context.setPrimitiveDataFloat(uuid, "area_label", 1.0)
+        visualizer.writeImageBoundingBoxes(primitive_data_labels="area_label", object_class_ids=0,
+                                           image_file="scene.jpeg", image_path=str(tmp_path))
+        assert (tmp_path / "scene.txt").read_text().strip() == ""
+
+    def test_depth_writers_create_files(self, scene, tmp_path):
+        _, visualizer, _ = scene
+        text_file = tmp_path / "depth.txt"
+        exr_file = tmp_path / "depth.exr"
+        jpeg_file = tmp_path / "depth.jpeg"
+
+        visualizer.writeDepthImageData(str(text_file))
+        visualizer.writeDepthImageDataEXR(str(exr_file))
+        visualizer.writeNormDepthImage(str(jpeg_file), 10.0)
+
+        rows = [row for row in text_file.read_text().split("\n") if row.strip()]
+        _, height = visualizer.getFramebufferSize()
+        assert len(rows) == height
+        assert exr_file.stat().st_size > 0
+        assert jpeg_file.stat().st_size > 0
+
+
 if __name__ == "__main__":
     # Run tests when executed directly
     pytest.main([__file__, "-v"])

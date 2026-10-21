@@ -6,14 +6,16 @@
 # from wrappers import Vec3
 
 import ctypes
+import math
 import os
 from contextlib import contextmanager
+from dataclasses import dataclass, field, fields as dataclass_fields
 from enum import Enum
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 from .wrappers import UWeberPennTreeWrapper as wpt_wrapper
-from .wrappers.DataTypes import vec3
+from .wrappers.DataTypes import vec3, RGBcolor
 from .plugins.registry import get_plugin_registry, graceful_plugin_fallback
 from .validation.plugins import validate_wpt_parameters
 from .validation.datatypes import validate_vec3
@@ -122,6 +124,166 @@ class WPTType(Enum):
     PEACH = 'Peach'
     PISTACHIO = 'Pistachio'
     WALNUT = 'Walnut'
+
+_INT32_MIN, _INT32_MAX = -2**31, 2**31 - 1
+_UINT32_MAX = 2**32 - 1
+_MAX_LEVELS = 3
+
+# Per-level arrays: indexed by recursion level, so each needs at least Levels+1 entries.
+_PER_LEVEL_FLOAT_FIELDS = (
+    'nSegSplits', 'nSplitAngle', 'nSplitAngleV', 'nCurve', 'nCurveV', 'nCurveBack', 'nLength', 'nLengthV',
+    'nTaper', 'nDownAngle', 'nDownAngleV', 'nRotate', 'nRotateV',
+)
+_PER_LEVEL_INT_FIELDS = ('nCurveRes', 'nBranches')
+_SCALAR_FLOAT_FIELDS = (
+    'BaseSize', 'BaseSizeV', 'BaseSplitSize', 'BaseSplitSizeV', 'Scale', 'ScaleV', 'ZScale', 'ZScaleV',
+    'Ratio', 'RatioPower', 'LobeDepth', 'Flare', 'LeafScale', 'LeafScaleX',
+)
+_SCALAR_INT_FIELDS = ('Shape', 'Lobes', 'Levels', 'Leaves', 'LeafShape')
+_SCALAR_UINT_FIELDS = ('BaseSplits', 'BaseSplitsV')
+_STRING_FIELDS = ('label', 'LeafFile', 'WoodFile')
+
+
+@dataclass(eq=False)
+class WeberPennTreeParameters:
+    """
+    Architectural parameters of a Weber-Penn tree, mirroring the C++ ``WeberPennTreeParameters`` struct.
+
+    Field names and meanings are identical to the C++ struct and to the tags of the XML tree library
+    (see the "Creating Custom XML Files" section of the plugin documentation). Per-level arrays
+    (``nSegSplits`` ... ``nBranches``) are indexed by recursion level (0 = trunk) and must hold at least
+    ``Levels + 1`` entries. ``leafAngleCDF`` is the cumulative leaf inclination distribution computed from
+    the XML ``LeafAngleDist`` tag (empty means uniform). Float values are stored as 32-bit floats natively.
+
+    The usual way to obtain one is :meth:`WeberPennTree.getTreeParameters`, modify it, and pass it to
+    :meth:`WeberPennTree.setTreeParameters`.
+    """
+    label: str = ''
+    Shape: int = 0
+    BaseSize: float = 0.0
+    BaseSizeV: float = 0.0
+    BaseSplits: int = 0
+    BaseSplitsV: int = 0
+    BaseSplitSize: float = 0.0
+    BaseSplitSizeV: float = 0.0
+    Scale: float = 0.0
+    ScaleV: float = 0.0
+    ZScale: float = 0.0
+    ZScaleV: float = 0.0
+    Ratio: float = 0.0
+    RatioPower: float = 0.0
+    Lobes: int = 0
+    LobeDepth: float = 0.0
+    Flare: float = 0.0
+    Levels: int = 0
+    nSegSplits: List[float] = field(default_factory=list)
+    nSplitAngle: List[float] = field(default_factory=list)
+    nSplitAngleV: List[float] = field(default_factory=list)
+    nCurveRes: List[int] = field(default_factory=list)
+    nCurve: List[float] = field(default_factory=list)
+    nCurveV: List[float] = field(default_factory=list)
+    nCurveBack: List[float] = field(default_factory=list)
+    nLength: List[float] = field(default_factory=list)
+    nLengthV: List[float] = field(default_factory=list)
+    nTaper: List[float] = field(default_factory=list)
+    nDownAngle: List[float] = field(default_factory=list)
+    nDownAngleV: List[float] = field(default_factory=list)
+    nRotate: List[float] = field(default_factory=list)
+    nRotateV: List[float] = field(default_factory=list)
+    nBranches: List[int] = field(default_factory=list)
+    LeafFile: str = ''
+    Leaves: int = 0
+    LeafShape: int = 0
+    LeafScale: float = 0.0
+    LeafScaleX: float = 0.0
+    WoodColor: RGBcolor = field(default_factory=lambda: RGBcolor(0.4, 0.2, 0.05))
+    WoodFile: str = 'none'
+    leafAngleCDF: List[float] = field(default_factory=list)
+
+    def __eq__(self, other):
+        if not isinstance(other, WeberPennTreeParameters):
+            return NotImplemented
+        for f in dataclass_fields(self):
+            a, b = getattr(self, f.name), getattr(other, f.name)
+            if f.name == 'WoodColor':
+                if not (isinstance(a, RGBcolor) and isinstance(b, RGBcolor)) or a.to_list() != b.to_list():
+                    return False
+            elif isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+                if list(a) != list(b):
+                    return False
+            elif a != b:
+                return False
+        return True
+
+    def _to_wrapper_fields(self) -> dict:
+        result = {f.name: getattr(self, f.name) for f in dataclass_fields(self)}
+        result['WoodColor'] = self.WoodColor.to_list()
+        return result
+
+    @classmethod
+    def _from_wrapper_fields(cls, raw: dict) -> 'WeberPennTreeParameters':
+        values = dict(raw)
+        wood = values['WoodColor']
+        color = RGBcolor()
+        color.r, color.g, color.b = wood[0], wood[1], wood[2]
+        values['WoodColor'] = color
+        return cls(**values)
+
+    def validate(self) -> None:
+        """
+        Check field types, ranges and per-level array lengths.
+
+        Raises:
+            ValueError: If any field has the wrong type, is out of range, or a per-level array is too short.
+        """
+        def is_int(v):
+            return isinstance(v, int) and not isinstance(v, bool)
+
+        def is_real(v):
+            return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+        for name in _STRING_FIELDS:
+            v = getattr(self, name)
+            if not isinstance(v, str):
+                raise ValueError(f"WeberPennTreeParameters.{name} must be a str, got {type(v).__name__}")
+            if '\x00' in v:
+                raise ValueError(f"WeberPennTreeParameters.{name} must not contain NUL characters")
+        for name in _SCALAR_FLOAT_FIELDS:
+            v = getattr(self, name)
+            if not is_real(v):
+                raise ValueError(f"WeberPennTreeParameters.{name} must be a finite number, got {type(v).__name__}: {v!r}")
+        for name in _SCALAR_INT_FIELDS:
+            v = getattr(self, name)
+            if not is_int(v) or not (_INT32_MIN <= v <= _INT32_MAX):
+                raise ValueError(f"WeberPennTreeParameters.{name} must be a 32-bit int, got {type(v).__name__}: {v!r}")
+        for name in _SCALAR_UINT_FIELDS:
+            v = getattr(self, name)
+            if not is_int(v) or not (0 <= v <= _UINT32_MAX):
+                raise ValueError(f"WeberPennTreeParameters.{name} must be a non-negative 32-bit int, got {type(v).__name__}: {v!r}")
+        if not isinstance(self.WoodColor, RGBcolor):
+            raise ValueError(f"WeberPennTreeParameters.WoodColor must be an RGBcolor, got {type(self.WoodColor).__name__}")
+        for name in _PER_LEVEL_FLOAT_FIELDS + ('leafAngleCDF',):
+            v = getattr(self, name)
+            if not isinstance(v, (list, tuple)) or not all(is_real(x) for x in v):
+                raise ValueError(f"WeberPennTreeParameters.{name} must be a list of finite numbers, got {v!r}")
+        for name in _PER_LEVEL_INT_FIELDS:
+            v = getattr(self, name)
+            if not isinstance(v, (list, tuple)) or not all(is_int(x) and _INT32_MIN <= x <= _INT32_MAX for x in v):
+                raise ValueError(f"WeberPennTreeParameters.{name} must be a list of 32-bit ints, got {v!r}")
+
+        if not (1 <= self.Levels <= _MAX_LEVELS):
+            raise ValueError(
+                f"WeberPennTreeParameters.Levels is {self.Levels}, but it must be between 1 and {_MAX_LEVELS} "
+                f"(level 0 is the trunk and leaves are placed at level Levels)."
+            )
+        required = self.Levels + 1
+        for name in _PER_LEVEL_FLOAT_FIELDS + _PER_LEVEL_INT_FIELDS:
+            n = len(getattr(self, name))
+            if n < required:
+                raise ValueError(
+                    f"WeberPennTreeParameters.{name} has {n} entries, but Levels={self.Levels} requires at least {required}."
+                )
+
 
 class WeberPennTree:
     WPTType = WPTType  # Make WPTType accessible as class attribute
@@ -340,3 +502,85 @@ class WeberPennTree:
         with _weberpenntree_working_directory():
             self._check_context_alive()
             wpt_wrapper.loadXML(self.wpt, str(xml_path), silent)
+
+    @staticmethod
+    def _tree_name(tree_name: Union[WPTType, str], method: str) -> str:
+        if isinstance(tree_name, WPTType):
+            return tree_name.value
+        if isinstance(tree_name, str):
+            if not tree_name.strip():
+                raise ValueError(f"{method}: tree_name must be a non-empty string")
+            if '\x00' in tree_name:
+                raise ValueError(f"{method}: tree_name must not contain NUL characters")
+            return tree_name
+        raise ValueError(f"{method}: tree_name must be a WPTType or str, got {type(tree_name).__name__}")
+
+    def getTreeParameters(self, tree_name: Union[WPTType, str]) -> WeberPennTreeParameters:
+        """
+        Get the architectural parameters of a tree in the library.
+
+        Args:
+            tree_name: WPTType for a built-in species, or the name of a species loaded with loadXML()
+                or defined with setTreeParameters().
+
+        Returns:
+            WeberPennTreeParameters with every field of the C++ struct.
+
+        Raises:
+            ValueError: If tree_name is not a WPTType or non-empty string.
+            HeliosRuntimeError: If no tree with that name exists in the library.
+        """
+        name = self._tree_name(tree_name, "getTreeParameters")
+        if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
+            raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
+        return WeberPennTreeParameters._from_wrapper_fields(wpt_wrapper.getTreeParameters(self.wpt, name))
+
+    def setTreeParameters(self, tree_name: Union[WPTType, str], parameters: WeberPennTreeParameters) -> None:
+        """
+        Set the architectural parameters of a tree in the library.
+
+        If ``tree_name`` is not yet in the library, a new species with that name is added, and
+        ``buildTree(tree_name)`` will then build it. Parameters are validated in Python (types, Levels
+        range, per-level array lengths) and again natively (e.g. Scale > 0, nCurveRes >= 1,
+        0 <= BaseSize < 1); an invalid set leaves the library unchanged.
+
+        Args:
+            tree_name: WPTType or species name.
+            parameters: WeberPennTreeParameters, typically obtained from getTreeParameters() and modified.
+
+        Raises:
+            ValueError: If tree_name or parameters are invalid.
+            HeliosRuntimeError: If the native validation rejects the parameters.
+        """
+        name = self._tree_name(tree_name, "setTreeParameters")
+        if not isinstance(parameters, WeberPennTreeParameters):
+            raise ValueError(
+                f"setTreeParameters: parameters must be a WeberPennTreeParameters, got {type(parameters).__name__}"
+            )
+        parameters.validate()
+        if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
+            raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
+        wpt_wrapper.setTreeParameters(self.wpt, name, parameters._to_wrapper_fields())
+
+    def seedRandomGenerator(self, seed: int) -> None:
+        """
+        Seed the WeberPennTree random number generator to make tree geometry reproducible.
+
+        WeberPennTree has its own generator, independent of Context.seedRandomGenerator(); seeding
+        the Context does not make trees repeatable. The generator advances with each buildTree() call,
+        so re-seed before each build that should be reproduced.
+
+        Args:
+            seed: Non-negative integer below 2**32.
+
+        Raises:
+            ValueError: If seed is not an int in [0, 2**32).
+        """
+        if not isinstance(seed, int) or isinstance(seed, bool) or not (0 <= seed <= _UINT32_MAX):
+            raise ValueError(f"seedRandomGenerator: seed must be an int in [0, 2**32), got {seed!r}")
+        if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
+            raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")
+        self._check_context_alive()
+        wpt_wrapper.seedRandomGenerator(self.wpt, seed)

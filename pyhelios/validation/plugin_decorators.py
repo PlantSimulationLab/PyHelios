@@ -165,7 +165,8 @@ def validate_min_scatter_energy_params(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(self, label: str, energy: float, *args, **kwargs):
         validate_band_label(label, "label", func.__name__)
-        validate_positive_value(energy, "energy", func.__name__)
+        # 0 (the native default) disables early termination; only negative values are invalid.
+        validate_non_negative_value(energy, "energy", func.__name__)
         return func(self, label, energy, *args, **kwargs)
     return wrapper
 

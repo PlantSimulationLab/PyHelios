@@ -6007,6 +6007,303 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to get the shadow-grid light exposure of plant {plant_id}: {e}")
 
+    # ------------------------------------------------------------------
+    # Plant-level queries
+    # ------------------------------------------------------------------
+
+    def getPlantName(self, plant_id: int) -> str:
+        """
+        Get the name of the plant model a plant was built from.
+
+        For a plant built with :meth:`buildPlantInstanceFromLibrary` this is the label passed
+        to :meth:`loadPlantModelFromLibrary` (e.g. ``"bean"``). A plant assembled by hand with
+        :meth:`addPlantInstance` reports whatever name the native library assigned to it.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Plant model name
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("bean")
+            >>> plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 20)
+            >>> plantarch.getPlantName(plant_id)
+            'bean'
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantName(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the name of plant {plant_id}: {e}")
+
+    def determinePhenologyStage(self, plant_id: int) -> str:
+        """
+        Determine the phenological stage of a plant.
+
+        The stage is decided in this order: ``"dormant"`` if every shoot is dormant;
+        ``"reproductive"`` if the plant carries any flower or fruit; ``"senescent"`` if it is
+        past 90% of the time from dormancy break to dormancy (only when a dormancy threshold
+        is set, see :meth:`setPlantPhenologicalThresholds`); otherwise ``"vegetative"``.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            One of ``"dormant"``, ``"vegetative"``, ``"reproductive"`` or ``"senescent"``
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.determinePhenologyStage(plant_id)
+            'vegetative'
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.determinePhenologyStage(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to determine the phenology stage of plant {plant_id}: {e}")
+
+    def getShootNodeCount(self, plant_id: int, shoot_id: int) -> int:
+        """
+        Get the current number of nodes (phytomers) on one shoot.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: Shoot index within the plant (see :meth:`getAllShootIDs`; 0 is the base stem)
+
+        Returns:
+            Number of nodes on the shoot
+
+        Raises:
+            ValueError: If ``plant_id`` or ``shoot_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist or the shoot ID is out of range
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.getShootNodeCount(plant_id, 0)
+            6
+        """
+        self._validateShootIdentifiers(plant_id, shoot_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getShootNodeCount(self._plantarch_ptr, plant_id, shoot_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the node count of shoot {shoot_id} on plant {plant_id}: {e}")
+
+    def getPlantStemHeight(self, plant_id: int) -> float:
+        """
+        Get the height of a plant's main stem in meters.
+
+        The vertical extent of the base stem shoot, extended by any shoot of the same rank
+        appended to its tip. Unlike :meth:`getPlantHeight`, leaves, branches and
+        inflorescences reaching above the stem are not counted.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            Vertical extent of the main stem (m)
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist or has no stem geometry
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.getPlantStemHeight(plant_id)
+            0.21
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantStemHeight(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the stem height of plant {plant_id}: {e}")
+
+    def getPlantBasePosition(self, plant_ids: Union[int, List[int]]) -> Union[vec3, List[vec3]]:
+        """
+        Get the base position of one plant or of several plants.
+
+        Args:
+            plant_ids: A single plant ID, or a sequence of plant IDs
+
+        Returns:
+            A vec3 for a single plant ID, or a list of vec3 (in the order given) for a sequence
+
+        Raises:
+            ValueError: If a plant ID is not a non-negative int or the sequence is empty
+            PlantArchitectureError: If a plant does not exist or has no shoots yet
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.getPlantBasePosition(plant_id)
+            vec3(0.0, 0.0, 0.0)
+        """
+        multi = not isinstance(plant_ids, int) or isinstance(plant_ids, bool)
+        ids = self._validatePlantIdList(plant_ids) if multi else [self._validatePlantIdentifier(plant_ids)]
+        self._check_context_alive()
+        try:
+            if multi:
+                return [vec3(*p) for p in plantarch_wrapper.getPlantBasePositions(self._plantarch_ptr, ids)]
+            return vec3(*plantarch_wrapper.getPlantBasePosition(self._plantarch_ptr, ids[0]))
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the base position of plant(s) {ids}: {e}")
+
+    def setPlantBasePosition(self, plant_id: int, base_position: vec3) -> None:
+        """
+        Set the base position of a plant.
+
+        Note:
+            This sets where the plant's stem will be rooted; it does **not** move geometry
+            that already exists. Call it on a plant from :meth:`addPlantInstance` before
+            :meth:`addBaseStemShoot` to place the stem. On a plant that already has shoots,
+            :meth:`getPlantBasePosition` will report the new position while the existing
+            geometry stays where it was built -- use ``Context.translateObject`` on
+            :meth:`getAllPlantObjectIDs` to move a finished plant.
+
+        Args:
+            plant_id: ID of the plant instance
+            base_position: New base position (vec3)
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int or ``base_position`` is not a vec3
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0)
+            >>> plantarch.setPlantBasePosition(plant_id, vec3(1, 2, 0))
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        if not isinstance(base_position, vec3):
+            raise ValueError(f"Base position must be a vec3, got {type(base_position).__name__}")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setPlantBasePosition(
+                self._plantarch_ptr, plant_id, (base_position.x, base_position.y, base_position.z))
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set the base position of plant {plant_id}: {e}")
+
+    def getPlantInternodeObjectIDs(self, plant_id: int, shoot_type_label: Optional[str] = None) -> List[int]:
+        """
+        Get the object IDs of a plant's internode (tube) objects.
+
+        Each shoot is one tube object spanning all its internodes, so the list has one entry
+        per shoot that has geometry. The structural counterpart to
+        :meth:`getPlantLeafObjectIDs`.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_type_label: If given, only internodes of shoots of this type
+                (e.g. ``"stem"``) are returned
+
+        Returns:
+            List of internode object IDs
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int or ``shoot_type_label`` is
+                not a non-empty str
+            PlantArchitectureError: If the plant does not exist, or no shoot on it has the
+                given shoot type label
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> stem_ids = plantarch.getPlantInternodeObjectIDs(plant_id)
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        if shoot_type_label is not None and (not isinstance(shoot_type_label, str) or not shoot_type_label):
+            raise ValueError(
+                f"Shoot type label must be a non-empty str, got {type(shoot_type_label).__name__}")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantInternodeObjectIDs(self._plantarch_ptr, plant_id, shoot_type_label)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get internode object IDs for plant {plant_id}: {e}")
+
+    def _plantAngleDistribution(self, fn_name: str, plant_ids, num_bins, normalize, what: str) -> List[float]:
+        multi = not isinstance(plant_ids, int) or isinstance(plant_ids, bool)
+        ids = self._validatePlantIdList(plant_ids) if multi else [self._validatePlantIdentifier(plant_ids)]
+        if isinstance(num_bins, bool) or not isinstance(num_bins, int) or num_bins < 1:
+            raise ValueError(f"num_bins must be a positive int, got {num_bins!r}")
+        if not isinstance(normalize, bool):
+            raise ValueError(f"normalize must be a bool, got {type(normalize).__name__}")
+        self._check_context_alive()
+        try:
+            return getattr(plantarch_wrapper, fn_name)(self._plantarch_ptr, ids, num_bins, normalize)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the leaf {what} distribution of plant(s) {ids}: {e}")
+
+    def getPlantLeafInclinationAngleDistribution(self, plant_ids: Union[int, List[int]], num_bins: int,
+                                                 normalize: bool = True) -> List[float]:
+        """
+        Get the leaf-area-weighted leaf inclination angle distribution of one or more plants.
+
+        Each leaf blade facet adds its area to the bin of its inclination (the angle between
+        the facet normal and vertical, folded into 0-90 degrees). Petiolules are excluded.
+        Several plants are pooled into one histogram.
+
+        Args:
+            plant_ids: A single plant ID, or a sequence of plant IDs to pool
+            num_bins: Number of histogram bins, evenly spaced between 0 and 90 degrees
+            normalize: If True (default), the bins sum to 1; otherwise they hold leaf area (m^2).
+                A plant with no leaves gives all-zero bins either way.
+
+        Returns:
+            List of ``num_bins`` values
+
+        Raises:
+            ValueError: If a plant ID is invalid, the sequence is empty, ``num_bins`` is not a
+                positive int, or ``normalize`` is not a bool
+            PlantArchitectureError: If a plant does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.getPlantLeafInclinationAngleDistribution(plant_id, 9)
+        """
+        return self._plantAngleDistribution("getPlantLeafInclinationAngleDistribution", plant_ids,
+                                            num_bins, normalize, "inclination")
+
+    def getPlantLeafAzimuthAngleDistribution(self, plant_ids: Union[int, List[int]], num_bins: int,
+                                             normalize: bool = True) -> List[float]:
+        """
+        Get the leaf-area-weighted leaf azimuth angle distribution of one or more plants.
+
+        Each leaf blade facet adds its area to the bin of its normal's azimuth (0-360
+        degrees). Petiolules are excluded. Several plants are pooled into one histogram.
+
+        Args:
+            plant_ids: A single plant ID, or a sequence of plant IDs to pool
+            num_bins: Number of histogram bins, evenly spaced between 0 and 360 degrees
+            normalize: If True (default), the bins sum to 1; otherwise they hold leaf area (m^2).
+                A plant with no leaves gives all-zero bins either way.
+
+        Returns:
+            List of ``num_bins`` values
+
+        Raises:
+            ValueError: If a plant ID is invalid, the sequence is empty, ``num_bins`` is not a
+                positive int, or ``normalize`` is not a bool
+            PlantArchitectureError: If a plant does not exist
+            RuntimeError: If the native library predates this binding
+
+        Example:
+            >>> plantarch.getPlantLeafAzimuthAngleDistribution([p1, p2], 12)
+        """
+        return self._plantAngleDistribution("getPlantLeafAzimuthAngleDistribution", plant_ids,
+                                            num_bins, normalize, "azimuth")
+
     def resamplePhytomerParameters(self, phytomer_parameters: Union[dict, PhytomerParameters]
                                    ) -> Union[dict, PhytomerParameters]:
         """

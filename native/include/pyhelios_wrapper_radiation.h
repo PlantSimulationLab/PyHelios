@@ -549,9 +549,12 @@ PYHELIOS_API unsigned int addDiskRadiationSource(RadiationModel* radiation_model
 //=============================================================================
 
 /**
- * @brief Get total sky energy
+ * @brief Get total sky energy (deprecated)
+ *
+ * Deprecated in helios-core 1.3.92: no ray-tracing backend computes it, and the native method
+ * now always raises, so this always sets an error. It will be removed in helios-core v2.0.
  * @param radiation_model Pointer to the RadiationModel
- * @return Sky energy value
+ * @return 0 (the error code is always set)
  */
 PYHELIOS_API float getSkyEnergy(RadiationModel* radiation_model);
 
@@ -1319,6 +1322,73 @@ PYHELIOS_API void enableCameraAtmosphere(RadiationModel* radiation_model, const 
  * @param camera_label Label of an existing camera
  */
 PYHELIOS_API void disableCameraAtmosphere(RadiationModel* radiation_model, const char* camera_label);
+
+//=============================================================================
+// Below-horizon diffuse sky and scattering ray reduction (v1.3.92)
+//=============================================================================
+
+/**
+ * @brief Apply the diffuse sky radiation to rays that leave the domain below the horizon
+ *
+ * By default the diffuse sky fills only the upper hemisphere. This restores the behavior of
+ * helios-core before 1.3.92, in which the sky filled the full sphere. Applies to all bands and
+ * to camera rays.
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void enableBelowHorizonDiffuseRadiation(RadiationModel* radiation_model);
+
+/**
+ * @brief Do not apply the diffuse sky radiation to rays leaving the domain below the horizon (default)
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void disableBelowHorizonDiffuseRadiation(RadiationModel* radiation_model);
+
+/**
+ * @brief Reduce the diffuse rays per primitive in later scattering iterations (default)
+ *
+ * Iteration s launches N * E_s / E_0 rays per primitive (minimum 16), where E_s is the energy
+ * launched in that iteration and E_0 that of the first scattering iteration.
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void enableScatteringRayReduction(RadiationModel* radiation_model);
+
+/**
+ * @brief Launch the full diffuse ray count in every scattering iteration
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void disableScatteringRayReduction(RadiationModel* radiation_model);
+
+/**
+ * @brief Apply brightness/contrast and saturation corrections to an RGB camera's pixel data in place
+ *
+ * Applies lens flare (if enabled for the camera), then brightness and contrast, then saturation.
+ * Camera and band labels must refer to pixel data that has been rendered or set.
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param red_band_label Red band label
+ * @param green_band_label Green band label
+ * @param blue_band_label Blue band label
+ * @param saturation_adjustment Saturation factor (1.0 = no change)
+ * @param brightness_adjustment Brightness factor (1.0 = no change)
+ * @param contrast_adjustment Contrast factor about 0.5 (1.0 = no change)
+ */
+PYHELIOS_API void applyCameraImageCorrections(RadiationModel* radiation_model, const char* camera_label,
+                                              const char* red_band_label, const char* green_band_label,
+                                              const char* blue_band_label, float saturation_adjustment,
+                                              float brightness_adjustment, float contrast_adjustment);
+
+/**
+ * @brief Apply a 3x3 or 4x3 (affine) color correction matrix loaded from an XML file to an RGB camera's pixel data in place
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param red_band_label Red band label
+ * @param green_band_label Green band label
+ * @param blue_band_label Blue band label
+ * @param ccm_file_path Path to the color correction matrix XML file
+ */
+PYHELIOS_API void applyCameraColorCorrectionMatrix(RadiationModel* radiation_model, const char* camera_label,
+                                                   const char* red_band_label, const char* green_band_label,
+                                                   const char* blue_band_label, const char* ccm_file_path);
 
 #ifdef __cplusplus
 }
