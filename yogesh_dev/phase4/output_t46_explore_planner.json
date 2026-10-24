@@ -1,0 +1,167 @@
+{
+  "arm_low": {
+    "note": "zero fruit-surface coverage possible from this arm's candidates -- real finding, not an error"
+  },
+  "arm_mid": {
+    "trace": [
+      {
+        "step": 1,
+        "node": 33,
+        "marginal_gain": 346,
+        "travel_time_s": 18.333239697419135,
+        "cumulative_time_s": 18.333239697419135,
+        "cumulative_coverage": 346
+      },
+      {
+        "step": 2,
+        "node": 165,
+        "marginal_gain": 126,
+        "travel_time_s": 13.908286515376235,
+        "cumulative_time_s": 32.24152621279537,
+        "cumulative_coverage": 472
+      },
+      {
+        "step": 3,
+        "node": 264,
+        "marginal_gain": 14,
+        "travel_time_s": 3.158078204724922,
+        "cumulative_time_s": 35.399604417520294,
+        "cumulative_coverage": 486
+      },
+      {
+        "step": 4,
+        "node": 297,
+        "marginal_gain": 10,
+        "travel_time_s": 8.807776258159413,
+        "cumulative_time_s": 44.20738067567971,
+        "cumulative_coverage": 496
+      },
+      {
+        "step": 5,
+        "node": 132,
+        "marginal_gain": 2,
+        "travel_time_s": 12.7074743115939,
+        "cumulative_time_s": 56.91485498727361,
+        "cumulative_coverage": 498
+      }
+    ],
+    "final_covered": 498,
+    "ground_set_size": 498,
+    "coverage_fraction": 1.0,
+    "total_time_s": 56.91485498727361,
+    "n_true_gain_recomputes": 63,
+    "n_naive_greedy_recomputes_would_be": 63,
+    "celf_savings_fraction": 0.0,
+    "celf_matches_naive_greedy": true,
+    "celf_sequence": [
+      33,
+      165,
+      264,
+      297,
+      132
+    ],
+    "naive_greedy_sequence": [
+      33,
+      165,
+      264,
+      297,
+      132
+    ]
+  },
+  "arm_high": {
+    "trace": [
+      {
+        "step": 1,
+        "node": 165,
+        "marginal_gain": 761,
+        "travel_time_s": 15.133031386767824,
+        "cumulative_time_s": 15.133031386767824,
+        "cumulative_coverage": 761
+      },
+      {
+        "step": 2,
+        "node": 66,
+        "marginal_gain": 307,
+        "travel_time_s": 1.9333333333333331,
+        "cumulative_time_s": 17.066364720101156,
+        "cumulative_coverage": 1068
+      },
+      {
+        "step": 3,
+        "node": 264,
+        "marginal_gain": 173,
+        "travel_time_s": 5.091411538058256,
+        "cumulative_time_s": 22.157776258159412,
+        "cumulative_coverage": 1241
+      },
+      {
+        "step": 4,
+        "node": 363,
+        "marginal_gain": 204,
+        "travel_time_s": 1.9333333333333336,
+        "cumulative_time_s": 24.091109591492746,
+        "cumulative_coverage": 1445
+      },
+      {
+        "step": 5,
+        "node": 396,
+        "marginal_gain": 93,
+        "travel_time_s": 5.991619848709567,
+        "cumulative_time_s": 30.082729440202314,
+        "cumulative_coverage": 1538
+      },
+      {
+        "step": 6,
+        "node": 297,
+        "marginal_gain": 65,
+        "travel_time_s": 1.9333333333333336,
+        "cumulative_time_s": 32.01606277353565,
+        "cumulative_coverage": 1603
+      },
+      {
+        "step": 7,
+        "node": 33,
+        "marginal_gain": 180,
+        "travel_time_s": 13.416062773535645,
+        "cumulative_time_s": 45.432125547071294,
+        "cumulative_coverage": 1783
+      },
+      {
+        "step": 8,
+        "node": 198,
+        "marginal_gain": 2,
+        "travel_time_s": 12.899906364085801,
+        "cumulative_time_s": 58.332031911157095,
+        "cumulative_coverage": 1785
+      }
+    ],
+    "final_covered": 1785,
+    "ground_set_size": 1785,
+    "coverage_fraction": 1.0,
+    "total_time_s": 58.332031911157095,
+    "n_true_gain_recomputes": 81,
+    "n_naive_greedy_recomputes_would_be": 81,
+    "celf_savings_fraction": 0.0,
+    "celf_matches_naive_greedy": true,
+    "celf_sequence": [
+      165,
+      66,
+      264,
+      363,
+      396,
+      297,
+      33,
+      198
+    ],
+    "naive_greedy_sequence": [
+      165,
+      66,
+      264,
+      363,
+      396,
+      297,
+      33,
+      198
+    ]
+  }
+}

@@ -1,0 +1,279 @@
+{
+  "script": "run_w1.py",
+  "seed": 10000,
+  "age_days": 720.0,
+  "orchard": {
+    "seed": 10000,
+    "tree_type": "apple",
+    "age_days": 720.0,
+    "n_trees": 20,
+    "n_primitives": 830392,
+    "build_time_s": 34.43723392486572,
+    "organ_primitive_counts": {
+      "fruit": 106914,
+      "leaf": 216678,
+      "shoot": 381346,
+      "petiole": 118188,
+      "peduncle": 7266
+    },
+    "optics_primitive_counts": {
+      "leaf": 216678,
+      "petiole": 118188,
+      "peduncle": 7266,
+      "shoot": 381346,
+      "fruit": 106914,
+      "ground": 3840
+    },
+    "n_fruit_objects": 519,
+    "grow_history": []
+  },
+  "orientation": {
+    "median_score_per_orientation": {
+      "as_is": 2.4771628070627982,
+      "flipud": 1.000002212889888,
+      "fliplr": 6.223385486460817,
+      "rot180": 1.0000016879580518
+    },
+    "best": "fliplr",
+    "best_score": 6.223385486460817,
+    "per_camera_votes": {
+      "as_is": 0,
+      "flipud": 0,
+      "fliplr": 8,
+      "rot180": 0
+    },
+    "vote_share": 1.0,
+    "n_usable_cameras": 8,
+    "applied": "fliplr",
+    "method": "median(green/red) on leaf pixels / same on fruit pixels; higher is better, ~1.0 means the labels are scrambled ; winner chosen by majority vote",
+    "example_diagnostics": {
+      "as_is": {
+        "leaf_green_over_red": 2.3912854194641113,
+        "fruit_green_over_red": 0.9651523232460022
+      },
+      "flipud": {
+        "leaf_green_over_red": 0.9651522040367126,
+        "fruit_green_over_red": 0.9651482105255127
+      },
+      "fliplr": {
+        "leaf_green_over_red": 2.4133248329162598,
+        "fruit_green_over_red": 0.38690435886383057
+      },
+      "rot180": {
+        "leaf_green_over_red": 0.9651508331298828,
+        "fruit_green_over_red": 0.9651461243629456
+      }
+    }
+  },
+  "exposure": {
+    "percentile": 99.0,
+    "exposure_scale": 0.04829884693026543,
+    "n_samples": 635397,
+    "raw_min": 0.0,
+    "raw_max": 0.0991140753030777,
+    "raw_mean": 0.018879031762480736,
+    "raw_median": 0.01705760695040226,
+    "frac_above_scale": 0.009485408335261262
+  },
+  "batching_table": [
+    {
+      "n_cameras": 1,
+      "solve_s": 4.647252917289734,
+      "per_image_s": 4.647252917289734
+    },
+    {
+      "n_cameras": 4,
+      "solve_s": 4.640953540802002,
+      "per_image_s": 1.1602383852005005
+    },
+    {
+      "n_cameras": 16,
+      "solve_s": 4.659735560417175,
+      "per_image_s": 0.29123347252607346
+    },
+    {
+      "n_cameras": 32,
+      "solve_s": 4.6375569105148315,
+      "per_image_s": 0.14492365345358849
+    },
+    {
+      "n_cameras": 64,
+      "solve_s": 4.640824913978577,
+      "per_image_s": 0.07251288928091526
+    },
+    {
+      "n_cameras": 128,
+      "solve_s": 4.648878574371338,
+      "per_image_s": 0.03631936386227608
+    }
+  ],
+  "readback": {
+    "solve_s": 4.639913320541382,
+    "read_s": 1.1689960956573486,
+    "n_cameras": 128,
+    "read_per_image_s": 0.009132781997323036
+  },
+  "depth": {
+    "per_frame": [
+      {
+        "min": 0.8283618092536926,
+        "max": 18.048492431640625,
+        "mean": 2.969456911087036,
+        "sky_frac": 0.1563720703125
+      },
+      {
+        "min": 0.7965361475944519,
+        "max": 18.048492431640625,
+        "mean": 3.0977141857147217,
+        "sky_frac": 0.17138671875
+      },
+      {
+        "min": 0.7801572680473328,
+        "max": 18.048492431640625,
+        "mean": 3.147212266921997,
+        "sky_frac": 0.17803955078125
+      },
+      {
+        "min": 0.8462744355201721,
+        "max": 18.048490524291992,
+        "mean": 3.1462562084198,
+        "sky_frac": 0.17205810546875
+      },
+      {
+        "min": 1.1479233503341675,
+        "max": 18.048490524291992,
+        "mean": 3.1564571857452393,
+        "sky_frac": 0.17388916015625
+      },
+      {
+        "min": 1.1954617500305176,
+        "max": 18.048492431640625,
+        "mean": 3.165239095687866,
+        "sky_frac": 0.181396484375
+      },
+      {
+        "min": 1.1523849964141846,
+        "max": 18.048492431640625,
+        "mean": 3.1498565673828125,
+        "sky_frac": 0.1820068359375
+      },
+      {
+        "min": 1.091275930404663,
+        "max": 18.048492431640625,
+        "mean": 3.1287357807159424,
+        "sky_frac": 0.17987060546875
+      },
+      {
+        "min": 1.0806589126586914,
+        "max": 18.048490524291992,
+        "mean": 3.068561553955078,
+        "sky_frac": 0.166748046875
+      },
+      {
+        "min": 1.059823751449585,
+        "max": 18.048490524291992,
+        "mean": 3.018240213394165,
+        "sky_frac": 0.1512451171875
+      },
+      {
+        "min": 1.0092535018920898,
+        "max": 18.048490524291992,
+        "mean": 2.96553635597229,
+        "sky_frac": 0.13330078125
+      },
+      {
+        "min": 0.9545807838439941,
+        "max": 18.048490524291992,
+        "mean": 2.9153313636779785,
+        "sky_frac": 0.11907958984375
+      },
+      {
+        "min": 0.9252172112464905,
+        "max": 18.048492431640625,
+        "mean": 2.873047113418579,
+        "sky_frac": 0.10650634765625
+      },
+      {
+        "min": 0.8771054148674011,
+        "max": 15.899748802185059,
+        "mean": 2.850299835205078,
+        "sky_frac": 0.10693359375
+      },
+      {
+        "min": 0.9045734405517578,
+        "max": 15.899750709533691,
+        "mean": 2.8676517009735107,
+        "sky_frac": 0.11187744140625
+      },
+      {
+        "min": 0.8514676690101624,
+        "max": 15.899748802185059,
+        "mean": 2.9154248237609863,
+        "sky_frac": 0.122802734375
+      }
+    ],
+    "orchard_diag_m": 17.065075652150323,
+    "bounds_min": [
+      -7.7834906578063965,
+      -3.0928282737731934,
+      -0.004614708479493856
+    ],
+    "bounds_max": [
+      7.863638401031494,
+      3.1165101528167725,
+      2.793290853500366
+    ],
+    "sane": true,
+    "sky_mask_agreement_with_semantic": 1.0
+  },
+  "semantic_histogram": {
+    "class_0": {
+      "pixels": 957477,
+      "fraction": 0.4565606117248535
+    },
+    "fruit": {
+      "pixels": 83469,
+      "fraction": 0.03980112075805664
+    },
+    "leaf": {
+      "pixels": 511442,
+      "fraction": 0.24387454986572266
+    },
+    "shoot": {
+      "pixels": 152306,
+      "fraction": 0.07262516021728516
+    },
+    "petiole": {
+      "pixels": 5679,
+      "fraction": 0.002707958221435547
+    },
+    "peduncle": {
+      "pixels": 230,
+      "fraction": 0.00010967254638671875
+    },
+    "sky": {
+      "pixels": 386549,
+      "fraction": 0.18432092666625977
+    }
+  },
+  "organ_primitive_counts": {
+    "fruit": 106914,
+    "leaf": 216678,
+    "shoot": 381346,
+    "petiole": 118188,
+    "peduncle": 7266
+  },
+  "reprojection": {
+    "n_fruit_observations": 135,
+    "mean_px": 0.8020817378478584,
+    "median_px": 0.707283570735506,
+    "p90_px": 1.0914916697001484,
+    "max_px": 3.2617962444054434,
+    "resolution": [
+      128,
+      128
+    ],
+    "orientation_applied": "fliplr",
+    "pass_not_mirrored": true
+  }
+}

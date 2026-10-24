@@ -1,0 +1,348 @@
+{
+  "script": "run_w0.py",
+  "quick": false,
+  "started_utc": "2026-07-31T01:27:48Z",
+  "layout": {
+    "rows": 2,
+    "trees_per_row": 10,
+    "in_row_spacing_m": 1.5,
+    "row_spacing_m": 3.5,
+    "extent": {
+      "x_min": -6.75,
+      "x_max": 6.75,
+      "y_min": -1.75,
+      "y_max": 1.75,
+      "lane_y": 0.0,
+      "row_y": [
+        -1.75,
+        1.75
+      ],
+      "tree_x": [
+        -6.75,
+        -5.25,
+        -3.75,
+        -2.25,
+        -0.75,
+        0.75,
+        2.25,
+        3.75,
+        5.25,
+        6.75
+      ]
+    }
+  },
+  "seed_split": {
+    "n_train": 999,
+    "n_val": 499,
+    "n_test": 499,
+    "train_val_overlap": 0,
+    "train_test_overlap": 0,
+    "val_test_overlap": 0,
+    "disjoint": true
+  },
+  "single_tree_age_curve": [
+    {
+      "age_days": 400.0,
+      "build_s": 0.17464780807495117,
+      "n_primitives": 4886,
+      "n_fruit_objects": 0,
+      "height_m": 1.789735198020935,
+      "leaf_area_m2": 0.0,
+      "n_leaf_prims": 0,
+      "n_shoot_prims": 4886,
+      "n_petiole_prims": 0,
+      "n_peduncle_prims": 0,
+      "n_fruit_prims": 0
+    },
+    {
+      "age_days": 500.0,
+      "build_s": 0.08232569694519043,
+      "n_primitives": 4886,
+      "n_fruit_objects": 0,
+      "height_m": 1.789735198020935,
+      "leaf_area_m2": 0.0,
+      "n_leaf_prims": 0,
+      "n_shoot_prims": 4886,
+      "n_petiole_prims": 0,
+      "n_peduncle_prims": 0,
+      "n_fruit_prims": 0
+    },
+    {
+      "age_days": 540.0,
+      "build_s": 0.13786768913269043,
+      "n_primitives": 34001,
+      "n_fruit_objects": 0,
+      "height_m": 1.973973274230957,
+      "leaf_area_m2": 0.5472429394721985,
+      "n_leaf_prims": 2475,
+      "n_shoot_prims": 8036,
+      "n_petiole_prims": 1080,
+      "n_peduncle_prims": 1162,
+      "n_fruit_prims": 0
+    },
+    {
+      "age_days": 600.0,
+      "build_s": 0.2572438716888428,
+      "n_primitives": 34024,
+      "n_fruit_objects": 20,
+      "height_m": 2.7017767429351807,
+      "leaf_area_m2": 4.652383804321289,
+      "n_leaf_prims": 8778,
+      "n_shoot_prims": 16058,
+      "n_petiole_prims": 4788,
+      "n_peduncle_prims": 280,
+      "n_fruit_prims": 4120
+    },
+    {
+      "age_days": 650.0,
+      "build_s": 0.361621618270874,
+      "n_primitives": 34024,
+      "n_fruit_objects": 20,
+      "height_m": 2.7017767429351807,
+      "leaf_area_m2": 4.652383804321289,
+      "n_leaf_prims": 8778,
+      "n_shoot_prims": 16058,
+      "n_petiole_prims": 4788,
+      "n_peduncle_prims": 280,
+      "n_fruit_prims": 4120
+    },
+    {
+      "age_days": 700.0,
+      "build_s": 0.27440381050109863,
+      "n_primitives": 34024,
+      "n_fruit_objects": 20,
+      "height_m": 2.7017767429351807,
+      "leaf_area_m2": 4.652383804321289,
+      "n_leaf_prims": 8778,
+      "n_shoot_prims": 16058,
+      "n_petiole_prims": 4788,
+      "n_peduncle_prims": 280,
+      "n_fruit_prims": 4120
+    },
+    {
+      "age_days": 720.0,
+      "build_s": 0.429290771484375,
+      "n_primitives": 34024,
+      "n_fruit_objects": 20,
+      "height_m": 2.7017767429351807,
+      "leaf_area_m2": 4.652383804321289,
+      "n_leaf_prims": 8778,
+      "n_shoot_prims": 16058,
+      "n_petiole_prims": 4788,
+      "n_peduncle_prims": 280,
+      "n_fruit_prims": 4120
+    },
+    {
+      "age_days": 800.0,
+      "build_s": 0.6573021411895752,
+      "n_primitives": 16058,
+      "n_fruit_objects": 0,
+      "height_m": 2.550342559814453,
+      "leaf_area_m2": 0.0,
+      "n_leaf_prims": 0,
+      "n_shoot_prims": 16058,
+      "n_petiole_prims": 0,
+      "n_peduncle_prims": 0,
+      "n_fruit_prims": 0
+    },
+    {
+      "age_days": 900.0,
+      "build_s": 1.7438876628875732,
+      "n_primitives": 85340,
+      "n_fruit_objects": 0,
+      "height_m": 2.5772719383239746,
+      "leaf_area_m2": 0.07592778652906418,
+      "n_leaf_prims": 3564,
+      "n_shoot_prims": 20594,
+      "n_petiole_prims": 972,
+      "n_peduncle_prims": 3122,
+      "n_fruit_prims": 0
+    }
+  ],
+  "orchard_age_sweep": [
+    {
+      "age_days": 540.0,
+      "seed": 10000,
+      "tree_type": "apple",
+      "build_s": 13.452378034591675,
+      "n_primitives": 752201,
+      "n_fruit_objects": 0,
+      "bounds_min": [
+        -7.372328758239746,
+        -2.7083892822265625,
+        -0.002962514292448759
+      ],
+      "bounds_max": [
+        7.427478790283203,
+        2.816728115081787,
+        2.1031196117401123
+      ],
+      "n_leaf_prims": 67265,
+      "n_shoot_prims": 191184,
+      "n_petiole_prims": 29352,
+      "n_peduncle_prims": 24080,
+      "n_fruit_prims": 0
+    },
+    {
+      "age_days": 650.0,
+      "seed": 10000,
+      "tree_type": "apple",
+      "build_s": 40.08718180656433,
+      "n_primitives": 830392,
+      "n_fruit_objects": 519,
+      "bounds_min": [
+        -7.7834906578063965,
+        -3.0928282737731934,
+        -0.004614708479493856
+      ],
+      "bounds_max": [
+        7.863638401031494,
+        3.1165101528167725,
+        2.793290853500366
+      ],
+      "n_leaf_prims": 216678,
+      "n_shoot_prims": 381346,
+      "n_petiole_prims": 118188,
+      "n_peduncle_prims": 7266,
+      "n_fruit_prims": 106914
+    },
+    {
+      "age_days": 720.0,
+      "seed": 10000,
+      "tree_type": "apple",
+      "build_s": 37.78080129623413,
+      "n_primitives": 830392,
+      "n_fruit_objects": 519,
+      "bounds_min": [
+        -7.7834906578063965,
+        -3.0928282737731934,
+        -0.004614708479493856
+      ],
+      "bounds_max": [
+        7.863638401031494,
+        3.1165101528167725,
+        2.793290853500366
+      ],
+      "n_leaf_prims": 216678,
+      "n_shoot_prims": 381346,
+      "n_petiole_prims": 118188,
+      "n_peduncle_prims": 7266,
+      "n_fruit_prims": 106914
+    },
+    {
+      "age_days": 800.0,
+      "seed": 10000,
+      "tree_type": "apple",
+      "build_s": 45.167397260665894,
+      "n_primitives": 381346,
+      "n_fruit_objects": 0,
+      "bounds_min": [
+        -7.66702938079834,
+        -2.9491279125213623,
+        -0.004614708479493856
+      ],
+      "bounds_max": [
+        7.708728790283203,
+        3.0016233921051025,
+        2.689812660217285
+      ],
+      "n_leaf_prims": 0,
+      "n_shoot_prims": 381346,
+      "n_petiole_prims": 0,
+      "n_peduncle_prims": 0,
+      "n_fruit_prims": 0
+    }
+  ],
+  "determinism": {
+    "same_seed_identical": true,
+    "different_seed_differs": true,
+    "builds": [
+      {
+        "seed": 10000,
+        "n_primitives": 830392,
+        "n_fruit_objects": 519,
+        "organ_counts": {
+          "leaf": 216678,
+          "shoot": 381346,
+          "petiole": 118188,
+          "peduncle": 7266,
+          "fruit": 106914
+        },
+        "build_s": 28.07449960708618
+      },
+      {
+        "seed": 10000,
+        "n_primitives": 830392,
+        "n_fruit_objects": 519,
+        "organ_counts": {
+          "leaf": 216678,
+          "shoot": 381346,
+          "petiole": 118188,
+          "peduncle": 7266,
+          "fruit": 106914
+        },
+        "build_s": 42.11334800720215
+      },
+      {
+        "seed": 10001,
+        "n_primitives": 846331,
+        "n_fruit_objects": 549,
+        "organ_counts": {
+          "leaf": 219351,
+          "shoot": 386554,
+          "petiole": 119646,
+          "peduncle": 7686,
+          "fruit": 113094
+        },
+        "build_s": 33.40974998474121
+      }
+    ],
+    "acceptance_passed": true
+  },
+  "advance_time": [
+    {
+      "cumulative_age_days": 650.0,
+      "dt": 0.0,
+      "seconds": 36.85724210739136,
+      "n_primitives": 830392,
+      "n_fruit_prims": 106914,
+      "note": "initial build"
+    },
+    {
+      "cumulative_age_days": 660.0,
+      "dt": 10.0,
+      "seconds": 1.4628784656524658,
+      "n_primitives": 830392,
+      "n_fruit_prims": 106914
+    },
+    {
+      "cumulative_age_days": 670.0,
+      "dt": 10.0,
+      "seconds": 0.9156765937805176,
+      "n_primitives": 830392,
+      "n_fruit_prims": 106914
+    },
+    {
+      "cumulative_age_days": 690.0,
+      "dt": 20.0,
+      "seconds": 1.5514721870422363,
+      "n_primitives": 830392,
+      "n_fruit_prims": 106914
+    },
+    {
+      "cumulative_age_days": 710.0,
+      "dt": 20.0,
+      "seconds": 1.8604092597961426,
+      "n_primitives": 830392,
+      "n_fruit_prims": 106914
+    },
+    {
+      "cumulative_age_days": 750.0,
+      "dt": 40.0,
+      "seconds": 2.774165630340576,
+      "n_primitives": 381346,
+      "n_fruit_prims": 0
+    }
+  ],
+  "finished_utc": "2026-07-31T01:33:48Z"
+}

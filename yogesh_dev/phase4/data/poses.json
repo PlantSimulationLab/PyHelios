@@ -1,0 +1,1136 @@
+[
+  {
+    "view": "arm_low_0",
+    "arm": "arm_low",
+    "node_id": 0,
+    "joint": [
+      -0.6,
+      -1.1,
+      0.3,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -1.100000023841858,
+      0.30000001192092896
+    ],
+    "lookat": [
+      -1.2710100412368774,
+      -0.6301537156105042,
+      -0.27357643842697144
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_low_0.exr",
+    "semantic_path": "labels/arm_low_0_semantic.npy",
+    "instance_path": "labels/arm_low_0_instance.npy",
+    "visid_path": "labels/arm_low_0_visid.npy"
+  },
+  {
+    "view": "arm_low_39",
+    "arm": "arm_low",
+    "node_id": 39,
+    "joint": [
+      -0.6,
+      -0.8500000000000001,
+      0.3,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.8500000238418579,
+      0.30000001192092896
+    ],
+    "lookat": [
+      -0.6000000238418579,
+      -0.030847955495119095,
+      -0.27357643842697144
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_low_39.exr",
+    "semantic_path": "labels/arm_low_39_semantic.npy",
+    "instance_path": "labels/arm_low_39_instance.npy",
+    "visid_path": "labels/arm_low_39_visid.npy"
+  },
+  {
+    "view": "arm_low_78",
+    "arm": "arm_low",
+    "node_id": 78,
+    "joint": [
+      -0.6,
+      -0.6,
+      0.3,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.6000000238418579,
+      0.30000001192092896
+    ],
+    "lookat": [
+      0.07101006805896759,
+      -0.13015368580818176,
+      -0.27357643842697144
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_low_78.exr",
+    "semantic_path": "labels/arm_low_78_semantic.npy",
+    "instance_path": "labels/arm_low_78_instance.npy",
+    "visid_path": "labels/arm_low_78_visid.npy"
+  },
+  {
+    "view": "arm_low_117",
+    "arm": "arm_low",
+    "node_id": 117,
+    "joint": [
+      -0.6,
+      -0.35,
+      0.44999999999999996,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.3499999940395355,
+      0.44999998807907104
+    ],
+    "lookat": [
+      -1.2710100412368774,
+      0.11984630674123764,
+      -0.12357643991708755
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_low_117.exr",
+    "semantic_path": "labels/arm_low_117_semantic.npy",
+    "instance_path": "labels/arm_low_117_instance.npy",
+    "visid_path": "labels/arm_low_117_visid.npy"
+  },
+  {
+    "view": "arm_low_156",
+    "arm": "arm_low",
+    "node_id": 156,
+    "joint": [
+      -0.2,
+      -1.1,
+      0.6,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -1.100000023841858,
+      0.6000000238418579
+    ],
+    "lookat": [
+      -0.20000000298023224,
+      -0.28084796667099,
+      0.026423564180731773
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_low_156.exr",
+    "semantic_path": "labels/arm_low_156_semantic.npy",
+    "instance_path": "labels/arm_low_156_instance.npy",
+    "visid_path": "labels/arm_low_156_visid.npy"
+  },
+  {
+    "view": "arm_low_195",
+    "arm": "arm_low",
+    "node_id": 195,
+    "joint": [
+      -0.2,
+      -0.8500000000000001,
+      0.6,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -0.8500000238418579,
+      0.6000000238418579
+    ],
+    "lookat": [
+      0.4710100591182709,
+      -0.38015368580818176,
+      0.026423564180731773
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_low_195.exr",
+    "semantic_path": "labels/arm_low_195_semantic.npy",
+    "instance_path": "labels/arm_low_195_instance.npy",
+    "visid_path": "labels/arm_low_195_visid.npy"
+  },
+  {
+    "view": "arm_low_234",
+    "arm": "arm_low",
+    "node_id": 234,
+    "joint": [
+      -0.2,
+      -0.6,
+      0.75,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -0.6000000238418579,
+      0.75
+    ],
+    "lookat": [
+      -0.8710100650787354,
+      -0.13015368580818176,
+      0.1764235645532608
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_low_234.exr",
+    "semantic_path": "labels/arm_low_234_semantic.npy",
+    "instance_path": "labels/arm_low_234_instance.npy",
+    "visid_path": "labels/arm_low_234_visid.npy"
+  },
+  {
+    "view": "arm_low_273",
+    "arm": "arm_low",
+    "node_id": 273,
+    "joint": [
+      0.19999999999999996,
+      -1.1,
+      0.3,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -1.100000023841858,
+      0.30000001192092896
+    ],
+    "lookat": [
+      0.20000000298023224,
+      -0.28084796667099,
+      -0.27357643842697144
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_low_273.exr",
+    "semantic_path": "labels/arm_low_273_semantic.npy",
+    "instance_path": "labels/arm_low_273_instance.npy",
+    "visid_path": "labels/arm_low_273_visid.npy"
+  },
+  {
+    "view": "arm_low_312",
+    "arm": "arm_low",
+    "node_id": 312,
+    "joint": [
+      0.19999999999999996,
+      -0.8500000000000001,
+      0.3,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.8500000238418579,
+      0.30000001192092896
+    ],
+    "lookat": [
+      0.8710100650787354,
+      -0.38015368580818176,
+      -0.27357643842697144
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_low_312.exr",
+    "semantic_path": "labels/arm_low_312_semantic.npy",
+    "instance_path": "labels/arm_low_312_instance.npy",
+    "visid_path": "labels/arm_low_312_visid.npy"
+  },
+  {
+    "view": "arm_low_351",
+    "arm": "arm_low",
+    "node_id": 351,
+    "joint": [
+      0.19999999999999996,
+      -0.6,
+      0.44999999999999996,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.6000000238418579,
+      0.44999998807907104
+    ],
+    "lookat": [
+      -0.4710100591182709,
+      -0.13015368580818176,
+      -0.12357643991708755
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_low_351.exr",
+    "semantic_path": "labels/arm_low_351_semantic.npy",
+    "instance_path": "labels/arm_low_351_instance.npy",
+    "visid_path": "labels/arm_low_351_visid.npy"
+  },
+  {
+    "view": "arm_low_390",
+    "arm": "arm_low",
+    "node_id": 390,
+    "joint": [
+      0.19999999999999996,
+      -0.35,
+      0.44999999999999996,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.3499999940395355,
+      0.44999998807907104
+    ],
+    "lookat": [
+      0.20000000298023224,
+      0.46915203332901,
+      -0.12357643991708755
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_low_390.exr",
+    "semantic_path": "labels/arm_low_390_semantic.npy",
+    "instance_path": "labels/arm_low_390_instance.npy",
+    "visid_path": "labels/arm_low_390_visid.npy"
+  },
+  {
+    "view": "arm_low_429",
+    "arm": "arm_low",
+    "node_id": 429,
+    "joint": [
+      0.6,
+      -1.1,
+      0.6,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -1.100000023841858,
+      0.6000000238418579
+    ],
+    "lookat": [
+      1.2710100412368774,
+      -0.6301537156105042,
+      0.026423564180731773
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_low_429.exr",
+    "semantic_path": "labels/arm_low_429_semantic.npy",
+    "instance_path": "labels/arm_low_429_instance.npy",
+    "visid_path": "labels/arm_low_429_visid.npy"
+  },
+  {
+    "view": "arm_low_468",
+    "arm": "arm_low",
+    "node_id": 468,
+    "joint": [
+      0.6,
+      -0.8500000000000001,
+      0.75,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.8500000238418579,
+      0.75
+    ],
+    "lookat": [
+      -0.07101006805896759,
+      -0.38015368580818176,
+      0.1764235645532608
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_low_468.exr",
+    "semantic_path": "labels/arm_low_468_semantic.npy",
+    "instance_path": "labels/arm_low_468_instance.npy",
+    "visid_path": "labels/arm_low_468_visid.npy"
+  },
+  {
+    "view": "arm_low_507",
+    "arm": "arm_low",
+    "node_id": 507,
+    "joint": [
+      0.6,
+      -0.6,
+      0.75,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.6000000238418579,
+      0.75
+    ],
+    "lookat": [
+      0.6000000238418579,
+      0.2191520482301712,
+      0.1764235645532608
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_low_507.exr",
+    "semantic_path": "labels/arm_low_507_semantic.npy",
+    "instance_path": "labels/arm_low_507_instance.npy",
+    "visid_path": "labels/arm_low_507_visid.npy"
+  },
+  {
+    "view": "arm_mid_0",
+    "arm": "arm_mid",
+    "node_id": 0,
+    "joint": [
+      -0.6,
+      -1.1,
+      0.8,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -1.100000023841858,
+      0.800000011920929
+    ],
+    "lookat": [
+      -1.2710100412368774,
+      -0.6301537156105042,
+      0.22642356157302856
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_mid_0.exr",
+    "semantic_path": "labels/arm_mid_0_semantic.npy",
+    "instance_path": "labels/arm_mid_0_instance.npy",
+    "visid_path": "labels/arm_mid_0_visid.npy"
+  },
+  {
+    "view": "arm_mid_33",
+    "arm": "arm_mid",
+    "node_id": 33,
+    "joint": [
+      -0.6,
+      -1.1,
+      1.25,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -1.100000023841858,
+      1.25
+    ],
+    "lookat": [
+      0.07101006805896759,
+      -0.6301537156105042,
+      0.6764235496520996
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_mid_33.exr",
+    "semantic_path": "labels/arm_mid_33_semantic.npy",
+    "instance_path": "labels/arm_mid_33_instance.npy",
+    "visid_path": "labels/arm_mid_33_visid.npy"
+  },
+  {
+    "view": "arm_mid_66",
+    "arm": "arm_mid",
+    "node_id": 66,
+    "joint": [
+      -0.6,
+      -0.8500000000000001,
+      1.25,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.8500000238418579,
+      1.25
+    ],
+    "lookat": [
+      -0.6000000238418579,
+      -0.030847955495119095,
+      0.6764235496520996
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_mid_66.exr",
+    "semantic_path": "labels/arm_mid_66_semantic.npy",
+    "instance_path": "labels/arm_mid_66_instance.npy",
+    "visid_path": "labels/arm_mid_66_visid.npy"
+  },
+  {
+    "view": "arm_mid_99",
+    "arm": "arm_mid",
+    "node_id": 99,
+    "joint": [
+      -0.6,
+      -0.6,
+      1.25,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.6000000238418579,
+      1.25
+    ],
+    "lookat": [
+      -1.2710100412368774,
+      -0.13015368580818176,
+      0.6764235496520996
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_mid_99.exr",
+    "semantic_path": "labels/arm_mid_99_semantic.npy",
+    "instance_path": "labels/arm_mid_99_instance.npy",
+    "visid_path": "labels/arm_mid_99_visid.npy"
+  },
+  {
+    "view": "arm_mid_132",
+    "arm": "arm_mid",
+    "node_id": 132,
+    "joint": [
+      -0.2,
+      -1.1,
+      1.1,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -1.100000023841858,
+      1.100000023841858
+    ],
+    "lookat": [
+      0.4710100591182709,
+      -0.6301537156105042,
+      0.5264235734939575
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_mid_132.exr",
+    "semantic_path": "labels/arm_mid_132_semantic.npy",
+    "instance_path": "labels/arm_mid_132_instance.npy",
+    "visid_path": "labels/arm_mid_132_visid.npy"
+  },
+  {
+    "view": "arm_mid_165",
+    "arm": "arm_mid",
+    "node_id": 165,
+    "joint": [
+      -0.2,
+      -0.8500000000000001,
+      1.1,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -0.8500000238418579,
+      1.100000023841858
+    ],
+    "lookat": [
+      -0.20000000298023224,
+      -0.030847955495119095,
+      0.5264235734939575
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_mid_165.exr",
+    "semantic_path": "labels/arm_mid_165_semantic.npy",
+    "instance_path": "labels/arm_mid_165_instance.npy",
+    "visid_path": "labels/arm_mid_165_visid.npy"
+  },
+  {
+    "view": "arm_mid_198",
+    "arm": "arm_mid",
+    "node_id": 198,
+    "joint": [
+      -0.2,
+      -0.6,
+      1.1,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -0.6000000238418579,
+      1.100000023841858
+    ],
+    "lookat": [
+      -0.8710100650787354,
+      -0.13015368580818176,
+      0.5264235734939575
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_mid_198.exr",
+    "semantic_path": "labels/arm_mid_198_semantic.npy",
+    "instance_path": "labels/arm_mid_198_instance.npy",
+    "visid_path": "labels/arm_mid_198_visid.npy"
+  },
+  {
+    "view": "arm_mid_231",
+    "arm": "arm_mid",
+    "node_id": 231,
+    "joint": [
+      0.19999999999999996,
+      -1.1,
+      0.9500000000000001,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -1.100000023841858,
+      0.949999988079071
+    ],
+    "lookat": [
+      0.8710100650787354,
+      -0.6301537156105042,
+      0.37642356753349304
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_mid_231.exr",
+    "semantic_path": "labels/arm_mid_231_semantic.npy",
+    "instance_path": "labels/arm_mid_231_instance.npy",
+    "visid_path": "labels/arm_mid_231_visid.npy"
+  },
+  {
+    "view": "arm_mid_264",
+    "arm": "arm_mid",
+    "node_id": 264,
+    "joint": [
+      0.19999999999999996,
+      -0.8500000000000001,
+      0.9500000000000001,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.8500000238418579,
+      0.949999988079071
+    ],
+    "lookat": [
+      0.20000000298023224,
+      -0.030847955495119095,
+      0.37642356753349304
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_mid_264.exr",
+    "semantic_path": "labels/arm_mid_264_semantic.npy",
+    "instance_path": "labels/arm_mid_264_instance.npy",
+    "visid_path": "labels/arm_mid_264_visid.npy"
+  },
+  {
+    "view": "arm_mid_297",
+    "arm": "arm_mid",
+    "node_id": 297,
+    "joint": [
+      0.19999999999999996,
+      -0.6,
+      0.9500000000000001,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.6000000238418579,
+      0.949999988079071
+    ],
+    "lookat": [
+      -0.4710100591182709,
+      -0.13015368580818176,
+      0.37642356753349304
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_mid_297.exr",
+    "semantic_path": "labels/arm_mid_297_semantic.npy",
+    "instance_path": "labels/arm_mid_297_instance.npy",
+    "visid_path": "labels/arm_mid_297_visid.npy"
+  },
+  {
+    "view": "arm_mid_330",
+    "arm": "arm_mid",
+    "node_id": 330,
+    "joint": [
+      0.6,
+      -1.1,
+      0.8,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -1.100000023841858,
+      0.800000011920929
+    ],
+    "lookat": [
+      1.2710100412368774,
+      -0.6301537156105042,
+      0.22642356157302856
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_mid_330.exr",
+    "semantic_path": "labels/arm_mid_330_semantic.npy",
+    "instance_path": "labels/arm_mid_330_instance.npy",
+    "visid_path": "labels/arm_mid_330_visid.npy"
+  },
+  {
+    "view": "arm_mid_363",
+    "arm": "arm_mid",
+    "node_id": 363,
+    "joint": [
+      0.6,
+      -0.8500000000000001,
+      0.8,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.8500000238418579,
+      0.800000011920929
+    ],
+    "lookat": [
+      0.6000000238418579,
+      -0.030847955495119095,
+      0.22642356157302856
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_mid_363.exr",
+    "semantic_path": "labels/arm_mid_363_semantic.npy",
+    "instance_path": "labels/arm_mid_363_instance.npy",
+    "visid_path": "labels/arm_mid_363_visid.npy"
+  },
+  {
+    "view": "arm_mid_396",
+    "arm": "arm_mid",
+    "node_id": 396,
+    "joint": [
+      0.6,
+      -0.6,
+      0.8,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.6000000238418579,
+      0.800000011920929
+    ],
+    "lookat": [
+      -0.07101006805896759,
+      -0.13015368580818176,
+      0.22642356157302856
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_mid_396.exr",
+    "semantic_path": "labels/arm_mid_396_semantic.npy",
+    "instance_path": "labels/arm_mid_396_instance.npy",
+    "visid_path": "labels/arm_mid_396_visid.npy"
+  },
+  {
+    "view": "arm_mid_429",
+    "arm": "arm_mid",
+    "node_id": 429,
+    "joint": [
+      0.6,
+      -0.6,
+      1.25,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.6000000238418579,
+      1.25
+    ],
+    "lookat": [
+      1.2710100412368774,
+      -0.13015368580818176,
+      0.6764235496520996
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_mid_429.exr",
+    "semantic_path": "labels/arm_mid_429_semantic.npy",
+    "instance_path": "labels/arm_mid_429_instance.npy",
+    "visid_path": "labels/arm_mid_429_visid.npy"
+  },
+  {
+    "view": "arm_high_0",
+    "arm": "arm_high",
+    "node_id": 0,
+    "joint": [
+      -0.6,
+      -1.1,
+      1.3,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -1.100000023841858,
+      1.2999999523162842
+    ],
+    "lookat": [
+      -1.2710100412368774,
+      -0.6301537156105042,
+      0.7264235615730286
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_high_0.exr",
+    "semantic_path": "labels/arm_high_0_semantic.npy",
+    "instance_path": "labels/arm_high_0_instance.npy",
+    "visid_path": "labels/arm_high_0_visid.npy"
+  },
+  {
+    "view": "arm_high_33",
+    "arm": "arm_high",
+    "node_id": 33,
+    "joint": [
+      -0.6,
+      -1.1,
+      1.75,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -1.100000023841858,
+      1.75
+    ],
+    "lookat": [
+      0.07101006805896759,
+      -0.6301537156105042,
+      1.1764235496520996
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_high_33.exr",
+    "semantic_path": "labels/arm_high_33_semantic.npy",
+    "instance_path": "labels/arm_high_33_instance.npy",
+    "visid_path": "labels/arm_high_33_visid.npy"
+  },
+  {
+    "view": "arm_high_66",
+    "arm": "arm_high",
+    "node_id": 66,
+    "joint": [
+      -0.6,
+      -0.8500000000000001,
+      1.75,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.8500000238418579,
+      1.75
+    ],
+    "lookat": [
+      -0.6000000238418579,
+      -0.030847955495119095,
+      1.1764235496520996
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_high_66.exr",
+    "semantic_path": "labels/arm_high_66_semantic.npy",
+    "instance_path": "labels/arm_high_66_instance.npy",
+    "visid_path": "labels/arm_high_66_visid.npy"
+  },
+  {
+    "view": "arm_high_99",
+    "arm": "arm_high",
+    "node_id": 99,
+    "joint": [
+      -0.6,
+      -0.6,
+      1.75,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.6000000238418579,
+      -0.6000000238418579,
+      1.75
+    ],
+    "lookat": [
+      -1.2710100412368774,
+      -0.13015368580818176,
+      1.1764235496520996
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_high_99.exr",
+    "semantic_path": "labels/arm_high_99_semantic.npy",
+    "instance_path": "labels/arm_high_99_instance.npy",
+    "visid_path": "labels/arm_high_99_visid.npy"
+  },
+  {
+    "view": "arm_high_132",
+    "arm": "arm_high",
+    "node_id": 132,
+    "joint": [
+      -0.2,
+      -1.1,
+      1.6,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -1.100000023841858,
+      1.600000023841858
+    ],
+    "lookat": [
+      0.4710100591182709,
+      -0.6301537156105042,
+      1.0264235734939575
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_high_132.exr",
+    "semantic_path": "labels/arm_high_132_semantic.npy",
+    "instance_path": "labels/arm_high_132_instance.npy",
+    "visid_path": "labels/arm_high_132_visid.npy"
+  },
+  {
+    "view": "arm_high_165",
+    "arm": "arm_high",
+    "node_id": 165,
+    "joint": [
+      -0.2,
+      -0.8500000000000001,
+      1.6,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -0.8500000238418579,
+      1.600000023841858
+    ],
+    "lookat": [
+      -0.20000000298023224,
+      -0.030847955495119095,
+      1.0264235734939575
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_high_165.exr",
+    "semantic_path": "labels/arm_high_165_semantic.npy",
+    "instance_path": "labels/arm_high_165_instance.npy",
+    "visid_path": "labels/arm_high_165_visid.npy"
+  },
+  {
+    "view": "arm_high_198",
+    "arm": "arm_high",
+    "node_id": 198,
+    "joint": [
+      -0.2,
+      -0.6,
+      1.6,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      -0.20000000298023224,
+      -0.6000000238418579,
+      1.600000023841858
+    ],
+    "lookat": [
+      -0.8710100650787354,
+      -0.13015368580818176,
+      1.0264235734939575
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_high_198.exr",
+    "semantic_path": "labels/arm_high_198_semantic.npy",
+    "instance_path": "labels/arm_high_198_instance.npy",
+    "visid_path": "labels/arm_high_198_visid.npy"
+  },
+  {
+    "view": "arm_high_231",
+    "arm": "arm_high",
+    "node_id": 231,
+    "joint": [
+      0.19999999999999996,
+      -1.1,
+      1.45,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -1.100000023841858,
+      1.4500000476837158
+    ],
+    "lookat": [
+      0.8710100650787354,
+      -0.6301537156105042,
+      0.8764235377311707
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_high_231.exr",
+    "semantic_path": "labels/arm_high_231_semantic.npy",
+    "instance_path": "labels/arm_high_231_instance.npy",
+    "visid_path": "labels/arm_high_231_visid.npy"
+  },
+  {
+    "view": "arm_high_264",
+    "arm": "arm_high",
+    "node_id": 264,
+    "joint": [
+      0.19999999999999996,
+      -0.8500000000000001,
+      1.45,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.8500000238418579,
+      1.4500000476837158
+    ],
+    "lookat": [
+      0.20000000298023224,
+      -0.030847955495119095,
+      0.8764235377311707
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_high_264.exr",
+    "semantic_path": "labels/arm_high_264_semantic.npy",
+    "instance_path": "labels/arm_high_264_instance.npy",
+    "visid_path": "labels/arm_high_264_visid.npy"
+  },
+  {
+    "view": "arm_high_297",
+    "arm": "arm_high",
+    "node_id": 297,
+    "joint": [
+      0.19999999999999996,
+      -0.6,
+      1.45,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      0.20000000298023224,
+      -0.6000000238418579,
+      1.4500000476837158
+    ],
+    "lookat": [
+      -0.4710100591182709,
+      -0.13015368580818176,
+      0.8764235377311707
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_high_297.exr",
+    "semantic_path": "labels/arm_high_297_semantic.npy",
+    "instance_path": "labels/arm_high_297_instance.npy",
+    "visid_path": "labels/arm_high_297_visid.npy"
+  },
+  {
+    "view": "arm_high_330",
+    "arm": "arm_high",
+    "node_id": 330,
+    "joint": [
+      0.6,
+      -1.1,
+      1.3,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -1.100000023841858,
+      1.2999999523162842
+    ],
+    "lookat": [
+      1.2710100412368774,
+      -0.6301537156105042,
+      0.7264235615730286
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_high_330.exr",
+    "semantic_path": "labels/arm_high_330_semantic.npy",
+    "instance_path": "labels/arm_high_330_instance.npy",
+    "visid_path": "labels/arm_high_330_visid.npy"
+  },
+  {
+    "view": "arm_high_363",
+    "arm": "arm_high",
+    "node_id": 363,
+    "joint": [
+      0.6,
+      -0.8500000000000001,
+      1.3,
+      0.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.8500000238418579,
+      1.2999999523162842
+    ],
+    "lookat": [
+      0.6000000238418579,
+      -0.030847955495119095,
+      0.7264235615730286
+    ],
+    "camera_label": "cam0",
+    "depth_path": "depth/cam0_arm_high_363.exr",
+    "semantic_path": "labels/arm_high_363_semantic.npy",
+    "instance_path": "labels/arm_high_363_instance.npy",
+    "visid_path": "labels/arm_high_363_visid.npy"
+  },
+  {
+    "view": "arm_high_396",
+    "arm": "arm_high",
+    "node_id": 396,
+    "joint": [
+      0.6,
+      -0.6,
+      1.3,
+      -55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.6000000238418579,
+      1.2999999523162842
+    ],
+    "lookat": [
+      -0.07101006805896759,
+      -0.13015368580818176,
+      0.7264235615730286
+    ],
+    "camera_label": "cam1",
+    "depth_path": "depth/cam1_arm_high_396.exr",
+    "semantic_path": "labels/arm_high_396_semantic.npy",
+    "instance_path": "labels/arm_high_396_instance.npy",
+    "visid_path": "labels/arm_high_396_visid.npy"
+  },
+  {
+    "view": "arm_high_429",
+    "arm": "arm_high",
+    "node_id": 429,
+    "joint": [
+      0.6,
+      -0.6,
+      1.75,
+      55.0,
+      -35.0
+    ],
+    "eye": [
+      0.6000000238418579,
+      -0.6000000238418579,
+      1.75
+    ],
+    "lookat": [
+      1.2710100412368774,
+      -0.13015368580818176,
+      1.1764235496520996
+    ],
+    "camera_label": "cam2",
+    "depth_path": "depth/cam2_arm_high_429.exr",
+    "semantic_path": "labels/arm_high_429_semantic.npy",
+    "instance_path": "labels/arm_high_429_instance.npy",
+    "visid_path": "labels/arm_high_429_visid.npy"
+  }
+]

@@ -1,0 +1,113 @@
+gsplat baseline: 64x64 (stride 2 from stored), HFOV=60.00 deg, context=5, horizons=[1, 5, 10, 25], iters=3000
+  [1] test/view_s12000_g0_row_traversal.npz (row_traversal) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 1000/3000 train L1=0.05258
+      gsplat iter 2000/3000 train L1=0.04165
+      gsplat iter 3000/3000 train L1=0.03951
+      t+1   PSNR= 17.38dB  SSIM=0.6036
+      t+5   PSNR= 16.26dB  SSIM=0.5043
+      t+10  PSNR= 14.37dB  SSIM=0.4406
+      t+25  PSNR= 11.36dB  SSIM=0.2564
+    setting 'generous': 28 training views
+      gsplat iter 1000/3000 train L1=0.05641
+      gsplat iter 2000/3000 train L1=0.04785
+      gsplat iter 3000/3000 train L1=0.04460
+      t+1   PSNR= 17.43dB  SSIM=0.5955
+      t+5   PSNR= 17.29dB  SSIM=0.5958
+      t+10  PSNR= 18.51dB  SSIM=0.6554
+      t+25  PSNR= 16.79dB  SSIM=0.5704
+  [2] test/view_s12000_g0_orbit.npz (orbit) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 1000/3000 train L1=0.04285
+      gsplat iter 2000/3000 train L1=0.03675
+      gsplat iter 3000/3000 train L1=0.03243
+      t+1   PSNR= 19.16dB  SSIM=0.7234
+      t+5   PSNR= 18.97dB  SSIM=0.6689
+      t+10  PSNR= 18.03dB  SSIM=0.6045
+      t+25  PSNR= 16.07dB  SSIM=0.5580
+    setting 'generous': 28 training views
+      gsplat iter 1000/3000 train L1=0.04268
+      gsplat iter 2000/3000 train L1=0.03547
+      gsplat iter 3000/3000 train L1=0.03230
+      t+1   PSNR= 19.33dB  SSIM=0.7373
+      t+5   PSNR= 19.77dB  SSIM=0.7426
+      t+10  PSNR= 19.12dB  SSIM=0.7441
+      t+25  PSNR= 18.95dB  SSIM=0.7344
+  [3] test/view_s12000_g0_random_walk.npz (random_walk) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 1000/3000 train L1=0.04353
+      gsplat iter 2000/3000 train L1=0.03009
+      gsplat iter 3000/3000 train L1=0.02613
+      t+1   PSNR= 20.08dB  SSIM=0.7914
+      t+5   PSNR= 20.33dB  SSIM=0.8139
+      t+10  PSNR= 19.52dB  SSIM=0.7455
+      t+25  PSNR= 17.16dB  SSIM=0.6165
+    setting 'generous': 28 training views
+      gsplat iter 1000/3000 train L1=0.04231
+      gsplat iter 2000/3000 train L1=0.03026
+      gsplat iter 3000/3000 train L1=0.02646
+      t+1   PSNR= 20.80dB  SSIM=0.8196
+      t+5   PSNR= 20.83dB  SSIM=0.8372
+      t+10  PSNR= 20.59dB  SSIM=0.8279
+      t+25  PSNR= 18.95dB  SSIM=0.7602
+  [4] test/view_s12000_g1_row_traversal.npz (row_traversal) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 1000/3000 train L1=0.04951
+      gsplat iter 2000/3000 train L1=0.04380
+      gsplat iter 3000/3000 train L1=0.04004
+      t+1   PSNR= 19.19dB  SSIM=0.6359
+      t+5   PSNR= 17.29dB  SSIM=0.4925
+      t+10  PSNR= 14.63dB  SSIM=0.4698
+      t+25  PSNR= 13.77dB  SSIM=0.4042
+    setting 'generous': 28 training views
+      gsplat iter 1000/3000 train L1=0.05453
+      gsplat iter 2000/3000 train L1=0.05079
+      gsplat iter 3000/3000 train L1=0.04562
+      t+1   PSNR= 19.23dB  SSIM=0.6278
+      t+5   PSNR= 17.93dB  SSIM=0.5309
+      t+10  PSNR= 19.09dB  SSIM=0.5879
+      t+25  PSNR= 19.19dB  SSIM=0.5343
+  [5] test/view_s12000_g1_orbit.npz (orbit) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 1000/3000 train L1=0.06335
+      gsplat iter 2000/3000 train L1=0.05293
+      gsplat iter 3000/3000 train L1=0.04438
+      t+1   PSNR= 19.45dB  SSIM=0.6023
+      t+5   PSNR= 18.67dB  SSIM=0.5671
+      t+10  PSNR= 18.12dB  SSIM=0.5196
+      t+25  PSNR= 15.46dB  SSIM=0.4840
+    setting 'generous': 28 training views
+      gsplat iter 1000/3000 train L1=0.07026
+      gsplat iter 2000/3000 train L1=0.05943
+      gsplat iter 3000/3000 train L1=0.05387
+      t+1   PSNR= 19.00dB  SSIM=0.5371
+      t+5   PSNR= 18.77dB  SSIM=0.5458
+      t+10  PSNR= 18.87dB  SSIM=0.5378
+      t+25  PSNR= 19.33dB  SSIM=0.5417
+  [6] test/view_s12000_g1_random_walk.npz (random_walk) targets=[5, 9, 14, 29]
+    setting 'matched': 5 training views
+      gsplat iter 1000/3000 train L1=0.00745
+      gsplat iter 2000/3000 train L1=0.00596
+      gsplat iter 3000/3000 train L1=0.00858
+      t+1   PSNR= 30.62dB  SSIM=0.9553
+      t+5   PSNR= 29.23dB  SSIM=0.9516
+      t+10  PSNR= 24.38dB  SSIM=0.8891
+      t+25  PSNR= 26.22dB  SSIM=0.9187
+    setting 'generous': 28 training views
+      gsplat iter 1000/3000 train L1=0.00637
+      gsplat iter 2000/3000 train L1=0.00466
+      gsplat iter 3000/3000 train L1=0.00439
+      t+1   PSNR= 34.23dB  SSIM=0.9803
+      t+5   PSNR= 32.34dB  SSIM=0.9753
+      t+10  PSNR= 26.81dB  SSIM=0.9347
+      t+25  PSNR= 28.95dB  SSIM=0.9618
+
+=== gsplat view-synthesis reference ===
+  matched   t+1   PSNR= 20.98dB  SSIM=0.7186  (n=6)
+  matched   t+5   PSNR= 20.12dB  SSIM=0.6664  (n=6)
+  matched   t+10  PSNR= 18.17dB  SSIM=0.6115  (n=6)
+  matched   t+25  PSNR= 16.67dB  SSIM=0.5397  (n=6)
+  generous  t+1   PSNR= 21.67dB  SSIM=0.7163  (n=6)
+  generous  t+5   PSNR= 21.15dB  SSIM=0.7046  (n=6)
+  generous  t+10  PSNR= 20.50dB  SSIM=0.7146  (n=6)
+  generous  t+25  PSNR= 20.36dB  SSIM=0.6838  (n=6)

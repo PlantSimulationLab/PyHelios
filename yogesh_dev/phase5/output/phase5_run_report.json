@@ -1,0 +1,633 @@
+{
+  "seed": 20260729,
+  "build_time_s": 1.5551092624664307,
+  "fruit_ground_truth": {
+    "n_fruit_primitives": 17098,
+    "n_fruit_objects": 83,
+    "n_fruit_records_written": 83,
+    "n_trees": 3,
+    "plant_id_lookup_misses": 0,
+    "output_path": "/home/yogesh/PyHelios/.claude/worktrees/phase5-baselines/yogesh_dev/phase5/output/phase5_fruit_ground_truth.json"
+  },
+  "n_fruit": 83,
+  "n_fruit_surface_primitives": 17098,
+  "hfov_deg": 57.82240163683314,
+  "reachable_render_s": 73.50900793075562,
+  "n_reachable_candidates": 324,
+  "per_tree_reachable_timing": {
+    "0": {
+      "n_poses": 108,
+      "render_s": 24.607558250427246
+    },
+    "1": {
+      "n_poses": 108,
+      "render_s": 24.472265005111694
+    },
+    "2": {
+      "n_poses": 108,
+      "render_s": 24.409980297088623
+    }
+  },
+  "static_rig_render_s": 2.0882985591888428,
+  "baseline_compute_time_s": 1275.7142956256866,
+  "results": {
+    "T5.1": {
+      "baseline": "T5.1_single_fixed_camera",
+      "label": "Single fixed camera, one view (absolute floor)",
+      "n_views_used": 1,
+      "motion_time_s": 0.0,
+      "n_fruit": 83,
+      "mean_coverage_frac": 0.11472281667491968,
+      "n_fruit_observed_at_all": 82,
+      "fraction_fruit_observed": 0.9879518072289156
+    },
+    "T5.2": {
+      "baseline": "T5.2_static_3camera_rig",
+      "label": "Static 3-camera rig, no arm motion -- the realistic commercial alternative",
+      "n_views_used": 9,
+      "motion_time_s": 0.0,
+      "n_fruit": 83,
+      "mean_coverage_frac": 0.32400420484623915,
+      "n_fruit_observed_at_all": 83,
+      "fraction_fruit_observed": 1.0
+    },
+    "T5.3": {
+      "baseline": "T5.3_boustrophedon_raster",
+      "label": "Boustrophedon raster over the 3 linear axes -- engineering-practical competitor",
+      "n_views_used": 324,
+      "motion_time_s": 540.3429088592528,
+      "discovery_curve": [
+        {
+          "n_views": 16,
+          "mean_coverage_frac": 0.2566027376389193
+        },
+        {
+          "n_views": 32,
+          "mean_coverage_frac": 0.3027828095532405
+        },
+        {
+          "n_views": 48,
+          "mean_coverage_frac": 0.31355775195083674
+        },
+        {
+          "n_views": 64,
+          "mean_coverage_frac": 0.32207642924798835
+        },
+        {
+          "n_views": 80,
+          "mean_coverage_frac": 0.36711169810144567
+        },
+        {
+          "n_views": 96,
+          "mean_coverage_frac": 0.38365636523399244
+        },
+        {
+          "n_views": 112,
+          "mean_coverage_frac": 0.43115309781786315
+        },
+        {
+          "n_views": 128,
+          "mean_coverage_frac": 0.4909071405976459
+        },
+        {
+          "n_views": 144,
+          "mean_coverage_frac": 0.5031950296779779
+        },
+        {
+          "n_views": 160,
+          "mean_coverage_frac": 0.5245678647988798
+        },
+        {
+          "n_views": 176,
+          "mean_coverage_frac": 0.5331738979197731
+        },
+        {
+          "n_views": 192,
+          "mean_coverage_frac": 0.5394093386289747
+        },
+        {
+          "n_views": 208,
+          "mean_coverage_frac": 0.5416877737423091
+        },
+        {
+          "n_views": 224,
+          "mean_coverage_frac": 0.5685532568877006
+        },
+        {
+          "n_views": 240,
+          "mean_coverage_frac": 0.5809391787012367
+        },
+        {
+          "n_views": 256,
+          "mean_coverage_frac": 0.5880574223673155
+        },
+        {
+          "n_views": 272,
+          "mean_coverage_frac": 0.5905686384547778
+        },
+        {
+          "n_views": 288,
+          "mean_coverage_frac": 0.5932356741874039
+        },
+        {
+          "n_views": 304,
+          "mean_coverage_frac": 0.5946547264323039
+        },
+        {
+          "n_views": 320,
+          "mean_coverage_frac": 0.5959949269463023
+        },
+        {
+          "n_views": 324,
+          "mean_coverage_frac": 0.596444237235368
+        }
+      ],
+      "n_fruit": 83,
+      "mean_coverage_frac": 0.596444237235368,
+      "n_fruit_observed_at_all": 83,
+      "fraction_fruit_observed": 1.0
+    },
+    "T5.4": {
+      "baseline": "T5.4_random_reachable_views",
+      "label": "Random reachable views (denominator of Pi) -- mean +/- std over trials",
+      "by_k": {
+        "1": {
+          "n_trials": 200,
+          "n_views_used": 1,
+          "mean_coverage_frac_mean": 0.07905796155695179,
+          "mean_coverage_frac_std": 0.030440829189777148,
+          "fraction_fruit_observed_mean": 0.700421686746988,
+          "fraction_fruit_observed_std": 0.21136828806790015,
+          "motion_time_s_mean": 0.0,
+          "motion_time_s_std": 0.0
+        },
+        "2": {
+          "n_trials": 200,
+          "n_views_used": 2,
+          "mean_coverage_frac_mean": 0.1295969396424204,
+          "mean_coverage_frac_std": 0.034211237062840266,
+          "fraction_fruit_observed_mean": 0.8828915662650603,
+          "fraction_fruit_observed_std": 0.1405521740508674,
+          "motion_time_s_mean": 8.660087159757813,
+          "motion_time_s_std": 2.7378994677017436
+        },
+        "4": {
+          "n_trials": 200,
+          "n_views_used": 4,
+          "mean_coverage_frac_mean": 0.20578475009554723,
+          "mean_coverage_frac_std": 0.029551424604816755,
+          "fraction_fruit_observed_mean": 0.9753012048192771,
+          "fraction_fruit_observed_std": 0.049099157287419266,
+          "motion_time_s_mean": 26.13596833884716,
+          "motion_time_s_std": 4.9516356977231375
+        },
+        "8": {
+          "n_trials": 200,
+          "n_views_used": 8,
+          "mean_coverage_frac_mean": 0.2964295192550179,
+          "mean_coverage_frac_std": 0.0242968841445878,
+          "fraction_fruit_observed_mean": 0.9981927710843373,
+          "fraction_fruit_observed_std": 0.0122720173418454,
+          "motion_time_s_mean": 60.31288005380332,
+          "motion_time_s_std": 7.787080592838655
+        }
+      }
+    },
+    "T5.5": {
+      "baseline": "T5.5_nearest_frontier_distance_advantage",
+      "label": "Nearest-frontier + distance-advantage heuristic (five lines)",
+      "n_views_used": 240,
+      "motion_time_s": 556.7079288790629,
+      "n_fruit": 83,
+      "mean_coverage_frac": 0.596444237235368,
+      "n_fruit_observed_at_all": 83,
+      "fraction_fruit_observed": 1.0
+    },
+    "T5.6": {
+      "baseline": "T5.6_greedy_oracle",
+      "label": "Greedy oracle -- brute-force full evaluation of every V_reach candidate each round (numerator of Pi)",
+      "n_views_used": 40,
+      "trace": [
+        {
+          "step": 1,
+          "candidate_index": 126,
+          "marginal_gain": 0.14633323793018183,
+          "cumulative_mean_coverage_frac": 0.14633323793018183
+        },
+        {
+          "step": 2,
+          "candidate_index": 275,
+          "marginal_gain": 0.06877563599068767,
+          "cumulative_mean_coverage_frac": 0.2151088739208695
+        },
+        {
+          "step": 3,
+          "candidate_index": 54,
+          "marginal_gain": 0.06006817265964828,
+          "cumulative_mean_coverage_frac": 0.2751770465805178
+        },
+        {
+          "step": 4,
+          "candidate_index": 131,
+          "marginal_gain": 0.03501385539400914,
+          "cumulative_mean_coverage_frac": 0.3101909019745269
+        },
+        {
+          "step": 5,
+          "candidate_index": 220,
+          "marginal_gain": 0.025117557395514578,
+          "cumulative_mean_coverage_frac": 0.3353084593700415
+        },
+        {
+          "step": 6,
+          "candidate_index": 19,
+          "marginal_gain": 0.023187516560683574,
+          "cumulative_mean_coverage_frac": 0.3584959759307251
+        },
+        {
+          "step": 7,
+          "candidate_index": 166,
+          "marginal_gain": 0.01952448729400419,
+          "cumulative_mean_coverage_frac": 0.37802046322472926
+        },
+        {
+          "step": 8,
+          "candidate_index": 127,
+          "marginal_gain": 0.014298845291221496,
+          "cumulative_mean_coverage_frac": 0.39231930851595076
+        },
+        {
+          "step": 9,
+          "candidate_index": 237,
+          "marginal_gain": 0.012825977571336356,
+          "cumulative_mean_coverage_frac": 0.4051452860872871
+        },
+        {
+          "step": 10,
+          "candidate_index": 0,
+          "marginal_gain": 0.011995211243563286,
+          "cumulative_mean_coverage_frac": 0.4171404973308504
+        },
+        {
+          "step": 11,
+          "candidate_index": 292,
+          "marginal_gain": 0.011097683162835992,
+          "cumulative_mean_coverage_frac": 0.4282381804936864
+        },
+        {
+          "step": 12,
+          "candidate_index": 73,
+          "marginal_gain": 0.010607712159857285,
+          "cumulative_mean_coverage_frac": 0.4388458926535437
+        },
+        {
+          "step": 13,
+          "candidate_index": 108,
+          "marginal_gain": 0.00788210847448767,
+          "cumulative_mean_coverage_frac": 0.44672800112803135
+        },
+        {
+          "step": 14,
+          "candidate_index": 191,
+          "marginal_gain": 0.007664634143106586,
+          "cumulative_mean_coverage_frac": 0.45439263527113793
+        },
+        {
+          "step": 15,
+          "candidate_index": 21,
+          "marginal_gain": 0.006549686961858314,
+          "cumulative_mean_coverage_frac": 0.46094232223299625
+        },
+        {
+          "step": 16,
+          "candidate_index": 162,
+          "marginal_gain": 0.006215489817947506,
+          "cumulative_mean_coverage_frac": 0.46715781205094375
+        },
+        {
+          "step": 17,
+          "candidate_index": 239,
+          "marginal_gain": 0.005802812586356232,
+          "cumulative_mean_coverage_frac": 0.4729606246373
+        },
+        {
+          "step": 18,
+          "candidate_index": 72,
+          "marginal_gain": 0.005386425510509607,
+          "cumulative_mean_coverage_frac": 0.4783470501478096
+        },
+        {
+          "step": 19,
+          "candidate_index": 218,
+          "marginal_gain": 0.004764091708368723,
+          "cumulative_mean_coverage_frac": 0.4831111418561783
+        },
+        {
+          "step": 20,
+          "candidate_index": 293,
+          "marginal_gain": 0.004340750128846771,
+          "cumulative_mean_coverage_frac": 0.4874518919850251
+        },
+        {
+          "step": 21,
+          "candidate_index": 188,
+          "marginal_gain": 0.004252550447381487,
+          "cumulative_mean_coverage_frac": 0.4917044424324066
+        },
+        {
+          "step": 22,
+          "candidate_index": 113,
+          "marginal_gain": 0.003892516987901551,
+          "cumulative_mean_coverage_frac": 0.4955969594203081
+        },
+        {
+          "step": 23,
+          "candidate_index": 114,
+          "marginal_gain": 0.0035765180197290802,
+          "cumulative_mean_coverage_frac": 0.4991734774400372
+        },
+        {
+          "step": 24,
+          "candidate_index": 74,
+          "marginal_gain": 0.0032528972017019098,
+          "cumulative_mean_coverage_frac": 0.5024263746417391
+        },
+        {
+          "step": 25,
+          "candidate_index": 167,
+          "marginal_gain": 0.0031212408627727672,
+          "cumulative_mean_coverage_frac": 0.5055476155045119
+        },
+        {
+          "step": 26,
+          "candidate_index": 2,
+          "marginal_gain": 0.002994488241025328,
+          "cumulative_mean_coverage_frac": 0.5085421037455372
+        },
+        {
+          "step": 27,
+          "candidate_index": 274,
+          "marginal_gain": 0.0028197023961390455,
+          "cumulative_mean_coverage_frac": 0.5113618061416763
+        },
+        {
+          "step": 28,
+          "candidate_index": 118,
+          "marginal_gain": 0.002604968325312873,
+          "cumulative_mean_coverage_frac": 0.5139667744669891
+        },
+        {
+          "step": 29,
+          "candidate_index": 221,
+          "marginal_gain": 0.0024481230260177123,
+          "cumulative_mean_coverage_frac": 0.5164148974930068
+        },
+        {
+          "step": 30,
+          "candidate_index": 290,
+          "marginal_gain": 0.002366021756856407,
+          "cumulative_mean_coverage_frac": 0.5187809192498632
+        },
+        {
+          "step": 31,
+          "candidate_index": 6,
+          "marginal_gain": 0.002298503498691873,
+          "cumulative_mean_coverage_frac": 0.5210794227485551
+        },
+        {
+          "step": 32,
+          "candidate_index": 128,
+          "marginal_gain": 0.0021905992901317672,
+          "cumulative_mean_coverage_frac": 0.5232700220386869
+        },
+        {
+          "step": 33,
+          "candidate_index": 323,
+          "marginal_gain": 0.002136916579752568,
+          "cumulative_mean_coverage_frac": 0.5254069386184395
+        },
+        {
+          "step": 34,
+          "candidate_index": 76,
+          "marginal_gain": 0.002127440230276556,
+          "cumulative_mean_coverage_frac": 0.527534378848716
+        },
+        {
+          "step": 35,
+          "candidate_index": 163,
+          "marginal_gain": 0.0020168860312534953,
+          "cumulative_mean_coverage_frac": 0.5295512648799695
+        },
+        {
+          "step": 36,
+          "candidate_index": 219,
+          "marginal_gain": 0.0019519152461510147,
+          "cumulative_mean_coverage_frac": 0.5315031801261205
+        },
+        {
+          "step": 37,
+          "candidate_index": 238,
+          "marginal_gain": 0.0018585854794067602,
+          "cumulative_mean_coverage_frac": 0.5333617656055273
+        },
+        {
+          "step": 38,
+          "candidate_index": 112,
+          "marginal_gain": 0.0018256077572409435,
+          "cumulative_mean_coverage_frac": 0.5351873733627682
+        },
+        {
+          "step": 39,
+          "candidate_index": 214,
+          "marginal_gain": 0.0016364994097829433,
+          "cumulative_mean_coverage_frac": 0.5368238727725512
+        },
+        {
+          "step": 40,
+          "candidate_index": 147,
+          "marginal_gain": 0.001537058738667052,
+          "cumulative_mean_coverage_frac": 0.5383609315112182
+        }
+      ],
+      "at_k": {
+        "1": {
+          "n_views_used": 1,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.14633323793018183,
+          "n_fruit_observed_at_all": 73,
+          "fraction_fruit_observed": 0.8795180722891566
+        },
+        "2": {
+          "n_views_used": 2,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.2151088739208695,
+          "n_fruit_observed_at_all": 74,
+          "fraction_fruit_observed": 0.891566265060241
+        },
+        "3": {
+          "n_views_used": 3,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.2751770465805178,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "4": {
+          "n_views_used": 4,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3101909019745269,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "5": {
+          "n_views_used": 5,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3353084593700415,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "6": {
+          "n_views_used": 6,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3584959759307251,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "7": {
+          "n_views_used": 7,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.37802046322472926,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "8": {
+          "n_views_used": 8,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.39231930851595076,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        }
+      },
+      "saturated": false,
+      "n_fruit": 83,
+      "mean_coverage_frac": 0.5383609315112182,
+      "n_fruit_observed_at_all": 83,
+      "fraction_fruit_observed": 1.0
+    },
+    "T5.7": {
+      "baseline": "T5.7_ilp_setcover_optimum",
+      "label": "Offline ILP (max-coverage) optimum, k<=8 views -- the true ceiling",
+      "solver": "pulp + CBC (installed into helios env for this task)",
+      "n_of_8_k_values_where_ilp_solution_accepted_as_is": 5,
+      "caveat": "CBC's own 'Optimal' status could not be trusted at this problem scale within a practical time budget (verified: a cold, 600s solve still falsely reported Optimal below a known real lower bound -- see module docstring). Every k's reported selection is cross-validated against T5.6's greedy oracle and monotonicity; see 'selection_source' per k.",
+      "by_k": {
+        "1": {
+          "n_views_used": 1,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 12.145658748205078,
+          "ilp_own_solution_real_value": 0.14633323793018183,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.14633323793018183,
+          "n_fruit_observed_at_all": 73,
+          "fraction_fruit_observed": 0.8795180722891566
+        },
+        "2": {
+          "n_views_used": 2,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 17.85403653543218,
+          "ilp_own_solution_real_value": 0.2151088739208695,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.2151088739208695,
+          "n_fruit_observed_at_all": 74,
+          "fraction_fruit_observed": 0.891566265060241
+        },
+        "3": {
+          "n_views_used": 3,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 22.937624479234806,
+          "ilp_own_solution_real_value": 0.27635692143656393,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.27635692143656393,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "4": {
+          "n_views_used": 4,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 25.805068878997695,
+          "ilp_own_solution_real_value": 0.3109044443252733,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3109044443252733,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "5": {
+          "n_views_used": 5,
+          "selection_source": "ilp",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 27.97753085360545,
+          "ilp_own_solution_real_value": 0.33711676193179857,
+          "verified_at_least_as_good_as_known_lower_bounds": true,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.33711676193179857,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "6": {
+          "n_views_used": 6,
+          "selection_source": "greedy_oracle_at_k",
+          "ilp_status": "Not Solved",
+          "ilp_reported_objective": 31.734566005438964,
+          "ilp_own_solution_real_value": 0.0,
+          "verified_at_least_as_good_as_known_lower_bounds": false,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.3584959759307251,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "7": {
+          "n_views_used": 7,
+          "selection_source": "greedy_oracle_at_k",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 29.146775451008804,
+          "ilp_own_solution_real_value": 0.3511659692892629,
+          "verified_at_least_as_good_as_known_lower_bounds": false,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.37802046322472926,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        },
+        "8": {
+          "n_views_used": 8,
+          "selection_source": "greedy_oracle_at_k",
+          "ilp_status": "Optimal",
+          "ilp_reported_objective": 30.495410960799756,
+          "ilp_own_solution_real_value": 0.367414589889154,
+          "verified_at_least_as_good_as_known_lower_bounds": false,
+          "n_fruit": 83,
+          "mean_coverage_frac": 0.39231930851595076,
+          "n_fruit_observed_at_all": 83,
+          "fraction_fruit_observed": 1.0
+        }
+      }
+    },
+    "T5.8": {
+      "baseline": "T5.8_all_reachable_fusion",
+      "label": "All-reachable-views fusion -- sensor + workspace ceiling (all of V_reach)",
+      "n_views_used": 324,
+      "motion_time_s_if_visited_in_grid_order": 749.835090160366,
+      "n_fruit": 83,
+      "mean_coverage_frac": 0.596444237235368,
+      "n_fruit_observed_at_all": 83,
+      "fraction_fruit_observed": 1.0
+    }
+  },
+  "total_time_s": 1353.3717012405396
+}

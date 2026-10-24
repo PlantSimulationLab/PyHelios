@@ -1,0 +1,78 @@
+{
+  "n_segments_total": 1177,
+  "samples_per_segment": 5,
+  "by_resolution": {
+    "coarse_2cm": {
+      "voxel_size_m": 0.02,
+      "n_by_class": {
+        "<5mm": 33,
+        "5-10mm": 754,
+        "10-20mm": 244,
+        ">20mm": 146
+      },
+      "theoretical_geometric_recall_one_voxel": {
+        "<5mm": 0.0,
+        "5-10mm": 0.0,
+        "10-20mm": 0.0,
+        ">20mm": 1.0
+      },
+      "theoretical_geometric_recall_two_voxel_robust": {
+        "<5mm": 0.0,
+        "5-10mm": 0.0,
+        "10-20mm": 0.0,
+        ">20mm": 0.13013698630136986
+      },
+      "empirical_reconstruction_recall": {
+        "<5mm": 1.0,
+        "5-10mm": 1.0,
+        "10-20mm": 1.0,
+        ">20mm": 1.0
+      },
+      "empirical_n_hit_by_class": {
+        "<5mm": 33,
+        "5-10mm": 754,
+        "10-20mm": 244,
+        ">20mm": 146
+      }
+    },
+    "fine_5mm": {
+      "voxel_size_m": 0.005,
+      "n_by_class": {
+        "<5mm": 33,
+        "5-10mm": 754,
+        "10-20mm": 244,
+        ">20mm": 146
+      },
+      "theoretical_geometric_recall_one_voxel": {
+        "<5mm": 0.0,
+        "5-10mm": 1.0,
+        "10-20mm": 1.0,
+        ">20mm": 1.0
+      },
+      "theoretical_geometric_recall_two_voxel_robust": {
+        "<5mm": 0.0,
+        "5-10mm": 0.0,
+        "10-20mm": 1.0,
+        ">20mm": 1.0
+      },
+      "empirical_reconstruction_recall": {
+        "<5mm": 0.7272727272727273,
+        "5-10mm": 0.7599469496021221,
+        "10-20mm": 0.8811475409836066,
+        ">20mm": 0.678082191780822
+      },
+      "empirical_n_hit_by_class": {
+        "<5mm": 24,
+        "5-10mm": 573,
+        "10-20mm": 215,
+        ">20mm": 99
+      }
+    }
+  },
+  "benchmark": {
+    "target": "recall < 55% below 10mm (a benchmark to BEAT, i.e. this baseline should exceed it)",
+    "empirical_recall_below_10mm_fine_5mm_grid": 0.758576874205845,
+    "n_segments_below_10mm": 787,
+    "beats_55pct_benchmark": true
+  }
+}

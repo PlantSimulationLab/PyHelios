@@ -1,0 +1,98 @@
+{
+ "data": "yogesh_dev/world_model/output/dataset",
+ "declared_ranges": {
+  "n_train": 999,
+  "n_val": 499,
+  "n_test": 499,
+  "train_val_overlap": 0,
+  "train_test_overlap": 0,
+  "val_test_overlap": 0,
+  "disjoint": true
+ },
+ "present_split_overlaps": {
+  "train_val": [],
+  "train_test": [],
+  "val_test": []
+ },
+ "counts": {
+  "train": {
+   "n_seeds": 44,
+   "n_episodes": 1760,
+   "n_frames": 140800,
+   "seeds": [
+    10000,
+    10001,
+    10002,
+    10003,
+    10004,
+    10005,
+    10006,
+    10007,
+    10008,
+    10009,
+    10010,
+    10011,
+    10012,
+    10013,
+    10014,
+    10015,
+    10016,
+    10017,
+    10018,
+    10019,
+    10020,
+    10021,
+    10022,
+    10023,
+    10024,
+    10025,
+    10026,
+    10027,
+    10028,
+    10029,
+    10030,
+    10031,
+    10032,
+    10033,
+    10034,
+    10035,
+    10036,
+    10037,
+    10038,
+    10039,
+    10040,
+    10041,
+    10042,
+    10043
+   ]
+  },
+  "val": {
+   "n_seeds": 4,
+   "n_episodes": 160,
+   "n_frames": 12800,
+   "seeds": [
+    11000,
+    11001,
+    11002,
+    11003
+   ]
+  },
+  "test": {
+   "n_seeds": 4,
+   "n_episodes": 160,
+   "n_frames": 12800,
+   "seeds": [
+    12000,
+    12001,
+    12002,
+    12003
+   ]
+  }
+ },
+ "episodes_in_wrong_directory": [],
+ "missing_files": [],
+ "duplicate_paths": [],
+ "total_episodes": 2080,
+ "total_frames": 166400,
+ "disjoint_and_consistent": true
+}
