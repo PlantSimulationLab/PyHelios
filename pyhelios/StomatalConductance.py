@@ -549,19 +549,17 @@ class StomatalConductanceModel:
         """
         Set BMF model coefficients using the built-in species library.
 
-        Note: the native library falls back to Almond coefficients (with a warning when
-        messages are enabled) for an unrecognized species name.
-
         Args:
-            species: Species name from the library (e.g., "Almond", "Apple", "Grape", "Walnut")
+            species: Species name from the library (e.g., "Almond", "Apple", "Grape", "Walnut").
+                An unrecognized name raises, and the error message lists the valid names.
             uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
                 also None, applies to all primitives.
             material_label: Optional Context material label; applies to every primitive that
                 references the material at run() time. Mutually exclusive with ``uuids``.
 
         Raises:
-            ValueError: If species name is invalid, or both ``uuids`` and ``material_label`` are given
-            StomatalConductanceModelError: If operation fails
+            ValueError: If species name is not a non-empty str, or both ``uuids`` and ``material_label`` are given
+            StomatalConductanceModelError: If the species is not in the library, or the operation fails
 
         Example:
             >>> # Set coefficients for almond tree
@@ -577,12 +575,6 @@ class StomatalConductanceModel:
             raise ValueError("Species name must be a non-empty str")
         self._validate_target("setBMFCoefficientsFromLibrary", uuids, material_label)
 
-        # Common species available in the library
-        available_species = [
-            "Almond", "Apple", "Avocado", "Cherry", "Grape", "Lemon",
-            "Olive", "Orange", "Peach", "Pear", "Plum", "Walnut"
-        ]
-
         self._check_context_alive()
         try:
             if material_label is not None:
@@ -592,10 +584,7 @@ class StomatalConductanceModel:
             else:
                 stomatal_wrapper.setBMFCoefficientsFromLibrary(self.stomatal_model, species)
         except Exception as e:
-            error_msg = f"Failed to set BMF coefficients from library for species '{species}': {e}"
-            if "species not found" in str(e).lower() or "invalid species" in str(e).lower():
-                error_msg += f"\nAvailable species: {', '.join(available_species)}"
-            raise StomatalConductanceModelError(error_msg)
+            raise StomatalConductanceModelError(f"Failed to set BMF coefficients from library for species '{species}': {e}")
 
     def getBMFCoefficientsFromLibrary(self, species: str) -> BMFCoefficients:
         """
@@ -603,18 +592,16 @@ class StomatalConductanceModel:
 
         The result can be modified and passed to :meth:`setBMFCoefficients`.
 
-        Note: the native library returns Almond coefficients (with a warning when messages
-        are enabled) for an unrecognized species name.
-
         Args:
-            species: Species name from the library (e.g., "Almond", "Walnut")
+            species: Species name from the library (e.g., "Almond", "Walnut"). An unrecognized
+                name raises, and the error message lists the valid names.
 
         Returns:
             BMFCoefficients for the species
 
         Raises:
             ValueError: If species name is empty or not a str
-            StomatalConductanceModelError: If operation fails
+            StomatalConductanceModelError: If the species is not in the library, or the operation fails
 
         Example:
             >>> almond = stomatal.getBMFCoefficientsFromLibrary("Almond")

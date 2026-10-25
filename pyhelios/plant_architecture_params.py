@@ -373,8 +373,17 @@ class InternodeParameters:
 @dataclass
 class PetioleParameters:
     petioles_per_internode: int = 1
+    #: Angle in degrees of the petiole base axis relative to its parent internode axis. Not
+    #: used for leaves without a petiole (``length`` of exactly 0).
     pitch: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(90.0))
+    #: Radius in meters of the petiole cross-section. If either radius or length is 0, no
+    #: petiole geometry is created.
     radius: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.001))
+    #: Length in meters of the petiole tube. A length of exactly 0 means the leaf has no
+    #: petiole at all and sits directly on the stem, as a grass leaf does: ``leaf.pitch`` is
+    #: then its angle off the internode (zero or negative), none of the other petiole
+    #: parameters are used, and the leaf must be simple (one leaf per petiole). A small
+    #: positive length gives a short petiole, whose leaf is posed as on any other petiole.
     length: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.05))
     curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     taper: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
@@ -427,6 +436,10 @@ class PetioleParameters:
 @dataclass
 class LeafParameters:
     leaves_per_petiole: RandomParameterInt = field(default_factory=lambda: RandomParameterInt.constant(1))
+    #: Angle in degrees of the leaf axis relative to its parent petiole axis; positive values
+    #: turn the leaf toward its upper surface. For a leaf without a petiole
+    #: (``petiole.length`` of exactly 0) it is the angle off the internode and must be zero or
+    #: negative: -20 gives a blade leaving the stem at 20 degrees.
     pitch: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     yaw: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
@@ -478,6 +491,10 @@ class PeduncleParameters:
     # 0 leaves the node from the leaf axil, 180 is opposite the leaf.
     yaw: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Diffuse color of the peduncle. For a terminal inflorescence on a herbaceous stem, whose
+    #: peduncle continues the culm, this is the color at the top of the peduncle, blended along
+    #: its length (in steps of one length segment) from the internode color at its base. A
+    #: lateral peduncle, or one on a woody stem, is this color throughout.
     color: Color = (0.0, 0.0, 0.0)
     length_segments: int = 3
     radial_subdivisions: int = 7

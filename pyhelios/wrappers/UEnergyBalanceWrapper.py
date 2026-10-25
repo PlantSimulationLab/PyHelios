@@ -166,6 +166,22 @@ except AttributeError:
     # EnergyBalanceModel functions not available in current native library
     _ENERGY_BALANCE_FUNCTIONS_AVAILABLE = False
 
+# Canopy airspace stability correction toggles (helios-core 1.3.93). Probed separately so an older
+# library keeps the rest of the energy balance API.
+# NOTE: guard with _require_stability_correction(); _ENERGY_BALANCE_FUNCTIONS_AVAILABLE alone would call
+# a symbol with no argtypes set.
+_STABILITY_CORRECTION_AVAILABLE = False
+try:
+    for _name in ("enableCanopyAirspaceStabilityCorrection", "disableCanopyAirspaceStabilityCorrection"):
+        _f = getattr(helios_lib, _name)
+        _f.argtypes = [ctypes.POINTER(UEnergyBalanceModel)]
+        _f.restype = None
+        _f.errcheck = _check_error
+    del _name, _f
+    _STABILITY_CORRECTION_AVAILABLE = True
+except AttributeError:
+    _STABILITY_CORRECTION_AVAILABLE = False
+
 # GPU acceleration control (optional - only available when compiled with CUDA)
 _GPU_ACCELERATION_AVAILABLE = False
 try:
@@ -375,6 +391,27 @@ def disableCanopyAirspaceModel(energy_model: ctypes.POINTER(UEnergyBalanceModel)
         raise ValueError("EnergyBalanceModel instance is None.")
 
     helios_lib.disableCanopyAirspaceModel(energy_model)
+
+
+def _require_stability_correction(energy_model) -> None:
+    if not _ENERGY_BALANCE_FUNCTIONS_AVAILABLE or not _STABILITY_CORRECTION_AVAILABLE:
+        raise NotImplementedError(
+            "Canopy airspace stability correction is not available in the current native library. "
+            "It requires helios-core v1.3.93 or newer; rebuild with 'build_scripts/build_helios --clean'.")
+    if not energy_model:
+        raise ValueError("EnergyBalanceModel instance is None.")
+
+
+def enableCanopyAirspaceStabilityCorrection(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> None:
+    """Enable Monin-Obukhov stability corrections in the canopy airspace model"""
+    _require_stability_correction(energy_model)
+    helios_lib.enableCanopyAirspaceStabilityCorrection(energy_model)
+
+
+def disableCanopyAirspaceStabilityCorrection(energy_model: ctypes.POINTER(UEnergyBalanceModel)) -> None:
+    """Disable Monin-Obukhov stability corrections in the canopy airspace model"""
+    _require_stability_correction(energy_model)
+    helios_lib.disableCanopyAirspaceStabilityCorrection(energy_model)
 
 
 def setCanopyAirspaceConvergence(energy_model: ctypes.POINTER(UEnergyBalanceModel),

@@ -10,7 +10,6 @@ from unittest.mock import patch
 import pytest
 
 from pyhelios import Context, PlantArchitecture, PlantArchitectureError
-from pyhelios.PlantArchitecture import _validate_build_parameters
 from pyhelios.types import vec3, RGBcolor
 from pyhelios.wrappers import UPlantArchitectureWrapper as plantarch_wrapper
 from pyhelios.plugins.registry import get_plugin_registry
@@ -77,15 +76,26 @@ class TestPlantArch1389Validation:
         assert d["tortuosity_persistence_length"] == {"distribution": "uniform", "parameters": [0.2, 0.4]}
         assert ShootParameters.from_dict(d).tortuosity_persistence_length == RandomParameterFloat.uniform(0.2, 0.4)
 
+
+
+@pytest.mark.native_only
+class TestPlantArch1389BuildParameters:
+
     def test_almond_independence_accepts_scaffold_build_parameters(self):
-        _validate_build_parameters({"trunk_height": 0.8, "num_scaffolds": 4, "scaffold_angle": 50},
-                                   "almond_independence")
+        _require_plantarch()
+        with Context() as context, PlantArchitecture(context) as plantarch:
+            assert set(plantarch.getPlantModelBuildParameterNames("almond_independence")) == {
+                "trunk_height", "num_scaffolds", "scaffold_angle"}
 
     @pytest.mark.parametrize("model", ["almond_aldrich", "almond_wood_colony"])
     def test_models_that_read_no_build_parameters_reject_them(self, model):
-        """These builders never call getParameterValue(), so a trunk_height would be silently ignored."""
-        with pytest.raises(ValueError, match="accepts no build parameters"):
-            _validate_build_parameters({"trunk_height": 0.8}, model)
+        _require_plantarch()
+        with Context() as context, PlantArchitecture(context) as plantarch:
+            plantarch.disableMessages()
+            assert plantarch.getPlantModelBuildParameterNames(model) == []
+            plantarch.loadPlantModelFromLibrary(model)
+            with pytest.raises(ValueError, match="accepts no build parameters"):
+                plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 0.0, build_parameters={"trunk_height": 0.8})
 
 
 @pytest.mark.native_only

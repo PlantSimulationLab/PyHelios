@@ -4396,12 +4396,11 @@ class TestShootParameterChildShootRoundTrip:
 
 @pytest.mark.native_only
 class TestBuildParameterValidation:
-    """Build parameters the loaded model will not read must be rejected, not ignored.
+    """Build parameters the loaded model does not accept must be rejected, not ignored.
 
-    PlantArchitecture::getParameterValue() looks each key up in a map and returns the
-    default when it is absent, so the native library silently discards anything it does
-    not recognize. A misspelled or wrong-species key therefore produced a plant that
-    quietly used defaults, with no way for the caller to notice.
+    A misspelled or wrong-species key would otherwise produce a plant that quietly used
+    defaults. PyHelios raises ValueError, checking against the names the model declares
+    natively (getPlantModelBuildParameterNames()).
     """
 
     @pytest.fixture
@@ -4447,7 +4446,7 @@ class TestBuildParameterValidation:
         """The message must tell the caller what the model does accept."""
         plantarch.loadPlantModelFromLibrary("grapevine_VSP")
 
-        with pytest.raises(ValueError, match="trunk_height, vine_spacing"):
+        with pytest.raises(ValueError, match="vine_spacing, trunk_height, berry_diameter, cluster_berry_count"):
             plantarch.buildPlantInstanceFromLibrary(
                 vec3(0, 0, 0), 10.0, build_parameters={"num_scaffolds": 4}
             )

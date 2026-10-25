@@ -598,6 +598,8 @@ Below are example parameter values for several different tree crop species (a de
    </tr>
 </table>
 
+These coefficients can be applied by species name using \ref pyhelios.StomatalConductance.StomatalConductanceModel::setBMFCoefficientsFromLibrary "setBMFCoefficientsFromLibrary()" (all primitives, a subset of UUIDs, or a material label) or retrieved using \ref pyhelios.StomatalConductance.StomatalConductanceModel::getBMFCoefficientsFromLibrary "getBMFCoefficientsFromLibrary()". Besides the species in the table above, the library also contains: Grape (cv. Cabernet Sauvignon), Elderberry, Toyon, Big_Leaf_Maple (or Maple), Western_Redbud (or Redbud), Baylaurel (or Bay_Laurel), Olive, and EasternRedbud. Pistachio female and male coefficients are requested as "PistachioFemale" (or "Pistachio") and "PistachioMale". Names may be given capitalized as listed or in all lower case. An unrecognized species name is an error, and the error message lists the valid names.
+
 ## Bailey Model Theory {#BBTheory}
 
 The Bailey model is a simplified hydromechanical model in which stomatal conductance is proportional to the guard cell turgor pressure \f$P_g\f$:
@@ -753,7 +755,7 @@ coeff_sets = [base._replace(Em=base.Em * f) for f in (0.8, 1.0, 1.2)]
 stomatal.setBMFCoefficients(coeff_sets, uuids=[leaf1, leaf2, leaf3])
 ```
 
-\ref pyhelios.StomatalConductance.StomatalConductanceModel::getBMFCoefficientsFromLibrary "getBMFCoefficientsFromLibrary()" returns a species' library values as a `BMFCoefficients` without applying them. Note that the native library returns the Almond coefficients for an unrecognized species name (printing a warning only when messages are enabled), so check the spelling of the species name.
+\ref pyhelios.StomatalConductance.StomatalConductanceModel::getBMFCoefficientsFromLibrary "getBMFCoefficientsFromLibrary()" returns a species' library values as a `BMFCoefficients` without applying them. An unrecognized species name raises `StomatalConductanceModelError`, and the error message lists the valid names.
 
 #### Material-Based Coefficient Setting {#MaterialBasedCoeffs}
 

@@ -162,6 +162,18 @@ PYHELIOS_API void disableCanopyAirspaceModel(EnergyBalanceModel* energy_model);
 PYHELIOS_API void setCanopyAirspaceConvergence(EnergyBalanceModel* energy_model, float tolerance_K, unsigned int max_iterations);
 
 /**
+ * @brief Enable Monin-Obukhov stability corrections in the canopy airspace model (the default)
+ * @param energy_model Pointer to the EnergyBalanceModel
+ */
+PYHELIOS_API void enableCanopyAirspaceStabilityCorrection(EnergyBalanceModel* energy_model);
+
+/**
+ * @brief Disable Monin-Obukhov stability corrections in the canopy airspace model, assuming neutral stability
+ * @param energy_model Pointer to the EnergyBalanceModel
+ */
+PYHELIOS_API void disableCanopyAirspaceStabilityCorrection(EnergyBalanceModel* energy_model);
+
+/**
  * @brief Add optional output primitive data
  * @param energy_model Pointer to the EnergyBalanceModel
  * @param label Name of the primitive data to add (e.g., "vapor_pressure_deficit")

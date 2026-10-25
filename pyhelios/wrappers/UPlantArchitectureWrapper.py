@@ -1055,6 +1055,33 @@ try:
 except AttributeError:
     _PLANTARCHITECTURE_1389_AVAILABLE = False
 
+# Season-peak light exposure and plant build parameters (helios-core 1.3.93).
+# NOTE: every wrapper function below must guard with _require_plantarch_1393(); guarding with an
+# older flag would skip the RuntimeError and call a symbol with no argtypes set.
+_PLANTARCHITECTURE_1393_AVAILABLE = False
+try:
+    helios_lib.getSeasonPeakLightExposureAtPoint.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getSeasonPeakLightExposureAtPoint.restype = ctypes.c_float
+    helios_lib.getSeasonPeakLightExposureAtPoint.errcheck = _check_error
+
+    # plant_model_name, count
+    helios_lib.getPlantModelBuildParameterNames.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+    helios_lib.getPlantModelBuildParameterNames.restype = ctypes.c_char_p
+    helios_lib.getPlantModelBuildParameterNames.errcheck = _check_error
+
+    # plantID, names_out, count
+    helios_lib.getPlantBuildParameters.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p),
+        ctypes.POINTER(ctypes.c_int)]
+    helios_lib.getPlantBuildParameters.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getPlantBuildParameters.errcheck = _check_error
+
+    _PLANTARCHITECTURE_1393_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1393_AVAILABLE = False
+
 # Per-timestep phytomer callback (PhytomerParameters::phytomer_callback_function).
 # NOTE: guard with _require_plantarch_phytomer_callback(); an older flag would call the symbol with no argtypes set.
 _PLANTARCHITECTURE_PHYTOMER_CALLBACK_AVAILABLE = False
@@ -3796,6 +3823,56 @@ def resamplePhytomerParameters(context_ptr, phytomer_parameters: dict) -> dict:
     if not result:
         raise RuntimeError("PhytomerParameters::resample returned no parameters")
     return json.loads(result.decode('utf-8'))
+
+
+def _require_plantarch_1393() -> None:
+    """Raise if the native library predates the helios-core 1.3.93 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1393_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.93 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def getSeasonPeakLightExposureAtPoint(plantarch_ptr, plant_id: int, position) -> float:
+    _require_plantarch_1393()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    pos = (ctypes.c_float * 3)(float(position[0]), float(position[1]), float(position[2]))
+    return float(helios_lib.getSeasonPeakLightExposureAtPoint(plantarch_ptr, plant_id, pos))
+
+
+def getPlantModelBuildParameterNames(plantarch_ptr, plant_model_name: str) -> List[str]:
+    """Names of the build parameters a library model accepts, structure parameters first."""
+    _require_plantarch_1393()
+    count = ctypes.c_int()
+    result = helios_lib.getPlantModelBuildParameterNames(
+        plantarch_ptr, plant_model_name.encode('utf-8'), ctypes.byref(count))
+    if result is None:
+        raise RuntimeError(f"getPlantModelBuildParameterNames returned no names for '{plant_model_name}'")
+    names = result.decode('utf-8').split('\n') if count.value > 0 else []
+    if len(names) != count.value:
+        raise RuntimeError(f"getPlantModelBuildParameterNames returned {len(names)} names, expected {count.value}")
+    return names
+
+
+def getPlantBuildParameters(plantarch_ptr, plant_id: int) -> Dict[str, float]:
+    """Build parameters a plant was built with, keyed by name."""
+    _require_plantarch_1393()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    names_out = ctypes.c_char_p()
+    count = ctypes.c_int()
+    values = helios_lib.getPlantBuildParameters(plantarch_ptr, plant_id, ctypes.byref(names_out), ctypes.byref(count))
+    if count.value == 0:
+        return {}
+    if not values or names_out.value is None:
+        raise RuntimeError(f"getPlantBuildParameters returned no data for {count.value} parameters")
+    names = names_out.value.decode('utf-8').split('\n')
+    if len(names) != count.value:
+        raise RuntimeError(f"getPlantBuildParameters returned {len(names)} names for {count.value} values")
+    return {name: float(values[i]) for i, name in enumerate(names)}
 
 
 # ---------------------------------------------------------------------------

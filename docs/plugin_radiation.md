@@ -365,7 +365,7 @@ Any diffuse (sky) flux given to a bounded emission band with `setDiffuseRadiatio
 
 > **Note:** Before helios-core 1.3.90 every emission band emitted the full broadband σT⁴ regardless of its bounds. Results for bounded emission bands are lower than in earlier versions (by about 2.7x for 8-14 µm at 300 K), and a visible band with bounds and emission left enabled no longer emits several hundred W/m².
 
-`runBand()` records each band's emission state as global data named `emission_enabled_<band>` (`uint`, 1 when emission is enabled for that band and 0 otherwise). This is what lets downstream plug-ins identify which band governs longwave emission — the energy balance model reads it to select the emitting band's emissivity. You can read it back through the Context:
+`runBand()` records, for each band, its emission state as global data named `emission_enabled_<band>` (`uint`, 1 when emission is enabled for that band and 0 otherwise), its scattering depth as `scattering_depth_<band>` (`uint`), and, for a band with wavelength bounds, the bounds as `wavelength_bounds_<band>` (`vec2`, nm). The energy balance model uses these so that the thermal radiation it emits matches the emission of its bands here. They record each band as configured at the most recent `runBand()` call, so a band whose emission, scattering depth, or bounds are changed afterwards should be run again before the energy balance. The emitting bands given to the energy balance model must account for the blackbody spectrum once — either a single band without bounds, or adjacent bounded bands that together span the thermal spectrum — so a bounded thermal camera band should not be added to the energy balance model alongside the longwave band. You can read the values back through the Context:
 
 ```python
 radiation.runBand(["PAR", "thermal"])
@@ -374,7 +374,7 @@ context.getGlobalData("emission_enabled_thermal")  # 1
 context.getGlobalData("emission_enabled_PAR")      # 0
 ```
 
-The value exists only for bands that have actually been run, since `runBand()` is what writes it.
+The values exist only for bands that have actually been run, since `runBand()` is what writes them.
 
 ## Simulation Execution
 

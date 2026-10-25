@@ -148,8 +148,15 @@ None.
  <tr><td>\f$p_{atm}\f$ (Pa)</td><td>Atmospheric pressure.</td></tr>
  <tr><td>\f$C_p\f$ (J/m<sup>2</sup>/<sup>o</sup>C)</td><td>Heat capacity of object.</td></tr>
  <tr><td>\f$Q_{other}\f$ (W/m<sup>2</sup>)</td><td>Any surface fluxes other than radiation, convection, latent, or storage.</td></tr>
+ <tr><td>\f$\varepsilon\f$</td><td>Surface emissivity for thermal radiation (see below).</td></tr>
  <tr><td>\f$n_s\f$</td><td>Number of primitive faces with heat transfer, set by the primitive "twosided_flag": \f$n_s=1\f$ for a single-sided primitive (twosided_flag=0, e.g., the ground), and \f$n_s=2\f$ for a two-sided primitive (twosided_flag=1, e.g., leaves).</td></tr>
  </table>
+
+ The emitted radiation is the same as the emission computed by the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" in the bands added to the energy balance model, so that the energy a surface emits matches what other surfaces and the sky exchange with it. In the usual case, emission is enabled for a single longwave band without wavelength bounds, which emits \f$\varepsilon\sigma T_s^4\f$, and \f$\varepsilon\f$ is the "emissivity_[band]" of that band. The thermal spectrum may instead be divided among several emitting bands with wavelength bounds, for example to represent an emissivity that varies with wavelength. Each such band emits only its share of the blackbody spectrum, \f$F_b(T)\f$, so the emissivity is the sum over the emitting bands
+
+ \f[ \varepsilon = \sum_b \varepsilon_b F_b(T_s), \f]
+
+ with \f$F_b=1\f$ for a band without wavelength bounds. If the scattering depth of an emitting band is 0, the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" treats surfaces as black in that band and emits \f$\sigma T^4\f$ regardless of the emissivity, so \f$\varepsilon_b=1\f$ is used for it here as well. The blackbody fractions are evaluated at the initial surface temperature, at which the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" computed the emission. The emitting bands must account for the blackbody spectrum once: `run()` raises an error if bounded emitting bands overlap, if \f$\sum_b F_b\f$ is less than 0.95 or greater than 1.01, or if more than one band without wavelength bounds emits (or one emits alongside a bounded thermal band). A thermal camera band such as 8-14 \f$\mu\f$m therefore cannot be the only longwave band of the energy balance, and should not be added to the energy balance model alongside a broadband longwave band.
 
  Constants are given by:
 
@@ -175,7 +182,7 @@ The \ref pyhelios.EnergyBalance.EnergyBalanceModel "EnergyBalanceModel" class is
  <table>
  <tr><th>Primitive Data <th>Units <th>Data Type <th>Description <th>Available Plug-ins <th>Default Value
  <tr><td>radiation\_flux\_[*] <td>W/m<sup>2</sup> <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Net absorbed radiation flux for band [*] (e.g., radiation_flux_PAR). <td>Can be computed by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in. <td>N/A (must add at least one band)
- <tr><td>emissivity\_[*] <td>unitless <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Surface emissivity for band [*], used for the emitted thermal radiation term. Thermal emission uses a single emissivity: that of the band for which emission is enabled in the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel". If emission is enabled for more than one band, the first emission-enabled band's emissivity is used and a warning is issued. When no emission information is available (radiation fluxes set manually without running the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel"), the first band that defines an emissivity is used. <td>Can be set by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in. <td>1.0
+ <tr><td>emissivity\_[*] <td>unitless <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Surface emissivity for band [*], used for the emitted thermal radiation term. The emissivity of each band for which emission is enabled in the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" is weighted by the share of the blackbody spectrum that band emits (see \ref EBIntro). When no emission information is available (radiation fluxes set manually without running the \ref pyhelios.RadiationModel.RadiationModel "RadiationModel"), the first band that defines an emissivity is used. <td>Can be set by \ref pyhelios.RadiationModel.RadiationModel "RadiationModel" plug-in. <td>1.0
  <tr><td>wind\_speed <td>m/s <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Air wind speed just outside of primitive boundary-layer. <td>N/A <td>1 m/s
  <tr><td>object\_length <td>m <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Characteristic dimension of object formed by primitive. <td>N/A <td>Square root of primitive surface area
  <tr><td>boundarylayer\_conductance<td>mol air/m<sup>2</sup>-s <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly <td>Leaf boundary-layer conductance to heat, summed over both faces of a two-sided primitive. <td>\ref pyhelios.BoundaryLayerConductance.BoundaryLayerConductanceModel "BoundaryLayerConductanceModel" plug-in <td>Try calculating from model \f$0.135\sqrt{\frac{U}{L}}\f$
@@ -267,11 +274,43 @@ model's default values.
 | `enableCanopyAirspaceModel(canopy_UUIDs, canopy_height_m, reference_height_m, leaf_area_index, num_layers=1, ground_UUIDs=None)` | Enable the model. `reference_height_m` must exceed `canopy_height_m`; `num_layers=1` gives a single within-canopy node |
 | `disableCanopyAirspaceModel()` | Return to a single surface energy balance pass using the current 'air_temperature' and 'air_humidity' |
 | `setCanopyAirspaceConvergence(tolerance_K=0.01, max_iterations=50)` | Temperature tolerance (K) and iteration cap of the coupled solution |
+| `enableCanopyAirspaceStabilityCorrection()` | Correct turbulent transport above and at the top of the canopy for atmospheric stability (the default) |
+| `disableCanopyAirspaceStabilityCorrection()` | Assume neutral stability throughout |
 
 Running the model sets primitive data 'air_temperature', 'air_humidity' and 'wind_speed' on the
 canopy and ground primitives, and reports global data 'canopy_air_temperature', 'canopy_air_humidity', their
-per-layer counterparts, 'aerodynamic_resistance' and 'canopy_airspace_iterations'. It also adds
+per-layer counterparts, 'aerodynamic_resistance', 'canopy_airspace_iterations', 'friction_velocity'
+(friction velocity above the canopy, m/s) and 'canopy_stability_parameter' (the Monin-Obukhov
+stability parameter \f$\zeta=(z_H-d)/L\f$ at the reference height; negative is unstable, positive is
+stable, and zero is neutral -- always zero when the stability correction is disabled). It also adds
 'boundarylayer_conductance_out' to the optional outputs, which the airspace solution requires.
+
+The aerodynamic resistance above the canopy follows Perrier (1975), which holds for neutral
+stability. When the canopy is warmer than the air above it, buoyancy enhances turbulent mixing
+(unstable conditions), and when it is cooler, as on a clear night, buoyancy suppresses it (stable
+conditions). By default the model corrects for this using Monin-Obukhov similarity theory, so that
+
+\f[ u_* = \frac{\kappa u}{\ln\left[\frac{z_m-d}{z_{oM}}\right] - \psi_m\left(\frac{z_m-d}{L}\right) + \psi_m\left(\frac{z_{oM}}{L}\right)}, \qquad r_a = \frac{\ln\left[\frac{z_H-d}{h_c-d}\right] - \psi_h\left(\frac{z_H-d}{L}\right) + \psi_h\left(\frac{h_c-d}{L}\right)}{\kappa u_*}, \f]
+
+which reduces to the neutral expression when \f$L\rightarrow\infty\f$. The integrated stability
+functions \f$\psi_m\f$ and \f$\psi_h\f$ are those of Paulson (1970) with the Businger-Dyer
+coefficients for unstable conditions and of Beljaars and Holtslag (1991) for stable conditions. The
+Obukhov length is
+
+\f[ L = -\frac{u_*^3\,T}{\kappa g\,\Delta T_v/r_a}, \f]
+
+where \f$T\f$ is the reference air temperature and \f$\Delta T_v\f$ is the virtual temperature of the
+uppermost canopy airspace layer minus that of the reference air. The eddy diffusivity at the canopy
+top used for the within-canopy layer conductances is likewise corrected,
+\f$K(h_c)=\kappa u_*(h_c-d)/\phi_h\left(\frac{h_c-d}{L}\right)\f$, so that it is continuous with the
+resistance above the canopy. The correction is turned off with
+\ref pyhelios.EnergyBalance.EnergyBalanceModel::disableCanopyAirspaceStabilityCorrection "disableCanopyAirspaceStabilityCorrection()",
+in which case neutral stability is assumed throughout, and back on with
+\ref pyhelios.EnergyBalance.EnergyBalanceModel::enableCanopyAirspaceStabilityCorrection "enableCanopyAirspaceStabilityCorrection()".
+
+> **Note:** Before helios-core 1.3.93 the canopy airspace model always assumed neutral stability, so
+> daytime canopy air temperatures came out warmer, and nighttime ones closer to the reference air,
+> than they do now.
 
 The ground primitive set may be empty, in which case there is no exchange with the soil surface.
 Otherwise the soil enters the lowest layer in the same way as a leaf, using the conductances and

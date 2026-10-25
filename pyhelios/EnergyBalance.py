@@ -199,7 +199,10 @@ class EnergyBalanceModel:
             ValueError: If parameters are invalid
             EnergyBalanceModelError: If energy balance calculation fails, if a UUID does not
                 exist, or if the same UUID appears more than once in ``uuids``
-                (helios-core 1.3.92+)
+                (helios-core 1.3.92+), or if the emitting radiation bands do not account for
+                the blackbody spectrum exactly once -- overlapping bounded bands, bands holding
+                less than 95% of the emission, or more than one emitting band without
+                wavelength bounds (helios-core 1.3.93+)
             
         Example:
             >>> # Steady state for all primitives
@@ -349,7 +352,13 @@ class EnergyBalanceModel:
         After :meth:`run`, primitive data ``air_temperature``, ``air_humidity`` and
         ``wind_speed`` are set on the canopy and ground primitives, and global data
         ``canopy_air_temperature``, ``canopy_air_humidity``, their per-layer counterparts,
-        ``aerodynamic_resistance`` and ``canopy_airspace_iterations`` are reported.
+        ``aerodynamic_resistance``, ``canopy_airspace_iterations``, ``friction_velocity`` and
+        ``canopy_stability_parameter`` are reported.
+
+        Turbulent transport above and at the top of the canopy is corrected for atmospheric
+        stability (Monin-Obukhov) by default: exchange is enhanced over a canopy warmer than
+        the reference air and suppressed over one cooler than it. Use
+        :meth:`disableCanopyAirspaceStabilityCorrection` to assume neutral stability.
 
         The soil exchanges sensible heat and water vapor with the lowest layer through the
         same boundary-layer and moisture conductances its own surface energy balance uses,
@@ -420,6 +429,49 @@ class EnergyBalanceModel:
             energy_wrapper.disableCanopyAirspaceModel(self.energy_model)
         except Exception as e:
             raise EnergyBalanceModelError(f"Failed to disable canopy airspace model: {e}")
+
+    def enableCanopyAirspaceStabilityCorrection(self) -> None:
+        """
+        Enable Monin-Obukhov stability corrections in the canopy airspace model (the default).
+
+        The aerodynamic resistance between the canopy top and the reference height, and the
+        eddy diffusivity at the canopy top, are corrected for atmospheric stability using the
+        Obukhov length implied by the sensible and latent heat fluxes leaving the canopy.
+        Unstable conditions (canopy warmer than the reference air, typically daytime) enhance
+        turbulent exchange, and stable conditions (night) suppress it. The model reports the
+        resulting global data ``friction_velocity`` (m/s) and ``canopy_stability_parameter``.
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.93.
+            EnergyBalanceModelError: If the operation fails.
+        """
+        self._check_context_alive()
+        try:
+            energy_wrapper.enableCanopyAirspaceStabilityCorrection(self.energy_model)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to enable canopy airspace stability correction: {e}")
+
+    def disableCanopyAirspaceStabilityCorrection(self) -> None:
+        """
+        Disable Monin-Obukhov stability corrections in the canopy airspace model.
+
+        Turbulent transport then assumes neutral stability, as before helios-core 1.3.93,
+        which overestimates the above-canopy resistance over a canopy warmer than the air and
+        underestimates it over one cooler than the air.
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.93.
+            EnergyBalanceModelError: If the operation fails.
+        """
+        self._check_context_alive()
+        try:
+            energy_wrapper.disableCanopyAirspaceStabilityCorrection(self.energy_model)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise EnergyBalanceModelError(f"Failed to disable canopy airspace stability correction: {e}")
 
     def setCanopyAirspaceConvergence(self, tolerance_K: float = 0.01,
                                      max_iterations: int = 50) -> None:

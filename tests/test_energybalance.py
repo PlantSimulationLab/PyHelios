@@ -729,6 +729,15 @@ class TestCanopyAirspaceValidation:
             EnergyBalanceModel.setCanopyAirspaceConvergence(
                 self._model(), tolerance_K=0.01, max_iterations=0)
 
+    @pytest.mark.parametrize("name", ["enableCanopyAirspaceStabilityCorrection",
+                                      "disableCanopyAirspaceStabilityCorrection"])
+    def test_stability_correction_requires_1393_library(self, name, monkeypatch):
+        """An older native library raises NotImplementedError instead of calling an unregistered symbol."""
+        from pyhelios.wrappers import UEnergyBalanceWrapper as energy_wrapper
+        monkeypatch.setattr(energy_wrapper, "_STABILITY_CORRECTION_AVAILABLE", False)
+        with pytest.raises(NotImplementedError, match="1.3.93"):
+            getattr(energy_wrapper, name)(object())
+
 
 @pytest.mark.native_only
 class TestCanopyAirspaceNative:
@@ -780,6 +789,57 @@ class TestCanopyAirspaceNative:
                 assert context.doesGlobalDataExist("canopy_air_temperature")
                 t_air = context.getGlobalDataFloat("canopy_air_temperature")
                 assert 200.0 < t_air < 300.0 + 150.0, f"implausible canopy air temperature {t_air}"
+
+    def _run_airspace(self, stability_correction, sunlit):
+        """Run the airspace model; returns (stability parameter, friction velocity, aerodynamic resistance).
+
+        A sunlit canopy absorbs shortwave on top of longwave from its surroundings and ends up
+        warmer than the reference air; at night, under the weaker longwave of a clear sky, it
+        cools radiatively below it.
+        """
+        sigma_T4 = 5.67e-8 * 300.0 ** 4
+        with Context() as context:
+            leaves, ground = self._canopy(context)
+            for uuid in context.getAllUUIDs():
+                context.setPrimitiveDataFloat(uuid, "radiation_flux_SW", 600.0 if sunlit else 0.0)
+                context.setPrimitiveDataFloat(uuid, "radiation_flux_LW", (2.0 if sunlit else 1.4) * sigma_T4)
+            with EnergyBalanceModel(context) as eb:
+                eb.addRadiationBand("SW")
+                eb.addRadiationBand("LW")
+                eb.enableCanopyAirspaceModel(
+                    canopy_UUIDs=leaves, canopy_height_m=1.0, reference_height_m=2.0,
+                    leaf_area_index=1.5, num_layers=2, ground_UUIDs=ground)
+                if stability_correction:
+                    eb.enableCanopyAirspaceStabilityCorrection()
+                else:
+                    eb.disableCanopyAirspaceStabilityCorrection()
+                eb.run()
+                for label in ("friction_velocity", "canopy_stability_parameter", "aerodynamic_resistance"):
+                    assert context.doesGlobalDataExist(label), f"canopy airspace run() should report '{label}'"
+                return (context.getGlobalDataFloat("canopy_stability_parameter"),
+                        context.getGlobalDataFloat("friction_velocity"),
+                        context.getGlobalDataFloat("aerodynamic_resistance"))
+
+    def test_stability_correction_can_be_toggled(self):
+        """helios-core 1.3.93: Monin-Obukhov correction is on by default and can be turned off."""
+        registry = get_plugin_registry()
+        if not registry.is_plugin_available('energybalance'):
+            pytest.skip("Energy balance plugin not available")
+
+        for sunlit in (True, False):
+            zeta_neutral, u_star_neutral, r_a_neutral = self._run_airspace(False, sunlit)
+            assert zeta_neutral == 0.0, "the stability parameter is zero when the correction is disabled"
+            assert u_star_neutral > 0.0
+
+            zeta, _, r_a = self._run_airspace(True, sunlit)
+            if sunlit:
+                # Warm canopy: unstable, enhanced exchange, lower resistance than neutral.
+                assert zeta < 0.0, f"expected unstable conditions over a sunlit canopy, got zeta={zeta}"
+                assert r_a < r_a_neutral, f"unstable r_a ({r_a}) should be below neutral r_a ({r_a_neutral})"
+            else:
+                # Radiatively cooled canopy: stable, suppressed exchange, higher resistance.
+                assert zeta > 0.0, f"expected stable conditions over a canopy at night, got zeta={zeta}"
+                assert r_a > r_a_neutral, f"stable r_a ({r_a}) should exceed neutral r_a ({r_a_neutral})"
 
     def test_ground_uuids_optional(self):
         registry = get_plugin_registry()

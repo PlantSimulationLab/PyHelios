@@ -1,5 +1,49 @@
 # Changelog
 
+# [v0.1.38] 2026-10-25
+
+- Updated helios-core to v1.3.93
+
+## PlantArchitecture
+- Added `PlantArchitecture.getPlantModelBuildParameterNames()`, listing the build parameters a library plant model accepts
+- Added `PlantArchitecture.getPlantBuildParameters()`, returning the build parameters a plant was built with
+- Added `PlantArchitecture.getSeasonPeakLightExposureAtPoint()`, the light exposure at a point under the plant's most recent seasonal peak canopy, which persists through dormancy
+- Build parameters can now set the berry size and count of "grapevine_VSP" and "grapevine_Wye" clusters and the panicle form of "sorghum"
+- The "sorghum" library model can now tiller, set by the `tiller_count` build parameter
+- Replaced the "sorghum" panicle with a procedural model that resolves every grain and its glumes
+- Rebuilt the grapevine fruit cluster to match a mature Cabernet Sauvignon cluster
+- The "apple" and "apple_fruitingwall" models now bear flowers and fruit on spurs and older wood, forming flower buds according to the light each node received the previous summer
+- The "apple" and "apple_fruitingwall" models now have smaller leaves and fruit, recalibrated wood diameters, and fruit that hangs closer to vertical
+- A leaf can now have no petiole by setting `petiole.length` to exactly 0, with `leaf.pitch` then giving its angle off the internode
+- **Behavior change:** leaves of the "maize", "rice", "sorghum" and "wheat" models now have no petiole and leave the culm at the node
+- **Behavior change:** the lowest internodes of the "sorghum" model now form a short crown at the soil surface
+- A peduncle continuing a herbaceous culm now blends from the internode color to `peduncle.color` instead of changing color abruptly
+- **Behavior change:** `setPlantBasePosition()` now moves a plant that already has shoots; previously it only changed the reported base position
+- `getPlantBasePosition()` now returns the stored position of a plant with no shoots instead of raising
+- Build parameter names are now checked against the list the native library declares, replacing a hand-maintained table that had fallen out of date
+- Fractional values for counting build parameters (e.g. `num_scaffolds`, which was truncated) and NaN values now raise `PlantArchitectureError`
+- Fixed spent terminal flower clusters of tree models flowering again every spring
+- Fixed leaves on the uphill side of a tilted stem being turned upside down
+- Fixed `fruit_gravity_factor_fraction` being undone for fruit on a peduncle far from vertical
+- Fixed the `shoot_node_index` passed to a `setPhytomerCreationFunction()` callback being the shoot's final node count for the phytomers a shoot is created with
+- `writePlantStructureUSD()` and `writePlantGrowthUSD()` now raise when a texture the plant uses does not exist, instead of writing a broken path
+
+## EnergyBalance
+- Added `EnergyBalanceModel.enableCanopyAirspaceStabilityCorrection()` and `disableCanopyAirspaceStabilityCorrection()`
+- **Behavior change:** the canopy airspace model now corrects turbulent transport for atmospheric stability by default and reports `friction_velocity` and `canopy_stability_parameter` global data
+- Fixed thermal emission being the full broadband εσT⁴ for an emitting radiation band with wavelength bounds, rather than the in-band share the radiation model emits
+- Fixed emission using the primitives' emissivity for an emitting band with scattering depth 0, which the radiation model treats as black, overstating temperature
+- **Behavior change:** `run()` now raises when the emitting radiation bands overlap or do not account for the blackbody spectrum once
+
+## Radiation
+- `runBand()` now records each band's scattering depth and wavelength bounds as `scattering_depth_<band>` and `wavelength_bounds_<band>` global data
+
+## StomatalConductance
+- **Behavior change:** `getBMFCoefficientsFromLibrary()` and `setBMFCoefficientsFromLibrary()` now raise for an unknown species, listing the valid names; previously they silently used Almond coefficients
+
+## WeberPennTree
+- Fixed the `<LeafShape>` tag in tree XML files being ignored, leaving the leaf shape uninitialized
+
 # [v0.1.37] 2026-10-21
 
 - Updated helios-core to v1.3.92

@@ -134,6 +134,18 @@ a clean rebuild (`build_scripts/build_helios --clean`) and the full suite (`pyte
 HELIOS_NO_GPU=1 pytest -m "not requires_gpu and not slow"
 ```
 
+A green suite is not enough: a plugin missing from the build skips its tests instead of failing
+them. After the full-plugin build, confirm nothing was skipped for an unavailable plugin:
+
+```bash
+pytest -rs | grep "Plugin(s) not available"
+```
+
+This must print nothing. Any hit means the build is missing a plugin -- check
+`pyhelios_build/CMakeLists.txt` and the build log, not the tests. In v0.1.37 the candidate had
+accidentally dropped `planthydraulics` from `CMakeLists.txt`; locally its 72 native tests
+skipped and the suite reported 0 failures, and only the Linux wheel's plugin check caught it.
+
 ## 2. Validate everything on the release branch
 
 ```bash

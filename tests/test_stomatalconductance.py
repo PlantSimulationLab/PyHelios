@@ -447,15 +447,8 @@ class TestStomatalConductanceIntegration:
         
         with Context() as context:
             with StomatalConductanceModel(context) as stomatal:
-                # Test operations that should cause specific errors
-                try:
-                    # Try to use non-existent species
+                with pytest.raises(StomatalConductanceModelError, match="NonexistentSpecies"):
                     stomatal.setBMFCoefficientsFromLibrary("NonexistentSpecies")
-                except Exception as e:
-                    # Should be a meaningful error message
-                    error_msg = str(e).lower()
-                    assert any(keyword in error_msg for keyword in 
-                              ['species', 'not found', 'invalid', 'library'])
     
     def test_multiple_models(self):
         """Test using multiple model types in sequence"""
@@ -752,6 +745,22 @@ class TestStomatalMaterialAndPerUUIDCoefficients:
                 stomatal.setBMFCoefficients(elder, uuids=[a])
                 stomatal.run()
                 assert _bmf_gs(context, a) > 0.0
+
+    @pytest.mark.parametrize("call", [
+        lambda m, u: m.getBMFCoefficientsFromLibrary("Almnd"),
+        lambda m, u: m.setBMFCoefficientsFromLibrary("Almnd"),
+        lambda m, u: m.setBMFCoefficientsFromLibrary("Almnd", uuids=[u]),
+        lambda m, u: m.setBMFCoefficientsFromLibrary("Almnd", material_label="leaf_mat"),
+    ])
+    def test_unknown_species_raises_and_lists_valid_names(self, call):
+        """helios-core 1.3.93: an unknown species used to fall back silently to the Almond coefficients."""
+        from pyhelios import StomatalConductanceModel, StomatalConductanceModelError
+        with Context() as context:
+            (a,) = self._leaves(context, 1)
+            context.addMaterial("leaf_mat")
+            with StomatalConductanceModel(context) as stomatal:
+                with pytest.raises(StomatalConductanceModelError, match="Almnd.*Valid species are: Almond"):
+                    call(stomatal, a)
 
 
 @pytest.mark.slow

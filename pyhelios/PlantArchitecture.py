@@ -62,43 +62,22 @@ from .plant_architecture_params import (
 logger = logging.getLogger(__name__)
 
 
-# Build parameters accepted by each library plant model, mirroring the
-# getParameterValue(current_build_parameters, ...) calls in PlantLibrary.cpp. Models absent
-# from this table read no build parameters at all. The native library silently ignores keys
-# it does not recognize, so PyHelios validates against this table to keep a typo or a
-# wrong-species key from producing a plant that quietly used defaults.
-_BUILD_PARAMETERS_BY_MODEL: Dict[str, frozenset] = {
-    "almond": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-    "almond_independence": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-    "apple": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-    "grapevine_VSP": frozenset({"trunk_height", "vine_spacing"}),
-    "grapevine_Wye": frozenset(
-        {"trunk_height", "vine_spacing", "cordon_spacing", "catch_wire_height"}
-    ),
-    "pistachio": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-    "walnut": frozenset({"trunk_height", "num_scaffolds", "scaffold_angle"}),
-}
+def _validate_build_parameters(build_parameters: Optional[dict], plant_model: Optional[str],
+                               accepted: Optional[List[str]] = None) -> None:
+    """Check build parameter types, and names against those the plant model accepts.
 
-# Every build parameter name recognized by any model, for error messages when the current
-# model is unknown.
-_ALL_BUILD_PARAMETERS = frozenset().union(*_BUILD_PARAMETERS_BY_MODEL.values())
-
-
-def _validate_build_parameters(build_parameters: Optional[dict], plant_model: Optional[str]) -> None:
-    """Reject build parameter keys the loaded plant model will not read.
-
-    The native library looks each key up in a map and falls back to a default when it is
-    absent, so an unrecognized key is silently discarded. Raising here instead keeps a
-    misspelled or wrong-species parameter from being mistaken for one that took effect.
+    The native library also rejects a name the model does not accept, but raising here
+    gives callers a ValueError like every other argument check, before anything is built.
 
     Args:
         build_parameters: Mapping supplied by the caller, or None.
-        plant_model: Label of the currently loaded model, or None if no model has been
-            loaded through this instance.
+        plant_model: Label of the currently loaded model, used in the error message.
+        accepted: Names the model accepts, from getPlantModelBuildParameterNames(), or None
+            to check types only (the native library still checks the names).
 
     Raises:
         ValueError: If build_parameters is not a dict of str -> number, or contains a key
-            the loaded model does not accept.
+            the model does not accept.
     """
     if build_parameters is None:
         return
@@ -112,32 +91,21 @@ def _validate_build_parameters(build_parameters: Optional[dict], plant_model: Op
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("build_parameters values must be numeric (int or float)")
 
-    if not build_parameters:
+    if not build_parameters or accepted is None:
         return
 
-    # An unrecognized model label cannot be checked against a specific list. Fall back to
-    # the union so an outright typo is still caught, rather than skipping validation.
-    if plant_model is not None:
-        accepted = _BUILD_PARAMETERS_BY_MODEL.get(plant_model, frozenset())
-        model_description = f"Plant model '{plant_model}'"
-    else:
-        accepted = _ALL_BUILD_PARAMETERS
-        model_description = "No plant model has been loaded through this instance, so"
-
-    unknown = sorted(set(build_parameters) - accepted)
+    unknown = sorted(set(build_parameters) - set(accepted))
     if not unknown:
         return
 
     if accepted:
-        accepted_description = f"accepts only: {', '.join(sorted(accepted))}"
+        accepted_description = f"accepts only: {', '.join(accepted)}"
     else:
         accepted_description = "accepts no build parameters"
 
     raise ValueError(
         f"Unknown build parameter(s) {', '.join(repr(k) for k in unknown)}. "
-        f"{model_description} {accepted_description}. "
-        f"Unrecognized parameters are ignored by the native library, so they would "
-        f"otherwise have no effect."
+        f"Plant model '{plant_model}' {accepted_description}."
     )
 
 
@@ -403,6 +371,13 @@ class PlantArchitecture:
 
         self._current_plant_model = plant_label.strip()
 
+    def _validate_build_parameters(self, build_parameters: Optional[dict]) -> None:
+        """Validate build parameters against the names the loaded model declares natively."""
+        accepted = None
+        if isinstance(build_parameters, dict) and build_parameters and self._current_plant_model is not None:
+            accepted = self.getPlantModelBuildParameterNames(self._current_plant_model)
+        _validate_build_parameters(build_parameters, self._current_plant_model, accepted)
+
     @_surfaces_phytomer_callback_errors
     def buildPlantInstanceFromLibrary(self, base_position: vec3, age: float,
                                      build_parameters: Optional[dict] = None) -> int:
@@ -412,15 +387,23 @@ class PlantArchitecture:
         Args:
             base_position: Cartesian (x,y,z) coordinates of plant base as vec3
             age: Age of the plant in days (must be >= 0)
-            build_parameters: Optional dict of parameter overrides for training system
-                            parameters. Only some models read them, and a key the model does
-                            not accept raises ValueError rather than being ignored:
+            build_parameters: Optional dict of species-specific parameter overrides, such
+                            as trellis dimensions, trunk height and scaffold count, grape
+                            cluster size, or sorghum tillers and panicle form. Only some models
+                            accept them, and a key the model does not accept raises ValueError:
                             - almond, almond_independence, apple, pistachio, walnut:
                               trunk_height, num_scaffolds, scaffold_angle
-                            - grapevine_VSP: trunk_height, vine_spacing
-                            - grapevine_Wye: trunk_height, vine_spacing, cordon_spacing,
-                              catch_wire_height
-                            All other models read no build parameters.
+                            - grapevine_VSP: vine_spacing, trunk_height, berry_diameter,
+                              cluster_berry_count
+                            - grapevine_Wye: trunk_height, cordon_spacing, vine_spacing,
+                              catch_wire_height, berry_diameter, cluster_berry_count
+                            - sorghum: tiller_count, panicle_type, and the panicle form,
+                              grain and glume keys
+                            All other models accept none. getPlantModelBuildParameterNames()
+                            returns the full list for a model. Out-of-range or non-finite
+                            values, and fractional values for parameters that count something
+                            (e.g. num_scaffolds, tiller_count), raise PlantArchitectureError.
+                            The plant keeps its build parameters (see getPlantBuildParameters()).
 
         Returns:
             Plant ID for the created plant instance
@@ -450,7 +433,7 @@ class PlantArchitecture:
         if age < 0:
             raise ValueError(f"Age must be non-negative, got {age}")
 
-        _validate_build_parameters(build_parameters, self._current_plant_model)
+        self._validate_build_parameters(build_parameters)
 
         self._check_context_alive()
         try:
@@ -478,11 +461,10 @@ class PlantArchitecture:
             germination_rate: Probability that each plant position will be occupied (0 to 1).
                             A value of 1.0 means all positions are filled; 0.5 means roughly
                             half the positions will have plants. Default is 1.0.
-            build_parameters: Optional dict of parameter overrides for training system
-                            parameters, applied to every plant in the canopy. Only some models
-                            read them, and a key the model does not accept raises ValueError
-                            rather than being ignored. See buildPlantInstanceFromLibrary() for
-                            the per-model list.
+            build_parameters: Optional dict of species-specific parameter overrides,
+                            applied to every plant in the canopy. Only some models
+                            accept them, and a key the model does not accept raises ValueError.
+                            See buildPlantInstanceFromLibrary() for the per-model list.
 
         Returns:
             List of plant IDs for the created plant instances
@@ -532,7 +514,7 @@ class PlantArchitecture:
         if plant_count.x <= 0 or plant_count.y <= 0:
             raise ValueError("Plant count values must be positive integers")
 
-        _validate_build_parameters(build_parameters, self._current_plant_model)
+        self._validate_build_parameters(build_parameters)
 
         # Convert to lists for C++ interface
         center_list = [canopy_center.x, canopy_center.y, canopy_center.z]
@@ -1064,6 +1046,39 @@ class PlantArchitecture:
                 return plantarch_wrapper.getAvailablePlantModels(self._plantarch_ptr)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get available plant models: {e}")
+
+    def getPlantModelBuildParameterNames(self, plant_model: str) -> List[str]:
+        """
+        Get the names of the build parameters a library plant model accepts.
+
+        These are the keys that may be passed as ``build_parameters`` to
+        :meth:`buildPlantInstanceFromLibrary` and :meth:`buildPlantCanopyFromLibrary` for the
+        model; any other key is rejected. The model does not need to be loaded.
+
+        Args:
+            plant_model: Name of the plant model (see :meth:`getAvailablePlantModels`)
+
+        Returns:
+            Names of the model's structure parameters (training system, tillers) followed by
+            its organ parameters (flower and fruit form); empty if the model accepts none
+
+        Raises:
+            ValueError: If ``plant_model`` is not a non-empty string
+            PlantArchitectureError: If the model does not exist in the library
+            RuntimeError: If the native library predates helios-core v1.3.93
+
+        Example:
+            >>> plantarch.getPlantModelBuildParameterNames("grapevine_VSP")
+            ['vine_spacing', 'trunk_height', 'berry_diameter', 'cluster_berry_count']
+        """
+        if not isinstance(plant_model, str) or not plant_model.strip():
+            raise ValueError("Plant model must be a non-empty string")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantModelBuildParameterNames(self._plantarch_ptr, plant_model)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the build parameter names of plant model '{plant_model}': {e}")
 
     def listShootTypeLabels(self, plant_model: Optional[str] = None,
                             plant_id: Optional[int] = None) -> List[str]:
@@ -6007,6 +6022,77 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to get the shadow-grid light exposure of plant {plant_id}: {e}")
 
+    def getSeasonPeakLightExposureAtPoint(self, plant_id: int, position: vec3) -> float:
+        """
+        Local light exposure at a point under the plant's most recent seasonal peak canopy.
+
+        Like :meth:`getShadowLightExposureAtPoint`, but read from the shadow grid captured
+        when the plant's leaf area last reached its seasonal maximum rather than from the
+        current canopy. Through dormancy, when a deciduous plant has no leaves and the current
+        exposure is 1 everywhere, this still gives the light each point stood in over the past
+        summer. The "apple" and "apple_fruitingwall" library models use it to decide how many
+        flowers each bud forms.
+
+        Args:
+            plant_id: ID of the plant
+            position: Query position in world coordinates
+
+        Returns:
+            Local light exposure in [0, 1]; 1 before the plant's first season in leaf, or when
+            the carbohydrate model is active
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int or ``position`` is not a vec3
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.93
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        if not isinstance(position, vec3):
+            raise ValueError(f"Position must be a vec3, got {type(position).__name__}")
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getSeasonPeakLightExposureAtPoint(
+                self._plantarch_ptr, plant_id, (position.x, position.y, position.z))
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get the season-peak light exposure of plant {plant_id}: {e}")
+
+    def getPlantBuildParameters(self, plant_id: int) -> Dict[str, float]:
+        """
+        Get the build parameters a plant was built with.
+
+        These are the ``build_parameters`` given to :meth:`buildPlantInstanceFromLibrary` or
+        :meth:`buildPlantCanopyFromLibrary`. A plant keeps them for its life (some, such as the
+        sorghum ``tiller_count``, are read as it grows), and they are saved and restored by
+        :meth:`writePlantStructureXML` / :meth:`readPlantStructureXML`. Parameters that were not
+        given are absent and take the model's default where they are read.
+
+        Args:
+            plant_id: ID of the plant
+
+        Returns:
+            Dict of build parameter names to values; empty for a plant not built from the
+            library or built without parameters
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            RuntimeError: If the native library predates helios-core v1.3.93
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("sorghum")
+            >>> plant_id = plantarch.buildPlantInstanceFromLibrary(
+            ...     vec3(0, 0, 0), 30.0, build_parameters={"tiller_count": 2})
+            >>> plantarch.getPlantBuildParameters(plant_id)
+            {'tiller_count': 2.0}
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantBuildParameters(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the build parameters of plant {plant_id}: {e}")
+
     # ------------------------------------------------------------------
     # Plant-level queries
     # ------------------------------------------------------------------
@@ -6136,6 +6222,9 @@ class PlantArchitecture:
         """
         Get the base position of one plant or of several plants.
 
+        For a plant with no shoots yet, this is the position at which its first shoot will be
+        placed.
+
         Args:
             plant_ids: A single plant ID, or a sequence of plant IDs
 
@@ -6144,7 +6233,7 @@ class PlantArchitecture:
 
         Raises:
             ValueError: If a plant ID is not a non-negative int or the sequence is empty
-            PlantArchitectureError: If a plant does not exist or has no shoots yet
+            PlantArchitectureError: If a plant does not exist
             RuntimeError: If the native library predates this binding
 
         Example:
@@ -6163,15 +6252,18 @@ class PlantArchitecture:
 
     def setPlantBasePosition(self, plant_id: int, base_position: vec3) -> None:
         """
-        Set the base position of a plant.
+        Set the base position of a plant, moving the plant if it has already been built.
+
+        For a plant with no shoots, this only stores the position, and the first shoot added
+        with :meth:`addBaseStemShoot` is placed there. For a plant that already has shoots, the
+        whole plant is translated by the difference between the new and old base position --
+        its geometry, stored organ positions, per-plant attraction points and cached shading
+        state -- and later growth continues from the moved position.
 
         Note:
-            This sets where the plant's stem will be rooted; it does **not** move geometry
-            that already exists. Call it on a plant from :meth:`addPlantInstance` before
-            :meth:`addBaseStemShoot` to place the stem. On a plant that already has shoots,
-            :meth:`getPlantBasePosition` will report the new position while the existing
-            geometry stays where it was built -- use ``Context.translateObject`` on
-            :meth:`getAllPlantObjectIDs` to move a finished plant.
+            Do not also translate the plant's objects in the Context (e.g. with
+            ``Context.translateObject``), or the plant will be moved twice. This cannot be
+            called from inside a phytomer creation or callback function.
 
         Args:
             plant_id: ID of the plant instance

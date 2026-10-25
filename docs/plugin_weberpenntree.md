@@ -259,6 +259,8 @@ tree_b = wpt.buildTree(WPTType.APPLE)   # identical geometry to tree_a
 
 ![](images/weberpenntree/Sketch_Leaves.jpeg)
 	
+Leaves are defined in the tree library by the tags `<Leaves>` (number of leaves per parent branch), `<LeafFile>` (PNG leaf mask, see below), `<LeafScale>` (leaf length) and `<LeafScaleX>` (leaf width relative to length), all of which are required. An optional integer tag `<LeafShape>` may also be given; if omitted it defaults to 0. Its value is stored in `WeberPennTreeParameters.LeafShape` and returned by \ref pyhelios.WeberPennTree.WeberPennTree::getTreeParameters "getTreeParameters()", but it does not affect the tree geometry: the shape of each leaf is taken from the leaf mask given by `<LeafFile>`.
+
 #### Leaf mask {#WPTreeMask}
 
  The tree model uses a PNG texture mask to visualize leaves.  This is a PNG image of the leaf with a transparent background.  An example leaf mask is given in the image below.  New leaf masks can be created using Gimp fairly easily.  Simply find an image of the leaf, open in Gimp, add an alpha channel to the image, use the `Fuzzy Select Tool' to select the background, then go to Edit->Clear, and export in .png format.  There are many tutorials online describing how to do this in more detail.  Note that the leaf should be oriented as shown in the image below for consistency: petiole pointing to the left.  Also note that the petiole is typically cropped out of the image.

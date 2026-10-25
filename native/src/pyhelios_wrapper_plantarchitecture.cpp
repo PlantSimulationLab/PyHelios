@@ -134,8 +134,8 @@ helios::vec3 jsonToVec3(const nlohmann::json& j, helios::vec3 fallback) {
 // and the per-timestep phytomer_callback_function are bound separately through trampolines
 // (see phytomerCreationTrampoline and phytomerCallbackTrampoline below).
 typedef uint (*LeafPrototypeFn)(helios::Context*, LeafPrototype*, int);
-typedef uint (*FlowerPrototypeFn)(helios::Context*, uint, bool);
-typedef uint (*FruitPrototypeFn)(helios::Context*, uint);
+typedef FlowerPrototypeFunction FlowerPrototypeFn;
+typedef FruitPrototypeFunction FruitPrototypeFn;
 
 const std::map<std::string, LeafPrototypeFn>& leafPrototypeRegistry() {
     static const std::map<std::string, LeafPrototypeFn> reg = {
@@ -4508,6 +4508,57 @@ extern "C" {
                 throw std::invalid_argument("Position array is null");
             }
             return plantarch->getShadowLightExposureAtPoint(plantID, helios::make_vec3(position[0], position[1], position[2]));
+        });
+    }
+
+    // ---- helios-core 1.3.93 additions ----
+
+    PYHELIOS_API float getSeasonPeakLightExposureAtPoint(PlantArchitecture* plantarch, unsigned int plantID, const float* position) {
+        return guardedPhytomerCall(plantarch, "getSeasonPeakLightExposureAtPoint", -1.f, [&]() {
+            if (!position) {
+                throw std::invalid_argument("Position array is null");
+            }
+            return plantarch->getSeasonPeakLightExposureAtPoint(plantID, helios::make_vec3(position[0], position[1], position[2]));
+        });
+    }
+
+    PYHELIOS_API const char* getPlantModelBuildParameterNames(PlantArchitecture* plantarch, const char* plant_model_name, int* count) {
+        if (count) *count = 0;
+        return guardedPhytomerCall(plantarch, "getPlantModelBuildParameterNames", static_cast<const char*>(nullptr), [&]() -> const char* {
+            if (!plant_model_name || !count) {
+                throw std::invalid_argument("Plant model name or count pointer is null");
+            }
+            static thread_local std::string names;
+            names.clear();
+            const std::vector<std::string> list = plantarch->getPlantModelBuildParameterNames(std::string(plant_model_name));
+            for (const std::string& name : list) {
+                if (!names.empty()) names += '\n';
+                names += name;
+            }
+            *count = static_cast<int>(list.size());
+            return names.c_str();
+        });
+    }
+
+    PYHELIOS_API float* getPlantBuildParameters(PlantArchitecture* plantarch, unsigned int plantID, const char** names_out, int* count) {
+        if (count) *count = 0;
+        if (names_out) *names_out = nullptr;
+        return guardedPhytomerCall(plantarch, "getPlantBuildParameters", static_cast<float*>(nullptr), [&]() -> float* {
+            if (!names_out || !count) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            static thread_local std::string names;
+            static thread_local std::vector<float> values;
+            names.clear();
+            values.clear();
+            for (const auto& [name, value] : plantarch->getPlantBuildParameters(plantID)) {
+                if (!names.empty()) names += '\n';
+                names += name;
+                values.push_back(value);
+            }
+            *names_out = names.c_str();
+            *count = static_cast<int>(values.size());
+            return values.data();
         });
     }
 

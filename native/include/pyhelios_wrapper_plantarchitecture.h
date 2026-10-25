@@ -430,6 +430,16 @@ PYHELIOS_API float getShadowLightExposureAtPoint(PlantArchitecture* plantarch, u
 // field of the input phytomer-parameters JSON comes back as a constant holding its draw. nullptr on error.
 PYHELIOS_API const char* resamplePhytomerParametersJSON(helios::Context* context, const char* json_params);
 
+// ---- helios-core 1.3.93 additions ----
+// Light exposure in [0,1] at a world position (3 floats) from the shadow grid captured at the plant's most recent
+// seasonal peak canopy; -1 on error.
+PYHELIOS_API float getSeasonPeakLightExposureAtPoint(PlantArchitecture* plantarch, unsigned int plantID, const float* position);
+// Build parameter names a library model accepts, newline-separated; *count is the number of names ("" when none). nullptr on error.
+PYHELIOS_API const char* getPlantModelBuildParameterNames(PlantArchitecture* plantarch, const char* plant_model_name, int* count);
+// Build parameters a plant was built with: *names_out receives the newline-separated names and the return value
+// the matching values; *count is the number of parameters. nullptr (with *count 0) when there are none or on error.
+PYHELIOS_API float* getPlantBuildParameters(PlantArchitecture* plantarch, unsigned int plantID, const char** names_out, int* count);
+
 // ---- Plant-level queries ----
 // "dormant", "vegetative", "reproductive" or "senescent"; nullptr on error.
 PYHELIOS_API const char* determinePhenologyStage(PlantArchitecture* plantarch, unsigned int plantID);
@@ -443,7 +453,7 @@ PYHELIOS_API float getPlantStemHeight(PlantArchitecture* plantarch, unsigned int
 PYHELIOS_API int getPlantBasePosition(PlantArchitecture* plantarch, unsigned int plantID, float* position);
 // Base positions of several plants as x,y,z triples; *count is the number of positions. nullptr on error.
 PYHELIOS_API float* getPlantBasePositions(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, int* count);
-// Sets the stored base position (3 floats); does not move existing geometry. 0 on success, -1 on error.
+// Sets the base position (3 floats), translating a plant that already has shoots. 0 on success, -1 on error.
 PYHELIOS_API int setPlantBasePosition(PlantArchitecture* plantarch, unsigned int plantID, const float* position);
 // Internode (tube) object IDs of a plant; a non-null shoot_type_label restricts them to shoots of that type. nullptr on error.
 PYHELIOS_API unsigned int* getPlantInternodeObjectIDs(PlantArchitecture* plantarch, unsigned int plantID, const char* shoot_type_label, int* count);

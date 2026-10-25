@@ -13,7 +13,6 @@ import textwrap
 import pytest
 
 from pyhelios import Context, PlantArchitecture, PlantArchitectureError
-from pyhelios.PlantArchitecture import _validate_build_parameters
 from pyhelios.types import vec3
 from pyhelios.wrappers import UPlantArchitectureWrapper as plantarch_wrapper
 from pyhelios.wrappers.DataTypes import AxisRotation
@@ -57,14 +56,6 @@ class TestPlantArch1390Validation:
         plantarch._plantarch_ptr = None
         plantarch.context = None
         return plantarch
-
-    def test_grapevine_wye_build_parameters_are_accepted(self):
-        """The model is registered as 'grapevine_Wye'; its parameters were keyed under 'grapevine_wye'."""
-        _validate_build_parameters(dict(WYE_PARAMETERS), "grapevine_Wye")
-
-    def test_grapevine_wye_rejects_tree_parameters(self):
-        with pytest.raises(ValueError, match="num_scaffolds"):
-            _validate_build_parameters({"num_scaffolds": 4}, "grapevine_Wye")
 
     def test_peduncle_yaw_defaults_to_zero_and_round_trips(self):
         assert PeduncleParameters().yaw == RandomParameterFloat.constant(0.0)
@@ -189,6 +180,14 @@ class TestLibraryModels1390:
             plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 0.0, build_parameters=dict(WYE_PARAMETERS))
             assert plantarch.getAllShootIDs(plant_id)
             assert context.getPrimitiveCount() > 0
+
+    def test_grapevine_wye_rejects_tree_parameters(self):
+        _require_plantarch()
+        with Context() as context, PlantArchitecture(context) as plantarch:
+            plantarch.disableMessages()
+            plantarch.loadPlantModelFromLibrary("grapevine_Wye")
+            with pytest.raises(ValueError, match="num_scaffolds"):
+                plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 0.0, build_parameters={"num_scaffolds": 4})
 
     def test_grapevine_wye_trunk_height_is_the_cordon_wire_height(self):
         """0.165 m was the default trunk length before 1.3.90; the range is now 0.5-2 m."""

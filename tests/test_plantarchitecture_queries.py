@@ -328,16 +328,19 @@ class TestPlantBasePosition:
         assert lo.y - 0.05 <= target.y <= hi.y + 0.05
         assert lo.z == pytest.approx(target.z, abs=0.02)
 
-    def test_set_base_position_on_built_plant_updates_reported_position_only(self, bean):
-        """Documented native behavior: the stored position changes, existing geometry does not move."""
+    def test_set_base_position_on_built_plant_moves_the_plant(self, bean):
+        """The plant's geometry is translated with its base position (helios-core 1.3.93)."""
         context, plantarch, plant_id = bean
         objects = plantarch.getAllPlantObjectIDs(plant_id)
+        base_before = plantarch.getPlantBasePosition(plant_id)
         lo_before, hi_before = context.getObjectBoundingBox(objects)
         plantarch.setPlantBasePosition(plant_id, vec3(5, 5, 0))
         p = plantarch.getPlantBasePosition(plant_id)
         assert (p.x, p.y, p.z) == pytest.approx((5, 5, 0))
+        shift = (5 - base_before.x, 5 - base_before.y, 0 - base_before.z)
         lo_after, hi_after = context.getObjectBoundingBox(objects)
-        assert (lo_after.x, lo_after.y, lo_after.z) == pytest.approx((lo_before.x, lo_before.y, lo_before.z))
+        assert (lo_after.x - lo_before.x, lo_after.y - lo_before.y, lo_after.z - lo_before.z) == pytest.approx(shift, abs=1e-4)
+        assert (hi_after.x - hi_before.x, hi_after.y - hi_before.y, hi_after.z - hi_before.z) == pytest.approx(shift, abs=1e-4)
 
     def test_set_base_position_on_missing_plant_raises(self, bean):
         _, plantarch, plant_id = bean

@@ -414,6 +414,40 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void enableCanopyAirspaceStabilityCorrection(EnergyBalanceModel* energy_model) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+
+            energy_model->enableCanopyAirspaceStabilityCorrection();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::enableCanopyAirspaceStabilityCorrection): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::enableCanopyAirspaceStabilityCorrection): Unknown error enabling canopy airspace stability correction.");
+        }
+    }
+
+    PYHELIOS_API void disableCanopyAirspaceStabilityCorrection(EnergyBalanceModel* energy_model) {
+        try {
+            clearError();
+            if (!energy_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "EnergyBalanceModel pointer is null");
+                return;
+            }
+
+            energy_model->disableCanopyAirspaceStabilityCorrection();
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (EnergyBalanceModel::disableCanopyAirspaceStabilityCorrection): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (EnergyBalanceModel::disableCanopyAirspaceStabilityCorrection): Unknown error disabling canopy airspace stability correction.");
+        }
+    }
+
     PYHELIOS_API void energyBalanceOptionalOutputPrimitiveData(EnergyBalanceModel* energy_model, const char* label) {
         try {
             clearError();

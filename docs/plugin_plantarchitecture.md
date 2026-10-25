@@ -118,38 +118,223 @@ PlantArchitecture includes 28 scientifically-validated plant models:
 - `"grapevine_VSP"` - Grapevine with vertical shoot positioned trellis
 - `"grapevine_Wye"` - Grapevine with Wye trellis (quadrilateral)
 
+Library changes in helios-core 1.3.93 that affect code customizing these models:
+
+- `apple` and `apple_fruitingwall` have a new `"spur"` shoot type, which grows from some of the
+  lateral buds on year-old wood and ends each year in a flower cluster; most fruit is now borne on
+  spurs. Flower buds form according to the light the node received the previous summer (see
+  `getSeasonPeakLightExposureAtPoint()`), so fruit is concentrated in the outer and upper crown.
+- The `grapevine_VSP` and `grapevine_Wye` fruit cluster was rebuilt as a conical Cabernet
+  Sauvignon cluster built in meters, so their `inflorescence.fruit_prototype_scale` is now 1
+  (previously 0.04).
+- The `sorghum` panicle is now procedural (see Sorghum panicle below) and built in meters, so its
+  `inflorescence.fruit_prototype_scale` is now 1 (previously 0.18).
+- The leaves of `maize`, `rice`, `sorghum` and `wheat` have no petiole (see Leaves without a
+  petiole below). Their leaf angle is now set by `leaf.pitch`, not `petiole.pitch`, so code that
+  changed the leaf angle of these models through the petiole must change `leaf.pitch` instead.
+
+Custom shoot parameters that set the old `fruit_prototype_scale` values must be updated.
+
 ### Build Parameters
 
-A few models read training-system parameters, passed as `build_parameters` to
-`buildPlantInstanceFromLibrary()` or `buildPlantCanopyFromLibrary()`. A key the loaded model does
-not read raises `ValueError`, and a value outside its range raises `PlantArchitectureError`.
+Some features of a library plant are specific to its species and have no place in the generic
+shoot and phytomer parameters: the dimensions of a grapevine trellis, the trunk height and
+scaffold layout of an orchard tree, the size of grape berries and clusters, the number of tillers
+of a sorghum plant, or the form and color of a sorghum panicle. These are set per plant by passing
+`build_parameters` (a `dict` of name to number) to `buildPlantInstanceFromLibrary()` or
+`buildPlantCanopyFromLibrary()`, so plants of different genotypes can be built side by side.
+`getPlantModelBuildParameterNames(plant_model)` lists the names a model accepts (the model need
+not be loaded); models not listed below accept none.
+
+**Tree species (almond, apple, walnut, pistachio)**
 
 | Model | Parameter | Default | Range | Meaning |
 |---|---|---|---|---|
 | `almond`, `almond_independence` | `trunk_height` | 0.78 | 0.1-3 m | Trunk height |
 | | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
-| | `scaffold_angle` | 52 | 20-70° | Scaffold branch angle |
+| | `scaffold_angle` | 52 | 20-70° | Scaffold branch angle from vertical |
 | `apple` | `trunk_height` | 0.8 | 0.1-3 m | Trunk height |
 | | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
-| | `scaffold_angle` | 40 | 20-70° | Scaffold branch angle |
+| | `scaffold_angle` | 40 | 20-70° | Scaffold branch angle from vertical |
 | `pistachio` | `trunk_height` | 1.0 | 0.1-3 m | Trunk height |
 | | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches, attached in opposite pairs down the top of the trunk |
-| | `scaffold_angle` | 57 | 20-70° | Scaffold branch angle |
+| | `scaffold_angle` | 57 | 20-70° | Scaffold branch angle from vertical |
 | `walnut` | `trunk_height` | 0.8 | 0.1-3 m | Trunk height |
 | | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
-| | `scaffold_angle` | 40 | 25-60° | Scaffold branch angle |
+| | `scaffold_angle` | 40 | 25-60° | Scaffold branch angle from vertical |
+
+**Grapevines (grapevine_VSP, grapevine_Wye)**
+
+| Model | Parameter | Default | Range | Meaning |
+|---|---|---|---|---|
 | `grapevine_VSP` | `trunk_height` | 0.8 | 0.05-1 m | Height of the fruiting wire |
 | | `vine_spacing` | 2.4 | 0.5-5 m | Plant-to-plant spacing along the row |
 | `grapevine_Wye` | `trunk_height` | 1.4 | 0.5-2 m | Height of the two cordon wires |
 | | `cordon_spacing` | 0.6 | 0.2-2 m | Distance across the row between the two cordon wires |
 | | `vine_spacing` | 1.8 | 0.5-5 m | Plant-to-plant spacing along the row; each cordon spans half of it |
 | | `catch_wire_height` | `trunk_height` + 0.6 | 0.5-4 m | Height of the top gable wires; must exceed `trunk_height` |
+| both | `berry_diameter` | 0.012 | 0.004-0.03 m | Berry diameter; berry size varies by about 7% between berries |
+| | `cluster_berry_count` | 90 | 10-400 | Mean number of berries in a cluster; each cluster's count varies by up to 17% either side of it |
+
+A grape cluster's size follows from its berries: it grows in proportion to berry diameter and with
+the cube root of berry count, so the defaults give a cluster about 12 cm long (Cabernet Sauvignon).
+
+**Sorghum (sorghum)**
+
+| Parameter | Default | Range | Meaning |
+|---|---|---|---|
+| `tiller_count` | 0 | 0-6 | Number of tillers (see Sorghum tillering below) |
+| `panicle_type` | 0.5 | 0-1 | Panicle preset: 0 compact, 0.5 semi-compact, 1 loose |
+
+The sorghum model also accepts the panicle form, grain and glume keys listed under
+Sorghum panicle below.
 
 As of helios-core 1.3.90 the `grapevine_Wye` row runs along the y-axis, as for `grapevine_VSP`
 (it previously ran along x), and its `trunk_height` is the height of the cordon wires rather than
 the trunk length (previously 0.165 m by default, range 0.05-1 m). Existing Wye layouts need to be
 turned by 90 degrees and their `trunk_height` revised. A pistachio `num_scaffolds` above 4 is now
 honoured; earlier versions accepted 5-8 but built 4.
+
+**Validation.** Build parameters are checked before any geometry is created:
+
+- A name the loaded model does not accept, such as a misspelling or a parameter of another
+  species, raises `ValueError` listing the names the model does accept.
+- A value outside its range, or one that is not finite (e.g. NaN), raises `PlantArchitectureError`
+  naming the parameter.
+- Parameters that count something (`num_scaffolds`, `tiller_count`, `grain_count`, branch counts)
+  must be whole numbers; a fractional value such as 3.9 raises `PlantArchitectureError` rather than
+  being truncated. A parameter that is a mean, such as `cluster_berry_count`, may be fractional.
+
+**Plants keep their build parameters.** Some parameters, such as the sorghum tiller count and the
+panicle and grape cluster parameters, are read as the plant grows, so a plant keeps the parameters
+it was built with for its whole life. `getPlantBuildParameters(plant_id)` returns them as a `dict`
+(parameters that were not given are absent and take the model's default), and
+`writePlantStructureXML()` / `readPlantStructureXML()` save and restore them with the plant.
+
+Plants built with different parameters can share one `PlantArchitecture`. Flower and fruit
+prototypes are cached per distinct set of the parameters that shape the flowers and fruit, so
+plants that differ only in other parameters, such as trellis dimensions or tiller count, share
+their prototypes.
+
+```python
+# Grapevine VSP with large-berried clusters
+plantarch.loadPlantModelFromLibrary("grapevine_VSP")
+vine_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 120.0,
+    build_parameters={"berry_diameter": 0.018,        # 18 mm table-grape berries
+                      "cluster_berry_count": 120})    # 120 berries per cluster on average
+
+# Sorghum with a loose, red-grained panicle
+plantarch.loadPlantModelFromLibrary("sorghum")
+sorghum_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0.5, 0, 0), 120.0,
+    build_parameters={"panicle_type": 1.0,            # loose, open head
+                      "grain_color_r": 0.55,          # red-brown grain
+                      "grain_color_g": 0.28,
+                      "grain_color_b": 0.14})
+
+print(plantarch.getPlantModelBuildParameterNames("grapevine_VSP"))
+print(plantarch.getPlantBuildParameters(vine_id))     # berry_diameter and cluster_berry_count
+```
+
+### Sorghum panicle
+
+The sorghum panicle is generated procedurally, with every grain resolved as its own small mesh
+rather than suggested by a texture. A central rachis bears whorls of primary branches; the distal,
+fertile part of each branch carries short racemes, and each raceme a row of grains, each partly
+enclosed by a pair of glumes. The parameters span the range of grain sorghum genotypes, from
+compact cylindrical heads with short, erect branches to loose, open heads with long, spreading
+branches that expose the rachis.
+
+Two quantities set most of what distinguishes one head from another. The *outline* comes from the
+primary branches: their length at the base, middle and tip of the rachis (a conical head has long
+basal branches, a cylindrical head roughly equal ones) and their insertion angle. The *density*
+comes from the compactness, which draws the grains into a layer a few grains deep just inside the
+branch envelope: at 0 each grain stays where its raceme places it, and at 1 the head is a closed
+surface of grain with the branches hidden beneath it.
+
+A default panicle is 25 cm long with 2000 grains and about 44,000 triangles, against about 12,000
+for the rest of a mature library sorghum plant; the grain count is the main lever on cost. Lowering
+`grain_subdivisions` to 3 or setting `glume_length_fraction` to 0 (no glumes) trims a further 20%;
+raising `grain_subdivisions` to 5 gives rounder grains for close-range imaging at about 10% more
+triangles. Panicles are copied from three prototypes per parameter set, so neighbouring plants
+differ in branch layout and grain placement. All panicle primitives carry the object label
+`"fruit"`.
+
+The panicle is chosen per plant through build parameters. `panicle_type` is applied first: 0 gives
+the compact preset, 0.5 the semi-compact defaults below, and 1 the loose preset, with values in
+between blending linearly between neighbouring presets. Each other key then overrides one field of
+that preset.
+
+| Build parameter | Semi-compact default | Range | Meaning |
+|---|---|---|---|
+| `panicle_type` | 0.5 | 0-1 | Preset (compact, semi-compact, loose) |
+| `panicle_length` | 0.25 | 0.05-0.6 m | Length from the lowest branch to the tip |
+| `panicle_length_variation` | 0.08 | 0-0.3 | Coefficient of variation of panicle length; grain count varies in proportion |
+| `panicle_rachis_length_fraction` | 0.85 | 0.3-1 | Fraction of the panicle length spanned by the rachis |
+| `panicle_rachis_curvature` | 0 | 0-180° | Total bend of the rachis from base to tip |
+| `panicle_compactness` | 0.8 | 0-1 | How strongly grains are drawn into a closed layer over the head |
+| `panicle_branch_count` | 70 | 5-200 | Number of primary branches |
+| `panicle_branch_length_base`, `_middle`, `_tip` | 0.2, 0.21, 0.12 | 0.02-0.6 | Primary branch length at the base, middle and tip of the rachis, as fractions of panicle length |
+| `panicle_branch_length_variation` | 0.2 | 0-0.5 | Coefficient of variation of branch length |
+| `panicle_branch_angle_base`, `panicle_branch_angle_tip` | 45, 25 | 0-90° | Branch insertion angle from the rachis at its base and tip |
+| `panicle_branch_upcurve` | 15 | 0-90° | Angle through which each branch turns back toward the rachis direction |
+| `panicle_branch_bare_fraction` | 0.15 | 0-0.9 | Fraction of each branch, from its base, that bears no racemes |
+| `panicle_splayed_branch_fraction` | 0.04 | 0-1 | Fraction of branches that splay out of the head |
+| `panicle_splayed_branch_angle` | 65 | 0-120° | Insertion angle of splayed branches |
+| `panicle_branch_radius` | 0.0007 | 0.0002-0.003 m | Primary branch radius at its base |
+| `panicle_grains_per_raceme` | 5 | 1-20 | Mean number of grains per raceme |
+| `panicle_raceme_length_fraction` | 0.2 | 0.02-1 | Raceme length as a fraction of its branch length |
+| `panicle_raceme_angle` | 35 | 0-90° | Angle between a raceme and its branch |
+| `grain_count` | 2000 | 100-10000 | Mean grains on a panicle of the nominal length |
+| `grain_length`, `grain_width`, `grain_thickness` | 0.0045, 0.004, 0.0034 | 0.001-0.01 m | Grain dimensions |
+| `grain_size_variation` | 0.08 | 0-0.3 | Coefficient of variation of grain size |
+| `grain_color_r`, `grain_color_g`, `grain_color_b` | 0.78, 0.62, 0.42 | 0-1 | Mean grain color |
+| `grain_color_variation` | 0.08 | 0-0.5 | Coefficient of variation of grain brightness |
+| `grain_subdivisions` | 4 | 3-12 | Number of facets around a grain |
+| `glume_length_fraction` | 0.55 | 0-1.2 | Glume length as a fraction of grain length; 0 omits the glumes |
+| `glume_spread` | 5 | 0-90° | Angle by which the glumes gape open from the grain |
+| `glume_color_r`, `glume_color_g`, `glume_color_b` | 0.45, 0.30, 0.18 | 0-1 | Mean glume color |
+
+Grain and glume color are independent of head type; white, cream, tan, red and brown grain with
+straw to near-black glumes are all common. The rachis radius, branch color and tube subdivisions
+are not build parameters, because they are matched to the library peduncle. The peduncle blends
+from the culm color at its base to the rachis color at the head.
+
+```python
+plantarch.loadPlantModelFromLibrary("sorghum")
+compact_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 120.0, build_parameters={"panicle_type": 0})
+loose_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0.5, 0, 0), 120.0, build_parameters={"panicle_type": 1, "grain_count": 1500})
+```
+
+### Sorghum tillering
+
+A library sorghum plant has no tillers by default. The `tiller_count` build parameter (0-6) gives
+it tillers, which grow from axillary buds of the lowest main-stem leaves as the plant grows:
+
+```python
+plantarch.loadPlantModelFromLibrary("sorghum")
+plant_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 90.0, build_parameters={"tiller_count": 2})
+```
+
+- **Position.** Tiller Tn grows from the axil of main-stem leaf n. Tillers are added in the order
+  T3, T4, T2, T1, T5, T6, the hierarchy of emergence and fertility reported by Lafarge, Broad &
+  Hammer (2002), so a `tiller_count` of 2 gives T3 and T4.
+- **Timing.** A tiller emerges about 9 days (2.5 phyllochrons) after the leaf that subtends it.
+- **Leaf number.** Each tiller has one leaf fewer than the main stem for each main-stem leaf below
+  its own (on a 16-leaf main stem, T1 has 15 leaves and T6 has 10), so the final leaves of all
+  tillers appear together. Every tiller ends in a panicle, so a plant has `tiller_count` + 1
+  panicles.
+- **Crown.** The lowest six main-stem internodes do not elongate (8 mm each), so the lowest leaves
+  and all tillers emerge at the soil surface; the next two are transitional. As of helios-core
+  1.3.93 this makes the main stem 0.98 m tall at maturity instead of 1.34 m.
+- **Orientation.** A tiller leans out over its subtending leaf, within the main stem's leaf plane,
+  leaving the main stem at 15-30 degrees from vertical and returning by gravitropism to 10-20
+  degrees by maturity. These angles are estimates; they are set by the `"tiller"` shoot type and
+  can be changed with `getCurrentShootParameters("tiller")` / `defineShootType("tiller", ...)`.
 
 ## Shoot, Phenology, and Resource Parameters
 
@@ -245,6 +430,40 @@ either a nested `dict` or a `ShootParameters`.
 peduncle is turned about its parent internode, away from the side of the node its leaf is on. At 0,
 the default, the peduncle leaves the node from the leaf axil; at 180 it is opposite the leaf, as a
 grapevine cluster is (the `grapevine_VSP` and `grapevine_Wye` models set 180).
+
+`phytomer_parameters.peduncle.color` is, for a terminal inflorescence on a herbaceous stem whose
+peduncle continues the culm, the color at the top of the peduncle: as of helios-core 1.3.93 the
+color is blended along the peduncle from the internode color at its base, so it meets the culm
+without a step. A lateral peduncle, or one on a woody stem, is this color throughout.
+
+#### Leaves without a petiole
+
+A leaf with no petiole, such as a grass leaf, sits directly on the stem. It is defined by a
+`petiole.length` of exactly 0 (helios-core 1.3.93+; previously 0 gave a minimal petiole posed like
+any other). None of the other petiole parameters are then used, and:
+
+- The leaf base is at the node.
+- `leaf.pitch` is the angle between the base of the blade and the internode rather than relative
+  to a petiole, and must be zero or negative: a pitch of -20 gives a blade leaving the stem at
+  20 degrees. A positive pitch raises an error.
+- The blade is posed in the frame of the stem, with its upper face toward the stem however the
+  stem is tilted. A leaf on a petiole is instead turned to face the sky.
+- `leaf.roll` turns the blade about its midrib, as for a leaf on a petiole.
+- The leaf must be simple (`leaves_per_petiole` of 1); a compound leaf raises an error.
+
+`writePlantStructureXML()` records which leaves have no petiole. A small positive petiole length
+instead gives a short petiole, whose leaf is posed from the petiole as usual.
+
+```python
+from pyhelios.plant_architecture_params import RandomParameterFloat
+
+# Maize leaves already have no petiole; change their angle off the culm through leaf.pitch
+plantarch.loadPlantModelFromLibrary("maize")
+sp = plantarch.getCurrentShootParameters("mainstem", return_typed=True)
+sp.phytomer_parameters.petiole.length = RandomParameterFloat.constant(0.0)        # no petiole
+sp.phytomer_parameters.leaf.pitch = RandomParameterFloat.uniform(-25.0, -12.0)    # 12-25 degrees off the culm
+plantarch.defineShootType("mainstem", sp)
+```
 
 Shoot type labels are species-specific — bean defines `unifoliate`/`trifoliate`,
 almond defines `trunk`/`scaffold`/`proleptic`/`sylleptic`/`spur`. There is no generic
@@ -465,8 +684,17 @@ world position, returning the local light exposure from 0 (fully shaded) to 1 (u
 drives the shedding decision. It returns 1 before the plant has a canopy. It is intended for
 inspecting and testing the shedding model, not as a radiation calculation.
 
+`getSeasonPeakLightExposureAtPoint(plant_id, position)` (helios-core 1.3.93) reads instead the
+shadow grid captured at the plant's most recent seasonal peak canopy. Through dormancy, when a
+deciduous plant has no leaves and `getShadowLightExposureAtPoint()` is 1 everywhere, it still
+gives the light each point stood in over the past summer. It returns 1 before the plant's first
+season in leaf, or when the carbohydrate model is active. The `apple` and `apple_fruitingwall`
+models use it to set flower-bud formation: a cluster in deep shade the previous summer forms no
+flowers, one in partial shade a proportional share, and one in full light all of them.
+
 ```python
 exposure = plantarch.getShadowLightExposureAtPoint(plant_id, vec3(0.2, 0.0, 1.5))
+last_summer = plantarch.getSeasonPeakLightExposureAtPoint(plant_id, vec3(0.2, 0.0, 1.5))
 ```
 
 ### Carbohydrate and nitrogen model parameters
@@ -641,7 +869,7 @@ for name in ("Leaf", "Petiole", "Peduncle", "Flower", "Fruit"):
 | `getShootNodeCount(plant_id, shoot_id)` | Current number of nodes on one shoot |
 | `getPlantStemHeight(plant_id)` | Vertical extent (m) of the main stem only; `getPlantHeight()` includes everything above it |
 | `getPlantBasePosition(plant_ids)` | `vec3` for one plant ID, or a list of `vec3` for a sequence of IDs |
-| `setPlantBasePosition(plant_id, base_position)` | Sets where the stem is rooted (see note) |
+| `setPlantBasePosition(plant_id, base_position)` | Sets where the stem is rooted, moving an already-built plant (see note) |
 | `getPlantLeafInclinationAngleDistribution(plant_ids, num_bins, normalize=True)` | Leaf-area-weighted histogram of blade inclination, `num_bins` bins over 0–90° |
 | `getPlantLeafAzimuthAngleDistribution(plant_ids, num_bins, normalize=True)` | Leaf-area-weighted histogram of blade azimuth, `num_bins` bins over 0–360° |
 
@@ -657,7 +885,7 @@ print(f"stem {plantarch.getPlantStemHeight(plant_id):.2f} m, "
 incl = plantarch.getPlantLeafInclinationAngleDistribution(plant_id, 9)   # 10-degree bins
 ```
 
-> **`setPlantBasePosition()` does not move existing geometry.** It sets the position the base stem is rooted at, so call it on an empty plant from `addPlantInstance()` before `addBaseStemShoot()`. On a plant that already has shoots, `getPlantBasePosition()` reports the new value while the geometry stays where it was built; move a finished plant with `context.translateObject(plantarch.getAllPlantObjectIDs(plant_id), shift)` instead.
+> **`setPlantBasePosition()` moves an already-built plant (helios-core 1.3.93+).** On a plant with no shoots yet (e.g. one from `addPlantInstance()`) it only stores the position, and the first shoot added with `addBaseStemShoot()` is placed there; `getPlantBasePosition()` returns that stored position. On a plant that has been built or grown, it translates the whole plant by the difference between the new and old base positions -- its geometry in the Context, the organ positions stored by the model, its per-plant attraction points, and its cached shading state -- and later growth continues from the new position. Because the Context objects are moved by this call, do not also translate them with `context.translateObject()`, or the plant moves twice. It cannot be called from inside a phytomer creation or callback function. (Earlier versions changed only the reported position and left the geometry where it was built.)
 
 ### Multi-Species Simulation
 
@@ -1170,6 +1398,8 @@ may change is limited (helios-core 1.3.90):
   `buildPlantInstanceFromLibrary()`, `buildPlantCanopyFromLibrary()` and
   `readPlantStructureXML()`. To add structure in response to something a function observed, record
   it there and make the call between calls to `advanceTime()`.
+- **`setPlantBasePosition()` raises `PlantArchitectureError`** (helios-core 1.3.93), because the
+  shoot being grown holds positions that would not be moved with the plant.
 
 As with any exception raised in one of these functions, the error propagates out of the
 `advanceTime()` or build call that ran it.
@@ -1923,6 +2153,8 @@ with Context() as context:
 - XML files can contain multiple plants (returns list of plant IDs)
 - Use `quiet=True` parameter to suppress console output during loading
 - XML format is Helios-native and preserves all plant structure details
+- The build parameters a plant was built with are saved with it, together with its model name,
+  and are validated and restored on reading (see `getPlantBuildParameters()`)
 
 **Quiet Mode:**
 
