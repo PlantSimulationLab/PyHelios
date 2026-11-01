@@ -5951,20 +5951,22 @@ class TestPlantArchitecture1387PetioleFlexibility:
                 return min(heights)
 
     def test_flexibility_lowers_the_lowest_leaf(self):
-        """Compare over several builds: a library build is stochastic run to run.
+        """Compare medians over several builds: a library build is stochastic run to run.
 
-        The droop is far larger than that spread -- every flexible build sits below every
-        rigid one -- so the two samples are required to separate completely rather than
-        merely to differ on one draw.
+        Medians with a minimum gap, not complete separation of the samples: a rigid build
+        occasionally has one unusually low leaf, which overlaps the flexible range even
+        though the typical droop is about 0.03 m.
         """
+        from statistics import median
+
         registry = get_plugin_registry()
         if not registry.is_plugin_available('plantarchitecture'):
             pytest.skip("PlantArchitecture plugin not available")
 
-        rigid = [self._min_leaf_height(0.0) for _ in range(3)]
-        flexible = [self._min_leaf_height(1.5) for _ in range(3)]
+        rigid = [self._min_leaf_height(0.0) for _ in range(5)]
+        flexible = [self._min_leaf_height(1.5) for _ in range(5)]
 
-        assert max(flexible) < min(rigid), (
+        assert median(rigid) - median(flexible) > 0.01, (
             f"petiole flexibility did not droop the canopy: "
             f"rigid min z={rigid}, flexible min z={flexible}")
 

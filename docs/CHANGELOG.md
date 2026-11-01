@@ -1,5 +1,62 @@
 # Changelog
 
+# [v0.1.39] 2026-11-01
+
+- Updated helios-core to v1.3.94
+
+## Context
+- `setPrimitiveTextureFile()` now loads the texture and updates the primitive's solid fraction and area, and raises if the file does not exist
+- Fixed `assignMaterialToPrimitive()` and `assignMaterialToObject()` leaving the primitive's old appearance, transparency mask and area in place when the material's texture differs
+- Fixed `setMaterialColor()`, `setMaterialTexture()`, `setMaterialTextureColorOverride()`, `deleteMaterial()` and overwriting a material with `addMaterial()` not updating the primitives that use the material
+- Fixed `loadXML()` counting the transparent parts of a material's texture in the area of primitives that use it
+- Fixed `queryTimeseriesData()` returning a tiny non-zero value in place of a stored 0 for some sampling intervals, which made `SolarPosition` flux methods raise at sunset under cloud calibration
+
+## PlantArchitecture
+- **Behavior change:** recalibrated the "wheat" model against field measurements, giving it much smaller leaves and development about three times slower
+- The "wheat" model can now tiller, set by the `tiller_count` build parameter (0-4)
+- **Behavior change:** flexible leaves, including those of the "maize", "sorghum" and "wheat" models, now droop along true gravity and can arch over and hang
+- Fixed `readPlantStructureXML()` occasionally rebuilding a shoot along a slightly different path than the plant that was written
+
+## BoundaryLayerConductance
+- **Behavior change:** fixed the "InclinedPlate" model giving two-sided leaves roughly half the conductance they should have
+- The "InclinedPlate" model now gives each leaf face its own conductance and accounts for buoyancy opposing the wind given by the optional `wind_direction` primitive data
+- `run()` now also writes the per-face `boundarylayer_conductance_front`, `boundarylayer_conductance_vapor_front` and `boundarylayer_conductance_CO2_front` primitive data, and the matching `_back` labels
+
+## EnergyBalance
+- The latent heat flux now uses each leaf face's own boundary-layer conductance to water vapor when per-face data are present, with `stomatal_sidedness` the fraction of stomata on the front face
+
+## Photosynthesis
+- The CO2 supply conductance now uses each leaf face's own boundary-layer conductance to CO2 when per-face data are present
+
+## StomatalConductance
+- Leaf-surface humidity and CO2 concentration now use each leaf face's own boundary-layer conductances when per-face data are present
+- `run()` now raises when one leaf face has stomata but a boundary-layer conductance that is not positive
+
+## Radiation
+- **Behavior change:** the default scattering depth of a band is now 3 instead of 0, so reflective and transmissive surfaces scatter without calling `setScatteringDepth()`; `setScatteringDepth(band, 0)` restores the previous behavior
+- Added specular surface layers, set with the primitive or material data `specular_roughness`, `specular_n` and `specular_n_<band>`, which make a surface's reflection, transmission and emission depend on angle
+- **Behavior change:** `runBand()` now raises if a primitive or its material has `specular_exponent` or `specular_scale`, which are no longer supported; use `specular_roughness` instead
+- **Behavior change:** a `reflectivity_spectrum`, `transmissivity_spectrum` or camera spectral response label missing from the Context is now loaded from the plugin's spectral libraries or raises, instead of silently using a value of 0 or a flat response
+- **Behavior change:** without the Prague sky model, cameras now see the diffuse sky that lights the scene, where the sky was previously black or a fixed approximate blue
+- Fixed the sky seen by cameras under the Prague sky model being at least π times too bright and weighted by the wrong camera's spectral response
+- Fixed the circumsolar brightening seen by cameras surrounding the zenith instead of the sun when the Prague sky model is used with no direct source that has a flux in the bands being run
+- `runBand()` now raises when `prague_sky_valid` global data is set but `prague_sky_spectral_params` does not exist, instead of a camera seeing a black sky
+- Fixed the reflectivity of a band without wavelength bounds being scaled by a camera's spectral response when primitives use `reflectivity_spectrum`, which made surfaces absorb too much
+- Fixed direct and diffuse radiation passing through a surface where it meets another, which let radiation into closed volumes
+
+## Visualizer
+- `LIGHTING_PHONG_SHADOWED` now renders soft-edged cascaded shadows that are no longer blocky or speckled, do not shimmer as the camera moves, and reach the farthest geometry in view
+
+## ParameterOptimization
+- Fixed the error for an unavailable `LBFGS` recommending a CMake flag that the build script overrides; it now names the setting to change
+
+## Documentation
+- Fixed the `BMFCoefficients` example in the StomatalConductance docs, which assigned to the fields of an immutable tuple and raised
+- Fixed the `pyhelios_visualizer_demo.py` lighting comparison, which was never run and lit the scene from below
+- Corrected the documentation of `make_AxisRotation()`: its angles are in radians, not degrees
+- Corrected the cross-platform guide, which said radiation on macOS requires CUDA and pointed to a setup script and example files that do not exist
+- Corrected the plugin build guide, which claimed 21 plugins and listed several that PyHelios does not integrate
+
 # [v0.1.38] 2026-10-25
 
 - Updated helios-core to v1.3.93

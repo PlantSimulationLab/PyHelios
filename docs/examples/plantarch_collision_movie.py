@@ -17,34 +17,10 @@ look at the far side of it.
 Configuration: soft collision avoidance only. No enableSolidObstacleAvoidance(),
 no obstacle pruning -- nothing is deleted to keep the wall clear.
 
-Why an apple tree rather than a canopy of beans:
-
-Steering redirects growth AXES, so it can only hold an organ clear of a barrier
-when that organ is small relative to the segment being steered. Bean fails that
-test -- ~0.10 m trifoliate leaves fanned off comparably short internodes, so the
-blades sweep across the plane however hard the axis turns. With bean, leaves are
-~84% of all primitives, and getting them fully clear needed hard obstacle
-avoidance layered on top plus pruning to delete the stragglers.
-
-Apple has 0.12 m leaves on a woody structure metres across. The ratio is far
-more favourable, so soft avoidance alone does the job and the demonstration
-stays honest: every organ that avoids the wall does so by growing elsewhere,
-not by being removed.
-
-Reference points from the bean version, still useful when tuning:
-  - inertia_weight on setSoftCollisionAvoidanceParameters() is the effective
-    "strength" knob (0.0 = full avoidance, 1.0 = ignore).
-    enableSolidObstacleAvoidance() has no strength argument at all; its turn
-    rate is hardcoded and capped at parallel-to-the-obstacle.
-  - Soft and hard avoidance are mutually exclusive for INTERNODES --
-    applySolidObstacleAvoidance() runs first and the soft blend sits behind
-    `else if (collision_detection_active && !obstacle_found)`
-    (PlantArchitecture.cpp:1787). For PETIOLES there is no such gate (line
-    1934). So when both are on, hard covers stems and soft covers leaves.
-  - enable_obstacle_pruning deletes intersecting organs *and everything
-    downstream of them on the shoot* (pruneSolidBoundaryCollisions, line 6073).
-    Always check leaf area before crediting a low penetration figure to
-    avoidance rather than to amputation.
+Why an apple tree: steering redirects growth axes, so it can only hold an organ
+clear of a barrier when that organ is small relative to the segment being steered.
+Apple has 0.12 m leaves on a woody structure metres across, so soft avoidance alone
+is enough and nothing is removed to keep the wall clear.
 
 Output (under docs/examples/output/collision_movie/, override with --outdir):
     collision_avoidance.mp4   (requires ffmpeg on PATH)
@@ -73,19 +49,11 @@ from pyhelios.types import vec3, vec2, int2, RGBcolor, SphericalCoord
 
 # A single apple tree beside a wall.
 #
-# Apple rather than bean: steering redirects growth AXES, so it can only keep an
-# organ clear of a barrier if that organ is small relative to the segment being
-# steered. Bean has ~0.10 m trifoliate leaves fanned off short internodes, so
-# leaf half-width is comparable to the internode length and blades sweep across
-# the plane no matter how hard the axis turns. Apple has 0.12 m leaves on a
-# woody structure metres across -- a far better ratio, so soft avoidance alone
-# is enough and neither hard obstacle avoidance nor pruning is needed.
-#
 # The wall must sit INSIDE the crown's unobstructed growth envelope. Placed
 # beyond its reach it is never encountered, both runs look identical, and the
 # animation demonstrates nothing.
 WALL_X = 0.22
-# Taller than the mature tree (measured max height 1.92 m) so the crown cannot
+# Taller than the mature tree so the crown cannot
 # simply grow over the top -- foliage on the far side then means growth went
 # THROUGH the wall, which is the whole point. Width is kept a little under the
 # crown spread so the tree is still visible around the edges.
@@ -95,15 +63,12 @@ WALL_SIZE = vec2(1.1, 2.4)  # (span along y, height along z) once rotated uprigh
 # patch and sinks most of it below ground.
 WALL_ROTATION = SphericalCoord(1, math.pi / 2, math.pi / 2)
 # Centred on the wall: this maximises the fraction of the crown that actually
-# meets the barrier (offsetting along y cut measured penetration from 12% to 6%
-# because less of the tree grows at the wall).
+# meets the barrier.
 TREE_POSITION = vec3(-0.10, 0.0, 0.0)
 SEED = 12345
 
-# Apple growth is extremely unevenly distributed in time. Measured at 5-day
-# resolution for this model: days 0-160 are completely static (1453 primitives,
-# nothing moves), days 160-215 contain ALL of the growth (1453 -> 12041
-# primitives, 1.08 m -> 1.96 m tall), and from day 215 onwards it is static
+# Apple growth is extremely unevenly distributed in time: days 0-160 are static,
+# days 160-215 contain all of the growth, and from day 215 onwards it is static
 # again until the tree defoliates around day 380.
 #
 # Animating from day 0 therefore wastes most frames on a motionless sapling and
@@ -140,19 +105,13 @@ def build_scene(context, collision_enabled):
     plantarch = PlantArchitecture(context)
     # Silence per-timestep progress bars and the harmless "BVH not cached"
     # warning so the per-frame progress lines below stay readable.
-    try:
-        plantarch.disableMessages()
-    except AttributeError:
-        # Older PyHelios without message control -- output will be noisier.
-        pass
+    plantarch.disableMessages()
     plantarch.loadPlantModelFromLibrary("apple")
 
     # Build the tree BEFORE enabling collision detection, so both runs start
-    # from a byte-identical sapling. Collision hooks fire during phytomer
-    # construction (PlantArchitecture.cpp:605/661/705/1929), so a tree built
-    # with avoidance already on diverges from the control at day 0 -- same seed
-    # or not. Verified: identical vertex count and centroid at day 0 this way,
-    # different if collision is enabled first.
+    # from an identical sapling. Collision hooks run during phytomer construction,
+    # so a tree built with avoidance already on would differ from the control at
+    # day 0 even with the same seed.
     plant_ids = [plantarch.buildPlantInstanceFromLibrary(
         base_position=TREE_POSITION,
         age=0.0,

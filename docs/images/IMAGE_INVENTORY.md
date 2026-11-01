@@ -4,7 +4,7 @@ This document tracks all images copied from the Helios C++ documentation to PyHe
 
 ## Source
 
-All images in this inventory were copied from: `/Users/bnbailey/Dropbox/PyHelios/helios-core/doc/images/`
+All images in this inventory were copied from: `helios-core/doc/images/`
 
 ## Core Concept Images
 
@@ -40,7 +40,3 @@ Located in `docs/images/primitives/`:
 ## Attribution
 
 These images are part of the Helios plant simulation software documentation and are used in PyHelios documentation to maintain consistency with the C++ documentation.
-
-## Last Updated
-
-2025-12-01

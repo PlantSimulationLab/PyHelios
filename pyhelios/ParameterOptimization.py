@@ -369,9 +369,8 @@ class LBFGS:
     """
     L-BFGS gradient-based optimization.
 
-    Requires an NLopt build that includes the LGPL Luksan solvers. PyHelios
-    builds without them by default to keep the distributed library MIT-licensed,
-    so this is typically unavailable -- use :class:`Adam` or :class:`BOBYQA`.
+    Requires an NLopt build that includes the Luksan solvers, which PyHelios
+    does not build by default, so this is typically unavailable -- use :class:`Adam` or :class:`BOBYQA`.
     """
 
     max_iterations: int = 200
@@ -697,13 +696,13 @@ class ParameterOptimization:
             raise ParameterOptimizationError(
                 f"The {type(algorithm).__name__} algorithm is not available in this build.\n\n"
                 f"{native_name} is provided by NLopt. PyHelios builds NLopt without the "
-                f"LGPL-licensed Luksan solvers so the distributed library stays "
-                f"MIT-licensed, which makes L-BFGS unavailable.\n\n"
+                f"Luksan solvers by default, which makes L-BFGS unavailable.\n\n"
                 f"Alternatives that are always available:\n"
                 f"  - Adam: gradient-based, noise-tolerant\n"
                 f"  - BOBYQA: derivative-free local optimization (needs NLopt)\n"
                 f"  - CMAES / GeneticAlgorithm: population-based global search\n\n"
-                f"To enable it anyway, rebuild helios-core with -DHELIOS_NLOPT_LUKSAN=ON.")
+                f"To enable it, change the set(HELIOS_NLOPT_LUKSAN OFF ...) line in "
+                f"build_scripts/build_helios.py and rebuild from clean.")
 
         try:
             setter(self.optimizer, algorithm._to_struct())
@@ -872,7 +871,7 @@ class ParameterOptimization:
             simulation: Callable receiving ``{name: value}`` and returning a
                         :class:`ConstrainedResult`
             parameters: Parameters to optimize, keyed by name
-            constraint_count: Number of constraints. Required, and fixed for the whole run: the buffers the simulation writes into are sized before the first call, so the count cannot be discovered by calling it.
+            constraint_count: Number of constraints. Required, and fixed for the whole run.
 
         Returns:
             The optimized parameters and the objective value at the optimum

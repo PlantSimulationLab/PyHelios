@@ -407,15 +407,7 @@ Note that the parameter sets in the library vary in terms of which response func
 
 \warning \ref pyhelios.types.photosynthesis.FarquharModelCoefficients "FarquharModelCoefficients" also exposes the scalar fields `Vcmax`, `Jmax`, `Rd` and `alpha`, which are **deprecated legacy parameters** retained only for backwards compatibility. Assigning one directly (rather than calling the setter) selects a simple non-peaked Arrhenius response built from the corresponding `c_*`/`dH_*` coefficient, bypassing the temperature response object entirely. As of helios-core 1.3.80, calling the matching setter resets the scalar field to its `-1` sentinel so that the setter is always authoritative — the two representations can no longer silently disagree about which value the model uses. Prefer the setter API in new code; mixing the two is not supported.
 
-Because every species in the library is populated through the setters, the scalar fields alone cannot round-trip a peaked response. PyHelios therefore passes a flat coefficient array of **38 floats** across the C++ interface:
-
-| Slots | Contents |
-| ----- | -------- |
-| 0–17  | Legacy fields: `Vcmax`, `Jmax`, `alpha`, `Rd`, `O`, `TPU_flag`, then the 12 `c_*`/`dH_*` temperature constants |
-| 18–21 | Mesophyll conductance \f$g_m\f$ response: (`gm_at_25C`, `dHa`, `Topt_C`, `dHd`) |
-| 22–37 | Full temperature response blocks of (`value_at_25C`, `dHa`, `Topt_C`, `dHd`) for \f$V_{cmax}\f$, \f$J_{max}\f$, \f$R_d\f$, \f$\alpha\f$, in that order |
-
-Each 4-float block uses the `-1` sentinel convention: `dHa < 0` means constant (no temperature response), `Topt_C < 0` means a monotonic Arrhenius response, and `dHd < 0` means the default deactivation energy. Note that `Topt_C` is stored in **degrees Celsius**, not Kelvin. Because slots 22–37 carry the full response, a peaked response round-trips correctly through \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::getFarquharModelCoefficients "getFarquharModelCoefficients()" and \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharModelCoefficients "setFarquharModelCoefficients()". Shorter arrays are still accepted on read for backwards compatibility (the 18-float layout predating \f$g_m\f$, and the 22-float layout predating the rate response blocks); the corresponding responses are simply left unset.
+Because every species in the library is populated through the setters, the scalar fields alone cannot express a peaked response; the temperature-response objects hold it, and it round-trips through \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::getFarquharModelCoefficients "getFarquharModelCoefficients()" and \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharModelCoefficients "setFarquharModelCoefficients()".
 
 ```python
 from pyhelios import Context, PhotosynthesisModel
@@ -443,60 +435,6 @@ with Context() as context:
 
         photo.run()
 ```
-
-### Material-Based Coefficients (C++ Helios) {#PhotoMaterialBasedCoeffs}
-
-The native Helios C++ library uses a material-based approach for setting photosynthesis model coefficients:
-
-**C++ Approach (Native Helios):**
-```cpp
-Context context;
-PhotosynthesisModel photo_model(&context);
-
-// 1. Create materials for different species
-context.addMaterial("almond_leaf");
-context.addMaterial("grape_leaf");
-
-// 2. Set coefficients from species library
-photo_model.setFarquharCoefficientsFromLibrary("Almond", "almond_leaf");
-photo_model.setFarquharCoefficientsFromLibrary("Grape", "grape_leaf");
-
-// 3. Create primitives and assign materials
-std::vector<uint> almond_leaves = context.addPatch(...);
-context.assignMaterialToPrimitive(almond_leaves, "almond_leaf");
-
-// 4. Run model - coefficients automatically applied based on material
-photo_model.run();
-```
-
-**Advantages of material-based approach (C++):**
-- Memory efficient: Coefficients stored once per material
-- Automatic XML serialization with Context
-- Simplified canopy management: Update one material to change entire plant/organ
-- Performance: Caching minimizes Context lookups
-
-**PyHelios Implementation Note:**
-
-PyHelios currently uses a **UUID-based approach** rather than the material-based system. Pass a list of primitive UUIDs to set coefficients for specific primitives:
-
-```python
-from pyhelios import Context, PhotosynthesisModel
-
-with Context() as context:
-    with PhotosynthesisModel(context) as photo:
-        # Create primitives for different species
-        almond_uuids = [context.addPatch(...) for _ in range(10)]
-        grape_uuids = [context.addPatch(...) for _ in range(10)]
-
-        # Set coefficients from species library for specific UUIDs
-        photo.setFarquharCoefficientsFromLibrary("Almond", almond_uuids)
-        photo.setFarquharCoefficientsFromLibrary("Grape", grape_uuids)
-
-        # Run model - coefficients applied to specified primitives
-        photo.run()
-```
-
-The UUID-based approach provides similar functionality, allowing you to group primitives logically and set parameters per group.
 
 ## Empirical Model Description {#EmpiricalDescription}
 
@@ -526,7 +464,7 @@ It is assumed that the maximum CO<sub>2</sub> assimilation rate \f$A_{max}\f$ de
 
    \f$f_T\f$ is clamped to zero outside the range over which it is defined: at or below \f$T_{min}\f$, and above the upper temperature at which the second factor \f$\left((1+q)T_{opt}-T_{min}-qT_s\right)\f$ changes sign. In those regimes gross assimilation is zero and the net rate reduces to \f$A = -R_d\f$. \f$f_T\f$ therefore never goes negative.
 
-\warning Coefficient sets that make the reference denominator of \f$f_T\f$ degenerate are rejected with an error. The coefficients must satisfy \f$T_{ref} > T_{min}\f$ and \f$(1+q)T_{opt}-T_{min}-qT_{ref} \neq 0\f$. This validation is performed **before** the \f$T_s \le T_{min}\f$ early return, so an invalid coefficient set raises on every timestep regardless of the leaf temperature — it will not be silently skipped on cold timesteps and reported as a well-formed \f$A = -R_d\f$.
+\warning Coefficient sets that make the reference denominator of \f$f_T\f$ degenerate are rejected with an error. The coefficients must satisfy \f$T_{ref} > T_{min}\f$ and \f$(1+q)T_{opt}-T_{min}-qT_{ref} \neq 0\f$. An invalid coefficient set raises on every timestep, regardless of the leaf temperature.
 
    The "dark" respiration rate \f$R_d\f$ is assumed to increase exponentially with temperature following the Arrhenius equation (and assumed not to vary with ambient CO<sub>2</sub> concentration).  Thus, the dark respiration rate is calculated simply as
 

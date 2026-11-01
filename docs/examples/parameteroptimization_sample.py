@@ -147,10 +147,8 @@ def discrete_parameters():
         return (params["leaf_count"] - 12.0) ** 2 + (params["leaf_angle"] - 45.0) ** 2
 
     with ParameterOptimization() as opt:
-        # The genetic algorithm is the only one that searches discrete spaces
-        # correctly. The local solvers reject non-FLOAT parameters outright, and
-        # CMA-ES / Bayesian optimization silently return a value outside the
-        # allowed category list rather than raising.
+        # The genetic algorithm is the only one that searches discrete spaces;
+        # the others require every parameter to be FLOAT and raise ValueError otherwise.
         opt.setAlgorithm(GeneticAlgorithm(generations=150, population_size=40,
                                           random_seed=3))
         result = opt.run(objective, {
@@ -205,8 +203,8 @@ def report_available_algorithms():
             print(f"  {name:8s} {'yes' if available else 'no'}")
 
     print()
-    print("  L-BFGS is normally unavailable: it comes from NLopt's LGPL Luksan")
-    print("  sources, which PyHelios omits to keep the library MIT-licensed.")
+    print("  L-BFGS is normally unavailable: it comes from NLopt's Luksan")
+    print("  sources, which PyHelios does not build by default.")
     print("  Adam and BOBYQA cover the same use cases.")
     print()
 

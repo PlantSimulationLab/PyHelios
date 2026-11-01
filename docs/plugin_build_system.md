@@ -1,18 +1,15 @@
 # Building and Selecting Plug-ins {#PluginBuildSystem}
 
-PyHelios uses a flexible plugin architecture with **21 available plugins** that can be selectively built and deployed based on your hardware and requirements. This page describes how to build, select, and detect plug-ins at runtime. For documentation of individual plug-ins, see \ref PluginSystem "Plugins".
+PyHelios uses a flexible plugin architecture with **13 integrated plugins** that can be selectively built and deployed based on your hardware and requirements. This page describes how to build, select, and detect plug-ins at runtime. For documentation of individual plug-ins, see \ref PluginSystem "Plugins".
 
 ## Plugin Categories
 
 ### Core Plugins (Always Available)
 - **weberpenntree**: Procedural tree generation using Weber-Penn algorithms
-- **canopygenerator**: Plant canopy generation for various species  
 - **solarposition**: Solar position calculations and sun angle modeling
 
 ### GPU-Accelerated Plugins
 - **radiation**: GPU-accelerated ray tracing and radiation modeling via Vulkan or OptiX backends
-- **aeriallidar**: Aerial LiDAR simulation with GPU acceleration (CUDA)
-- **collisiondetection**: Collision detection with optional GPU acceleration
 
 ### Physics Modeling Plugins
 - **energybalance**: Plant energy balance calculations and thermal modeling
@@ -25,18 +22,15 @@ PyHelios uses a flexible plugin architecture with **21 available plugins** that 
 ### Analysis and Simulation Plugins
 - **lidar**: LiDAR simulation and point cloud processing
 - **plantarchitecture**: Advanced plant structure and architecture modeling
-- **voxelintersection**: Voxel intersection operations and spatial analysis
-- **syntheticannotation**: Synthetic data annotation for machine learning
 - **parameteroptimization**: Parameter optimization algorithms for model calibration
 
 ### Visualization and Tools
 - **visualizer**: OpenGL-based 3D visualization and rendering
-- **projectbuilder**: GUI project builder with ImGui interface
 
 ## Plugin Selection
 
 A bare `build_scripts/build_helios` builds **every** available plugin. This is the
-default, it is what the wheels ship, and it is what local testing should use.
+default, and it is what the wheels ship.
 
 ```bash
 # Default build: all available plugins (use this)
@@ -46,7 +40,7 @@ build_scripts/build_helios
 build_scripts/build_helios --clean
 
 # Explicit plugin selection
-build_scripts/build_helios --plugins weberpenntree,canopygenerator,visualizer
+build_scripts/build_helios --plugins weberpenntree,solarposition,visualizer
 
 # Exclude a single plugin
 build_scripts/build_helios --exclude radiation
@@ -60,8 +54,7 @@ build_scripts/build_helios --interactive
 
 Only restrict the plugin set when you specifically need to isolate a plugin — for
 example to reproduce a plugin-specific build failure. A plugin left out of the
-build reports itself as unavailable at runtime, and the resulting
-`PluginNotAvailable` errors are easy to misread as code bugs.
+build reports itself as unavailable at runtime.
 
 To make a selection persistent, set `explicit_plugins`, `excluded_plugins` or
 `build_type` in `pyhelios_config.yaml` rather than passing flags each time. Use
@@ -83,9 +76,7 @@ PyHelios automatically detects available plugins at runtime:
 ```python
 from pyhelios import Context
 
-# Context reports available plugins during initialization
 context = Context()
-# Output: "PyHelios Context created with 8 available plugins: weberpenntree, canopygenerator, visualizer..."
 
 # Check available plugins
 available_plugins = context.get_available_plugins()
@@ -159,7 +150,7 @@ if missing:
 
 ```bash
 # Build with specific plugins
-build_scripts/build_helios --plugins weberpenntree,canopygenerator,visualizer,energybalance
+build_scripts/build_helios --plugins weberpenntree,solarposition,visualizer,energybalance
 
 # Interactive selection (guided setup)
 build_scripts/build_helios --interactive

@@ -10,6 +10,8 @@ import os
 collect_ignore_glob = [os.path.join("manual", "*")]
 
 import ctypes
+import subprocess
+import sys
 import pytest
 import platform
 from unittest.mock import Mock, MagicMock
@@ -214,6 +216,86 @@ def fail_if_metal_device_in_pytest_parent(request):
             "damage cannot be undone once the device exists."
         )
     yield
+
+
+METAL_SHADER_WARMUP_SCRIPT = """
+from pyhelios import Context, RadiationModel
+from pyhelios.plugins.registry import get_plugin_registry
+from pyhelios.types import vec2, vec3
+
+if get_plugin_registry().is_plugin_available("radiation"):
+    with Context() as context:
+        context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+        context.addPatch(center=vec3(0, 0, 1), size=vec2(0.5, 0.5))
+        with RadiationModel(context) as radiation:
+            radiation.disableMessages()
+            source = radiation.addCollimatedRadiationSource()
+            radiation.addRadiationBand("direct")
+            radiation.disableEmission("direct")
+            radiation.setSourceFlux(source, "direct", 100.0)
+            radiation.setScatteringDepth("direct", 2)
+            radiation.addRadiationBand("diffuse")
+            radiation.disableEmission("diffuse")
+            radiation.setDiffuseRadiationFlux("diffuse", 100.0)
+            radiation.setDiffuseRayCount("diffuse", 16)
+            radiation.addRadiationCamera(
+                camera_label="warmup",
+                band_labels=["direct"],
+                position=vec3(0, 0, 5),
+                lookat_or_direction=vec3(0, 0, 0),
+                antialiasing_samples=1,
+            )
+            radiation.updateGeometry()
+            radiation.runBand(["direct", "diffuse"])
+"""
+
+
+def _warm_metal_shader_cache():
+    """Fill the on-disk Metal shader cache from a spawned process.
+
+    A ``--forked`` child cannot compile Metal shaders: launchd refuses its
+    lookup of MTLCompilerService ("No such process"), and this holds even when
+    the parent never created a device. A child that misses the shader cache
+    therefore dies inside AGXMetal with SIGKILL, so forked GPU tests only work
+    on cache hits. A spawned process can reach the compiler and writes to the
+    same cache, so running the radiation model here once makes the children's
+    lookups hit. The process is spawned rather than run in-process because a
+    Metal device in the pytest parent is fatal (see
+    ``fail_if_metal_device_in_pytest_parent``).
+
+    Returns:
+        subprocess.CompletedProcess, or None if a timeout stopped the process.
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        return subprocess.run(
+            [sys.executable, "-c", METAL_SHADER_WARMUP_SCRIPT],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=repo_root,
+            env=dict(os.environ, PYTHONPATH=repo_root),
+        )
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def pytest_sessionstart(session):
+    """Warm the Metal shader cache once, in the parent, before any test forks.
+
+    A session-scoped fixture would not work here: pytest-forked runs fixture
+    setup inside each forked child.
+    """
+    if platform.system() != "Darwin" or _env_flag_set("HELIOS_NO_GPU"):
+        return
+    result = _warm_metal_shader_cache()
+    if result is None or result.returncode != 0:
+        reason = "timed out" if result is None else f"exited {result.returncode}"
+        print(
+            f"\nWARNING: Metal shader cache warm-up {reason}. On a cold cache, "
+            "forked GPU tests will crash with signal 9 inside AGXMetal.",
+            file=sys.stderr,
+        )
 
 
 def _reset_plugin_registry_if_available():

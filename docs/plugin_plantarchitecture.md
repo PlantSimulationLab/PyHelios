@@ -2,7 +2,7 @@
 
 ## Overview
 
-PlantArchitecture provides advanced plant structure and architecture modeling with a comprehensive library of 30 procedural plant models. This plugin enables time-based plant growth simulation, procedural plant generation, and plant community modeling for scientific applications including agriculture, forestry, and ecological research.
+PlantArchitecture provides advanced plant structure and architecture modeling with a comprehensive library of procedural plant models. This plugin enables time-based plant growth simulation, procedural plant generation, and plant community modeling for scientific applications including agriculture, forestry, and ecological research.
 
 The plugin includes pre-built models for major agricultural crops (bean, cowpea, maize, rice, soybean, wheat), fruit trees (almond, apple, olive, walnut), and other plant species with biologically-accurate growth parameters and morphological characteristics.
 
@@ -75,7 +75,7 @@ with Context() as context:
 
 ## Available Plant Models
 
-PlantArchitecture includes 28 scientifically-validated plant models:
+PlantArchitecture includes the following plant models (`getAvailablePlantModels()` returns the same list at runtime):
 
 **Field Crops:**
 - `"bean"` - Common bean with climbing growth habit
@@ -371,11 +371,9 @@ with Context() as context, PlantArchitecture(context) as plant:
 
 A shoot type's child shoot types — the labels it can branch into and their
 probabilities — round-trip through `getCurrentShootParameters()` /
-`defineShootType()` as of helios-core 1.3.84, under the `child_shoot_types` key. Before
-that they could be written but not read, so a read-modify-write cycle silently erased a
-shoot type's branching topology. One case still cannot be expressed: an explicitly empty
-list, which the native `defineChildShootTypes()` rejects, leaves whatever the shoot type
-being replaced already carried.
+`defineShootType()` under the `child_shoot_types` key (helios-core 1.3.84+). One case cannot
+be expressed: an explicitly empty list leaves whatever the shoot type being replaced already
+carried.
 
 `InflorescenceParameters.inflorescence_maturity_period` (helios-core 1.3.85) sets how many
 days an inflorescence takes to expand from its initial quarter size to full size. Its default of
@@ -624,9 +622,7 @@ that state explicitly, which is useful for a plant that had thresholds set earli
 plant.disablePlantPhenology(plant_id)
 ```
 
-Avoid calling it on a plant that already has fruiting buds: helios-core sets `dd_to_fruit_maturity`
-to `-1` here rather than to the `1e6` used for the no-phenology default, and that field is a
-divisor in the fruit-growth branch of `advanceTime()`, so a later time step can compute a negative
+Avoid calling it on a plant that already has fruiting buds: a later time step can compute a negative
 fruit scale factor. A plant that never had thresholds set is already in the no-phenology state and
 does not need this call.
 
@@ -825,7 +821,7 @@ with Context() as context:
             print(context.getObjectPrimitiveUUIDs(leaf_id))
 ```
 
-> **Do not pair the two results positionally.** `getPlantLeafObjectIDs()` and `getPlantLeafBases()` are built by independent traversals of the shoot tree, so element *i* of one is not guaranteed to describe the same leaf as element *i* of the other. helios-core keeps an internal `getPlantLeafObjectIDsAndBases()` that gathers both in a single traversal for exactly this reason, but it is protected and not reachable from PyHelios. If you need the correspondence, derive the position from the object ID instead — e.g. via `context.getObjectPrimitiveUUIDs(leaf_id)` and the primitive vertices.
+> **Do not pair the two results positionally.** `getPlantLeafObjectIDs()` and `getPlantLeafBases()` are built by independent traversals of the shoot tree, so element *i* of one is not guaranteed to describe the same leaf as element *i* of the other. If you need the correspondence, derive the position from the object ID instead — e.g. via `context.getObjectPrimitiveUUIDs(leaf_id)` and the primitive vertices.
 
 Four further getters cover the remaining organ types, all with the same signature and return type:
 
@@ -1015,9 +1011,7 @@ no need to walk the branch system yourself.
 
 ### Harvesting and Defoliation
 
-`harvestPlant()` removes reproductive organs only. This matches the C++ implementation; note
-that the upstream Helios documentation for `harvestPlant` incorrectly states that it also
-removes leaves.
+`harvestPlant()` removes reproductive organs only; it does not remove leaves.
 
 ```python
 fruit_before = len(plantarch.getPlantFruitObjectIDs(plant_id))
@@ -1270,11 +1264,10 @@ a Python one through `setPhytomerCreationFunction()` (see Phytomer Creation Func
 
 **XML round trip (helios-core 1.3.85).** `writePlantStructureXML()` records the prescribed node
 positions and radii, and `readPlantStructureXML()` rebuilds the shoot from them, so the measured
-*shape* is reproduced exactly. The phytomer *count* is not: the writer emits the subdivided node
-list (one node per `internode.length_segments`), and the reader creates one phytomer per written
-segment, so a reloaded shoot has `length_segments` times as many phytomers, each correspondingly
-shorter, and a prescribed child shoot fails to reload because its saved `parent_node_index` no
-longer names the node it was attached to. The two coincide only when `length_segments` is 1.
+*shape* is reproduced exactly. The phytomer *count* is not: a reloaded shoot has
+`internode.length_segments` times as many phytomers, each correspondingly shorter, and a prescribed
+child shoot fails to reload because its saved `parent_node_index` no longer names the node it was
+attached to. Neither happens when `length_segments` is 1.
 
 **Units and frames.** `leaf_rotations` are `AxisRotation(pitch, yaw, roll)` in **radians**,
 relative to the petiole and internode axes rather than to world axes. The chain that places a
@@ -1371,8 +1364,7 @@ plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=20)
   interval into sub-steps of at most the shortest phyllochron, so the number of calls is not the
   number of days.
 - `None`, exceptions, and which shoots are affected behave as for creation functions above.
-- Cost: about 0.2 µs per call to cross into Python, plus 1.5–2 µs for each per-phytomer method the
-  function calls. For a growing plant this is around 1% of `advanceTime()`; for a dormant tree,
+- Cost: for a growing plant this is a small fraction of `advanceTime()`; for a dormant tree,
   whose own per-step work is small, it can be several times the run time.
 
 ### Structural Edits from Creation Functions and Callbacks
@@ -1390,9 +1382,7 @@ may change is limited (helios-core 1.3.90):
   already removed does nothing. If the enclosing call ends in an error, the cuts it queued are
   discarded. Before 1.3.90, pruning from one of these functions could crash or corrupt the plant.
 - **`advanceTime()`, `deletePlantInstance()` and `loadPlantModelFromLibrary()` raise
-  `PlantArchitectureError`.** The native plugin skips these with a warning; PyHelios raises
-  instead, because the warning is suppressed by `disableMessages()` and the call would otherwise
-  appear to succeed.
+  `PlantArchitectureError`.**
 - **Operations that add structure raise `PlantArchitectureError`:** `addBaseStemShoot()`,
   `appendShoot()`, `addChildShoot()`, `addShootFromNodePositions()`,
   `buildPlantInstanceFromLibrary()`, `buildPlantCanopyFromLibrary()` and

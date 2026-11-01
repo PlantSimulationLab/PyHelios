@@ -134,17 +134,17 @@ def main():
         [0.0, 1.0]   # top-left UV
     ], dtype=np.float32)
 
-    # Single texture example (backward compatible)
+    # Single texture applied to every triangle
     textured_uuids = context.addTrianglesFromArraysTextured(
         vertices=quad_vertices,
         faces=quad_faces,
         uv_coords=uv_coords,
-        texture_files=str(MODELS_DIR / "Helios_logo.jpeg")  # Note: now uses texture_files parameter
+        texture_files=str(MODELS_DIR / "Helios_logo.jpeg")
     )
     print(f"   Single textured triangles: {len(textured_uuids)} triangles added")
     print(f"   Textured UUIDs: {textured_uuids}")
     
-    # Multi-texture example (new functionality)
+    # Multi-texture example
     print("\n   Multi-texture example:")
     
     # Create a simple 2x1 rectangle with 4 triangles using different textures
@@ -173,7 +173,7 @@ def main():
     material_ids = np.array([0, 0, 1, 1], dtype=np.uint32)
     
     try:
-        # Attempt multi-texture with dummy texture files (will fail validation but shows API)
+        # material_ids selects which texture each triangle uses
         multi_textured_uuids = context.addTrianglesFromArraysTextured(
             vertices=multi_vertices,
             faces=multi_faces,

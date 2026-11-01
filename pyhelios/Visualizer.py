@@ -381,11 +381,8 @@ class Visualizer:
         The frame is rendered as part of the capture (helios-core 1.3.85+), so it is
         not necessary to call :meth:`plotUpdate` beforehand: handing the Visualizer a
         Context with :meth:`buildContextGeometry` and calling this straight away
-        produces a correct image. A render is performed whenever the frame currently
-        on the GPU is not the one that would be captured (geometry changed, the camera
-        moved, or the navigation gizmo had to be hidden) and skipped when it would
-        produce an identical frame, so calling :meth:`plotUpdate` first is harmless
-        but redundant. The navigation gizmo is always absent from the captured image.
+        produces a correct image. Calling :meth:`plotUpdate` first is harmless but
+        redundant. The navigation gizmo is always absent from the captured image.
 
         Args:
             filename: Output filename for image

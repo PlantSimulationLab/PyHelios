@@ -516,9 +516,7 @@ class AxisRotation(ctypes.Structure):
     """
     Axis rotation structure for specifying shoot orientation in PlantArchitecture.
 
-    Represents rotation using pitch, yaw, and roll angles in **radians**, exactly as the
-    native ``helios::AxisRotation`` does: the values are passed through unchanged and the
-    plant-architecture library itself builds rotations such as ``0.05 * pi`` and ``2 * pi``.
+    Represents rotation using pitch, yaw, and roll angles in **radians**.
     Use ``math.radians()`` to convert from degrees. Used to define the orientation of
     shoots, stems, and branches during plant construction.
     """
@@ -769,7 +767,7 @@ def make_RGBAcolor(r: float, g: float, b: float, a: float) -> RGBAcolor:
     return RGBAcolor(r, g, b, a)
 
 def make_AxisRotation(pitch: float, yaw: float, roll: float) -> AxisRotation:
-    """Make an AxisRotation from three angles in degrees"""
+    """Make an AxisRotation from three angles in radians"""
     return AxisRotation(pitch, yaw, roll)
 
 

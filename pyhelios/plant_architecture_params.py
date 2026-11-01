@@ -26,8 +26,10 @@ Notes
   :class:`RandomParameterInt` carrying a distribution and its parameters.
 * Prototype functions (leaf/flower/fruit) are referenced by *name* -- a string
   naming a built-in Helios prototype (e.g. ``"AlmondFlowerPrototype"``). An empty
-  string / ``None`` means "unset". The C++ ``shared_ptr<Phytomer>`` creation and
-  callback functions are not exposable from Python and are not represented here.
+  string / ``None`` means "unset". Phytomer creation and callback functions are not
+  part of these parameter objects; see
+  :meth:`~pyhelios.PlantArchitecture.PlantArchitecture.setPhytomerCreationFunction` and
+  :meth:`~pyhelios.PlantArchitecture.PlantArchitecture.setPhytomerCallbackFunction`.
 * Child shoot types round-trip in both directions as of helios-core 1.3.84; see
   :attr:`ShootParameters.child_shoot_types`.
 """
@@ -69,10 +71,7 @@ LEAF_EXPANSION_RATE_UNSET = -1.0
 # Bud state
 # --------------------------------------------------------------------------- #
 class BudState(IntEnum):
-    """State of a vegetative or floral bud, mirroring the C++ ``BudState`` enum.
-
-    The values are the wire format passed to the native library, so they match the
-    C++ enumerators (``BUD_DORMANT`` through ``BUD_DEAD``) one for one.
+    """State of a vegetative or floral bud.
 
     ``DEAD`` means the bud will produce nothing further. It is set both when a bud is
     killed -- by :meth:`~pyhelios.PlantArchitecture.PlantArchitecture.removeShootVegetativeBuds`

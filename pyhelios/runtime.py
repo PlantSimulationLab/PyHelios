@@ -2,7 +2,7 @@
 PyHelios Runtime GPU Detection Module
 
 This module provides runtime GPU detection capabilities for PyHelios testing and validation.
-Implements proper fail-fast detection without silent fallbacks, following CLAUDE.md guidelines.
+Detection fails fast rather than falling back silently.
 """
 
 import logging

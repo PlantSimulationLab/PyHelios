@@ -153,7 +153,6 @@ Doxygen requires **fully qualified names** for Python class and method reference
 - Short names like `\ref PhotosynthesisModel` cause "unable to resolve reference" warnings
 - Automatic linking (no `\ref`) does NOT work for Python methods - they show as plain text
 - Only fully qualified names create working hyperlinks in generated documentation
-- Discovered during photosynthesis doc sync (2025-12-03) after systematic debugging
 
 ### Step 3: Replace C++ Code Examples with Python
 
@@ -805,27 +804,6 @@ stomatal.setBMFCoefficients(coeffs, uuids=[uuid1, uuid2])
 
 See [C++ documentation](link) for material-based approach.
 ```
-
----
-
-## Success Story: Stomatal Conductance Sync (2025-12-03)
-
-**What worked:**
-- Started with exact copy of native doc
-- Worked section-by-section with user approval
-- Fixed Doxyfile.python MathJax config FIRST
-- Used code-reviewer agent to catch API errors
-- Fixed all issues before declaring complete
-
-**What didn't work initially:**
-- Tried to create "combined" doc from scratch (missed sections)
-- Didn't verify API methods existed (used wrong method names)
-- Used backticks instead of `\ref` (broke hyperlinking)
-- Tried to batch-convert (introduced errors)
-
-**Time saved by following proper workflow:** ~2 hours of debugging and rework
-
-**Lesson:** Following the systematic workflow is FASTER than trying shortcuts.
 
 ---
 

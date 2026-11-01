@@ -4,12 +4,7 @@ from typing import Optional
 from .wrappers import UGlobalWrapper as global_wrapper
 
 class Global:
-    """Process-wide helios-core functions that belong to no Context or plug-in model.
-
-    The plug-in build root used to locate runtime assets is not settable here: it is a
-    per-model construction argument (see ``WeberPennTree(context, build_directory)``),
-    and helios-core exposes no global setter for it.
-    """
+    """Process-wide helios-core functions that belong to no Context or plug-in model."""
 
     # =========================================================================
     # GPU Environment (helios-core v1.3.79+)
@@ -21,9 +16,7 @@ class Global:
 
         True when ``HELIOS_REQUIRE_GPU`` is set to any value other than ``"0"``.
         This is the counterpart to the ``HELIOS_NO_GPU`` veto: rather than changing
-        what hardware probes report, it changes what a test does when no GPU is
-        found, so a CI runner dedicated to GPU coverage cannot report success after
-        silently skipping every GPU test.
+        what hardware probes report, it makes the absence of a GPU an error.
 
         The environment is read on every call rather than cached, so a change made
         via ``os.environ`` is observed immediately — **except on Windows**, where it
@@ -57,13 +50,6 @@ class Global:
         This function does not itself probe for hardware: reaching it is taken as
         proof the caller already determined no GPU was usable, so when
         ``HELIOS_REQUIRE_GPU`` is set it always raises.
-
-        For gating PyHelios's own tests prefer the ``skip_or_fail_without_gpu``
-        helper in ``conftest.py``, which reports a skip or failure to pytest directly
-        and works in mock mode where no native library is loaded. It also reads the
-        environment from Python, so unlike this function it works on Windows when
-        the variable was set after the interpreter started — see
-        :meth:`gpuRequiredByEnvironment` for why that difference exists.
 
         Args:
             context_message: Description of what was about to be skipped, included in

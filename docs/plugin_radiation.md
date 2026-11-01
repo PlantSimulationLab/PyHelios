@@ -1,6 +1,6 @@
 # Radiation Model Plugin {#RadiationDoc}
 
-The Radiation Model plugin provides GPU-accelerated ray tracing for radiation simulation using Vulkan or OptiX backends. Backend selection is automatic based on available hardware: Vulkan supports all GPU vendors (NVIDIA, AMD, Intel, Apple Silicon), while OptiX provides an optimized path for NVIDIA GPUs. This documentation is based on the actual implementation.
+The Radiation Model plugin provides GPU-accelerated ray tracing for radiation simulation using Vulkan or OptiX backends. Backend selection is automatic based on available hardware: Vulkan supports all GPU vendors (NVIDIA, AMD, Intel, Apple Silicon), while OptiX provides an optimized path for NVIDIA GPUs.
 
 ## Overview
 
@@ -114,9 +114,7 @@ with RadiationModel(context) as radiation:
 > results.** `getTotalAbsorbedFlux()` has two traps:
 >
 > 1. **Its ordering is not `context.getAllUUIDs()`.** The values are ordered by the
->    radiation model's internal primitive ordering, built during `updateGeometry()`.
->    `getAllUUIDs()` iterates an unordered map and returns a hash order — with two
->    patches it returns `[1, 0]`. Pairing the two by index silently assigns each
+>    radiation model's internal primitive ordering. Pairing the two by index silently assigns each
 >    primitive's flux to a different primitive.
 > 2. **It sums over every band.** With PAR, NIR and SW registered, the result is
 >    PAR + NIR + SW per primitive, which double-counts because SW already spans the
@@ -129,7 +127,7 @@ with RadiationModel(context) as radiation:
 ### Basic Band Management
 
 ```python
-# Add radiation bands (verified methods)
+# Add radiation bands
 radiation.addRadiationBand("PAR")
 radiation.addRadiationBand("NIR")
 radiation.addRadiationBand("SW")
@@ -168,7 +166,7 @@ for band, description in bands.items():
 ### Collimated Sources
 
 ```python
-# Default collimated source (verified methods)
+# Default collimated source
 source_id = radiation.addCollimatedRadiationSource()
 
 # Source with specific direction vector (accepts tuple, vec3, or SphericalCoord)
@@ -961,7 +959,7 @@ g_horizontal = radiation.calculateGtheta(vec3(1, 0, 0))
 print(f"G-function (horizontal): {g_horizontal}")
 ```
 
-\note `calculateGtheta()` calls `updateGeometry()` automatically (emitting a warning) if the scene geometry has not yet been pushed to the radiation model, so an explicit prior `updateGeometry()` is no longer required. If the G-function is undefined — no geometry, or zero total leaf area in the scene — it raises an explicit `RuntimeError` rather than returning NaN.
+\note `calculateGtheta()` calls `updateGeometry()` automatically (emitting a warning) if the scene geometry has not yet been pushed to the radiation model, so an explicit prior `updateGeometry()` is not required. If the G-function is undefined — no geometry, or zero total leaf area in the scene — it raises an explicit `RuntimeError` rather than returning NaN.
 
 \note The one case it will *not* auto-build is a model holding a primitive subset from `updateGeometry(uuids)` that has not been traced yet: building the full Context there would silently discard the subset, so it raises instead and tells you to call `updateGeometry(uuids)` again (or `updateGeometry()` if you want the whole Context). After a `runBand()` the geometry is already built, so the G-function is simply reported over the subset you selected.
 
@@ -1083,10 +1081,7 @@ radiation.writeCameraImage("cam", ["red", "green", "blue"], "out")  # 3. write
 
 Getting this wrong raises a `RadiationModelError` naming the camera and band that
 were never rendered. PyHelios checks the precondition itself before calling into
-the native library and reports which `runBand()` call is missing. This check is
-load-bearing: helios-core v1.3.79 signals the same failure by returning an empty
-filename rather than raising, so without the PyHelios check a missed `runBand()`
-would look like a successful write that produced no file.
+the native library and reports which `runBand()` call is missing.
 
 ### Time-Series Camera Capture
 
@@ -1364,16 +1359,13 @@ context.colorPrimitiveByDataPseudocolor(
 > **Reading primitive data in bulk:** either `context.getPrimitiveDataArray(uuids,
 > label)` (returns a NumPy array) or a list comprehension over
 > `context.getPrimitiveDataFloat()` works, and both are linear in the primitive
-> count. Note that on PyHelios ≤ 0.1.26 `getPrimitiveDataArray()` was O(N²) —
-> roughly 15 s on a 20,000-primitive scene — because it validated each UUID by
-> rescanning the whole UUID list; if you are pinned to an older release, prefer
-> the loop.
+> count.
 
 ## Camera and Image Functions
 
 > **Note**: Camera functions are available in Helios core v1.3.47+ and PyHelios v0.0.4+
 
-The RadiationModel now includes advanced camera functionality for generating synthetic images, object detection training data, and auto-calibrated imagery.
+The RadiationModel includes camera functionality for generating synthetic images, object detection training data, and auto-calibrated imagery.
 
 ### Camera Image Generation
 
@@ -1944,5 +1936,3 @@ build_scripts/build_helios --plugins radiation
 # Check if radiation is available
 python -c "from pyhelios.plugins import get_plugin_registry; print(get_plugin_registry().is_plugin_available('radiation'))"
 ```
-
-This documentation covers the actual RadiationModel implementation in PyHelios, verified against the wrapper code and high-level interface.

@@ -1549,9 +1549,7 @@ class PlantArchitecture:
             Do **not** pair this result positionally with
             :meth:`getPlantLeafObjectIDs`. The two are built by independent
             traversals of the shoot tree, so their index correspondence is not
-            guaranteed by the native API. (helios-core has an internal
-            ``getPlantLeafObjectIDsAndBases()`` that gathers both in one traversal
-            for exactly this reason, but it is protected and not callable from here.)
+            guaranteed by the native API.
 
         Example:
             >>> bases = plantarch.getPlantLeafBases(plant_id)
@@ -1871,10 +1869,7 @@ class PlantArchitecture:
         Measured from the geometry that was actually built, rather than reported from
         the shoot type's parameters. The two answer different questions: the shoot type
         gives the distribution a parameter was drawn from, while this gives what the
-        plant ended up with. A plant whose leaf parameters carry a wide spread can still
-        deliver leaves of a single size (a random parameter caches its first draw, and a
-        shoot holds a copy of its type's parameters), and nothing in the parameters
-        themselves would reveal that.
+        plant ended up with.
 
         This reports present area, so a leaf part-way through its growth is counted at
         its current size. Leaves are visited shoot by shoot and then phytomer by phytomer,
@@ -2255,14 +2250,9 @@ class PlantArchitecture:
             plant_id: Identifier of the plant whose phenology is to be disabled
 
         Warning:
-            helios-core's ``disablePlantPhenology()`` sets ``dd_to_fruit_maturity`` to ``-1``,
-            whereas the "no phenology scheduled" default for that field is ``1e6``. The field is
-            used as a divisor in the fruit-growth branch of ``advanceTime()``, which is gated only
-            on a bud being in the ``BUD_FRUITING`` state, and ``appendPhytomerToShoot()`` can set
-            that state from shoot structure alone. On a plant that already has a fruiting bud, a
-            subsequent ``advanceTime()`` can therefore compute a negative fruit scale factor. Avoid
-            calling this on a plant with fruiting buds until it is fixed upstream; a plant that
-            never had thresholds set is already in the no-phenology state and does not need it.
+            Avoid calling this on a plant that already has fruiting buds: a later
+            :meth:`advanceTime` can compute a negative fruit scale factor. A plant that never had
+            thresholds set is already in the no-phenology state and does not need it.
 
         Raises:
             ValueError: If plant_id is negative
@@ -2287,8 +2277,7 @@ class PlantArchitecture:
         """
         Force a plant into a dormant state immediately.
 
-        This is the direct equivalent of ``makePlantDormant()`` in helios-core, as called by the
-        library builders such as ``buildAppleTree()``. It is the counterpart to scheduling dormancy
+        It is the counterpart to scheduling dormancy
         through :meth:`setPlantPhenologicalThresholds`: this forces the state now, rather than
         waiting for a degree-day threshold to be crossed.
 
@@ -2445,9 +2434,7 @@ class PlantArchitecture:
             PlantArchitectureError: If the plant does not exist or the call fails
 
         Note:
-            Leaves are **not** removed, despite what the upstream Helios
-            documentation for ``harvestPlant`` states. Use :meth:`removePlantLeaves`
-            to defoliate.
+            Leaves are **not** removed. Use :meth:`removePlantLeaves` to defoliate.
 
         Example:
             >>> before = len(plantarch.getPlantFruitObjectIDs(plant_id))
@@ -4308,10 +4295,9 @@ class PlantArchitecture:
         """
         Change the number of leaves (leaflets) on one petiole of an existing phytomer.
 
-        The leaves are rebuilt procedurally. Without this, the count is fixed by the shoot
-        type's ``leaf.leaves_per_petiole`` for every phytomer, so a measured compound leaf
-        with a different number of leaflets could not be prescribed with
-        :meth:`setPetioleLeafGeometry`.
+        The leaves are rebuilt procedurally. By default the count is set by the shoot type's
+        ``leaf.leaves_per_petiole``; use this to match a measured compound leaf with a
+        different number of leaflets before calling :meth:`setPetioleLeafGeometry`.
 
         Args:
             plant_id: Plant identifier.
@@ -4351,8 +4337,8 @@ class PlantArchitecture:
         Set the target length of internodes grown at the apex of an existing shoot.
 
         A shoot built by :meth:`addShootFromNodePositions` otherwise grows toward the mean
-        of its prescribed internode lengths, so a measured seedling -- whose measured stem
-        is mostly hypocotyl -- could not be grown forward with realistic internodes.
+        of its prescribed internode lengths; use this to give newly grown internodes a
+        different target length.
 
         Args:
             plant_id: Plant identifier.
@@ -4537,8 +4523,7 @@ class PlantArchitecture:
         Each leaf is given a target angle as it emerges and turns onto it while it expands,
         so a fully grown leaf never moves again: the plant matches the distribution at every
         stage without leaves shifting from one timestep to the next. Targets are not drawn
-        independently per leaf, which would reproduce the distribution while destroying the
-        arrangement the model generated -- each emerging leaf takes the bin that best trades
+        independently per leaf, so the arrangement the model generated is preserved: each emerging leaf takes the bin that best trades
         closeness to the angle the model gave it against how far that bin is below its share
         of the plant's leaf area.
 
@@ -5313,11 +5298,8 @@ class PlantArchitecture:
         also runs inside :meth:`buildPlantInstanceFromLibrary` and :meth:`buildPlantCanopyFromLibrary` when
         they grow a plant to its starting age. The return value is ignored.
 
-        Performance: the cost scales with (phytomers x sub-steps). Crossing into Python costs roughly
-        0.2 microseconds per call, and each per-phytomer PyHelios method called from the callback adds
-        roughly 1.5-2 microseconds, so it is the callback's own work that dominates. On a growing plant this
-        is small beside the plugin's own work per step; it matters most for large, slowly changing
-        populations, such as a dormant tree over many days.
+        Performance: the cost scales with (phytomers x sub-steps), so keep the callback's own work light,
+        especially for large populations that change slowly, such as a dormant tree over many days.
 
         If the callback raises, the exception propagates out of the call that advanced time with its original
         type, and no further callbacks run during that call; the plant is left partly advanced.

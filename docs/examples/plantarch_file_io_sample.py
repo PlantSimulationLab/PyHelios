@@ -219,9 +219,6 @@ def example_plant_library_workflow():
                 uuids = plantarch.getAllPlantUUIDs(plant_id)
                 print(f"  Day {age}: {len(uuids)} primitives -> {filename.name}")
 
-                # Delete plant to prepare for next
-                # (In PyHelios, we'd recreate the context or use deletePlant if available)
-
     print(f"\n✓ Created library with {len(growth_stages)} growth stages")
     print(f"Library location: {display_path(library_dir)}")
 

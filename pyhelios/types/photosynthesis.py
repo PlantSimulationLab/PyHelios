@@ -406,7 +406,7 @@ class FarquharModelCoefficients:
         return [response.value_at_25C, response.dHa, topt_c, response.dHd]
 
     def to_array(self) -> List[float]:
-        """Convert to float array for C++ interface (38 floats; helios-core 1.3.80+).
+        """Convert to the flat float array used by the native interface.
 
         Slots 0..17 are the legacy Farquhar fields (Vcmax/Jmax/alpha/Rd/O/TPU_flag plus
         the 12 c_*/dH_* temperature constants). Slots 18..21 carry the mesophyll
@@ -415,12 +415,6 @@ class FarquharModelCoefficients:
         dHd < 0 → default deactivation energy). Slots 22..37 carry the same 4-float block
         for Vcmax, Jmax, Rd and alpha in that order, and slots 38..41 the same block for the
         light response curvature theta.
-
-        The rate blocks in slots 22..37 exist because slots 0..3 can only express a rate at
-        25 C. As of helios-core 1.3.80 the C++ setters stamp the deprecated scalar fields to
-        -1 so the temperature-response object is authoritative, and every species in the
-        library is populated through those setters — so slots 0..3 alone cannot round-trip a
-        peaked response.
         """
         return [
             self.Vcmax, self.Jmax, self.alpha, self.Rd, self.O, float(self.TPU_flag),

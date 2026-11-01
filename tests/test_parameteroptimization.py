@@ -767,6 +767,19 @@ class TestAlgorithmSelection:
         assert "not available" in message.lower()
         assert "Adam" in message or "BOBYQA" in message
 
+    def test_unavailable_algorithm_gives_usable_enable_instructions(self, optimizer):
+        """The enable instructions name the build-script setting, not a CMake flag it overrides."""
+        if optimizer.availableAlgorithms()["LBFGS"]:
+            pytest.skip("L-BFGS is available in this build")
+
+        with pytest.raises(ParameterOptimizationError) as excinfo:
+            optimizer.setAlgorithm(LBFGS())
+
+        message = str(excinfo.value)
+        assert "-DHELIOS_NLOPT_LUKSAN=ON" not in message
+        assert "build_scripts/build_helios.py" in message
+        assert "MIT" not in message
+
     def test_invalid_algorithm_type_rejected(self, optimizer):
         """A non-settings object is rejected."""
         with pytest.raises(TypeError, match="algorithm must be"):

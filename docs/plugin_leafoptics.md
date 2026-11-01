@@ -133,7 +133,7 @@ Every `run(uuids, props, label)` call emits one extra global-data entry and one 
 
 | Output | Type | Description |
 |---|---|---|
-| Global data `fluspect_biochem_<label>` | `std::vector<float>` (11 elements) | Fluspect-B biochemistry vector in fixed field order: `[Cab, Cca, Cw, Cdm, Cs, Cant, Cp, Cbc, N, V2Z, fqe]`. |
+| Global data `fluspect_biochem_<label>` | list of 11 floats | Fluspect-B biochemistry vector in fixed field order: `[Cab, Cca, Cw, Cdm, Cs, Cant, Cp, Cbc, N, V2Z, fqe]`. |
 | Primitive data `fluspect_spectrum` | `string` | Stamped on every UUID — value is `"fluspect_biochem_<label>"`. The radiation plugin reads this per primitive to identify fluorescing leaves; primitives without it are silently treated as non-fluorescing (stems, soil, etc.). |
 
 The biochemistry vector is keyed by label, so leaves sharing a spectrum label share a single Fluspect-B kernel in the radiation plugin's per-label kernel cache. This is automatic — no extra API to enable. A cached kernel is recomputed whenever the biochemistry stored under its label changes (for example when `run()` is called again with the same label and new properties), and SIF follows leaves that are moved to a different label.
@@ -238,7 +238,7 @@ The method returns a \ref pyhelios.LeafOptics.LeafOpticsProperties "LeafOpticsPr
 
 ### Available Species {#LOLibrarySpecies}
 
-The library contains PROSPECT-D parameters fitted to measured leaf spectra using the `fit_prospect_visrobust.py` script with robust optimization. Most species are fitted to LOPEX93 spectral library samples; `"common_bean"` and `"cowpea"` are fitted to spectra from the GEMINI field experiments. All species use PROSPECT-D mode (drymass > 0, protein = 0, carbonconstituents = 0).
+The library contains PROSPECT-D parameters fitted to measured leaf spectra by robust optimization. Most species are fitted to LOPEX93 spectral library samples; `"common_bean"` and `"cowpea"` are fitted to spectra from the GEMINI field experiments. All species use PROSPECT-D mode (drymass > 0, protein = 0, carbonconstituents = 0).
 
 <table>
  <tr><th>Species Label</th><th>Scientific Name</th><th>N</th><th>Cab<br>(µg/cm²)</th><th>Car<br>(µg/cm²)</th><th>Ant<br>(µg/cm²)</th><th>Cbrown</th><th>Cw<br>(g/cm²)</th><th>Cm<br>(g/cm²)</th><th>R²</th><th>Source</th></tr>
@@ -429,7 +429,6 @@ with Context() as context:
  </tr>
 </table>
 
-*/
 ## Nitrogen-Based Automatic Leaf Optics {#LONitrogenAuto}
 
 Instead of specifying pigments directly, LeafOptics can derive each leaf's chlorophyll and carotenoid content from its nitrogen content. Pass a `LeafOpticsProperties_Nauto` to `run()` **without a label**. The plug-in groups the primitives by parent object, reads the `"leaf_nitrogen_gN_m2"` object data (g N m\f$^{-2}\f$, normally written by the PlantArchitecture nitrogen model) from each object, and computes:

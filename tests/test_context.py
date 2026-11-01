@@ -2641,10 +2641,19 @@ class TestTextureGetters:
 
     def test_setPrimitiveTextureFile(self, basic_context):
         """Setting and getting texture file round-trips."""
+        texture = _find_test_texture()
+        if texture is None:
+            pytest.skip("no helios-core texture image available")
         uuid = basic_context.addPatch()
-        basic_context.setPrimitiveTextureFile(uuid, "test_texture.png")
-        result = basic_context.getPrimitiveTextureFile(uuid)
-        assert result == "test_texture.png"
+        basic_context.setPrimitiveTextureFile(uuid, texture)
+        assert basic_context.getPrimitiveTextureFile(uuid) == texture
+
+    def test_setPrimitiveTextureFile_missing_file_raises(self, basic_context):
+        """A file that does not exist raises and leaves the primitive untextured."""
+        uuid = basic_context.addPatch()
+        with pytest.raises(HeliosRuntimeError, match="does not exist"):
+            basic_context.setPrimitiveTextureFile(uuid, "no_such_texture.png")
+        assert basic_context.getPrimitiveTextureFile(uuid) == ""
 
     def test_getPrimitiveTextureSize_no_texture(self, basic_context):
         """Primitive without texture returns zero size."""

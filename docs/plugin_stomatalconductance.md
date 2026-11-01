@@ -625,7 +625,7 @@ As with the other models, \f$D_s\f$ is obtained by iteratively solving the water
 
 The plug-in follows a fail-fast philosophy: physically meaningless inputs produce an error rather than a silently substituted value. As of helios-core 1.3.80, \ref pyhelios.StomatalConductance.StomatalConductanceModel::run "run()" raises an error if any of the following conditions is encountered.
 
-Note that a boundary-layer conductance of exactly **zero is not an error**. It is physically attainable (a zero-size primitive, or zero wind speed) and is produced by the boundary-layer conductance plug-in in those cases. In that limit no water vapor can be exchanged with the air outside the boundary layer, so stomatal conductance no longer influences the transpiration rate and the steady-state value is taken to be \f$g_s = 0\f$. A warning is issued rather than an error. A **negative or non-finite** boundary-layer conductance, by contrast, is an error — previously it was clipped to zero with a warning, which then produced a division by zero.
+Note that a boundary-layer conductance of exactly **zero is not an error**. It is physically attainable (a zero-size primitive, or zero wind speed) and is produced by the boundary-layer conductance plug-in in those cases. In that limit no water vapor can be exchanged with the air outside the boundary layer, so stomatal conductance no longer influences the transpiration rate and the steady-state value is taken to be \f$g_s = 0\f$. A warning is issued rather than an error. A **negative or non-finite** boundary-layer conductance, by contrast, is an error.
 
 <table>
     <tr><th>Condition</th><th>Reason</th></tr>
@@ -801,10 +801,8 @@ with Context() as context:
         # Initialize model coefficients and modify their values
         # BMFCoefficients is immutable; these are the model default values.
         modelcoeffs = BMFCoefficients(Em=258.25, i0=38.65, k=232916.82, b=609.67)
-        modelcoeffs.Em = 9.3  # we can modify one or more parameters
-        modelcoeffs.i0 = 5.3
-        modelcoeffs.k = 672
-        modelcoeffs.b = 6.7
+        # _replace() returns a copy with one or more parameters changed
+        modelcoeffs = modelcoeffs._replace(Em=9.3, i0=5.3, k=672, b=6.7)
 
         stomatal.setBMFCoefficients(modelcoeffs)
 

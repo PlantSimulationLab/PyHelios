@@ -18,7 +18,7 @@ PyHelios requires **Python 3.10 or later**. Pre-built wheels are available for P
 | Core PyHelios | ✅ | ✅ | ✅ | Full support |
 | WeberPennTree | ✅ | ✅ | ✅ | Procedural trees |
 | Visualizer | ✅ | ✅ | ✅ | OpenGL rendering |
-| Radiation (GPU) | ✅ | ⚠️ | ✅ | Requires CUDA |
+| Radiation (GPU) | ✅ | ✅ | ✅ | Vulkan on all platforms; OptiX on NVIDIA |
 | Pre-built Libraries | ✅ | ✅ | ✅ | `pip install pyhelios3d` |
 | Development Mode | ✅ | ✅ | ✅ | Mock mode |
 
@@ -81,7 +81,7 @@ pip install -e .
 **Platform Considerations:**
 - **Apple Silicon**: Full native support
 - **Intel Macs**: Full compatibility
-- **GPU Acceleration**: Limited CUDA support (eGPU setups)
+- **GPU Acceleration**: Radiation runs on the Vulkan backend; CUDA and OptiX are not used
 - **Homebrew**: May be used for dependencies
 
 **Common Issues:**
@@ -91,9 +91,6 @@ sudo xcode-select --install
 
 # If CMake is missing:
 brew install cmake
-
-# Environment setup:
-source pyhelios/setup_env.sh
 ```
 
 ## Linux
@@ -301,10 +298,3 @@ export PYTHONPATH="/path/to/PyHelios"
 export LD_LIBRARY_PATH="/path/to/PyHelios/plugins:$LD_LIBRARY_PATH"
 ```
 
-## Platform-Specific Examples
-
-See the `docs/examples/` directory for platform-specific examples:
-- `windows_specific.py` - Windows-only features
-- `macos_integration.py` - macOS-specific integrations
-- `linux_server.py` - Linux server deployment
-- `cross_platform_app.py` - Universal application

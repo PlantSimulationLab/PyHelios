@@ -63,8 +63,7 @@ The \ref pyhelios.WeberPennTree.WeberPennTree "WeberPennTree" class is initializ
 
  The parameters that define various tree geometries are specified in an XML file, which is loaded by the plug-in. When the WeberPennTree constructor is called, the defalut tree library is loaded. A list of trees in the default library is listed in the table below. Default tree parameters can be modified by the user, or custom tree libraries can be added, which is detailed in Section \ref WPTCustom. An example tree definition is given below. The tree definition is encapsulated by the \<WeberPennTree label="..."\>...\</WeberPennTree\> tag, where label gives a handle used to reference that specific tree geometry. Other tags define various parameters that determine the structure of the tree, which are detailed in the sections below.
 
- <!-- convert Pistachio.jpeg -crop 320x360+290+225 foo.jpeg -->
- 
+  
 <table>
  <tr><th>Tree type</th><th>Sample Image</th></tr>
  <tr><td>Almond</td><td>![](images/weberpenntree/Almond.jpeg)</td></tr>

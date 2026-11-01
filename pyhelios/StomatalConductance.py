@@ -322,7 +322,7 @@ class StomatalConductanceModel:
             material_label: Optional Context material label. The coefficients are stored on
                 the material and apply to every primitive that references it when run() is
                 called. Mutually exclusive with ``uuids``. See "Coefficient precedence" in
-                docs/plugin_stomatalconductance.md.
+                the Stomatal Conductance plugin documentation.
 
         Raises:
             ValueError: If coefficients are invalid, or both ``uuids`` and ``material_label`` are given

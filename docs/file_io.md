@@ -209,7 +209,7 @@ context.loadOBJ("relative/path/to/someobjfile.obj", origin=vec3(0, 0, 0), height
 
 The Context has analogous files for writing PLY files based on the geometry currently loaded in the Context. This is accomplished via the [writePLY()](pyhelios.Context.Context.writePLY) command, as illustrated below.
 
-Geometry belonging to a `Polymesh` with retained connectivity (see \ref MeshTopology) is written against the mesh's shared vertices rather than three independent vertices per triangle, and `nx`, `ny` and `nz` vertex properties are emitted when every vertex in the file carries a normal. This is what allows a closed solid to reload as a closed solid whose volume can still be computed. Output for geometry that is not part of such a mesh is unchanged.
+Geometry belonging to a `Polymesh` with retained connectivity (see \ref MeshTopology) is written against the mesh's shared vertices rather than three independent vertices per triangle, and `nx`, `ny` and `nz` vertex properties are emitted when every vertex in the file carries a normal. This is what allows a closed solid to reload as a closed solid whose volume can still be computed.
 
 ```python
 from pyhelios import Context
@@ -247,7 +247,7 @@ context.writeOBJ("file", context.getAllUUIDs(), ["temperature"])
 
 ## Mesh Topology {#MeshTopology}
 
-Triangles read from an OBJ or PLY file are grouped into a `Polymesh` compound object that retains the connectivity of the source file: a deduplicated vertex list, a face table, and optional per-vertex normals and texture coordinates. The vector of UUIDs returned by [loadOBJ()](pyhelios.Context.Context.loadOBJ) and [loadPLY()](pyhelios.Context.Context.loadPLY) is unchanged; the object ID is obtained with [getPrimitiveParentObjectID()](pyhelios.Context.Context.getPrimitiveParentObjectID).
+Triangles read from an OBJ or PLY file are grouped into a `Polymesh` compound object that retains the connectivity of the source file: a deduplicated vertex list, a face table, and optional per-vertex normals and texture coordinates. [loadOBJ()](pyhelios.Context.Context.loadOBJ) and [loadPLY()](pyhelios.Context.Context.loadPLY) return the list of triangle UUIDs; the object ID is obtained with [getPrimitiveParentObjectID()](pyhelios.Context.Context.getPrimitiveParentObjectID).
 
 Retained connectivity is what makes a loaded mesh a surface rather than a triangle soup. It is used to compute an enclosed volume, to render the mesh smoothly, and to write it back out against shared vertices so a smooth mesh survives a load–write–load round trip.
 

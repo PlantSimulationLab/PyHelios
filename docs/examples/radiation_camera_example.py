@@ -74,8 +74,7 @@ SCATTERING_DEPTH = 3
 # window, so the two paths disagree: scattering carries band-limited colour
 # while the camera expects response-weighted colour. With scattering enabled,
 # most of what the camera sees is scattered light, and low-chroma natural
-# surfaces come out badly skewed -- brown soil renders pink (measured R/G of
-# 2.6 instead of the correct 1.2).
+# surfaces come out badly skewed -- brown soil renders pink.
 #
 # Leaving the bounds off keeps both paths on the camera response, which is
 # what the Helios C++ sample (samples/tutorial12) does.
@@ -274,11 +273,9 @@ def main():
             # Sun with the ASTM G173 reference solar spectrum.
             #
             # A COLLIMATED source is used rather than addSunSphereRadiationSource().
-            # The sun-sphere source multiplies its flux by a hardcoded blackbody
-            # scaling factor (sigma*5700^4/1288.437, roughly 4.7e4) that neither
+            # The sun-sphere source applies a flux scaling that neither
             # setSourceSpectrumIntegral() nor setSourceFlux() can override, which
-            # puts the direct beam ~1e5x above the diffuse sky and blows the
-            # exposure out. Collimated is also the standard way to represent
+            # puts the direct beam far above the diffuse sky and blows the exposure out. Collimated is also the standard way to represent
             # direct-beam irradiance on a surface.
             sun_id = radiation.addCollimatedRadiationSource(_sun_direction(
                 zenith_deg=30.0,    # mid-morning sun

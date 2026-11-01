@@ -132,10 +132,7 @@ def check_helios_error(get_error_func, get_message_func, clear_error_func=None):
         clear_error_func: Optional function to reset the native error state once
             it has been read. The native error code lives in thread-local storage
             that persists across calls, so a handled error must be cleared or it
-            will resurface on the next native call. This is harmless under pytest's
-            forked isolation (each test gets fresh state) but causes spurious
-            re-raises when tests share one process — e.g. on Windows, where
-            pytest-forked is unavailable.
+            will resurface on the next native call.
 
     Raises:
         HeliosError: If an error is detected

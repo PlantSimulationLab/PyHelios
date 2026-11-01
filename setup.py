@@ -302,7 +302,7 @@ setup(
     extras_require={
         'dev': read_dev_requirements(),
         'test': [
-            'pytest>=7.0.0',
+            'pytest>=7.0.0,<9.2',  # 9.2 breaks pytest-forked 1.7.5
             'pytest-cov>=4.0.0',
             'pytest-mock>=3.10.0',
             'pytest-xdist>=3.0.0',

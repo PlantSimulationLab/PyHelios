@@ -27,7 +27,7 @@ jobs:
             arch: x86_64
           - os: windows-2022
             arch: AMD64
-          - os: macos-14
+          - os: macos-15
             arch: arm64
 
     steps:
@@ -716,9 +716,9 @@ jobs:
             python -m pytest {project}/tests/ --tb=short -v -m "not requires_gpu and not slow" -s
 
           # Platform-specific test requirements (pytest-forked only works on Unix systems)
-          CIBW_TEST_REQUIRES_LINUX: "pytest pytest-forked"
-          CIBW_TEST_REQUIRES_MACOS: "pytest pytest-forked"
-          CIBW_TEST_REQUIRES_WINDOWS: "pytest"
+          CIBW_TEST_REQUIRES_LINUX: "pytest<9.2 pytest-forked"
+          CIBW_TEST_REQUIRES_MACOS: "pytest<9.2 pytest-forked"
+          CIBW_TEST_REQUIRES_WINDOWS: "pytest<9.2"
 
           # Skip problematic platforms for testing
           CIBW_TEST_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
@@ -906,7 +906,7 @@ jobs:
             python-version: '3.10'
           - os: windows-2022
             python-version: '3.14'
-          - os: macos-14
+          - os: macos-15
             python-version: '3.14'
 
     steps:
@@ -944,7 +944,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install numpy pytest pyyaml
+          python -m pip install numpy "pytest<9.2" pyyaml
           # Install pytest-forked only on Unix systems (Windows doesn't support fork())
           if [ "$RUNNER_OS" != "Windows" ]; then
             python -m pip install pytest-forked
@@ -1075,7 +1075,7 @@ jobs:
 
           echo "Installing dependencies in fresh environment"
           python -m pip install --upgrade pip
-          python -m pip install numpy pytest pyyaml pytest-forked
+          python -m pip install numpy "pytest<9.2" pyyaml pytest-forked
 
           echo "Installing PyHelios from downloaded wheels"
           # IMPORTANT: use the workspace path explicitly while our CWD is NOT the workspace

@@ -265,7 +265,7 @@ with Context() as context:
 
 ### Specifying Atmospheric Conditions {#AtmosphericConditions}
 
-The SolarPosition plugin requires atmospheric parameters to calculate solar flux and related quantities. The Python API uses `setAtmosphericConditions()` to set atmospheric parameters once, then calls parameter-free flux methods. This approach is clean, reduces code repetition, and aligns with the C++ plugin API.
+The SolarPosition plugin requires atmospheric parameters to calculate solar flux and related quantities. The Python API uses `setAtmosphericConditions()` to set atmospheric parameters once, then calls parameter-free flux methods.
 
 ```python
 from pyhelios import Context, SolarPosition
@@ -286,7 +286,7 @@ with Context() as context:
             turbidity=0.05           # Turbidity coefficient
         )
 
-        # Call parameter-free methods (no repetition!)
+        # Call the parameter-free flux methods
         R = sun.getSolarFlux()
         zenith = sun.getSunZenith()
         R_horiz = R * math.cos(zenith)
@@ -452,7 +452,7 @@ with Context() as context:
             R_diff = R * f_diff          # diffuse component
 ```
 
- An example of the above model applied to actual direct-diffuse partitioned radiation data using a shadowband radiometer is shown below. It should be emphasized that the above model is a relatively simple approximation that produces reasonable fluxes, but more accurate predictions are possible and require much more complicated models.
+ It should be emphasized that the above model is a relatively simple approximation that produces reasonable fluxes, but more accurate predictions are possible and require much more complicated models.
 
 ## Getting Spectral Solar Irradiance {#SpectralFlux}
 

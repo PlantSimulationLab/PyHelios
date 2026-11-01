@@ -83,8 +83,7 @@ with Context() as context:
         # KNOWN LIMITATION: growth of a custom-built plant is currently broken in
         # the native library. The first advanceTime() call destroys nearly every
         # leaf and petiole object (POLYMESH/CONE), leaving only the internode TUBE
-        # objects - measured here, the plant shrinks from 116 objects / 7910
-        # primitives to 4 objects / 392 primitives instead of growing. Plants
+        # objects. Plants
         # created with buildPlantInstanceFromLibrary() are unaffected.
         #
         # Growth is therefore not demonstrated here. Uncomment below to observe the

@@ -111,8 +111,6 @@ The plugin automatically selects the best available execution mode at runtime:
 - GPU timeout settings for Windows: \ref PCGPUTimeout
 - Troubleshooting common issues
 
-**Note:** CUDA is **no longer required** as of helios-core v1.3.61. The plugin works on all platforms with automatic CPU fallback.
-
 
 ## Known Issues {#EBissues}
 

@@ -339,7 +339,7 @@ with LiDARCloud() as pointcloud:
     )
 ```
 
-`addHitPoint()` also accepts an optional hit color (\ref pyhelios.types.RGBcolor "RGBcolor"). For loading many hit points at once, PyHelios provides bulk helpers that pass contiguous buffers to the native library in a single FFI call: `addHitPoints()` (positions, directions, optional colors) and `addHitPointsWithData()` (additionally a per-hit named-scalar data map — the in-memory equivalent of the non-standard ASCII columns, which is what multi-return leaf-area workflows need so that `gapfillMisses()` can group beams by pulse). For synthetic (simulated) scans, hit points are generated automatically by ray tracing the Helios geometry instead of being added by hand — see \ref LiDARsynthetic.
+`addHitPoint()` also accepts an optional hit color (\ref pyhelios.types.RGBcolor "RGBcolor"). For loading many hit points at once, PyHelios provides bulk helpers that add many hit points in one call: `addHitPoints()` (positions, directions, optional colors) and `addHitPointsWithData()` (additionally a per-hit named-scalar data map — the in-memory equivalent of the non-standard ASCII columns, which is what multi-return leaf-area workflows need so that `gapfillMisses()` can group beams by pulse). For synthetic (simulated) scans, hit points are generated automatically by ray tracing the Helios geometry instead of being added by hand — see \ref LiDARsynthetic.
 
 A raster scan can also carry a global azimuth (heading) offset via the `scan_azimuth_offset` keyword (radians; default 0), a right-hand rotation about the world +z axis applied on top of the azimuth sweep. Together with `scan_tilt_roll`/`scan_tilt_pitch` it completes the roll/pitch/yaw orientation of a static scanner. It is queryable with `getScanAzimuthOffset()`.
 
@@ -751,7 +751,7 @@ with Context() as context:
         )
 ```
 
-Per-hit synthetic data values (`intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `echo_width`, `nRaysHit`, plus any primitive-data labels listed in the scan's `column_format`) can be queried after the scan with `getHitData()` (guard with `doesHitDataExist()`), or bulk-exported for all hits with `getHitDataAll(label)`. For large clouds (millions of points) prefer the NumPy bulk exports, which pull a whole field across a single FFI call: `getHitsXYZRGBArrays()` (returns `(N,3)` float32 coordinates and colors), `getHitDataArray(label)` (`(N,)` float32, NaN where the label is absent), `getHitScanIDArray()` (`(N,)` int32), and `getHitMissArray()` (`(N,)` int32, 1 = miss). For the fastest whole-field scalar read, `getHitDataColumn(label)` / `getHitDataColumnArray(label)` use the native cache-linear columnar path and return full float64 precision (with an `absent_value` placeholder where the label is absent for a hit) rather than the float32 of `getHitDataAll`/`getHitDataArray`.
+Per-hit synthetic data values (`intensity`, `distance`, `timestamp`, `target_index`, `target_count`, `deviation`, `echo_width`, `nRaysHit`, plus any primitive-data labels listed in the scan's `column_format`) can be queried after the scan with `getHitData()` (guard with `doesHitDataExist()`), or bulk-exported for all hits with `getHitDataAll(label)`. For large clouds (millions of points) prefer the NumPy bulk exports, which pull a whole field across a single FFI call: `getHitsXYZRGBArrays()` (returns `(N,3)` float32 coordinates and colors), `getHitDataArray(label)` (`(N,)` float32, NaN where the label is absent), `getHitScanIDArray()` (`(N,)` int32), and `getHitMissArray()` (`(N,)` int32, 1 = miss). For the fastest whole-field scalar read, `getHitDataColumn(label)` / `getHitDataColumnArray(label)` use the columnar readers and return full float64 precision (with an `absent_value` placeholder where the label is absent for a hit) rather than the float32 of `getHitDataAll`/`getHitDataArray`.
 
 \note Synthetic scanning requires the CollisionDetection plugin for ray tracing. PyHelios initializes it automatically when needed; you can also initialize it explicitly with `initializeCollisionDetection(context)`.
 
@@ -1120,7 +1120,6 @@ The following C++ features are documented in the native LiDAR plugin but **not y
 
 - **Plant reconstruction**: `leafReconstructionAlphaMask()`, `addReconstructedTriangleGroupsToContext()`, `addLeafReconstructionToContext()`, `trunkReconstruction()`
 - **Direct Visualizer integration**: `addHitsToVisualizer()`, `addGridToVisualizer()`, `addTrianglesToVisualizer()`
-- **Synthetic-scan progress callback**: `setProgressCallback()` (per-scan progress reporting; not wrapped because it requires a C callback trampoline across the FFI boundary)
 - **Additional I/O**: `exportPointCloudPTX()` (PTX format), `loadASCIIFile()` (direct ASCII loading without XML), `loadTreeQSM()`
 - **Triangle distribution exports**: `exportTriangleInclinationDistribution()`, `exportTriangleAzimuthDistribution()`
 - **Additional scan/grid queries**: `getScanRangeTheta()`, `getScanRangePhi()`, `getScanBeamExitDiameter()`, `getScanBeamDivergence()`, `getGridBoundingBox()`

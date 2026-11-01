@@ -487,8 +487,8 @@ class WeberPennTree:
             >>> tree_id = wpt.buildTree("CustomOak")  # Use custom species name
 
         Note:
-            XML file must follow WeberPennTree XML schema. See WeberPennTreeLibrary.xml
-            in helios-core/plugins/weberpenntree/xml/ for format examples.
+            XML file must follow WeberPennTree XML schema. See "Creating Custom XML Files" in the
+            WeberPennTree plugin documentation for the format.
         """
         if not self.wpt or not isinstance(self.wpt, ctypes._Pointer):
             raise RuntimeError("WeberPennTree is not properly initialized. Check plugin availability.")

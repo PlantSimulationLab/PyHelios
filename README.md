@@ -240,7 +240,7 @@ pip install -e .
 ## Quick Commands
 
 ```bash
-# Test installation (uses subprocess isolation for robust testing)
+# Run the test suite
 pytest
 
 # Check plugin status  

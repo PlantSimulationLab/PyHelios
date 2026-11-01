@@ -30,9 +30,6 @@ from example_output import display_path, get_output_dir
 try:
     from pyhelios import Context, Visualizer, WeberPennTree, WPTType
     from pyhelios.types import *
-    # VisualizerError is a module-level class, not an attribute of Visualizer.
-    # Guarding this import with hasattr(Visualizer, ...) silently falls back to
-    # bare Exception and makes the handlers below swallow unrelated errors.
     from pyhelios.Visualizer import VisualizerError
 except ImportError as e:
     print(f"Error importing PyHelios: {e}")
@@ -136,7 +133,8 @@ def demonstrate_lighting_comparison():
                 visualizer.buildContextGeometry(context)
                 bg_color = RGBcolor(0.1, 0.1, 0.1)
                 visualizer.setBackgroundColor(bg_color)
-                light_dir = vec3(1, 1, -0.5)
+                # Light from above, so the upper patch casts a shadow onto the lower one
+                light_dir = vec3(0.2, 0.5, 1)
                 visualizer.setLightDirection(light_dir)
                 
                 # Camera position for good lighting view
@@ -191,10 +189,8 @@ def main():
         print("  build_scripts/build_helios --plugins visualizer")
         return 1
     
-    # Run demonstrations. Keep total_demos in step with the calls below --
-    # counting demos that are not actually run makes a clean run self-report
-    # as a failure and exit non-zero.
-    demos = [demonstrate_basic_visualization]
+    # Run demonstrations.
+    demos = [demonstrate_basic_visualization, demonstrate_lighting_comparison]
     total_demos = len(demos)
     success_count = sum(1 for demo in demos if demo())
 

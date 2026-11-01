@@ -121,8 +121,7 @@ def main():
         # Without these, Helios falls back to internal defaults and emits
         # "missing_emissivity" / boundary-layer-conductance warnings for every
         # primitive, so the resulting temperatures reflect unstated assumptions.
-        # Each setter takes the whole UUID list and broadcasts one value across
-        # it in a single native call, rather than one call per primitive.
+        # Each setter takes the whole UUID list and sets the same value on every primitive.
         all_uuids = context.getAllUUIDs()
         context.setPrimitiveDataFloat(all_uuids, "emissivity_LW", 0.98)
         context.setPrimitiveDataFloat(all_uuids, "air_temperature", 300.0)  # K

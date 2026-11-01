@@ -90,9 +90,6 @@ def main():
     except PlantArchitectureError as e:
         print(f"❌ PlantArchitecture error: {e}")
         return 1
-    # Any other exception is a genuine bug: let it propagate with its traceback
-    # rather than reporting success. Catching it here would make a broken example
-    # exit 0 and look like it worked.
 
     return 0
 
@@ -262,9 +259,7 @@ def analyze_plant_geometry(plantarch, context, plant_id):
         total_primitives = context.getPrimitiveCount()
         print(f"✅ Total scene primitives: {total_primitives}")
 
-        # Analyze the plant we actually grew. Plant IDs are assigned in
-        # creation order starting at 0, so guessing an ID silently analyses a
-        # different plant than intended.
+        # Analyze the plant we grew.
         test_plant_id = plant_id
 
         try:
@@ -314,6 +309,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n⚠️  Interrupted by user")
         sys.exit(130)
-    # Other exceptions propagate so the traceback is visible and the exit code
-    # is non-zero.
     sys.exit(exit_code)

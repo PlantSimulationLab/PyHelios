@@ -205,8 +205,8 @@ class PhotosynthesisModel:
             dha: Activation energy (kJ/mol). -1 disables temperature response.
             topt: Optimum temperature in °C. -1 keeps Arrhenius monotonic.
             dhd: Deactivation energy (kJ/mol). -1 picks a default.
-            uuids: Primitive UUIDs to update. ``None`` is rejected; the underlying
-                wrapper requires explicit UUIDs (matching ``setVcmax`` etc.).
+            uuids: Primitive UUIDs to update. Must be given explicitly (``None`` is
+                rejected), as for ``setVcmax``.
 
         Raises:
             ValueError: If ``uuids`` is None or empty.
@@ -253,8 +253,6 @@ class PhotosynthesisModel:
     def getC4CoefficientsFromLibrary(self, species: str) -> List[float]:
         """
         Return the 43-float C4 coefficient array for ``species``.
-
-        See ``native/include/pyhelios_wrapper_photosynthesis.h`` for the per-index meaning.
         """
         self._check_context_alive()
         return photosynthesis_wrapper.getC4CoefficientsFromLibrary(self._native_ptr, species)

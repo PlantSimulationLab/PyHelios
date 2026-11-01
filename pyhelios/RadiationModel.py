@@ -231,8 +231,7 @@ class CameraProperties:
         Convert to array format expected by C++ interface.
 
         Note: Returns numeric fields only. String fields (model, lens_make, etc.) are
-        currently initialized with defaults in the C++ wrapper and cannot be set via
-        this interface. Use the upcoming camera library methods for full metadata control.
+        passed to the native camera separately.
 
         Returns:
             List of 11 float values: [resolution_x, resolution_y, focal_distance, lens_diameter,
@@ -1026,8 +1025,7 @@ class RadiationModel:
         Raises:
             HeliosRuntimeError: If there is nothing to weight by: the source spectrum has no energy
                 between the bounds (or where the camera response is tabulated), or the
-                camera response is zero everywhere. Earlier helios-core versions returned
-                NaN in these cases.
+                camera response is zero everywhere.
 
         Example:
             >>> leaf_reflectance = [(400, 0.1), (500, 0.4), (600, 0.6), (700, 0.5)]
@@ -3014,12 +3012,6 @@ class RadiationModel:
         Raises:
             RadiationModelError: If camera image writing fails
             TypeError: If parameters have incorrect types
-
-        Note:
-            helios-core v1.3.79+ reports a failed write by returning an empty
-            filename rather than raising. PyHelios converts that into a
-            RadiationModelError so a write that produced no file can never be
-            mistaken for a success.
         """
         # Validate inputs
         if not isinstance(camera, str) or not camera.strip():
@@ -3067,12 +3059,6 @@ class RadiationModel:
         Raises:
             RadiationModelError: If normalized camera image writing fails
             TypeError: If parameters have incorrect types
-
-        Note:
-            helios-core v1.3.79+ reports a failed write by returning an empty
-            filename rather than raising. PyHelios converts that into a
-            RadiationModelError so a write that produced no file can never be
-            mistaken for a success.
         """
         # Validate inputs
         if not isinstance(camera, str) or not camera.strip():
@@ -3755,10 +3741,6 @@ class RadiationModel:
         constructing a full backend. Useful for checking GPU availability before
         creating a RadiationModel.
 
-        This is the PyHelios equivalent of the native
-        ``RadiationModel::isGPUBackendAvailable()``, which as of helios-core v1.3.79
-        is a pure delegate to the same underlying probe.
-
         Returns False when ``HELIOS_NO_GPU`` is set to anything other than ``"0"``,
         whatever hardware is actually present -- see
         :meth:`gpuBackendsDisabledByEnvironment` to distinguish an environment veto
@@ -3767,10 +3749,8 @@ class RadiationModel:
         Note:
             The probe runs at most once per process and the result is cached
             (helios-core v1.3.79+), so repeated calls are cheap and never re-enter
-            the GPU driver. The flip side is that a driver which becomes usable
-            after the first probe is not picked up until the process restarts, so a
-            test that enables a device and re-probes in the same process still sees
-            the cached answer.
+            the GPU driver. A driver that becomes usable after the first probe
+            is not picked up until the process restarts.
 
         Returns:
             True if at least one GPU backend is available

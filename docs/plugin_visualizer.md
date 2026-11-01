@@ -668,7 +668,7 @@ with Context() as context:
 
 Rendering uses a physically-based linear-light pipeline by default. Albedo is decoded from sRGB to linear light before shading, and the shaded radiance is tone-mapped through an ACES filmic curve and re-encoded to sRGB. Compared with shading directly on non-linear sRGB values, mid-tones are brighter, shadow terminators are smoother, and bright surfaces roll off rather than clipping flat against the 8-bit framebuffer.
 
-**Rendered images therefore differ from PyHelios versions before this one.** The previous appearance is available with \ref pyhelios.Visualizer.Visualizer::disableLinearPipeline "disableLinearPipeline()", and \ref pyhelios.Visualizer.Visualizer::enableLinearPipeline "enableLinearPipeline()" restores the default. \ref pyhelios.Visualizer.Visualizer::isLinearPipelineEnabled "isLinearPipelineEnabled()" reports the current state.
+**Rendered images therefore differ from earlier releases, which shaded directly in sRGB space.** That appearance is available with \ref pyhelios.Visualizer.Visualizer::disableLinearPipeline "disableLinearPipeline()", and \ref pyhelios.Visualizer.Visualizer::enableLinearPipeline "enableLinearPipeline()" restores the default. \ref pyhelios.Visualizer.Visualizer::isLinearPipelineEnabled "isLinearPipelineEnabled()" reports the current state.
 
 \ref pyhelios.Visualizer.Visualizer::setExposure "setExposure(exposure)" controls the linear exposure multiplier applied before tone mapping; it must be positive. \ref pyhelios.Visualizer.Visualizer::getExposure "getExposure()" reads it back.
 
@@ -682,7 +682,7 @@ with Visualizer(width=1200, height=800) as vis:
 
 Under a Phong lighting model, surfaces are shaded as `ambient*A + diffuse*max(0, N.L) + specular*max(0, N.H)^shininess`, where `A` is the hemispheric ambient term. The four parameters are set with \ref pyhelios.Visualizer.Visualizer::setPhongMaterial "setPhongMaterial(ambient, diffuse, specular, shininess)" and read back with \ref pyhelios.Visualizer.Visualizer::getPhongMaterial "getPhongMaterial()", which returns them as a tuple. The defaults are `(1.0, 0.8, 0.2, 32.0)`.
 
-The specular highlight is new: it was previously absent entirely despite the model being described as Phong. Setting `specular` to zero recovers surfaces without a highlight.
+Setting `specular` to zero gives surfaces without a highlight, as in earlier releases.
 
 Individual materials can override any of these parameters by attaching `phong_ambient`, `phong_diffuse`, `phong_specular` or `phong_shininess` material data with `Context.setMaterialDataFloat()`. Each parameter falls back individually to the global value, so a material can override only its specular lobe.
 

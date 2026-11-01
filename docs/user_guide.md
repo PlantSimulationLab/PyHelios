@@ -347,10 +347,7 @@ The table below gives a list of all available primitive property setter and gett
 | Normal Vector | N/A | \ref pyhelios.Context.Context::getPrimitiveNormal "getPrimitiveNormal(UUID)" |
 | Vertex Coordinates (x,y,z) | N/A | \ref pyhelios.Context.Context::getPrimitiveVertices "getPrimitiveVertices(UUID)" |
 
-Some primitives have special functions specific to that type of primitive. For example, one may want to query the length and width of a Patch. These primitive-specific functions are tabulated below. If the type of the primitive corresponding to the UUID passed to the function does not match the primitive type for that function, an error will be thrown (for example passing a Triangle UUID to the function getPatchSize()).
-
-| Primitive Type/Property | Getter Function |
-|-------------------------|-----------------|
+Some primitives have special functions specific to that type of primitive. For example, one may want to query the length and width of a Patch. If the type of the primitive corresponding to the UUID passed to the function does not match the primitive type for that function, an error will be thrown (for example passing a Triangle UUID to the function getPatchSize()).
 
 ```python
 from pyhelios import Context
@@ -459,9 +456,6 @@ for i in range(10):
 # Let's delete the original "template"
 context.deletePrimitive(UUID)
 ```
-
-| Property | Getter Function |
-|----------|-----------------|
 
 ### Compound Geometry {#Compound}
 

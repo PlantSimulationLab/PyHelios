@@ -2303,10 +2303,6 @@ class Context:
             ValueError: If ObjID is not an integer or scale_factor is invalid
             HeliosRuntimeError: If operation fails (e.g., ObjID is not a Cone object)
 
-        Note:
-            Added in helios-core v1.3.59 as a replacement for the removed getConeObjectPointer()
-            method, enforcing better encapsulation.
-
         Example:
             >>> cone_id = context.addConeObject(10, [0,0,0], [0,0,1], 0.1, 0.05)
             >>> context.scaleConeObjectLength(cone_id, 1.5)  # Make cone 50% longer
@@ -2331,10 +2327,6 @@ class Context:
         Raises:
             ValueError: If ObjID is not an integer or scale_factor is invalid
             HeliosRuntimeError: If operation fails (e.g., ObjID is not a Cone object)
-
-        Note:
-            Added in helios-core v1.3.59 as a replacement for the removed getConeObjectPointer()
-            method, enforcing better encapsulation.
 
         Example:
             >>> cone_id = context.addConeObject(10, [0,0,0], [0,0,1], 0.1, 0.05)
@@ -2871,7 +2863,7 @@ class Context:
         """
         Set primitive data as unsigned 32-bit integer for one or multiple primitives.
 
-        Critical for properties like 'twosided_flag' which must be uint in C++.
+        Use this for built-in flags such as 'twosided_flag', which must be stored as unsigned integers.
 
         Args:
             uuids_or_uuid: Single UUID (int) or list of UUIDs to set data for
@@ -3081,14 +3073,14 @@ class Context:
     
     def getPrimitiveData(self, uuid: int, label: str, data_type: type = None):
         """
-        Get primitive data for a specific primitive. If data_type is provided, it works like before.
-        If data_type is None, it automatically detects the type and returns the appropriate value.
+        Get primitive data for a specific primitive. If data_type is given, the value is read as that
+        type; if None, the stored type is detected automatically.
         
         Args:
             uuid: UUID of the primitive  
             label: String key for the data
             data_type: Optional. Python type to retrieve (int, uint, float, double, bool, str, vec2, vec3, vec4, int2, int3, int4, etc.)
-                      If None, auto-detects the type using C++ getPrimitiveDataType().
+                      If None, the stored type is detected automatically.
             
         Returns:
             The stored value of the specified or auto-detected type
@@ -4250,7 +4242,7 @@ class Context:
             uuids: List of primitive UUIDs
 
         Returns:
-            bytes: Raw binary blob (see wire format v2 spec)
+            bytes: Binary blob of the typed arrays described above
         """
         self._check_context_available()
         if not uuids:
@@ -4673,9 +4665,8 @@ class Context:
     def getObjectDataArray(self, objids: List[int], label: str) -> np.ndarray:
         """Get object data values for multiple objects as a NumPy array.
 
-        Reads one label across every object in a single native call, in the
-        order the IDs were given. Reading them one at a time costs a ctypes
-        round-trip per object.
+        Reads one label across every object in a single call, in the order the
+        IDs were given; much faster than reading objects one at a time.
 
         Args:
             objids: Object IDs to read, controlling the result order
@@ -5110,7 +5101,7 @@ class Context:
         Raises:
             HeliosRuntimeError: If an object ID does not exist, or if the given
                 object(s) contain no primitives at all (a bounding box would be
-                undefined; this previously returned a misleading box at the origin).
+                undefined).
         """
         self._check_context_available()
         if isinstance(objIDs, (list, tuple)):
@@ -6834,11 +6825,7 @@ class Context:
     # ---- Tile subdivision ----
 
     def setTileObjectSubdivisionCount(self, objIDs_or_objID, subdiv: int2) -> None:
-        """Set the (Nx, Ny) subdivision count of one or more tile objects.
-
-        The Helios C++ API is batch-only; a single objID is wrapped as a
-        single-element list.
-        """
+        """Set the (Nx, Ny) subdivision count of one or more tile objects."""
         self._check_context_available()
         if not isinstance(subdiv, int2):
             raise ValueError(f"subdiv must be an int2, got {type(subdiv).__name__}")

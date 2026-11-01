@@ -27,8 +27,6 @@ class LiDARError(HeliosError):
 class HitDataType(IntEnum):
     """Storage type of a per-hit scalar-data column (see :meth:`LiDARCloud.createHitDataColumn`).
 
-    Values mirror ``helios::HitDataType`` in declaration order and cross the ABI as 0/1/2.
-
     A column created implicitly (by the first write that carries the label) starts with a type
     chosen from the label's name and widens itself to FLOAT64 the first time it is given a value
     it does not hold exactly. A column created explicitly is never widened: an explicit INT32
@@ -1228,10 +1226,9 @@ class LiDARCloud:
         return lidar_wrapper.getLiDARHitData_all_np(self._cloud_ptr, label, n)
 
     def getHitDataColumn(self, label: str, absent_value: float = -9999.0) -> List[float]:
-        """Bulk-export a named scalar column via the native cache-linear columnar path.
+        """Bulk-export a named scalar column.
 
-        Faster than :meth:`getHitDataAll` for whole-field reads (a single cache-linear pass over
-        the contiguous native column rather than per-hit tree lookups), and returns full float64
+        Faster than :meth:`getHitDataAll` for whole-field reads, and returns full float64
         precision. Entries are ``absent_value`` where the label is absent for a hit. Returns a list
         of length getHitCount().
         """
@@ -1556,9 +1553,8 @@ class LiDARCloud:
                 (e.g. a DEM). ``None`` (the default) builds an axis-regular grid.
 
         Note:
-            ``rotation`` is in **degrees** here, matching the native ``addGrid()``.
-            :meth:`addGridCell` takes its rotation in **radians** — the two native
-            entry points genuinely differ, and PyHelios passes each through unchanged.
+            ``rotation`` is in **degrees** here; :meth:`addGridCell` takes its rotation
+            in **radians**.
             :meth:`getCellRotation` reports degrees.
 
         Example:
@@ -1637,9 +1633,7 @@ class LiDARCloud:
 
         Note:
             ``rotation`` is in **radians** here, whereas :meth:`addGrid` takes
-            **degrees**. This asymmetry is inherited from the native API — the native
-            ``addGridCell()`` stores the angle directly in the cell's radian field while
-            ``addGrid()`` converts from degrees. :meth:`getCellRotation` reports degrees.
+            **degrees**. :meth:`getCellRotation` reports degrees.
         """
         # Convert center to list
         if isinstance(center, (list, tuple)):
@@ -1872,7 +1866,7 @@ class LiDARCloud:
 
     def getCroppedReturnStats(self) -> dict:
         """
-        Returns the last :meth:`calculateLeafArea` call inferred from ``target_count``.
+        Returns counts of the removed returns that the last :meth:`calculateLeafArea` call inferred from ``target_count``.
 
         A pulse's returns are ordered by range and a beam crosses the (convex) voxel grid
         in one contiguous segment. So when a cloud has had returns removed -- cropped to the
@@ -2048,12 +2042,10 @@ class LiDARCloud:
         """
         Reserve capacity for hit points and every scalar-data column at once.
 
-        Growing the hit-point array by repeated insertion reallocates geometrically, and
-        during every reallocation the old and new buffers are both live. For a cloud of
-        tens of millions of returns that transient is gigabytes on top of the steady-state
-        cost, and on Windows it is charged against the system commit limit at allocation
-        time -- so a load that would comfortably fit once settled can still fail while
-        growing. Reserving the final size once removes the transient entirely.
+        Growing the hit-point array by repeated insertion temporarily needs both the old and
+        new buffers, which for a cloud of tens of millions of returns adds gigabytes of
+        transient memory, so a load that would fit once settled can still fail while growing.
+        Reserving the final size once avoids this.
 
         This only reserves capacity; it does not create hit points, and
         :meth:`getHitCount` is unchanged. Reserving less than the eventual total is
@@ -2711,9 +2703,8 @@ class LiDARCloud:
             Clear the sink before triangulating if you need the stored mesh.
 
         .. note::
-            An exception raised inside ``callback`` cannot propagate through the native call
-            (a Python exception in a ctypes callback is swallowed and reported to C++ as
-            success). It is captured and re-raised from the call that triggered it --
+            An exception raised inside ``callback`` is captured and re-raised from the call
+            that triggered it --
             typically :meth:`triangulateHitPoints`.
 
         Args:
@@ -2773,10 +2764,8 @@ class LiDARCloud:
         Chunk size is bounded by :meth:`setSyntheticScanMemoryBudget`. Pass ``None`` to clear.
 
         .. note::
-            An exception raised inside ``callback`` cannot propagate through the native call
-            (a Python exception in a ctypes callback is swallowed and reported to C++ as
-            success, which would let the scan continue as though nothing failed). It is
-            captured and re-raised from the call that triggered it -- typically
+            An exception raised inside ``callback`` is captured and re-raised from the call
+            that triggered it -- typically
             :meth:`syntheticScan`.
 
         Args:
@@ -2870,9 +2859,7 @@ class LiDARCloud:
         """
         Read one scan's hit positions in a single pass.
 
-        Costs O(hits in the scan), not O(hits in the cloud): the scan's stored returns are
-        located through an index built once and kept until the cloud changes, and its
-        virtualized misses are walked in occupancy order rather than resolved one at a time.
+        Costs O(hits in the scan), not O(hits in the cloud).
         Prefer this to filtering :meth:`getHitXYZColumn` by scan.
 
         Args:

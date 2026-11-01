@@ -156,11 +156,6 @@ opt.run(objective, {"n": Parameter.categorical(5.0, [5.0, 12.0, 20.0])})
 # ValueError: CMAES requires every parameter to be FLOAT, but 'n' is CATEGORICAL.
 ```
 
-PyHelios performs this check itself. Older helios-core revisions do not reject
-discrete parameters in `CMAES` and `BayesianOptimization`, where a `CATEGORICAL`
-parameter would otherwise optimize to `0.0` — outside its own category list — with
-no diagnostic.
-
 ```python
 from pyhelios import ParameterOptimization, Parameter, GeneticAlgorithm
 
@@ -268,8 +263,7 @@ with ParameterOptimization() as refiner:
 ### Tuning presets
 
 `GeneticAlgorithm`, `BayesianOptimization`, and `CMAES` offer `explore()` and
-`exploit()` presets, read directly from the native library so they always match
-the tuned upstream values:
+`exploit()` presets with tuned values:
 
 ```python
 opt.setAlgorithm(CMAES.explore())    # wider search
@@ -348,8 +342,8 @@ with ParameterOptimization() as opt:
 `max_evaluations`, or try `explore()` presets. If the objective is noisy, prefer
 `GeneticAlgorithm` or `Adam` over the derivative-free local methods.
 
-**Results differ between runs.** The population-based algorithms seed from
-`std::random_device` by default. Set `random_seed` to any non-zero value for
+**Results differ between runs.** The population-based algorithms seed randomly
+by default. Set `random_seed` to any non-zero value for
 reproducibility.
 
 **`Adam is a gradient-based algorithm and requires a gradient`.** Pass
@@ -363,14 +357,10 @@ use `BayesianOptimization`, which is designed for expensive objectives.
 
 ## Performance Notes
 
-Each objective evaluation crosses from C++ back into Python. That transition costs
-well under a microsecond and is irrelevant next to any real Helios simulation, but
-it means the total number of evaluations is what governs runtime. Budget
-accordingly:
+The total number of objective evaluations governs runtime. Budget accordingly:
 
-- `GeneticAlgorithm`: at most `generations x population_size`, and in practice roughly
-  a third to a half of it — individuals carried forward unchanged are not re-evaluated.
-  Treat the product as an upper bound when budgeting.
+- `GeneticAlgorithm`: at most `generations x population_size`, since individuals carried
+  forward unchanged are not re-evaluated. Treat the product as an upper bound when budgeting.
 - `CMAES` / `BayesianOptimization`: exactly `max_evaluations`
 - `Adam` / `BOBYQA` / `SLSQP`: up to `max_iterations`, plus `2N` per gradient when
   using `finite_difference=True`
