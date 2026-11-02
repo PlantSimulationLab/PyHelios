@@ -1025,6 +1025,136 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to set nitrogen parameters for plant {plant_id}: {e}")
 
+    @staticmethod
+    def _validateNitrogenAmount(value, name: str) -> float:
+        """Reject a non-number, a non-finite value or a negative one."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be a finite number >= 0, got {value}")
+        return float(value)
+
+    def enableNitrogenModel(self) -> None:
+        """
+        Enable the nitrogen model, which then runs inside every advanceTime().
+
+        While it is enabled, advanceTime() allocates each plant's available nitrogen to its
+        expanding leaves, remobilizes it from mature leaves under limitation, senesces leaves,
+        and writes the object data ``leaf_nitrogen_gN_m2`` (g N/m², on each leaf object) and
+        ``nitrogen_stress_factor`` (0-1, on each of the plant's objects). Read them with
+        :meth:`Context.getObjectData`. No plugin reads the stress factor; scale growth or
+        photosynthesis with it yourself if wanted.
+
+        Raises:
+            PlantArchitectureError: If the operation fails
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.enableNitrogenModel(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable the nitrogen model: {e}")
+
+    def disableNitrogenModel(self) -> None:
+        """
+        Disable the nitrogen model; advanceTime() stops updating plant nitrogen.
+
+        Raises:
+            PlantArchitectureError: If the operation fails
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.disableNitrogenModel(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to disable the nitrogen model: {e}")
+
+    def isNitrogenModelEnabled(self) -> bool:
+        """
+        Whether the nitrogen model is enabled.
+
+        Raises:
+            PlantArchitectureError: If the query fails
+        """
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.isNitrogenModelEnabled(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to query the nitrogen model: {e}")
+
+    def initializeNitrogenPools(self, initial_leaf_N_area: float) -> None:
+        """
+        Start every plant's nitrogen pools: each existing leaf at ``initial_leaf_N_area``, the
+        plant's root and available pools empty.
+
+        Args:
+            initial_leaf_N_area: Leaf nitrogen content per unit leaf area (g N/m²) that every
+                existing leaf starts at. (The helios-core header documents this argument as a
+                mass concentration in g N/g DW; the implementation uses it per area.)
+
+        Raises:
+            ValueError: If initial_leaf_N_area is not a finite number >= 0
+            PlantArchitectureError: If the operation fails
+        """
+        value = self._validateNitrogenAmount(initial_leaf_N_area, "initial_leaf_N_area")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.initializeNitrogenPools(self._plantarch_ptr, value)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to initialize nitrogen pools: {e}")
+
+    def initializePlantNitrogenPools(self, plant_id: int, initial_leaf_N_area: float) -> None:
+        """
+        Start one plant's nitrogen pools; see :meth:`initializeNitrogenPools`.
+
+        Args:
+            plant_id: Plant instance ID
+            initial_leaf_N_area: Leaf nitrogen content per unit leaf area (g N/m²)
+
+        Raises:
+            ValueError: If plant_id is not a non-negative int or initial_leaf_N_area is not a
+                finite number >= 0
+            PlantArchitectureError: If the plant does not exist or the operation fails
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        value = self._validateNitrogenAmount(initial_leaf_N_area, "initial_leaf_N_area")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.initializePlantNitrogenPools(self._plantarch_ptr, plant_id, value)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to initialize nitrogen pools of plant {plant_id}: {e}")
+
+    def addPlantNitrogen(self, plant_id: Union[int, List[int]], amount_gN: float) -> None:
+        """
+        Apply nitrogen to a plant, or the same amount to each of several plants.
+
+        The amount is split between the plant's root pool (``root_allocation_fraction`` of
+        :class:`NitrogenParameters`) and its available pool, from which leaves and fruit draw it
+        during advanceTime().
+
+        Args:
+            plant_id: A plant instance ID, or a list of them
+            amount_gN: Nitrogen added to each plant (g N)
+
+        Raises:
+            ValueError: If an ID is not a non-negative int, the list is empty, or amount_gN is
+                not a finite number >= 0
+            PlantArchitectureError: If a plant does not exist or the operation fails
+        """
+        amount = self._validateNitrogenAmount(amount_gN, "amount_gN")
+        if isinstance(plant_id, int) and not isinstance(plant_id, bool):
+            ids = [self._validatePlantIdentifier(plant_id)]
+            single = True
+        else:
+            ids = self._validatePlantIdList(plant_id)
+            single = False
+        self._check_context_alive()
+        try:
+            if single:
+                plantarch_wrapper.addPlantNitrogen(self._plantarch_ptr, ids[0], amount)
+            else:
+                plantarch_wrapper.addPlantsNitrogen(self._plantarch_ptr, ids, amount)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to add nitrogen to plant(s) {ids}: {e}")
+
     def getAvailablePlantModels(self) -> List[str]:
         """
         Get list of all available plant models in the library.

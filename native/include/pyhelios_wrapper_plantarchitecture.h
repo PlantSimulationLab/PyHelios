@@ -462,6 +462,19 @@ PYHELIOS_API unsigned int* getPlantInternodeObjectIDs(PlantArchitecture* plantar
 PYHELIOS_API float* getPlantLeafInclinationAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count);
 PYHELIOS_API float* getPlantLeafAzimuthAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count);
 
+// Nitrogen model controls. Leaf N per area and the plant stress factor are written as the object data
+// "leaf_nitrogen_gN_m2" and "nitrogen_stress_factor" by advanceTime() while the model is enabled.
+// Each returns 0 on success, -1 on error (isNitrogenModelEnabled: 1 or 0, -1 on error).
+PYHELIOS_API int enableNitrogenModel(PlantArchitecture* plantarch);
+PYHELIOS_API int disableNitrogenModel(PlantArchitecture* plantarch);
+PYHELIOS_API int isNitrogenModelEnabled(PlantArchitecture* plantarch);
+// initial_leaf_N_area is the leaf nitrogen content per unit leaf area (g N/m^2) every existing leaf starts at.
+PYHELIOS_API int initializeNitrogenPools(PlantArchitecture* plantarch, float initial_leaf_N_area);
+PYHELIOS_API int initializePlantNitrogenPools(PlantArchitecture* plantarch, unsigned int plantID, float initial_leaf_N_area);
+// amount_gN (g N) is added to each plant, split between its root and available pools.
+PYHELIOS_API int addPlantNitrogen(PlantArchitecture* plantarch, unsigned int plantID, float amount_gN);
+PYHELIOS_API int addPlantsNitrogen(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, float amount_gN);
+
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 

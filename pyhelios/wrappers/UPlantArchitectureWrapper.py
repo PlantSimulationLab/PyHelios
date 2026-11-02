@@ -6,6 +6,7 @@ enabling procedural plant modeling and plant library functionality.
 """
 
 import ctypes
+import math
 from typing import Dict, List, Optional, Tuple
 
 from ..plugins import helios_lib
@@ -1170,6 +1171,28 @@ try:
     _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = True
 except AttributeError:
     _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = False
+
+# Nitrogen model controls: enable/disable, pool initialization and nitrogen application.
+# NOTE: guard with _require_plantarch_nitrogen_model(); an older flag would call the symbol with no argtypes set.
+_PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE = False
+try:
+    def _register_nitrogen(name, argtypes, restype):
+        f = getattr(helios_lib, name)
+        f.argtypes = [ctypes.POINTER(UPlantArchitecture)] + argtypes
+        f.restype = restype
+        f.errcheck = _check_error
+
+    for _n_fn in ("enableNitrogenModel", "disableNitrogenModel", "isNitrogenModelEnabled"):
+        _register_nitrogen(_n_fn, [], ctypes.c_int)
+    _register_nitrogen("initializeNitrogenPools", [ctypes.c_float], ctypes.c_int)
+    _register_nitrogen("initializePlantNitrogenPools", [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    _register_nitrogen("addPlantNitrogen", [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    _register_nitrogen("addPlantsNitrogen", [ctypes.POINTER(ctypes.c_uint), ctypes.c_int, ctypes.c_float],
+                       ctypes.c_int)
+
+    _PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE = False
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -3999,3 +4022,66 @@ def getPlantLeafAzimuthAngleDistribution(plantarch_ptr, plant_ids: List[int], n_
     """Leaf-area-weighted azimuth histogram, bins evenly spaced over 0-360 degrees."""
     return _plantAngleDistribution("getPlantLeafAzimuthAngleDistribution", plantarch_ptr, plant_ids,
                                    n_bins, normalize)
+
+
+# ---------------------------------------------------------------------------
+# Nitrogen model controls
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_nitrogen_model() -> None:
+    """Raise if the native library predates the nitrogen model control bindings."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE:
+        raise RuntimeError(
+            "The PlantArchitecture nitrogen model controls are not available in the current native library. "
+            "Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def _check_nonnegative_finite(value: float, name: str) -> float:
+    value = float(value)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be a finite number >= 0, got {value}")
+    return value
+
+
+def enableNitrogenModel(plantarch_ptr) -> None:
+    _require_plantarch_nitrogen_model()
+    helios_lib.enableNitrogenModel(plantarch_ptr)
+
+
+def disableNitrogenModel(plantarch_ptr) -> None:
+    _require_plantarch_nitrogen_model()
+    helios_lib.disableNitrogenModel(plantarch_ptr)
+
+
+def isNitrogenModelEnabled(plantarch_ptr) -> bool:
+    _require_plantarch_nitrogen_model()
+    return helios_lib.isNitrogenModelEnabled(plantarch_ptr) == 1
+
+
+def initializeNitrogenPools(plantarch_ptr, initial_leaf_N_area: float) -> None:
+    _require_plantarch_nitrogen_model()
+    helios_lib.initializeNitrogenPools(plantarch_ptr,
+                                       _check_nonnegative_finite(initial_leaf_N_area, "initial_leaf_N_area"))
+
+
+def initializePlantNitrogenPools(plantarch_ptr, plant_id: int, initial_leaf_N_area: float) -> None:
+    _require_plantarch_nitrogen_model()
+    _check_plant_id(plant_id)
+    helios_lib.initializePlantNitrogenPools(plantarch_ptr, plant_id,
+                                            _check_nonnegative_finite(initial_leaf_N_area, "initial_leaf_N_area"))
+
+
+def addPlantNitrogen(plantarch_ptr, plant_id: int, amount_gN: float) -> None:
+    _require_plantarch_nitrogen_model()
+    _check_plant_id(plant_id)
+    helios_lib.addPlantNitrogen(plantarch_ptr, plant_id, _check_nonnegative_finite(amount_gN, "amount_gN"))
+
+
+def addPlantsNitrogen(plantarch_ptr, plant_ids: List[int], amount_gN: float) -> None:
+    _require_plantarch_nitrogen_model()
+    for plant_id in plant_ids:
+        _check_plant_id(plant_id)
+    amount = _check_nonnegative_finite(amount_gN, "amount_gN")
+    arr = (ctypes.c_uint * len(plant_ids))(*plant_ids)
+    helios_lib.addPlantsNitrogen(plantarch_ptr, arr, len(plant_ids), amount)

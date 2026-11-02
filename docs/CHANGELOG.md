@@ -1,5 +1,12 @@
 # Changelog
 
+# [Unreleased]
+
+## PlantArchitecture
+- Added `enableNitrogenModel()`, `disableNitrogenModel()` and `isNitrogenModelEnabled()`, so the nitrogen model can be run from Python
+- Added `initializeNitrogenPools()` and `initializePlantNitrogenPools()`, which start every leaf at a given nitrogen content per unit leaf area
+- Added `addPlantNitrogen()`, which applies nitrogen to a plant or to each plant in a list
+
 # [v0.1.39] 2026-11-01
 
 - Updated helios-core to v1.3.94

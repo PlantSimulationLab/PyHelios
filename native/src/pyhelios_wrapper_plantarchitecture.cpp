@@ -4850,6 +4850,58 @@ extern "C" {
                                             &PlantArchitecture::getPlantLeafAzimuthAngleDistribution, &PlantArchitecture::getPlantLeafAzimuthAngleDistribution);
     }
 
+
+    // Nitrogen model controls
+
+    PYHELIOS_API int enableNitrogenModel(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "enableNitrogenModel", -1, [&]() {
+            plantarch->enableNitrogenModel();
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int disableNitrogenModel(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "disableNitrogenModel", -1, [&]() {
+            plantarch->disableNitrogenModel();
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int isNitrogenModelEnabled(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "isNitrogenModelEnabled", -1, [&]() { return plantarch->isNitrogenModelEnabled() ? 1 : 0; });
+    }
+
+    PYHELIOS_API int initializeNitrogenPools(PlantArchitecture* plantarch, float initial_leaf_N_area) {
+        return guardedPhytomerCall(plantarch, "initializeNitrogenPools", -1, [&]() {
+            plantarch->initializeNitrogenPools(initial_leaf_N_area);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int initializePlantNitrogenPools(PlantArchitecture* plantarch, unsigned int plantID, float initial_leaf_N_area) {
+        return guardedPhytomerCall(plantarch, "initializePlantNitrogenPools", -1, [&]() {
+            plantarch->initializePlantNitrogenPools(plantID, initial_leaf_N_area);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int addPlantNitrogen(PlantArchitecture* plantarch, unsigned int plantID, float amount_gN) {
+        return guardedPhytomerCall(plantarch, "addPlantNitrogen", -1, [&]() {
+            plantarch->addPlantNitrogen(plantID, amount_gN);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int addPlantsNitrogen(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, float amount_gN) {
+        return guardedPhytomerCall(plantarch, "addPlantNitrogen", -1, [&]() {
+            if (plant_count < 0 || (plant_count > 0 && !plantIDs)) {
+                throw std::invalid_argument("Plant ID array is null or its count is negative");
+            }
+            std::vector<uint> ids(plantIDs, plantIDs + plant_count);
+            plantarch->addPlantNitrogen(ids, amount_gN);
+            return 0;
+        });
+    }
 } // extern "C"
 
 #endif // PLANTARCHITECTURE_PLUGIN_AVAILABLE

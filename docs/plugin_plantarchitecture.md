@@ -720,6 +720,33 @@ plant.setPlantCarbohydrateParameters(plant_id, carb)
 See `docs/examples/plantarch_phytomer_parameters_sample.py` for a complete,
 runnable example.
 
+### Running the nitrogen model
+
+The nitrogen model is off until `enableNitrogenModel()`; it then runs inside every
+`advanceTime()`. Start each plant's leaves at a nitrogen content per unit leaf area with
+`initializeNitrogenPools(initial_leaf_N_area)` (all plants) or
+`initializePlantNitrogenPools(plant_id, initial_leaf_N_area)`, in g N/m², and apply
+fertilizer with `addPlantNitrogen(plant_id, amount_gN)`, which also takes a list of plant
+IDs and adds the amount to each. Applied nitrogen is split between the plant's root pool
+(`root_allocation_fraction`) and its available pool, from which expanding leaves and fruit
+draw it.
+
+The model's state is written as object data each time step: `leaf_nitrogen_gN_m2` on every
+leaf object and `nitrogen_stress_factor` (0-1, area-weighted leaf N over its target) on each
+of the plant's objects. No plugin reads the stress factor; scale growth or photosynthesis
+with it yourself if wanted.
+
+```python
+plantarch.enableNitrogenModel()
+plantarch.initializeNitrogenPools(1.5)          # g N/m2 in every existing leaf
+plantarch.addPlantNitrogen(plant_ids, 0.2)      # g N to each plant
+plantarch.advanceTime(10.0)
+
+leaf = plantarch.getPlantLeafObjectIDs(plant_ids[0])[0]
+leaf_N = context.getObjectDataFloat(leaf, "leaf_nitrogen_gN_m2")
+stress = context.getObjectDataFloat(leaf, "nitrogen_stress_factor")
+```
+
 ## Examples
 
 ### Basic Plant Creation
