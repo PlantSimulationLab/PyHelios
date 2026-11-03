@@ -1087,8 +1087,7 @@ class PlantArchitecture:
 
         Args:
             initial_leaf_N_area: Leaf nitrogen content per unit leaf area (g N/m²) that every
-                existing leaf starts at. (The helios-core header documents this argument as a
-                mass concentration in g N/g DW; the implementation uses it per area.)
+                existing leaf starts at.
 
         Raises:
             ValueError: If initial_leaf_N_area is not a finite number >= 0
