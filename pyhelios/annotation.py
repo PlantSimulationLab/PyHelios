@@ -45,6 +45,7 @@ __all__ = [
     "writeLabelBoundingBoxes",
     "labelMasks",
     "writeLabelSegmentationMasks",
+    "writeClassMapSegmentationMasks",
 ]
 
 
@@ -293,3 +294,83 @@ def writeLabelSegmentationMasks(context: Context, pixel_uuids, resolution: int2,
     context_wrapper.annotationWriteLabelSegmentationMasksWrapper(
         context.getNativePtr(), pixels, width, height, labels, ids, json_filename, image_file,
         list(data_attribute_labels), bool(append_file), bool(use_object_data))
+
+
+def writeClassMapSegmentationMasks(context: Context, pixel_classes, pixel_uuids, resolution: int2,
+                                   class_names: Dict[int, str], json_filename: str, image_file: str,
+                                   data_attribute_labels: Optional[List[str]] = None,
+                                   append_file: bool = False) -> None:
+    """
+    Write COCO JSON segmentation masks for the connected regions of chosen classes in a per-pixel class map.
+
+    Each connected region of pixels holding one of the given classes becomes one annotation,
+    whose COCO category ID is the class value. Pixels touching only at a corner are connected,
+    the ``bbox`` encloses every pixel of the region, and a region of only one or two pixels is
+    not written, as in :func:`writeLabelSegmentationMasks`. A per-pixel class map is, for
+    example, the spectral class each radiation camera pixel sees (see
+    :meth:`pyhelios.Context.setPrimitiveSpectralTexture`).
+
+    Args:
+        context: Context holding the primitives named by the pixel-to-primitive map, for the attributes.
+        pixel_classes: Class of each pixel (0 for none), ``width * height`` non-negative
+            integers, row-major with row 0 at the top of the image. A nested list, a flat list
+            or a NumPy array of either shape is accepted.
+        pixel_uuids: Pixel-to-primitive map (UUID + 1 per pixel, 0 for none) in the same
+            orientation, from which the attributes are computed.
+        resolution: Image dimensions in pixels, as ``int2(width, height)``.
+        class_names: Category name of each class to annotate, keyed by class value (1 or
+            more). Classes not listed are not annotated.
+        json_filename: Path of the COCO JSON file to write. ".json" is appended if missing.
+        image_file: Path of the image these masks annotate, which must exist.
+        data_attribute_labels: Optional primitive or object data labels whose mean over the
+            pixels of each mask is written to its "attributes", as in
+            :func:`writeLabelSegmentationMasks`.
+        append_file: If True, annotations are added to an existing file at ``json_filename``;
+            if False (default), a new file is written.
+
+    Raises:
+        ValueError: If ``context`` is not a Context, ``resolution`` is not an int2, a map does
+            not have ``width * height`` elements, or ``class_names`` is empty or has a key below 1.
+        TypeError: If the maps, class names or labels have the wrong type.
+        HeliosRuntimeError: If ``image_file`` does not exist or the JSON file cannot be written.
+        NotImplementedError: If the native library predates helios-core v1.3.95.
+    """
+    func_name = "writeClassMapSegmentationMasks"
+    _check_context(context, func_name)
+    width, height = _check_resolution(resolution, func_name)
+    if isinstance(pixel_classes, (str, bytes)) or not isinstance(pixel_classes, (Sequence, np.ndarray)):
+        raise TypeError(f"{func_name}: pixel_classes must be a list or NumPy array of integers, "
+                        f"got {type(pixel_classes).__name__}")
+    classes_arr = np.asarray(pixel_classes)
+    if classes_arr.size > 0 and classes_arr.dtype.kind not in "iu":
+        raise TypeError(f"{func_name}: pixel_classes must hold integers (0 for none), got dtype {classes_arr.dtype}")
+    if classes_arr.size != width * height:
+        raise ValueError(f"{func_name}: the class map has {classes_arr.size} elements, which does not match "
+                         f"the image resolution of {width} x {height} ({width * height} pixels)")
+    if classes_arr.size > 0 and (classes_arr.min() < 0 or classes_arr.max() > 0xFFFFFFFF):
+        raise ValueError(f"{func_name}: pixel_classes values must be in [0, 2^32 - 1]")
+    pixels = _check_pixel_map(pixel_uuids, width, height, func_name)
+    if not isinstance(class_names, dict):
+        raise TypeError(f"{func_name}: class_names must be a dict mapping class value to name, "
+                        f"got {type(class_names).__name__}")
+    if not class_names:
+        raise ValueError(f"{func_name}: class_names must name at least one class")
+    values, names = [], []
+    for value, name in class_names.items():
+        if not isinstance(value, numbers.Integral) or isinstance(value, bool) or value < 1 or value > 0xFFFFFFFF:
+            raise ValueError(f"{func_name}: class values must be integers of 1 or more, got {value!r}")
+        if not isinstance(name, str) or not name.strip():
+            raise TypeError(f"{func_name}: class names must be non-empty strings, got {name!r}")
+        values.append(int(value))
+        names.append(name)
+    _check_filename(json_filename, "json_filename", func_name)
+    _check_filename(image_file, "image_file", func_name)
+    if data_attribute_labels is None:
+        data_attribute_labels = []
+    elif isinstance(data_attribute_labels, str) or not isinstance(data_attribute_labels, (list, tuple)):
+        raise TypeError(f"{func_name}: data_attribute_labels must be a list of strings")
+    if not all(isinstance(label, str) for label in data_attribute_labels):
+        raise TypeError(f"{func_name}: data_attribute_labels must be a list of strings")
+    context_wrapper.annotationWriteClassMapSegmentationMasksWrapper(
+        context.getNativePtr(), classes_arr.reshape(-1), pixels, width, height, values, names,
+        json_filename, image_file, list(data_attribute_labels), bool(append_file))

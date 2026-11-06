@@ -6,6 +6,8 @@
 #include "Context.h"
 #include <string>
 #include <exception>
+#include <map>
+#include <vector>
 
 #ifdef RADIATION_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_radiation.h"
@@ -3400,6 +3402,118 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::applyCameraColorCorrectionMatrix): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::applyCameraColorCorrectionMatrix): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void enableLightModelVisualization(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            radiation_model->enableLightModelVisualization();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableLightModelVisualization): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableLightModelVisualization): Unknown error enabling light model visualization");
+        }
+    }
+
+    PYHELIOS_API void disableLightModelVisualization(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            radiation_model->disableLightModelVisualization();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableLightModelVisualization): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableLightModelVisualization): Unknown error disabling light model visualization");
+        }
+    }
+
+    PYHELIOS_API void enableCameraModelVisualization(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            radiation_model->enableCameraModelVisualization();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enableCameraModelVisualization): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enableCameraModelVisualization): Unknown error enabling camera model visualization");
+        }
+    }
+
+    PYHELIOS_API void disableCameraModelVisualization(RadiationModel* radiation_model) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            radiation_model->disableCameraModelVisualization();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::disableCameraModelVisualization): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::disableCameraModelVisualization): Unknown error disabling camera model visualization");
+        }
+    }
+
+    PYHELIOS_API void writeImageSegmentationMasksBySpectralClass(RadiationModel* radiation_model, const char* camera_label,
+                                                                 const unsigned int* class_values, const char** class_names,
+                                                                 size_t class_count, const char* json_filename,
+                                                                 const char* image_file, const char** data_attribute_labels,
+                                                                 size_t data_attribute_count, int append_file) {
+        try {
+            clearError();
+            if (!radiation_model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null");
+                return;
+            }
+            if (!camera_label || !json_filename || !image_file) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameters are null");
+                return;
+            }
+            if (class_count > 0 && (!class_values || !class_names)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "class_values or class_names array is null");
+                return;
+            }
+            if (data_attribute_count > 0 && !data_attribute_labels) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "data_attribute_labels array is null");
+                return;
+            }
+
+            std::map<unsigned int, std::string> class_map;
+            for (size_t i = 0; i < class_count; i++) {
+                if (!class_names[i]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "class_names contains a null entry");
+                    return;
+                }
+                class_map[class_values[i]] = std::string(class_names[i]);
+            }
+
+            std::vector<std::string> attribute_vector;
+            attribute_vector.reserve(data_attribute_count);
+            for (size_t i = 0; i < data_attribute_count; i++) {
+                if (!data_attribute_labels[i]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "data_attribute_labels contains a null entry");
+                    return;
+                }
+                attribute_vector.emplace_back(data_attribute_labels[i]);
+            }
+
+            radiation_model->writeImageSegmentationMasksBySpectralClass(std::string(camera_label), class_map, std::string(json_filename),
+                                                                        std::string(image_file), attribute_vector, append_file != 0);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeImageSegmentationMasksBySpectralClass): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeImageSegmentationMasksBySpectralClass): Unknown error writing spectral class segmentation masks.");
         }
     }
 

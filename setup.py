@@ -105,8 +105,8 @@ def get_asset_files():
                     # Prague sky model dataset (~26 MB) and its license.
                     'plugins/*/lib/prague_sky_model/*',
                     # Camera and light models
-                    'plugins/*/camera_light_models/*.xml',
-                    'plugins/*/camera_light_models/*.json',
+                    'plugins/*/camera_light_models/*.obj',
+                    'plugins/*/camera_light_models/*.mtl',
                     # Subdirectories recursively for complex asset structures
                     'plugins/*/shaders/**/*',
                     'plugins/*/fonts/**/*',

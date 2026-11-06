@@ -6,6 +6,7 @@ capabilities with graceful plugin handling and informative error messages.
 """
 
 import logging
+import numbers
 import math
 import tempfile
 import warnings
@@ -657,7 +658,77 @@ class RadiationModel:
         """Enable RadiationModel status messages."""
         self._check_context_alive()
         radiation_wrapper.enableMessages(self.radiation_model)
-    
+
+    @require_plugin('radiation', 'enable light model visualization')
+    def enableLightModelVisualization(self) -> None:
+        """
+        Add 3D models of the radiation sources to the Context so they can be seen.
+
+        A model is built for every sphere, sun-sphere, disk and rectangle source that
+        already exists, and for each one added afterwards while visualization stays
+        enabled. Collimated sources have no position and get no model. Disk and rectangle
+        models include an arrow showing the emission direction; the sun-sphere model is
+        placed on the domain bounding sphere in the direction of the sun.
+
+        The models are ordinary Context primitives, so they appear in the Visualizer
+        (after ``buildContextGeometry``) and in ``Context.writeOBJ`` exports. Each one
+        carries primitive data ``invisibility_flag = 1``, so it does not block, absorb or
+        emit radiation. Call it after the geometry it should sit among has been added,
+        since the sun-sphere model is sized from the domain at that moment. Calling it
+        again rebuilds the models rather than adding a second set.
+
+        Raises:
+            RadiationModelError: If the source model files cannot be loaded
+
+        Example:
+            >>> with RadiationModel(context) as radiation:
+            ...     radiation.addSphereRadiationSource(vec3(0, 0, 2), 0.25)
+            ...     radiation.enableLightModelVisualization()
+            ...     context.writeOBJ("scene_with_lights.obj")
+        """
+        self._check_context_alive()
+        self._call_model_visualization('enableLightModelVisualization', 'enable light model visualization')
+
+    @require_plugin('radiation', 'disable light model visualization')
+    def disableLightModelVisualization(self) -> None:
+        """
+        Remove the radiation source 3D models from the Context.
+
+        Sources added afterwards no longer get a model. Calling it when the models are
+        already removed (or after some of their primitives were deleted) is a no-op.
+        """
+        self._check_context_alive()
+        self._call_model_visualization('disableLightModelVisualization', 'disable light model visualization')
+
+    @require_plugin('radiation', 'enable camera model visualization')
+    def enableCameraModelVisualization(self) -> None:
+        """
+        Add a 3D camera model to the Context at each radiation camera, pointed along its view.
+
+        A model is built for every existing camera and for each one added afterwards while
+        visualization stays enabled. Like the light models, the primitives carry
+        ``invisibility_flag = 1`` and do not interact with the radiation field.
+
+        Raises:
+            RadiationModelError: If the camera model file cannot be loaded
+        """
+        self._check_context_alive()
+        self._call_model_visualization('enableCameraModelVisualization', 'enable camera model visualization')
+
+    @require_plugin('radiation', 'disable camera model visualization')
+    def disableCameraModelVisualization(self) -> None:
+        """Remove the radiation camera 3D models from the Context."""
+        self._check_context_alive()
+        self._call_model_visualization('disableCameraModelVisualization', 'disable camera model visualization')
+
+    def _call_model_visualization(self, fn_name: str, action: str) -> None:
+        try:
+            getattr(radiation_wrapper, fn_name)(self.radiation_model)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to {action}: {e}")
+
     @require_plugin('radiation', 'add radiation band')
     def addRadiationBand(self, band_label: str, wavelength_min: float = None, wavelength_max: float = None):
         """
@@ -3508,6 +3579,82 @@ class RadiationModel:
             else:
                 raise TypeError("object_data_labels must be a string or list of strings")
     
+    @require_plugin('radiation', 'write spectral class segmentation masks')
+    def writeImageSegmentationMasksBySpectralClass(self, camera_label: str, class_names: Dict[int, str],
+                                                   json_filename: str, image_file: str,
+                                                   data_attribute_labels: Optional[List[str]] = None,
+                                                   append_file: bool = False) -> None:
+        """
+        Write COCO JSON segmentation masks for the spectral-texture classes a camera sees.
+
+        Each connected region of pixels that see one class of a spectral texture
+        (``Context.setPrimitiveSpectralTexture()``) becomes one annotation whose COCO
+        category ID is the class value, so for example the lesions in a leaf's class map
+        become masks however many leaves they span. Regions of one or two pixels are not
+        written. Classes mean the same thing in every palette of a class map, so the masks
+        do not depend on which palette is in use.
+
+        The class each pixel sees is recorded as global data
+        ``camera_<camera>_pixel_spectral_class`` whenever ``runBand()`` renders the camera
+        and some primitive has a spectral texture, so call this after ``runBand()``.
+
+        Args:
+            camera_label: Label of the camera.
+            class_names: Category name of each class to annotate, keyed by class value
+                (integers of 1 or more; 0 marks pixels without a class). Classes not listed
+                are not annotated.
+            json_filename: Output JSON file. ``".json"`` is appended if it is missing.
+            image_file: Image file these masks annotate. It must exist.
+            data_attribute_labels: Primitive or object data labels whose mean within each
+                mask is written to its ``"attributes"``. Default none.
+            append_file: If True, add the annotations to an existing JSON file instead of
+                writing a new one.
+
+        Raises:
+            TypeError: If an argument has the wrong type.
+            ValueError: If ``class_names`` is empty or has a class value below 1.
+            HeliosRuntimeError: If the camera does not exist, the spectral classes were not
+                recorded (the camera was not rendered, or no primitive has a spectral
+                texture), or the image file does not exist.
+
+        Example:
+            >>> radiation.runBand(["red", "green", "blue"])
+            >>> radiation.writeCameraImage("cam", ["red", "green", "blue"], "leaf", "./")
+            >>> radiation.writeImageSegmentationMasksBySpectralClass(
+            ...     "cam", {1: "lesion", 2: "necrosis"}, "masks.json", "./leaf_cam_00000.jpeg")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise TypeError("Camera label must be a non-empty string")
+        if not isinstance(class_names, dict):
+            raise TypeError(f"class_names must be a dict mapping class value (int) to category name (str), "
+                            f"got {type(class_names).__name__}")
+        if not class_names:
+            raise ValueError("class_names must contain at least one class to annotate")
+        for value, name in class_names.items():
+            if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+                raise TypeError(f"class_names keys must be integers, got {type(value).__name__}")
+            if value < 1 or value > 0xFFFFFFFF:
+                raise ValueError(f"Class values must be 1 or more (0 marks pixels without a class), got {value}")
+            if not isinstance(name, str) or not name.strip():
+                raise TypeError(f"Category name for class {value} must be a non-empty string")
+        if not isinstance(json_filename, str) or not json_filename.strip():
+            raise TypeError("JSON filename must be a non-empty string")
+        if not isinstance(image_file, str) or not image_file.strip():
+            raise TypeError("Image file must be a non-empty string")
+        if data_attribute_labels is None:
+            data_attribute_labels = []
+        if not isinstance(data_attribute_labels, (list, tuple)) or \
+                not all(isinstance(lbl, str) and lbl.strip() for lbl in data_attribute_labels):
+            raise TypeError("data_attribute_labels must be a list of non-empty strings")
+        if not isinstance(append_file, bool):
+            raise TypeError("append_file must be a boolean")
+
+        self._check_context_alive()
+        radiation_wrapper.writeImageSegmentationMasksBySpectralClass(
+            self.radiation_model, camera_label, class_names, json_filename, image_file,
+            list(data_attribute_labels), append_file)
+        logger.info(f"Spectral class segmentation masks written for camera '{camera_label}'")
+
     @require_plugin('radiation', 'auto-calibrate camera image')
     def autoCalibrateCameraImage(self, camera_label: str, red_band_label: str,
                                    green_band_label: str, blue_band_label: str,

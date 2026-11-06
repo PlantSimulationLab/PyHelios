@@ -4318,3 +4318,380 @@ class TestCameraImageCorrectionsNative:
         with self._camera() as radiation:
             with pytest.raises(RadiationModelError, match="not found in camera"):
                 radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "nir", ccm)
+
+
+@pytest.mark.cross_platform
+class TestModelVisualizationAPI:
+    """Wrapper plumbing for the light/camera model visualization methods, against a stub wrapper."""
+
+    METHODS = ("enableLightModelVisualization", "disableLightModelVisualization",
+               "enableCameraModelVisualization", "disableCameraModelVisualization")
+
+    def _model_with_stub(self, monkeypatch, fail_with=None):
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        model.context = None
+        calls = []
+
+        def recorder(name):
+            def fake(ptr):
+                calls.append((name, ptr))
+                if fail_with is not None:
+                    raise fail_with
+            return fake
+
+        for name in self.METHODS:
+            monkeypatch.setattr(radiation_module.radiation_wrapper, name, recorder(name))
+        monkeypatch.setattr(RadiationModel, '_check_context_alive', lambda self: None)
+        return model, calls
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_forwards_native_pointer(self, monkeypatch, method):
+        model, calls = self._model_with_stub(monkeypatch)
+        getattr(model, method)()
+        assert calls == [(method, model.radiation_model)]
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_non_runtime_error_wrapped(self, monkeypatch, method):
+        model, _ = self._model_with_stub(monkeypatch, fail_with=OSError("boom"))
+        with pytest.raises(RadiationModelError, match="boom"):
+            getattr(model, method)()
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_runtime_error_propagates(self, monkeypatch, method):
+        model, _ = self._model_with_stub(monkeypatch, fail_with=RuntimeError("native failure"))
+        with pytest.raises(RuntimeError, match="native failure"):
+            getattr(model, method)()
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_wrapper_rejects_none_pointer(self, method):
+        from pyhelios.wrappers import URadiationModelWrapper as wrapper
+        if not (wrapper._RADIATION_MODEL_FUNCTIONS_AVAILABLE and wrapper._MODEL_VISUALIZATION_AVAILABLE):
+            with pytest.raises(RuntimeError, match="not available"):
+                getattr(wrapper, method)(None)
+        else:
+            with pytest.raises(ValueError, match="None"):
+                getattr(wrapper, method)(None)
+
+
+@pytest.mark.native_only
+class TestModelVisualizationNative:
+    """enable/disable Light/Camera ModelVisualization against the real library."""
+
+    @staticmethod
+    def _invisible_uuids(context, before):
+        new = sorted(set(context.getAllUUIDs()) - set(before))
+        for uuid in new:
+            assert context.getPrimitiveData(uuid, "invisibility_flag") == 1
+        return new
+
+    @staticmethod
+    def _bbox(context, uuids):
+        verts = np.array([[v.x, v.y, v.z] for u in uuids for v in context.getPrimitiveVertices(u)])
+        return verts.min(axis=0), verts.max(axis=0)
+
+    @contextmanager
+    def _scene(self):
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                radiation.disableMessages()
+                yield context, radiation
+
+    def test_sphere_source_model_built_at_source(self):
+        with self._scene() as (context, radiation):
+            radiation.addSphereRadiationSource(DataTypes.vec3(1, 2, 3), 0.5)
+            before = context.getAllUUIDs()
+            radiation.enableLightModelVisualization()
+            new = self._invisible_uuids(context, before)
+            assert new, "no light model primitives were added"
+            lo, hi = self._bbox(context, new)
+            np.testing.assert_allclose((lo + hi) / 2, [1, 2, 3], atol=0.05)
+            assert np.all(hi - lo <= 1.0 + 1e-3)
+
+    def test_source_added_after_enable_gets_model(self):
+        with self._scene() as (context, radiation):
+            radiation.enableLightModelVisualization()
+            before = context.getAllUUIDs()
+            radiation.addSphereRadiationSource(DataTypes.vec3(0, 0, 2), 0.25)
+            assert self._invisible_uuids(context, before)
+
+    @pytest.mark.parametrize("kind", ["rectangle", "disk", "sun_sphere"])
+    def test_planar_and_sun_sources_get_models(self, kind):
+        with self._scene() as (context, radiation):
+            if kind == "rectangle":
+                radiation.addRectangleRadiationSource(DataTypes.vec3(0, 0, 2), DataTypes.vec2(1, 0.5),
+                                                      DataTypes.vec3(0, 0, 0))
+            elif kind == "disk":
+                radiation.addDiskRadiationSource(DataTypes.vec3(0, 0, 2), 0.5, DataTypes.vec3(0, 0, 0))
+            else:
+                radiation.addSunSphereRadiationSource(radius=0.5, zenith=30.0, azimuth=90.0)
+            before = context.getAllUUIDs()
+            radiation.enableLightModelVisualization()
+            assert self._invisible_uuids(context, before)
+
+    def test_collimated_source_gets_no_model(self):
+        with self._scene() as (context, radiation):
+            radiation.addCollimatedRadiationSource()
+            before = context.getPrimitiveCount()
+            radiation.enableLightModelVisualization()
+            assert context.getPrimitiveCount() == before
+
+    def test_disable_removes_light_models(self):
+        with self._scene() as (context, radiation):
+            radiation.addSphereRadiationSource(DataTypes.vec3(0, 0, 2), 0.25)
+            before = context.getPrimitiveCount()
+            radiation.enableLightModelVisualization()
+            assert context.getPrimitiveCount() > before
+            radiation.disableLightModelVisualization()
+            assert context.getPrimitiveCount() == before
+
+    def test_disable_twice_is_safe(self):
+        with self._scene() as (context, radiation):
+            radiation.addSphereRadiationSource(DataTypes.vec3(0, 0, 2), 0.25)
+            before = context.getPrimitiveCount()
+            radiation.enableLightModelVisualization()
+            radiation.disableLightModelVisualization()
+            radiation.disableLightModelVisualization()
+            assert context.getPrimitiveCount() == before
+
+    def test_enable_twice_does_not_duplicate_models(self):
+        with self._scene() as (context, radiation):
+            radiation.addSphereRadiationSource(DataTypes.vec3(0, 0, 2), 0.25)
+            base = context.getPrimitiveCount()
+            radiation.enableLightModelVisualization()
+            once = context.getPrimitiveCount()
+            radiation.enableLightModelVisualization()
+            assert context.getPrimitiveCount() == once
+            radiation.disableLightModelVisualization()
+            assert context.getPrimitiveCount() == base
+
+    def test_light_models_appear_in_obj_export(self, tmp_path):
+        with self._scene() as (context, radiation):
+            radiation.addSphereRadiationSource(DataTypes.vec3(0, 0, 2), 0.25)
+            plain = tmp_path / "plain.obj"
+            context.writeOBJ(str(plain))
+            radiation.enableLightModelVisualization()
+            lit = tmp_path / "lit.obj"
+            context.writeOBJ(str(lit))
+            count = lambda p: sum(1 for line in p.read_text().splitlines() if line.startswith("f "))
+            assert count(lit) > count(plain)
+
+    def test_camera_model_enable_disable(self):
+        from pyhelios import CameraProperties
+        with self._scene() as (context, radiation):
+            radiation.addRadiationBand("red")
+            radiation.addRadiationCamera("cam", ["red"], DataTypes.vec3(0, 0, 5), DataTypes.vec3(0, 0, 0),
+                                         CameraProperties(camera_resolution=(2, 2)), antialiasing_samples=1)
+            before = context.getAllUUIDs()
+            radiation.enableCameraModelVisualization()
+            new = self._invisible_uuids(context, before)
+            assert new, "no camera model primitives were added"
+            lo, hi = self._bbox(context, new)
+            np.testing.assert_allclose((lo + hi) / 2, [0, 0, 5], atol=0.5)
+            radiation.disableCameraModelVisualization()
+            assert sorted(context.getAllUUIDs()) == sorted(before)
+
+
+def _write_grayscale_png(path, rows):
+    """Write an 8-bit grayscale PNG whose pixel values are the given integers."""
+    import struct
+    import zlib
+    height, width = len(rows), len(rows[0])
+    raw = b"".join(b"\x00" + bytes(row) for row in rows)
+
+    def chunk(tag, data):
+        body = tag + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(raw))
+           + chunk(b"IEND", b""))
+    with open(path, "wb") as f:
+        f.write(png)
+
+
+@pytest.mark.cross_platform
+class TestSpectralClassMasksAPI:
+    """Argument validation and plumbing of writeImageSegmentationMasksBySpectralClass, against a stub wrapper."""
+
+    def _model_with_stub(self, monkeypatch):
+        radiation_module = sys.modules['pyhelios.RadiationModel']
+        registry = get_plugin_registry()
+        real_is_available = registry.is_plugin_available
+        monkeypatch.setattr(
+            registry, 'is_plugin_available',
+            lambda name: True if name == 'radiation' else real_is_available(name))
+
+        model = RadiationModel.__new__(RadiationModel)
+        model.radiation_model = object()
+        model.context = None
+        calls = []
+        monkeypatch.setattr(radiation_module.radiation_wrapper, 'writeImageSegmentationMasksBySpectralClass',
+                            lambda *args: calls.append(args))
+        monkeypatch.setattr(RadiationModel, '_check_context_alive', lambda self: None)
+        return model, calls
+
+    def test_forwards_arguments(self, monkeypatch):
+        model, calls = self._model_with_stub(monkeypatch)
+        model.writeImageSegmentationMasksBySpectralClass("cam", {2: "necrosis", 1: "lesion"}, "masks.json",
+                                                         "img.jpeg", ["leaf_id"], True)
+        assert calls == [(model.radiation_model, "cam", {2: "necrosis", 1: "lesion"}, "masks.json",
+                          "img.jpeg", ["leaf_id"], True)]
+
+    def test_defaults(self, monkeypatch):
+        model, calls = self._model_with_stub(monkeypatch)
+        model.writeImageSegmentationMasksBySpectralClass(camera_label="cam", class_names={1: "lesion"},
+                                                         json_filename="m", image_file="img.jpeg")
+        assert calls[0][5:] == ([], False)
+
+    @pytest.mark.parametrize("class_names, exc", [
+        ({}, ValueError),
+        ({0: "background"}, ValueError),
+        ({-1: "x"}, ValueError),
+        ({1.0: "x"}, TypeError),
+        ({True: "x"}, TypeError),
+        ({"1": "x"}, TypeError),
+        ({1: ""}, TypeError),
+        ({1: 3}, TypeError),
+        ([(1, "lesion")], TypeError),
+        ("lesion", TypeError),
+    ])
+    def test_invalid_class_names(self, monkeypatch, class_names, exc):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(exc):
+            model.writeImageSegmentationMasksBySpectralClass("cam", class_names, "m.json", "img.jpeg")
+        with pytest.raises(exc):
+            model.writeImageSegmentationMasksBySpectralClass(camera_label="cam", class_names=class_names,
+                                                             json_filename="m.json", image_file="img.jpeg")
+        assert calls == []
+
+    def test_numpy_integer_class_values_accepted(self, monkeypatch):
+        import numpy as np
+        model, calls = self._model_with_stub(monkeypatch)
+        model.writeImageSegmentationMasksBySpectralClass("cam", {np.uint16(1): "lesion", np.int64(2): "rot"},
+                                                         "m.json", "img.jpeg")
+        assert len(calls) == 1
+
+    @pytest.mark.parametrize("args", [
+        ("", {1: "a"}, "m.json", "img.jpeg"),
+        (5, {1: "a"}, "m.json", "img.jpeg"),
+        ("cam", {1: "a"}, "", "img.jpeg"),
+        ("cam", {1: "a"}, "m.json", None),
+        ("cam", {1: "a"}, "m.json", "img.jpeg", "leaf_id"),
+        ("cam", {1: "a"}, "m.json", "img.jpeg", ["ok", ""]),
+        ("cam", {1: "a"}, "m.json", "img.jpeg", [], 1),
+    ])
+    def test_invalid_other_arguments(self, monkeypatch, args):
+        model, calls = self._model_with_stub(monkeypatch)
+        with pytest.raises(TypeError):
+            model.writeImageSegmentationMasksBySpectralClass(*args)
+        assert calls == []
+
+    def test_wrapper_without_native_symbol_raises_actionable_error(self, monkeypatch):
+        from pyhelios.wrappers import URadiationModelWrapper as wrapper
+        monkeypatch.setattr(wrapper, '_SPECTRAL_CLASS_MASKS_AVAILABLE', False)
+        with pytest.raises(RuntimeError, match="build_helios"):
+            wrapper.writeImageSegmentationMasksBySpectralClass(object(), "cam", {1: "a"}, "m.json", "img.jpeg")
+
+    def test_wrapper_rejects_none_pointer(self):
+        from pyhelios.wrappers import URadiationModelWrapper as wrapper
+        if not (wrapper._RADIATION_MODEL_FUNCTIONS_AVAILABLE and wrapper._SPECTRAL_CLASS_MASKS_AVAILABLE):
+            pytest.skip("native library predates writeImageSegmentationMasksBySpectralClass")
+        with pytest.raises(ValueError, match="None"):
+            wrapper.writeImageSegmentationMasksBySpectralClass(None, "cam", {1: "a"}, "m.json", "img.jpeg")
+
+
+@pytest.mark.native_only
+class TestSpectralClassMasksNative:
+    """writeImageSegmentationMasksBySpectralClass against the real library."""
+
+    @staticmethod
+    def _require_symbol():
+        from pyhelios.wrappers import URadiationModelWrapper as wrapper
+        if not wrapper._SPECTRAL_CLASS_MASKS_AVAILABLE:
+            pytest.skip("native library predates writeImageSegmentationMasksBySpectralClass (rebuild needed)")
+
+    @staticmethod
+    def _camera_run(context, radiation, resolution=32):
+        from pyhelios import CameraProperties
+        radiation.disableMessages()
+        radiation.addRadiationBand("red", 600.0, 700.0)
+        radiation.disableEmission("red")
+        radiation.setScatteringDepth("red", 1)
+        source = radiation.addCollimatedRadiationSource(DataTypes.vec3(0, 0, 1))
+        radiation.setSourceFlux(source, "red", 500.0)
+        radiation.addRadiationCamera("cam", ["red"], DataTypes.vec3(0, 0, 3), DataTypes.vec3(0, 0, 0),
+                                     CameraProperties(camera_resolution=(resolution, resolution), HFOV=30.0),
+                                     antialiasing_samples=1)
+        radiation.updateGeometry()
+        radiation.runBand("red")
+
+    def test_camera_does_not_exist_raises(self, tmp_path):
+        self._require_symbol()
+        image = tmp_path / "img.jpeg"
+        image.write_bytes(b"")
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(1, 1))
+            with radiation_model_or_skip(context) as radiation:
+                with pytest.raises(Exception, match="does not exist"):
+                    radiation.writeImageSegmentationMasksBySpectralClass(
+                        "no_such_camera", {1: "lesion"}, str(tmp_path / "m.json"), str(image))
+
+    def test_without_spectral_texture_raises_not_recorded(self, tmp_path):
+        self._require_symbol()
+        with Context() as context:
+            context.addPatch(center=DataTypes.vec3(0, 0, 0), size=DataTypes.vec2(2, 2))
+            with radiation_model_or_skip(context) as radiation:
+                self._camera_run(context, radiation, resolution=8)
+                image = radiation.writeCameraImage("cam", ["red"], "plain", str(tmp_path))
+                assert not context.doesGlobalDataExist("camera_cam_pixel_spectral_class")
+                with pytest.raises(Exception, match="were not recorded"):
+                    radiation.writeImageSegmentationMasksBySpectralClass(
+                        "cam", {1: "lesion"}, str(tmp_path / "m.json"), image)
+
+    def test_masks_written_per_class(self, tmp_path):
+        """A patch whose class map is class 1 on the left and class 2 on the right gives one mask per class."""
+        import json
+        self._require_symbol()
+        class_map = tmp_path / "classes.png"
+        _write_grayscale_png(class_map, [[1] * 4 + [2] * 4 for _ in range(8)])
+        # The palette and spectral texture are set up through loadXML.
+        scene = tmp_path / "scene.xml"
+        scene.write_text(
+            '<helios>\n'
+            '<globaldata_vec2 label="dark_refl">\n400 0.05\n800 0.05\n</globaldata_vec2>\n'
+            '<globaldata_vec2 label="bright_refl">\n400 0.6\n800 0.6\n</globaldata_vec2>\n'
+            '<spectral_palette label="pal">\n'
+            '<class id="1" reflectivity="dark_refl" transmissivity="" provenance="test"/>\n'
+            '<class id="2" reflectivity="bright_refl" transmissivity="" provenance="test"/>\n'
+            '</spectral_palette>\n'
+            '<patch>\n<transform>2 0 0 0 0 2 0 0 0 0 1 0 0 0 0 1</transform>\n'
+            f'<spectral_texture palette="pal">{class_map}</spectral_texture>\n</patch>\n'
+            '</helios>\n')
+        with Context() as context:
+            context.loadXML(str(scene), quiet=True)
+            with radiation_model_or_skip(context) as radiation:
+                self._camera_run(context, radiation)
+                assert context.doesGlobalDataExist("camera_cam_pixel_spectral_class")
+                image = radiation.writeCameraImage("cam", ["red"], "spectral", str(tmp_path))
+                out = tmp_path / "masks.json"
+                radiation.writeImageSegmentationMasksBySpectralClass(
+                    "cam", {1: "dark", 2: "bright"}, str(out), image)
+                coco = json.loads(out.read_text())
+                assert {c["id"]: c["name"] for c in coco["categories"]} == {1: "dark", 2: "bright"}
+                assert sorted({a["category_id"] for a in coco["annotations"]}) == [1, 2]
+
+                # Classes not listed are not annotated
+                radiation.writeImageSegmentationMasksBySpectralClass(
+                    "cam", {2: "bright"}, str(tmp_path / "only2.json"), image)
+                only2 = json.loads((tmp_path / "only2.json").read_text())
+                assert {a["category_id"] for a in only2["annotations"]} == {2}

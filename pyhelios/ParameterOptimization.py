@@ -3,8 +3,9 @@ High-level ParameterOptimization interface for PyHelios.
 
 This module provides a user-friendly interface to the parameter optimization
 plugin, which calibrates named model parameters against a user-supplied
-objective function using either population-based search (genetic algorithm,
-Bayesian optimization, CMA-ES) or local optimization (Adam, L-BFGS, BOBYQA).
+objective function using either global search (genetic algorithm, Bayesian
+optimization, CMA-ES, Tree-structured Parzen Estimator) or local optimization
+(Adam, L-BFGS, BOBYQA, SLSQP).
 
 Example:
     >>> from pyhelios import ParameterOptimization, Parameter, GeneticAlgorithm
@@ -23,6 +24,7 @@ Example:
 """
 
 import logging
+import numbers
 import math
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -334,6 +336,55 @@ class CMAES:
 
 
 @dataclass
+class TPE:
+    """
+    Tree-structured Parzen Estimator (a C++ port of Optuna 5.0.0's ``TPESampler``).
+
+    After ``n_startup_trials`` uniformly random evaluations, it splits the evaluations
+    so far into the best few and the rest, fits a kernel density to each, and evaluates
+    the candidate (of ``n_ei_candidates`` drawn from the best group's density) with the
+    highest ratio of the two densities. Supports FLOAT, INTEGER and CATEGORICAL
+    parameters, and makes good use of a budget of tens to hundreds of evaluations,
+    especially with around 5 to 10 parameters.
+
+    Notes:
+        - The initial ``value`` of each parameter is not used as a starting point, and
+          ``setInputFile()`` makes ``run()`` raise.
+        - An objective returning NaN raises (PyHelios rejects non-finite objective
+          values for every algorithm).
+        - TPE locates a good region more readily than it converges precisely within it;
+          refine its result with a local optimizer for precision (see the two-stage
+          example in the documentation).
+        - A FLOAT range spanning few single-precision values is searched inefficiently,
+          and repeated values in ``categories`` count as separate categories.
+        - There are no ``explore()`` / ``exploit()`` presets, matching Optuna.
+    """
+
+    max_evaluations: int = 100   #: Total number of function evaluations
+    n_startup_trials: int = 10   #: Initial uniformly random evaluations; must be at least 1
+    n_ei_candidates: int = 24    #: Candidates scored per evaluation (higher favors exploitation)
+    random_seed: int = 0         #: 0 selects a nondeterministic seed
+
+    def _to_struct(self):
+        # ctypes silently wraps negative or oversized values assigned to unsigned
+        # fields, so out-of-range integers are rejected before they reach C++.
+        # Zero counts are left to the plugin, which raises when run() starts.
+        for name, limit in (("max_evaluations", 2 ** 64 - 1), ("n_startup_trials", 2 ** 64 - 1),
+                            ("n_ei_candidates", 2 ** 64 - 1), ("random_seed", 2 ** 32 - 1)):
+            value = getattr(self, name)
+            if not isinstance(value, numbers.Integral) or isinstance(value, bool):
+                raise TypeError(f"TPE.{name} must be an int, got {type(value).__name__}")
+            if value < 0 or value > limit:
+                raise ValueError(f"TPE.{name} must be between 0 and {limit}, got {value}")
+        struct = paramopt_wrapper.PyHeliosTPE()
+        struct.max_evaluations = int(self.max_evaluations)
+        struct.n_startup_trials = int(self.n_startup_trials)
+        struct.n_ei_candidates = int(self.n_ei_candidates)
+        struct.random_seed = int(self.random_seed)
+        return struct
+
+
+@dataclass
 class Adam:
     """
     AdamW gradient-based optimization.
@@ -433,20 +484,21 @@ class SLSQP:
         return struct
 
 
-AlgorithmSettings = Union[GeneticAlgorithm, BayesianOptimization, CMAES,
+AlgorithmSettings = Union[GeneticAlgorithm, BayesianOptimization, CMAES, TPE,
                           Adam, LBFGS, BOBYQA, SLSQP]
 
 # Maps each settings type to its short native name, its wrapper setter, whether
 # it needs a gradient, and whether it understands INTEGER/CATEGORICAL parameters.
 #
-# Only the genetic algorithm handles discrete parameters. Every other algorithm
-# searches a continuous space and would treat a discrete parameter as a plain
-# float, so passing one is rejected rather than silently answered -- see
+# Only the genetic algorithm and TPE handle discrete parameters. Every other
+# algorithm searches a continuous space and would treat a discrete parameter as a
+# plain float, so passing one is rejected rather than silently answered -- see
 # _validate_parameter_types_for_algorithm.
 _ALGORITHM_INFO = {
     GeneticAlgorithm: ("GA", paramopt_wrapper.setGeneticAlgorithm, False, True),
     BayesianOptimization: ("BO", paramopt_wrapper.setBayesianOptimization, False, False),
     CMAES: ("CMAES", paramopt_wrapper.setCMAES, False, False),
+    TPE: ("TPE", paramopt_wrapper.setTPE, False, True),
     Adam: ("ADAM", paramopt_wrapper.setAdam, True, False),
     LBFGS: ("LBFGS", paramopt_wrapper.setLBFGS, True, False),
     BOBYQA: ("BOBYQA", paramopt_wrapper.setBOBYQA, False, False),
@@ -662,15 +714,29 @@ class ParameterOptimization:
         Returns:
             Mapping of algorithm name to availability
         """
-        names = ["GA", "BO", "CMAES", "ADAM", "LBFGS", "BOBYQA", "SLSQP"]
+        names = ["GA", "BO", "CMAES", "TPE", "ADAM", "LBFGS", "BOBYQA", "SLSQP"]
         return {name: paramopt_wrapper.isAlgorithmAvailable(name) for name in names}
 
     def setAlgorithm(self, algorithm: AlgorithmSettings) -> None:
         """
         Select the optimization algorithm and its hyperparameters.
 
-        If never called, the plugin picks a default based on the parameter types
-        and whether a gradient was supplied.
+        If never called, ``run()`` picks a default from the parameters and whether a
+        gradient was supplied:
+
+        - a gradient (or ``finite_difference=True``) and every parameter FLOAT: :class:`Adam`
+        - otherwise, more than 50 parameters: :class:`GeneticAlgorithm`
+        - otherwise, any INTEGER or CATEGORICAL parameter: :class:`TPE` (any gradient
+          is ignored)
+        - otherwise: :class:`CMAES`
+
+        :meth:`runConstrained` requires :class:`SLSQP` to be selected explicitly.
+
+        Only :class:`GeneticAlgorithm` and :class:`TPE` support INTEGER and
+        CATEGORICAL parameters. The default TPE budget is 100 evaluations, while the
+        default genetic algorithm can spend up to 2000; select an algorithm explicitly
+        to control the budget of a discrete problem, and ``GeneticAlgorithm()`` to keep
+        the behavior of helios-core before 1.3.95.
 
         Args:
             algorithm: One of the algorithm settings dataclasses
@@ -692,6 +758,10 @@ class ParameterOptimization:
 
         # Checked here rather than left to fail inside run(), so the user finds
         # out before waiting through a long optimization.
+        if native_name == "TPE" and not paramopt_wrapper.isAlgorithmAvailable(native_name):
+            raise ParameterOptimizationError(
+                "The TPE algorithm is not available in this native library, which predates "
+                "helios-core 1.3.95. Rebuild PyHelios: build_scripts/build_helios --clean")
         if not paramopt_wrapper.isAlgorithmAvailable(native_name):
             raise ParameterOptimizationError(
                 f"The {type(algorithm).__name__} algorithm is not available in this build.\n\n"
@@ -700,7 +770,7 @@ class ParameterOptimization:
                 f"Alternatives that are always available:\n"
                 f"  - Adam: gradient-based, noise-tolerant\n"
                 f"  - BOBYQA: derivative-free local optimization (needs NLopt)\n"
-                f"  - CMAES / GeneticAlgorithm: population-based global search\n\n"
+                f"  - CMAES / GeneticAlgorithm / TPE: global search\n\n"
                 f"To enable it, change the set(HELIOS_NLOPT_LUKSAN OFF ...) line in "
                 f"build_scripts/build_helios.py and rebuild from clean.")
 
@@ -751,7 +821,10 @@ class ParameterOptimization:
         """
         Read the initial parameter set from a file.
 
-        Only the genetic algorithm consults this file.
+        Only the genetic algorithm consults this file. With :class:`TPE` -- which is
+        also the default algorithm when there are INTEGER or CATEGORICAL parameters --
+        ``run()`` raises while an input file is set, so select
+        ``GeneticAlgorithm()`` explicitly to warm-start a discrete problem.
 
         Args:
             path: Headerless CSV of "name,value,min,max" rows; None disables reading
@@ -1023,7 +1096,7 @@ class ParameterOptimization:
         """
         Reject discrete parameters given to an algorithm that cannot handle them.
 
-        Only the genetic algorithm implements INTEGER and CATEGORICAL parameters.
+        Only the genetic algorithm and TPE implement INTEGER and CATEGORICAL parameters.
         The rest search a continuous space, so a discrete parameter would be
         optimized as a plain float and the result would not be a whole number, or
         not one of the allowed categories.
@@ -1053,9 +1126,9 @@ class ParameterOptimization:
         raise ValueError(
             f"{type(algorithm).__name__} requires every parameter to be FLOAT, "
             f"but {listed}.\n\n"
-            f"GeneticAlgorithm is the only algorithm that supports INTEGER and "
-            f"CATEGORICAL parameters. Either switch to it, or make the parameter "
-            f"continuous with Parameter.continuous(...).")
+            f"GeneticAlgorithm and TPE are the only algorithms that support INTEGER "
+            f"and CATEGORICAL parameters. Either switch to one of them, or make the "
+            f"parameter continuous with Parameter.continuous(...).")
 
     def is_available(self) -> bool:
         """Check if the parameteroptimization plugin is available in this build."""

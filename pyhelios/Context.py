@@ -49,6 +49,30 @@ class PrimitiveInfo:
             self.centroid = vec3(total_x / count, total_y / count, total_z / count)
 
 
+@dataclass
+class SpectralTextureClass:
+    """One class of a spectral palette: the optical spectra of a surface wherever its class map holds this class.
+
+    A spectral texture gives a primitive optical properties that vary across its surface.
+    A class map (a single-channel image laid over the primitive like its texture) holds a
+    class at each texel, and a spectral palette, registered with
+    :meth:`Context.addSpectralPalette`, lists the spectra of classes 1, 2, ... in order.
+
+    Attributes:
+        reflectivity_spectrum: Label of the global data (a list of vec2 of wavelength in nm
+            and value) giving the reflectivity spectrum, as for the primitive data
+            ``"reflectivity_spectrum"``. Required.
+        transmissivity_spectrum: Label of the global data giving the transmissivity spectrum.
+            Empty (the default) for a class that transmits nothing.
+        provenance: Free text recording where the spectra came from (for example
+            ``"measured"`` or ``"assumed"``). It is stored and written to XML but not
+            otherwise used.
+    """
+    reflectivity_spectrum: str
+    transmissivity_spectrum: str = ""
+    provenance: str = ""
+
+
 class Context:
     """
     Central simulation environment for PyHelios that manages 3D primitives and their data.
@@ -2457,7 +2481,10 @@ class Context:
     def loadXML(self, filename: str, quiet: bool = False) -> List[int]:
         """
         Load geometry from a Helios XML file.
-        
+
+        Color textures, spectral palettes and spectral textures written by :meth:`writeXML`
+        are restored.
+
         Args:
             filename: Path to the XML file to load
             quiet: If True, suppress loading output messages
@@ -4252,9 +4279,25 @@ class Context:
     def setPrimitiveTextureFile(self, uuid: int, texture_file: str) -> None:
         """Set the texture file path of a primitive.
 
+        The primitive's solid fraction, and therefore its area, is recomputed from the new
+        texture's transparency channel. A different texture removes the primitive's color
+        texture (:meth:`setPrimitiveColorTexture`) and spectral texture
+        (:meth:`setPrimitiveSpectralTexture`), which were matched to the old one; the texture
+        it already has changes nothing.
+
         Args:
             uuid: UUID of the primitive
-            texture_file: Path to the texture file
+            texture_file: Path to the texture file. An empty string removes the texture.
+
+        Note:
+            A primitive with an automatic material (one created for its color or texture)
+            moves to the automatic material of its new appearance, so primitives created later
+            with the original appearance are unaffected. A named material is changed in place if
+            this primitive is its only user, and otherwise copied for this primitive; a material
+            renamed from an automatic one (such as the organ materials PlantArchitecture names)
+            is always copied, since a plug-in may give it to primitives it creates later. To
+            change a named material for every primitive using it, use ``setMaterialColor()``,
+            ``setMaterialTexture()`` or ``setMaterialTextureColorOverride()``.
         """
         self._check_context_available()
         context_wrapper.setPrimitiveTextureFile(self.context, uuid, texture_file)
@@ -4331,6 +4374,16 @@ class Context:
         Args:
             uuids_or_uuid: A single UUID (int) or a list of UUIDs. When a list is
                 given, the override is applied to all of them in a single bulk call.
+
+        Note:
+            A primitive with an automatic material (one created for its color or texture)
+            moves to the automatic material of its new appearance, so primitives created later
+            with the original appearance are unaffected. A named material is changed in place if
+            this primitive is its only user, and otherwise copied for this primitive; a material
+            renamed from an automatic one (such as the organ materials PlantArchitecture names)
+            is always copied, since a plug-in may give it to primitives it creates later. To
+            change a named material for every primitive using it, use ``setMaterialColor()``,
+            ``setMaterialTexture()`` or ``setMaterialTextureColorOverride()``.
         """
         self._check_context_available()
         if isinstance(uuids_or_uuid, (list, tuple)):
@@ -4344,6 +4397,16 @@ class Context:
         Args:
             uuids_or_uuid: A single UUID (int) or a list of UUIDs. When a list is
                 given, all of them are restored in a single bulk call.
+
+        Note:
+            A primitive with an automatic material (one created for its color or texture)
+            moves to the automatic material of its new appearance, so primitives created later
+            with the original appearance are unaffected. A named material is changed in place if
+            this primitive is its only user, and otherwise copied for this primitive; a material
+            renamed from an automatic one (such as the organ materials PlantArchitecture names)
+            is always copied, since a plug-in may give it to primitives it creates later. To
+            change a named material for every primitive using it, use ``setMaterialColor()``,
+            ``setMaterialTexture()`` or ``setMaterialTextureColorOverride()``.
         """
         self._check_context_available()
         if isinstance(uuids_or_uuid, (list, tuple)):
@@ -4362,6 +4425,380 @@ class Context:
         """
         self._check_context_available()
         return context_wrapper.isPrimitiveTextureColorOverridden(self.context, uuid)
+
+    # =========================================================================
+    # Color textures and spectral textures (helios-core v1.3.95+)
+    # =========================================================================
+
+    @staticmethod
+    def _texture_uuid_arg(uuids, func_name: str):
+        """Return (is_list, value) for an int-or-list-of-ints UUID argument, raising ValueError otherwise."""
+        if isinstance(uuids, (list, tuple, np.ndarray)):
+            values = list(uuids)
+            for u in values:
+                if isinstance(u, bool) or not isinstance(u, (int, np.integer)) or u < 0 or u > 0xFFFFFFFF:
+                    raise ValueError(f"{func_name}: UUIDs must be ints between 0 and 2**32-1, got {u!r}")
+            return True, [int(u) for u in values]
+        if isinstance(uuids, bool) or not isinstance(uuids, (int, np.integer)) or uuids < 0 or uuids > 0xFFFFFFFF:
+            raise ValueError(f"{func_name}: UUID must be a non-negative int or a list of them, "
+                             f"got {type(uuids).__name__}")
+        return False, int(uuids)
+
+    @staticmethod
+    def _texture_str_arg(value, name: str, func_name: str, allow_empty: bool = False) -> str:
+        import os
+        if isinstance(value, os.PathLike):
+            value = os.fspath(value)
+        if not isinstance(value, str):
+            raise ValueError(f"{func_name}: {name} must be a string, got {type(value).__name__}")
+        if not allow_empty and not value.strip():
+            raise ValueError(f"{func_name}: {name} must be a non-empty string")
+        return value
+
+    def setPrimitiveColorTexture(self, uuids, color_texture_file: str) -> None:
+        """Set an image that gives a primitive its color, while the texture of its material continues to give its shape.
+
+        This changes how a primitive looks without changing its material, its area, or its
+        transparency mask, so it can be used to change the appearance of many primitives
+        repeatedly, such as leaves that yellow as they age. A radiation model does not
+        rebuild its geometry as a result.
+
+        The image must match the primitive's texture (see :meth:`validateColorTexture`): the
+        same resolution and identical transparency, pixel by pixel. It is removed if the
+        primitive's texture later changes, since it was matched to the previous one. It is
+        copied with the primitive and written and read by :meth:`writeXML` and :meth:`loadXML`.
+
+        Args:
+            uuids: UUID of the primitive (int), or a list of UUIDs. With a list, every
+                primitive is checked before any is changed.
+            color_texture_file: Path to the image. An empty string removes the image, so
+                that the primitive is colored by its texture again.
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If a primitive has no texture, or the image cannot be read or does
+                not match the primitive's texture
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        func_name = "setPrimitiveColorTexture"
+        is_list, value = self._texture_uuid_arg(uuids, func_name)
+        path = self._texture_str_arg(color_texture_file, "color_texture_file", func_name, allow_empty=True)
+        if is_list:
+            context_wrapper.setPrimitiveColorTextureBatchWrapper(self.context, value, path)
+        else:
+            context_wrapper.setPrimitiveColorTextureWrapper(self.context, value, path)
+
+    def getPrimitiveColorTextureFile(self, uuid: int) -> str:
+        """Get the image that gives a primitive its color.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            The image given by :meth:`setPrimitiveColorTexture` if there is one, and
+            otherwise the primitive's texture, which is empty if it has none. Use
+            :meth:`getPrimitiveTextureFile` for the image that gives the primitive its shape.
+
+        Raises:
+            ValueError: If ``uuid`` is not an int
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        is_list, value = self._texture_uuid_arg(uuid, "getPrimitiveColorTextureFile")
+        if is_list:
+            raise ValueError("getPrimitiveColorTextureFile: uuid must be a single int")
+        return context_wrapper.getPrimitiveColorTextureFileWrapper(self.context, value)
+
+    def validateColorTexture(self, shape_texture_file: str, color_texture_file: str) -> None:
+        """Check that an image can give color to primitives whose shape comes from a given texture.
+
+        The two images must have the same resolution and identical transparency, pixel by
+        pixel. Everything that uses the shape of a primitive reads it from its texture, so an
+        image with a different outline would be drawn with a shape that disagrees with the
+        primitive's area and with what other plug-ins see. Returns silently if they match.
+
+        Args:
+            shape_texture_file: Path to the texture that gives the shape
+            color_texture_file: Path to the image that gives the color
+
+        Raises:
+            ValueError: If an argument is not a non-empty string
+            HeliosError: Explaining the mismatch, if the images do not match or cannot be read
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        func_name = "validateColorTexture"
+        shape = self._texture_str_arg(shape_texture_file, "shape_texture_file", func_name)
+        color = self._texture_str_arg(color_texture_file, "color_texture_file", func_name)
+        context_wrapper.validateColorTextureWrapper(self.context, shape, color)
+
+    def addSpectralPalette(self, label: str, classes: List[SpectralTextureClass]) -> None:
+        """Register a spectral palette, which lists the optical spectra of each class of a class map.
+
+        Class ``k`` of a class map takes the spectra of entry ``k - 1`` of the palette; class 0
+        marks transparent texels. The spectra are named by global data labels and are not
+        looked up here, so a palette can name spectra that are loaded later (for example from
+        a spectral library).
+
+        Registering the same classes under a label that already exists does nothing, so a
+        file can be loaded twice. Different classes under an existing label raise an error:
+        register them under a new label, and use :meth:`setPrimitiveSpectralPalette` to
+        switch primitives to it.
+
+        Args:
+            label: Name of the palette
+            classes: :class:`SpectralTextureClass` entries for classes 1, 2, ... in order.
+                Each needs a reflectivity spectrum label; the transmissivity label may be
+                empty. At most 65535 classes.
+
+        Raises:
+            ValueError: If ``label`` is not a string or ``classes`` is not a list of
+                SpectralTextureClass
+            HeliosError: If the label or classes are rejected (empty label, no classes, a
+                class without a reflectivity spectrum, or different classes under an
+                existing label)
+            NotImplementedError: If the native library predates helios-core v1.3.95
+
+        Example:
+            >>> from pyhelios import Context, SpectralTextureClass
+            >>> context = Context()
+            >>> context.addSpectralPalette("grape_lesions", [
+            ...     SpectralTextureClass("grape_lamina_reflectivity", "grape_lamina_transmissivity", "measured"),
+            ...     SpectralTextureClass("grape_necrosis_reflectivity", "", "PROSPECT-D fit"),
+            ... ])
+        """
+        self._check_context_available()
+        func_name = "addSpectralPalette"
+        label = self._texture_str_arg(label, "label", func_name, allow_empty=True)
+        if not isinstance(classes, (list, tuple)):
+            raise ValueError(f"{func_name}: classes must be a list of SpectralTextureClass, "
+                             f"got {type(classes).__name__}")
+        for cls in classes:
+            if not isinstance(cls, SpectralTextureClass):
+                raise ValueError(f"{func_name}: classes must be a list of SpectralTextureClass, "
+                                 f"got an element of type {type(cls).__name__}")
+            for field in ("reflectivity_spectrum", "transmissivity_spectrum", "provenance"):
+                if not isinstance(getattr(cls, field), str):
+                    raise ValueError(f"{func_name}: SpectralTextureClass.{field} must be a string, "
+                                     f"got {type(getattr(cls, field)).__name__}")
+        context_wrapper.addSpectralPaletteWrapper(
+            self.context, label,
+            [c.reflectivity_spectrum for c in classes],
+            [c.transmissivity_spectrum for c in classes],
+            [c.provenance for c in classes])
+
+    def doesSpectralPaletteExist(self, label: str) -> bool:
+        """Check whether a spectral palette has been registered with :meth:`addSpectralPalette`.
+
+        Args:
+            label: Name of the palette
+
+        Returns:
+            True if a palette with this label is registered
+
+        Raises:
+            ValueError: If ``label`` is not a string
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        label = self._texture_str_arg(label, "label", "doesSpectralPaletteExist", allow_empty=True)
+        return context_wrapper.doesSpectralPaletteExistWrapper(self.context, label)
+
+    def getSpectralPalette(self, label: str) -> List[SpectralTextureClass]:
+        """Get the classes of a registered spectral palette.
+
+        Args:
+            label: Name of the palette, which must exist
+
+        Returns:
+            :class:`SpectralTextureClass` entries for classes 1, 2, ... in order
+
+        Raises:
+            ValueError: If ``label`` is not a string
+            HeliosError: If no palette with this label is registered
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        label = self._texture_str_arg(label, "label", "getSpectralPalette", allow_empty=True)
+        return [SpectralTextureClass(r, t, p)
+                for r, t, p in context_wrapper.getSpectralPaletteWrapper(self.context, label)]
+
+    def setPrimitiveSpectralTexture(self, uuids, class_map_file: str, palette_label: str) -> None:
+        """Give a primitive a spectral texture: a class map laid over it like its texture, and a palette giving the spectra of each class.
+
+        The class map is a single-channel 8-bit or 16-bit grayscale PNG (see
+        :meth:`pyhelios.Global.writePNGSingleChannel`) mapped onto the primitive with the
+        same (u,v) coordinates as its texture. It must agree with the primitive's shape:
+
+        - With a texture that has a transparency channel, the class map has the texture's
+          resolution, and class 0 marks exactly its transparent texels. A texel is opaque if
+          its alpha is at least 250 (of 255) and transparent otherwise, so partly transparent
+          edge texels must be class 0.
+        - With a texture that has no transparency channel, the class map has the texture's
+          resolution and contains no class 0.
+        - Without a texture, the primitive must be a patch, which maps the whole class map;
+          any resolution is allowed and the class map contains no class 0.
+
+        Each class must have an entry in the palette. Giving a primitive a different class
+        map changes its shape as far as plug-ins are concerned (for example, a radiation
+        model rebuilds its geometry), but leaves its material, texture and area unchanged.
+        The spectral texture is copied with the primitive, removed if the primitive's texture
+        later changes, and written and read by :meth:`writeXML` and :meth:`loadXML`. A tile
+        without a texture whose sub-patches have spectral textures cannot be subdivided again
+        with :meth:`setTileObjectSubdivisionCount`, since each new sub-patch would repeat the
+        whole class map.
+
+        Args:
+            uuids: UUID of the primitive (int), which must be a patch or triangle, or a list
+                of UUIDs. With a list, every primitive is checked before any is changed.
+            class_map_file: Path to the class map
+            palette_label: Name of a palette registered with :meth:`addSpectralPalette`
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If the palette does not exist, the class map cannot be read, or it
+                does not match the primitive (the message names the first texel that disagrees)
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        func_name = "setPrimitiveSpectralTexture"
+        is_list, value = self._texture_uuid_arg(uuids, func_name)
+        path = self._texture_str_arg(class_map_file, "class_map_file", func_name)
+        palette = self._texture_str_arg(palette_label, "palette_label", func_name)
+        if is_list:
+            context_wrapper.setPrimitiveSpectralTextureBatchWrapper(self.context, value, path, palette)
+        else:
+            context_wrapper.setPrimitiveSpectralTextureWrapper(self.context, value, path, palette)
+
+    def setPrimitiveSpectralPalette(self, uuids, palette_label: str) -> None:
+        """Change the palette of a primitive that has a spectral texture, keeping its class map.
+
+        This changes the spectra of each class without changing the primitive's shape, so it
+        can be used to change the optical properties of many primitives repeatedly, such as
+        leaves that senesce: the class map records where each change begins, and each stage
+        is a palette.
+
+        Args:
+            uuids: UUID of the primitive (int), which must have a spectral texture, or a list
+                of UUIDs
+            palette_label: Name of a palette registered with :meth:`addSpectralPalette`, with
+                an entry for every class in the primitive's class map
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If a primitive has no spectral texture, or the palette does not
+                exist or has too few classes
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        func_name = "setPrimitiveSpectralPalette"
+        is_list, value = self._texture_uuid_arg(uuids, func_name)
+        palette = self._texture_str_arg(palette_label, "palette_label", func_name)
+        if is_list:
+            context_wrapper.setPrimitiveSpectralPaletteBatchWrapper(self.context, value, palette)
+        else:
+            context_wrapper.setPrimitiveSpectralPaletteWrapper(self.context, value, palette)
+
+    def clearPrimitiveSpectralTexture(self, uuids) -> None:
+        """Remove the spectral texture of a primitive, or of each of a list of primitives, if it has one.
+
+        Args:
+            uuids: UUID of the primitive (int), or a list of UUIDs. With a list, a UUID that
+                does not exist is rejected before anything is removed.
+
+        Raises:
+            ValueError: If ``uuids`` has the wrong type
+            HeliosError: If a primitive does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        is_list, value = self._texture_uuid_arg(uuids, "clearPrimitiveSpectralTexture")
+        if is_list:
+            context_wrapper.clearPrimitiveSpectralTextureBatchWrapper(self.context, value)
+        else:
+            context_wrapper.clearPrimitiveSpectralTextureWrapper(self.context, value)
+
+    def primitiveHasSpectralTexture(self, uuid: int) -> bool:
+        """Check whether a primitive has a spectral texture.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            True if :meth:`setPrimitiveSpectralTexture` has given it one that has not since
+            been removed
+
+        Raises:
+            ValueError: If ``uuid`` is not an int
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        is_list, value = self._texture_uuid_arg(uuid, "primitiveHasSpectralTexture")
+        if is_list:
+            raise ValueError("primitiveHasSpectralTexture: uuid must be a single int")
+        return context_wrapper.primitiveHasSpectralTextureWrapper(self.context, value)
+
+    def getPrimitiveSpectralTextureFile(self, uuid: int) -> str:
+        """Get the class map of a primitive's spectral texture.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            Path to the class map, or an empty string if the primitive has no spectral texture
+
+        Raises:
+            ValueError: If ``uuid`` is not an int
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        is_list, value = self._texture_uuid_arg(uuid, "getPrimitiveSpectralTextureFile")
+        if is_list:
+            raise ValueError("getPrimitiveSpectralTextureFile: uuid must be a single int")
+        return context_wrapper.getPrimitiveSpectralTextureFileWrapper(self.context, value)
+
+    def getPrimitiveSpectralPalette(self, uuid: int) -> str:
+        """Get the palette of a primitive's spectral texture.
+
+        Args:
+            uuid: UUID of the primitive
+
+        Returns:
+            Name of the palette, or an empty string if the primitive has no spectral texture
+
+        Raises:
+            ValueError: If ``uuid`` is not an int
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        is_list, value = self._texture_uuid_arg(uuid, "getPrimitiveSpectralPalette")
+        if is_list:
+            raise ValueError("getPrimitiveSpectralPalette: uuid must be a single int")
+        return context_wrapper.getPrimitiveSpectralPaletteWrapper(self.context, value)
+
+    def getSpectralTextureClassMap(self, class_map_file: str) -> Tuple[np.ndarray, int2]:
+        """Get the classes of a class map that has been given to a primitive.
+
+        Args:
+            class_map_file: Path to the class map, exactly as passed to
+                :meth:`setPrimitiveSpectralTexture` (a class map is read, and then kept, the
+                first time it is passed to it)
+
+        Returns:
+            ``(classes, resolution)``: a ``numpy.uint16`` array of shape ``(height, width)``
+            holding the class of each texel, indexed ``[row, column]`` with row 0 at the top
+            of the image, and the resolution as ``int2(width, height)``
+
+        Raises:
+            ValueError: If ``class_map_file`` is not a non-empty string
+            HeliosError: If the class map has not been read by setPrimitiveSpectralTexture
+            NotImplementedError: If the native library predates helios-core v1.3.95
+        """
+        self._check_context_available()
+        path = self._texture_str_arg(class_map_file, "class_map_file", "getSpectralTextureClassMap")
+        classes, width, height = context_wrapper.getSpectralTextureClassMapWrapper(self.context, path)
+        return classes, int2(width, height)
 
     # =========================================================================
     # Convenience Methods (getAll*)
@@ -5442,6 +5879,16 @@ class Context:
         Args:
             uuids: Single UUID (int) or list of UUIDs.
             color: RGBcolor or RGBAcolor.
+
+        Note:
+            A primitive with an automatic material (one created for its color or texture)
+            moves to the automatic material of its new appearance, so primitives created later
+            with the original appearance are unaffected. A named material is changed in place if
+            this primitive is its only user, and otherwise copied for this primitive; a material
+            renamed from an automatic one (such as the organ materials PlantArchitecture names)
+            is always copied, since a plug-in may give it to primitives it creates later. To
+            change a named material for every primitive using it, use ``setMaterialColor()``,
+            ``setMaterialTexture()`` or ``setMaterialTextureColorOverride()``.
         """
         self._check_context_available()
         if isinstance(color, RGBAcolor):
@@ -5554,7 +6001,13 @@ class Context:
         return context_wrapper.doesMaterialDataExistWrapper(self.context, material_label, data_label)
 
     def objectHasTexture(self, objID: int) -> bool:
-        """Return True if the compound object has a texture assigned."""
+        """Return True if the compound object's first primitive has a texture.
+
+        The primitives of an object can have different textures, as with a polymesh leaf
+        textured differently on each side; this reports the first one. (Before helios-core
+        v1.3.95 it reported the texture the object was created with, which was out of date
+        after a material change and always absent for a polymesh.)
+        """
         self._check_context_available()
         return context_wrapper.objectHasTextureWrapper(self.context, objID)
 
@@ -6036,8 +6489,14 @@ class Context:
     # ---- String / list-of-string getters ----
 
     def getObjectTextureFile(self, objID: int) -> str:
-        """Return the filesystem path of the texture assigned to the object, or an
-        empty string if no texture is assigned."""
+        """Return the texture file of the object's first primitive.
+
+        Returns an empty string if that primitive has no texture or the object has no
+        primitives. The primitives of an object can have different textures, as with a
+        polymesh leaf textured differently on each side. (Before helios-core v1.3.95 this
+        returned the texture the object was created with, which was out of date after a
+        material change and always empty for a polymesh.)
+        """
         self._check_context_available()
         return context_wrapper.getObjectTextureFileWrapper(self.context, objID)
 
@@ -6094,7 +6553,16 @@ class Context:
         context_wrapper.setObjectDataFromPrimitiveDataMeanWrapper(self.context, objID, label)
 
     def renameMaterial(self, old_label: str, new_label: str) -> None:
-        """Rename an existing material."""
+        """Rename an existing material.
+
+        The material is then found only by its new label. **Behavior change in helios-core
+        v1.3.95:** renaming an automatic material (one created for a primitive's color or
+        texture) no longer keeps its old label as a lookup alias, so it does not become the
+        material of primitives created later with that appearance: they get an automatic
+        material of their own, and the renamed material is shared only by the primitives it
+        is assigned to (see ``assignMaterialToPrimitive()``). The new label must not start
+        with ``'__'`` (reserved prefix).
+        """
         self._check_context_available()
         context_wrapper.renameMaterialWrapper(self.context, old_label, new_label)
 
@@ -6769,6 +7237,10 @@ class Context:
 
         Accepts a single object ID or list/tuple of IDs. ``color`` must be an
         ``RGBcolor`` or ``RGBAcolor``.
+
+        Like :meth:`setPrimitiveColor`, this does not edit an automatic material, or one
+        renamed from an automatic material, shared with primitives created later: each
+        primitive moves to (or is given a copy of) a material of its new appearance.
         """
         self._check_context_available()
         if isinstance(color, RGBAcolor):
@@ -6789,7 +7261,12 @@ class Context:
             )
 
     def overrideObjectTextureColor(self, objIDs_or_objID) -> None:
-        """Override the texture mapping with the object's vertex color."""
+        """Override the texture mapping with the object's vertex color.
+
+        Like :meth:`setPrimitiveColor`, this does not edit an automatic material, or one
+        renamed from an automatic material, shared with primitives created later: each
+        primitive moves to (or is given a copy of) a material of its new appearance.
+        """
         self._check_context_available()
         if isinstance(objIDs_or_objID, (list, tuple)):
             context_wrapper.overrideObjectTextureColorBatchWrapper(self.context, list(objIDs_or_objID))
@@ -6797,7 +7274,12 @@ class Context:
             context_wrapper.overrideObjectTextureColorWrapper(self.context, int(objIDs_or_objID))
 
     def useObjectTextureColor(self, objIDs_or_objID) -> None:
-        """Restore use of the texture color (undoes overrideObjectTextureColor)."""
+        """Restore use of the texture color (undoes overrideObjectTextureColor).
+
+        Like :meth:`setPrimitiveColor`, this does not edit an automatic material, or one
+        renamed from an automatic material, shared with primitives created later: each
+        primitive moves to (or is given a copy of) a material of its new appearance.
+        """
         self._check_context_available()
         if isinstance(objIDs_or_objID, (list, tuple)):
             context_wrapper.useObjectTextureColorBatchWrapper(self.context, list(objIDs_or_objID))
@@ -6825,7 +7307,17 @@ class Context:
     # ---- Tile subdivision ----
 
     def setTileObjectSubdivisionCount(self, objIDs_or_objID, subdiv: int2) -> None:
-        """Set the (Nx, Ny) subdivision count of one or more tile objects."""
+        """Set the (Nx, Ny) subdivision count of one or more tile objects.
+
+        The tile's position, size and orientation are preserved, and the new sub-patches
+        keep the material of the tile's sub-patches, including one assigned after the tile
+        was created (before helios-core v1.3.95 it was replaced by an automatic material).
+        A tile without a texture whose sub-patches have spectral textures cannot be
+        subdivided again, since each new sub-patch would repeat the whole class map.
+
+        Raises:
+            ValueError: If ``subdiv`` is not an int2
+        """
         self._check_context_available()
         if not isinstance(subdiv, int2):
             raise ValueError(f"subdiv must be an int2, got {type(subdiv).__name__}")
@@ -6887,6 +7379,10 @@ class Context:
 
     def writeXML(self, filename: str, uuids: Optional[List[int]] = None, quiet: bool = False) -> None:
         """Write the context (or a UUID subset) to an XML file.
+
+        Color textures (:meth:`setPrimitiveColorTexture`), spectral palettes
+        (:meth:`addSpectralPalette`) and spectral textures (:meth:`setPrimitiveSpectralTexture`)
+        are written with the geometry and restored by :meth:`loadXML`.
 
         Args:
             filename: Output file path. Must end in .xml.

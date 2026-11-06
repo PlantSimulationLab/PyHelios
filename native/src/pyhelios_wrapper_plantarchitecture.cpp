@@ -163,6 +163,7 @@ const std::map<std::string, FlowerPrototypeFn>& flowerPrototypeRegistry() {
         {"PistachioFlowerPrototype", &PistachioFlowerPrototype},
         {"PuncturevineFlowerPrototype", &PuncturevineFlowerPrototype},
         {"RedbudFlowerPrototype", &RedbudFlowerPrototype},
+        {"RiceFloweringPaniclePrototype", &RiceFloweringPaniclePrototype},
         {"SoybeanFlowerPrototype", &SoybeanFlowerPrototype},
         {"StrawberryFlowerPrototype", &StrawberryFlowerPrototype},
         {"TomatoFlowerPrototype", &TomatoFlowerPrototype},
@@ -185,7 +186,7 @@ const std::map<std::string, FruitPrototypeFn>& fruitPrototypeRegistry() {
         {"OliveFruitPrototype", &OliveFruitPrototype},
         {"PistachioFruitPrototype", &PistachioFruitPrototype},
         {"RedbudFruitPrototype", &RedbudFruitPrototype},
-        {"RiceSpikePrototype", &RiceSpikePrototype},
+        {"RicePaniclePrototype", &RicePaniclePrototype},
         {"SorghumPaniclePrototype", &SorghumPaniclePrototype},
         {"SoybeanFruitPrototype", &SoybeanFruitPrototype},
         {"StrawberryFruitPrototype", &StrawberryFruitPrototype},
@@ -254,6 +255,12 @@ nlohmann::json leafPrototypeToJSON(const LeafPrototype& p) {
         tex[std::to_string(kv.first)] = kv.second;
     }
     j["leaf_texture_file"] = tex;
+    nlohmann::json tex_series = nlohmann::json::object();
+    for (const auto& kv : p.leaf_texture_series) {
+        tex_series[std::to_string(kv.first)] = kv.second;
+    }
+    j["leaf_texture_series"] = tex_series;
+    j["leaf_texture_stage_ages"] = p.leaf_texture_stage_ages;
     j["prototype_function"] = prototypeFunctionName(leafPrototypeRegistry(), p.prototype_function);
     return j;
 }
@@ -292,6 +299,13 @@ void jsonToLeafPrototype(LeafPrototype& p, const nlohmann::json& j, std::minstd_
             p.leaf_texture_file[std::stoi(it.key())] = it.value().get<std::string>();
         }
     }
+    if (j.contains("leaf_texture_series")) {
+        p.leaf_texture_series.clear();
+        for (auto it = j["leaf_texture_series"].begin(); it != j["leaf_texture_series"].end(); ++it) {
+            p.leaf_texture_series[std::stoi(it.key())] = it.value().get<std::vector<std::vector<std::string>>>();
+        }
+    }
+    if (j.contains("leaf_texture_stage_ages")) p.leaf_texture_stage_ages = j["leaf_texture_stage_ages"].get<std::vector<float>>();
     resolvePrototypeFunction(leafPrototypeRegistry(), j, "prototype_function", p.prototype_function, "leaf");
 }
 
@@ -3687,6 +3701,159 @@ extern "C" {
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeafCount): Unknown error.");
             return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* outward_direction, float pitch_degrees, float curvature, float length) {
+        try {
+            clearError();
+            if (!plantarch || !outward_direction) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPetioleShape): PlantArchitecture pointer or outward direction is null");
+                return -1;
+            }
+            plantarch->setPetioleShape(plantID, shootID, node_index, petiole_index, helios::make_vec3(outward_direction[0], outward_direction[1], outward_direction[2]), pitch_degrees, curvature, length);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleShape): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleShape): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleLeaflets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count, float leaflet_offset, float leaflet_scale, float prototype_scale) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            plantarch->setPetioleLeaflets(plantID, shootID, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeaflets): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeaflets): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleLeafletAngles(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float pitch_degrees, float yaw_degrees, float roll_degrees) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            plantarch->setPetioleLeafletAngles(plantID, shootID, node_index, petiole_index, pitch_degrees, yaw_degrees, roll_degrees);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeafletAngles): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeafletAngles): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleLeafShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float aspect_ratio, float longitudinal_curvature, float lateral_curvature, float midrib_fold_fraction) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return -1;
+            }
+            plantarch->setPetioleLeafShape(plantID, shootID, node_index, petiole_index, aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeafShape): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeafShape): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPetioleLeafletAngleOffsets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* pitch_degrees, const float* yaw_degrees, const float* roll_degrees, unsigned int count) {
+        try {
+            clearError();
+            if (!plantarch || (count > 0 && (!pitch_degrees || !yaw_degrees || !roll_degrees))) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::setPetioleLeafletAngleOffsets): PlantArchitecture pointer or an offset array is null");
+                return -1;
+            }
+            const std::vector<float> pitch(pitch_degrees, pitch_degrees + count);
+            const std::vector<float> yaw(yaw_degrees, yaw_degrees + count);
+            const std::vector<float> roll(roll_degrees, roll_degrees + count);
+            plantarch->setPetioleLeafletAngleOffsets(plantID, shootID, node_index, petiole_index, pitch, yaw, roll);
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeafletAngleOffsets): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::setPetioleLeafletAngleOffsets): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int setPlantMinimumLeafTextureStage(PlantArchitecture* plantarch, unsigned int plantID, unsigned int stage) {
+        return guardedPhytomerCall(plantarch, "setPlantMinimumLeafTextureStage", -1, [&]() -> int {
+            plantarch->setPlantMinimumLeafTextureStage(plantID, stage);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int getPlantMinimumLeafTextureStage(PlantArchitecture* plantarch, unsigned int plantID, unsigned int* stage) {
+        return guardedPhytomerCall(plantarch, "getPlantMinimumLeafTextureStage", -1, [&]() -> int {
+            if (!stage) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            *stage = plantarch->getPlantMinimumLeafTextureStage(plantID);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API const char* generateLeafTextureStages(const char* leaf_texture, const char* output_directory, unsigned int stage_count, const char* options_json) {
+        try {
+            clearError();
+            if (!leaf_texture || !output_directory) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::generateLeafTextureStages): Leaf texture or output directory is null");
+                return nullptr;
+            }
+            LeafTextureStageOptions options;
+            if (options_json && options_json[0] != '\0') {
+                const nlohmann::json j = nlohmann::json::parse(std::string(options_json));
+                if (!j.is_object()) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::generateLeafTextureStages): options must be a JSON object");
+                    return nullptr;
+                }
+                if (j.contains("senescence_colors")) {
+                    options.senescence_colors.clear();
+                    for (const auto& c : j["senescence_colors"]) {
+                        if (!c.is_array() || c.size() != 3) {
+                            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::generateLeafTextureStages): each senescence color must be [r, g, b]");
+                            return nullptr;
+                        }
+                        options.senescence_colors.push_back(helios::make_RGBcolor(c[0].get<float>(), c[1].get<float>(), c[2].get<float>()));
+                    }
+                }
+                if (j.contains("senesced_textures")) options.senesced_textures = j["senesced_textures"].get<std::vector<std::string>>();
+                if (j.contains("onset_map")) options.onset_map = j["onset_map"].get<std::string>();
+                if (j.contains("patchiness")) options.patchiness = j["patchiness"].get<float>();
+                if (j.contains("transition_width")) options.transition_width = j["transition_width"].get<float>();
+                if (j.contains("noise_seed")) options.noise_seed = j["noise_seed"].get<unsigned int>();
+            }
+            const std::vector<std::string> files = PlantArchitecture::generateLeafTextureStages(std::string(leaf_texture), std::string(output_directory), stage_count, options);
+            static thread_local std::string result;
+            result = nlohmann::json(files).dump();
+            return result.c_str();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::generateLeafTextureStages): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::generateLeafTextureStages): Unknown error.");
+            return nullptr;
         }
     }
 

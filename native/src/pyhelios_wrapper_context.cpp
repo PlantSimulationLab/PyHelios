@@ -12395,4 +12395,281 @@ extern "C" {
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (annotation::writeLabelSegmentationMasks): Unknown error."); }
     }
 
+    PYHELIOS_API void annotationWriteClassMapSegmentationMasks(helios::Context* context, const unsigned int* pixel_classes, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height,
+                                                               const unsigned int* class_values, const char** class_names, unsigned int class_count, const char* json_filename, const char* image_file,
+                                                               const char** data_attribute_labels, unsigned int attribute_count, bool append_file) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): Context pointer is null"); return; }
+            if (!json_filename || !image_file) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): File name pointer is null"); return; }
+            if (pixel_count > 0 && (!pixel_classes || !pixel_UUIDs)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): Pixel map pointer is null"); return; }
+            if (class_count > 0 && (!class_values || !class_names)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): Class value or name pointer is null"); return; }
+            if (attribute_count > 0 && !data_attribute_labels) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): Attribute label pointer is null"); return; }
+
+            std::vector<uint> class_vec(pixel_classes, pixel_classes + pixel_count);
+            std::vector<uint> pixel_vec(pixel_UUIDs, pixel_UUIDs + pixel_count);
+            std::map<uint, std::string> name_map;
+            for (unsigned int i = 0; i < class_count; ++i) {
+                if (!class_names[i]) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): Class name is null"); return; }
+                name_map[class_values[i]] = std::string(class_names[i]);
+            }
+            std::vector<std::string> attribute_vec;
+            attribute_vec.reserve(attribute_count);
+            for (unsigned int i = 0; i < attribute_count; ++i) {
+                if (!data_attribute_labels[i]) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (annotation::writeClassMapSegmentationMasks): Attribute label is null"); return; }
+                attribute_vec.emplace_back(data_attribute_labels[i]);
+            }
+
+            helios::annotation::writeClassMapSegmentationMasks(context, class_vec, pixel_vec, helios::make_int2(width, height), name_map, json_filename, image_file, attribute_vec, append_file,
+                                                               "pyhelios.annotation.writeClassMapSegmentationMasks");
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (annotation::writeClassMapSegmentationMasks): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (annotation::writeClassMapSegmentationMasks): Unknown error."); }
+    }
+
+    //=============================================================================
+    // Primitive color textures and spectral textures (helios-core 1.3.95)
+    //=============================================================================
+
+    namespace {
+        thread_local std::string s_spectral_palette_buffer;
+        thread_local std::vector<unsigned short> s_spectral_class_map_buffer;
+
+        //! Copy a std::string into a caller-provided char buffer; returns the number of bytes copied (excluding the terminator)
+        int copyStringToBuffer(const std::string& value, char* buffer, int buffer_size) {
+            int copy_length = std::min((int)value.length(), buffer_size - 1);
+            std::strncpy(buffer, value.c_str(), copy_length);
+            buffer[copy_length] = '\0';
+            return copy_length;
+        }
+    }
+
+    PYHELIOS_API void setPrimitiveColorTexture(helios::Context* context, unsigned int uuid, const char* color_texture_file) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!color_texture_file) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveColorTexture): File name pointer is null"); return; }
+            context->setPrimitiveColorTexture(uuid, std::string(color_texture_file));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveColorTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveColorTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveColorTextureBatch(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* color_texture_file) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveColorTexture): UUID pointer is null"); return; }
+            if (!color_texture_file) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveColorTexture): File name pointer is null"); return; }
+            std::vector<uint> uuid_vec(uuids, uuids + count);
+            context->setPrimitiveColorTexture(uuid_vec, std::string(color_texture_file));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveColorTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveColorTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API int getPrimitiveColorTextureFile(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            return copyStringToBuffer(context->getPrimitiveColorTextureFile(uuid), buffer, buffer_size);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveColorTextureFile): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveColorTextureFile): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API void validateColorTexture(helios::Context* context, const char* shape_texture_file, const char* color_texture_file) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!shape_texture_file || !color_texture_file) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::validateColorTexture): File name pointer is null"); return; }
+            context->validateColorTexture(std::string(shape_texture_file), std::string(color_texture_file));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::validateColorTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::validateColorTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API void addSpectralPalette(helios::Context* context, const char* label, const char** reflectivity_spectra, const char** transmissivity_spectra, const char** provenances, unsigned int class_count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::addSpectralPalette): Palette label pointer is null"); return; }
+            if (class_count > 0 && (!reflectivity_spectra || !transmissivity_spectra || !provenances)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::addSpectralPalette): Class array pointer is null"); return; }
+            std::vector<helios::SpectralTextureClass> classes;
+            classes.reserve(class_count);
+            for (unsigned int i = 0; i < class_count; ++i) {
+                if (!reflectivity_spectra[i] || !transmissivity_spectra[i] || !provenances[i]) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::addSpectralPalette): Class string is null"); return; }
+                helios::SpectralTextureClass cls;
+                cls.reflectivity_spectrum = reflectivity_spectra[i];
+                cls.transmissivity_spectrum = transmissivity_spectra[i];
+                cls.provenance = provenances[i];
+                classes.push_back(cls);
+            }
+            context->addSpectralPalette(std::string(label), classes);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addSpectralPalette): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addSpectralPalette): Unknown error."); }
+    }
+
+    PYHELIOS_API bool doesSpectralPaletteExist(helios::Context* context, const char* label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::doesSpectralPaletteExist): Palette label pointer is null"); return false; }
+            return context->doesSpectralPaletteExist(std::string(label));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return false; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::doesSpectralPaletteExist): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::doesSpectralPaletteExist): Unknown error."); return false; }
+    }
+
+    PYHELIOS_API const char* getSpectralPalette(helios::Context* context, const char* label, unsigned int* class_count, unsigned int* byte_count) {
+        clearError();
+        try {
+            if (!class_count || !byte_count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getSpectralPalette): Output pointer is null"); return nullptr; }
+            *class_count = 0;
+            *byte_count = 0;
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return nullptr; }
+            if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getSpectralPalette): Palette label pointer is null"); return nullptr; }
+            const std::vector<helios::SpectralTextureClass>& classes = context->getSpectralPalette(std::string(label));
+            s_spectral_palette_buffer.clear();
+            for (const auto& cls : classes) {
+                s_spectral_palette_buffer += cls.reflectivity_spectrum;
+                s_spectral_palette_buffer.push_back('\0');
+                s_spectral_palette_buffer += cls.transmissivity_spectrum;
+                s_spectral_palette_buffer.push_back('\0');
+                s_spectral_palette_buffer += cls.provenance;
+                s_spectral_palette_buffer.push_back('\0');
+            }
+            *class_count = static_cast<unsigned int>(classes.size());
+            *byte_count = static_cast<unsigned int>(s_spectral_palette_buffer.size());
+            return s_spectral_palette_buffer.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getSpectralPalette): ") + e.what()); return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSpectralPalette): Unknown error."); return nullptr; }
+    }
+
+    PYHELIOS_API void setPrimitiveSpectralTexture(helios::Context* context, unsigned int uuid, const char* class_map_file, const char* palette_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!class_map_file || !palette_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveSpectralTexture): String pointer is null"); return; }
+            context->setPrimitiveSpectralTexture(uuid, std::string(class_map_file), std::string(palette_label));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveSpectralTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveSpectralTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveSpectralTextureBatch(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* class_map_file, const char* palette_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveSpectralTexture): UUID pointer is null"); return; }
+            if (!class_map_file || !palette_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveSpectralTexture): String pointer is null"); return; }
+            std::vector<uint> uuid_vec(uuids, uuids + count);
+            context->setPrimitiveSpectralTexture(uuid_vec, std::string(class_map_file), std::string(palette_label));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveSpectralTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveSpectralTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveSpectralPalette(helios::Context* context, unsigned int uuid, const char* palette_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (!palette_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveSpectralPalette): Palette label pointer is null"); return; }
+            context->setPrimitiveSpectralPalette(uuid, std::string(palette_label));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveSpectralPalette): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveSpectralPalette): Unknown error."); }
+    }
+
+    PYHELIOS_API void setPrimitiveSpectralPaletteBatch(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* palette_label) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveSpectralPalette): UUID pointer is null"); return; }
+            if (!palette_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveSpectralPalette): Palette label pointer is null"); return; }
+            std::vector<uint> uuid_vec(uuids, uuids + count);
+            context->setPrimitiveSpectralPalette(uuid_vec, std::string(palette_label));
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setPrimitiveSpectralPalette): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setPrimitiveSpectralPalette): Unknown error."); }
+    }
+
+    PYHELIOS_API void clearPrimitiveSpectralTexture(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            context->clearPrimitiveSpectralTexture(uuid);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::clearPrimitiveSpectralTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::clearPrimitiveSpectralTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API void clearPrimitiveSpectralTextureBatch(helios::Context* context, const unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::clearPrimitiveSpectralTexture): UUID pointer is null"); return; }
+            std::vector<uint> uuid_vec(uuids, uuids + count);
+            context->clearPrimitiveSpectralTexture(uuid_vec);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::clearPrimitiveSpectralTexture): ") + e.what()); }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::clearPrimitiveSpectralTexture): Unknown error."); }
+    }
+
+    PYHELIOS_API bool primitiveHasSpectralTexture(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return false; }
+            return context->primitiveHasSpectralTexture(uuid);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return false; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::primitiveHasSpectralTexture): ") + e.what()); return false; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::primitiveHasSpectralTexture): Unknown error."); return false; }
+    }
+
+    PYHELIOS_API int getPrimitiveSpectralTextureFile(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            return copyStringToBuffer(context->getPrimitiveSpectralTextureFile(uuid), buffer, buffer_size);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveSpectralTextureFile): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveSpectralTextureFile): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API int getPrimitiveSpectralPalette(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            return copyStringToBuffer(context->getPrimitiveSpectralPalette(uuid), buffer, buffer_size);
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return 0; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveSpectralPalette): ") + e.what()); return 0; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveSpectralPalette): Unknown error."); return 0; }
+    }
+
+    PYHELIOS_API const unsigned short* getSpectralTextureClassMap(helios::Context* context, const char* class_map_file, int* width, int* height, unsigned int* size) {
+        clearError();
+        try {
+            if (!width || !height || !size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getSpectralTextureClassMap): Output pointer is null"); return nullptr; }
+            *width = 0;
+            *height = 0;
+            *size = 0;
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return nullptr; }
+            if (!class_map_file) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getSpectralTextureClassMap): File name pointer is null"); return nullptr; }
+            helios::int2 resolution;
+            const std::vector<uint16_t>& classes = context->getSpectralTextureClassMap(std::string(class_map_file), resolution);
+            s_spectral_class_map_buffer.assign(classes.begin(), classes.end());
+            *width = resolution.x;
+            *height = resolution.y;
+            *size = static_cast<unsigned int>(s_spectral_class_map_buffer.size());
+            return s_spectral_class_map_buffer.empty() ? nullptr : s_spectral_class_map_buffer.data();
+        } catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return nullptr; }
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getSpectralTextureClassMap): ") + e.what()); return nullptr; }
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSpectralTextureClassMap): Unknown error."); return nullptr; }
+    }
+
 } //extern "C"

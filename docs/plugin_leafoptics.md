@@ -429,6 +429,40 @@ with Context() as context:
  </tr>
 </table>
 
+## Leaf Optics Selected by Object Data {#LOObjectData}
+
+\ref pyhelios.LeafOptics.LeafOptics::runFromObjectData "runFromObjectData()" gives each leaf the spectra for the value of one of its object data. It is intended for leaves that pass through stages, such as the stages of appearance that PlantArchitecture writes as `"leaf_texture_stage"` object data when leaves change color as they age (enable it with `PlantArchitecture.optionalOutputObjectData("leaf_texture_stage")`). One `LeafOpticsProperties` is given for each value, starting from 0:
+
+```python
+from pyhelios import Context, LeafOptics, LeafOpticsProperties
+from pyhelios.types import vec3, vec2
+
+with Context() as context:
+    leaves = [context.addTileObject(center=vec3(i, 0, 1), size=vec2(0.1, 0.1)) for i in range(3)]
+    context.setObjectDataUInt(leaves, "leaf_texture_stage", [0, 1, 2])
+    leaf_uuids = context.getObjectPrimitiveUUIDs(leaves)
+
+    stage_properties = [
+        LeafOpticsProperties(chlorophyllcontent=45.0, carotenoidcontent=10.0),  # green leaf
+        LeafOpticsProperties(chlorophyllcontent=15.0, carotenoidcontent=8.0),   # yellowing leaf
+        LeafOpticsProperties(chlorophyllcontent=2.0, carotenoidcontent=4.0,
+                             brownpigments=0.8),                                # senesced leaf
+    ]
+
+    with LeafOptics(context) as leafoptics:
+        leafoptics.runFromObjectData(leaf_uuids, "leaf_texture_stage", stage_properties, "leaf_stage")
+        # ... the object data changes (e.g. PlantArchitecture.advanceTime) ...
+        leafoptics.runFromObjectData(leaf_uuids, "leaf_texture_stage", stage_properties, "leaf_stage")
+```
+
+Each primitive is assigned the spectra of its object's value, labelled from the given label and the value, for example `"leaf_reflectivity_leaf_stage_2"` and `"leaf_transmissivity_leaf_stage_2"`. Calling the method again after the object data has changed, such as after each time step, moves primitives to the spectra of their new value and gives new primitives their spectra. Each spectrum is recalculated on every call, which takes little time since there is one spectrum per value rather than per leaf.
+
+Some things to keep in mind:
+
+- The object data must be of type int or uint, and every value present must have properties. Every primitive must belong to an object with the object data. Otherwise an error is raised and no primitive is given spectra. (PyHelios raises `ValueError` for a primitive with no parent object, which the native plug-in would otherwise skip with only a warning.)
+- Primitives given spectra by this method cannot also be given spectra by the nitrogen-based mode (below) of the same LeafOptics, or the other way around, since each would overwrite the other's. A `LeafOpticsError` is raised instead.
+- LeafOptics does not provide properties for stages of senescence, which differ between species. During senescence, chlorophyll is generally lost faster than carotenoids, which is why leaves turn yellow, and brown pigments accumulate later.
+
 ## Nitrogen-Based Automatic Leaf Optics {#LONitrogenAuto}
 
 Instead of specifying pigments directly, LeafOptics can derive each leaf's chlorophyll and carotenoid content from its nitrogen content. Pass a `LeafOpticsProperties_Nauto` to `run()` **without a label**. The plug-in groups the primitives by parent object, reads the `"leaf_nitrogen_gN_m2"` object data (g N m\f$^{-2}\f$, normally written by the PlantArchitecture nitrogen model) from each object, and computes:

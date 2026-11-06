@@ -6,6 +6,7 @@ for computing spectral reflectance and transmittance of plant leaves.
 """
 
 import logging
+import numbers
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -483,6 +484,94 @@ class LeafOptics:
             )
         except Exception as e:
             raise LeafOpticsError(f"Failed to run LeafOptics model: {e}")
+
+    def runFromObjectData(self, UUIDs: List[int], object_data_label: str,
+                          properties: List[LeafOpticsProperties], label: str) -> None:
+        """
+        Give each leaf the spectra for the value of one of its object data.
+
+        The primitives are grouped by parent object, and a whole-number object data value is
+        read from each object, such as the ``"leaf_texture_stage"`` that PlantArchitecture
+        writes for leaves that change appearance as they age (enable it with
+        ``PlantArchitecture.optionalOutputObjectData("leaf_texture_stage")``). A primitive whose
+        object has value ``v`` is given the spectra calculated from ``properties[v]``, stored as
+        global data ``"leaf_reflectivity_<label>_<v>"`` / ``"leaf_transmissivity_<label>_<v>"``
+        and referenced by its ``reflectivity_spectrum`` / ``transmissivity_spectrum`` primitive
+        data, as :meth:`run` does with a single label.
+
+        Call it again after the object data changes, such as after each time step, to move
+        primitives to the spectra of their new value and to give new primitives their spectra.
+        Each spectrum is recalculated on every call, which is cheap since there is one spectrum
+        per value rather than per leaf.
+
+        Args:
+            UUIDs: Primitive UUIDs of leaf surfaces. Every one must belong to a compound
+                object carrying the object data.
+            object_data_label: Label of the object data, which must be of type int or uint
+                (``Context.setObjectDataInt`` / ``setObjectDataUInt``).
+            properties: One :class:`LeafOpticsProperties` per value of the object data,
+                starting from 0. Every value present must have an entry.
+            label: Label from which the spectra labels are made.
+
+        Raises:
+            ValueError: If an argument is invalid, a UUID does not exist, or a primitive has no
+                parent object.
+            LeafOpticsError: If an object lacks the object data, the data is not int/uint, a
+                value is negative or has no entry in ``properties``, or a primitive is already
+                given spectra by the nitrogen mode (:class:`LeafOpticsProperties_Nauto`) of this
+                LeafOptics. No primitive is changed when an error is raised.
+
+        Note:
+            A primitive cannot be given spectra by both this method and the nitrogen mode of
+            :meth:`run`, which would overwrite each other's spectra; passing one to the other
+            raises an error.
+
+        Example:
+            >>> stages = [LeafOpticsProperties(chlorophyllcontent=45.0),   # green
+            ...           LeafOpticsProperties(chlorophyllcontent=15.0),   # yellowing
+            ...           LeafOpticsProperties(chlorophyllcontent=2.0, brownpigments=0.8)]  # senesced
+            >>> leafoptics.runFromObjectData(leaf_uuids, "leaf_texture_stage", stages, "leaf_stage")
+            >>> # Leaves at stage 2 get "leaf_reflectivity_leaf_stage_2"
+        """
+        if not isinstance(UUIDs, (list, tuple)) or not UUIDs:
+            raise ValueError("UUIDs must be a non-empty list of primitive UUIDs")
+        if not all(isinstance(u, numbers.Integral) and not isinstance(u, bool) and 0 <= u <= 0xFFFFFFFF
+                   for u in UUIDs):
+            raise ValueError("UUIDs must contain only integers between 0 and 2**32-1")
+        if not isinstance(object_data_label, str) or not object_data_label.strip():
+            raise ValueError("object_data_label must be a non-empty string")
+        if not isinstance(properties, (list, tuple)) or not properties:
+            raise ValueError("properties must be a non-empty list of LeafOpticsProperties, "
+                             "one per object data value starting from 0")
+        for i, props in enumerate(properties):
+            if not isinstance(props, LeafOpticsProperties):
+                raise ValueError(f"properties[{i}] must be a LeafOpticsProperties instance, "
+                                 f"got {type(props).__name__}")
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("Label cannot be empty")
+
+        self._check_context_alive()
+        uuid_list = list(UUIDs)
+        # Native skips missing primitives and primitives without a parent object with only a
+        # warning, which would leave them without spectra unnoticed.
+        if not self.context.doesPrimitiveExist(uuid_list):
+            raise ValueError("One or more UUIDs do not refer to existing primitives")
+        if 0 in self.context.getUniquePrimitiveParentObjectIDs(uuid_list, include_zero=True):
+            raise ValueError("Every primitive must belong to a compound object carrying the object data "
+                             f"'{object_data_label}', but some have no parent object")
+
+        try:
+            leafoptics_wrapper.leafOpticsRunFromObjectData(
+                self._leafoptics_ptr,
+                uuid_list,
+                object_data_label,
+                [p.to_list() for p in properties],
+                label
+            )
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise LeafOpticsError(f"Failed to run LeafOptics from object data: {e}")
 
     def updateNitrogenBasedSpectra(self) -> None:
         """

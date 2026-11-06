@@ -9074,3 +9074,217 @@ def annotationWriteLabelSegmentationMasksWrapper(context, pixel_uuids, width: in
         context, pixel_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)), pixel_array.size, width, height, label_array, class_array, len(data_labels),
         json_filename.encode('utf-8'), image_file.encode('utf-8'), attribute_array, len(data_attribute_labels),
         append_file, use_object_data)
+
+
+# helios-core 1.3.95 class-map segmentation masks (helios::annotation::writeClassMapSegmentationMasks),
+# probed separately from the 1.3.91 annotation block above.
+# NOTE: every wrapper function below must guard with _require_annotation_1395().
+_ANNOTATION_1395_AVAILABLE = False
+try:
+    helios_lib.annotationWriteClassMapSegmentationMasks.argtypes = [
+        ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint,
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint, ctypes.c_bool,
+    ]
+    helios_lib.annotationWriteClassMapSegmentationMasks.restype = None
+    helios_lib.annotationWriteClassMapSegmentationMasks.errcheck = _check_error
+
+    _ANNOTATION_1395_AVAILABLE = True
+except AttributeError:
+    _ANNOTATION_1395_AVAILABLE = False
+
+
+def _require_annotation_1395():
+    if not _ANNOTATION_1395_AVAILABLE:
+        raise NotImplementedError(
+            "annotation.writeClassMapSegmentationMasks is not available in the loaded native library. "
+            "It requires helios-core v1.3.95 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+
+
+def annotationWriteClassMapSegmentationMasksWrapper(context, pixel_classes, pixel_uuids, width: int, height: int,
+                                                    class_values: List[int], class_names: List[str],
+                                                    json_filename: str, image_file: str,
+                                                    data_attribute_labels: List[str], append_file: bool) -> None:
+    _require_annotation_1395()
+    class_array = _annotation_pixel_array(pixel_classes)
+    pixel_array = _annotation_pixel_array(pixel_uuids)
+    value_array = (ctypes.c_uint * len(class_values))(*class_values)
+    name_array = (ctypes.c_char_p * len(class_names))(*[name.encode('utf-8') for name in class_names])
+    attribute_array = (ctypes.c_char_p * len(data_attribute_labels))(
+        *[label.encode('utf-8') for label in data_attribute_labels])
+    helios_lib.annotationWriteClassMapSegmentationMasks(
+        context, class_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)),
+        pixel_array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint)), pixel_array.size, width, height,
+        value_array, name_array, len(class_values), json_filename.encode('utf-8'), image_file.encode('utf-8'),
+        attribute_array, len(data_attribute_labels), append_file)
+
+
+# helios-core 1.3.95 primitive color textures and spectral textures.
+# NOTE: every wrapper function below must guard with _require_ctx_textures_1395().
+_CONTEXT_TEXTURES_1395_AVAILABLE = False
+try:
+    _P = ctypes.POINTER(UContext)
+    _UINTP = ctypes.POINTER(ctypes.c_uint)
+    _CHARPP = ctypes.POINTER(ctypes.c_char_p)
+
+    for _fn, _args, _res in (
+        ("setPrimitiveColorTexture", [_P, ctypes.c_uint, ctypes.c_char_p], None),
+        ("setPrimitiveColorTextureBatch", [_P, _UINTP, ctypes.c_uint, ctypes.c_char_p], None),
+        ("getPrimitiveColorTextureFile", [_P, ctypes.c_uint, ctypes.c_char_p, ctypes.c_int], ctypes.c_int),
+        ("validateColorTexture", [_P, ctypes.c_char_p, ctypes.c_char_p], None),
+        ("addSpectralPalette", [_P, ctypes.c_char_p, _CHARPP, _CHARPP, _CHARPP, ctypes.c_uint], None),
+        ("doesSpectralPaletteExist", [_P, ctypes.c_char_p], ctypes.c_bool),
+        # c_void_p, not c_char_p: the buffer holds embedded NULs
+        ("getSpectralPalette", [_P, ctypes.c_char_p, _UINTP, _UINTP], ctypes.c_void_p),
+        ("setPrimitiveSpectralTexture", [_P, ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p], None),
+        ("setPrimitiveSpectralTextureBatch", [_P, _UINTP, ctypes.c_uint, ctypes.c_char_p, ctypes.c_char_p], None),
+        ("setPrimitiveSpectralPalette", [_P, ctypes.c_uint, ctypes.c_char_p], None),
+        ("setPrimitiveSpectralPaletteBatch", [_P, _UINTP, ctypes.c_uint, ctypes.c_char_p], None),
+        ("clearPrimitiveSpectralTexture", [_P, ctypes.c_uint], None),
+        ("clearPrimitiveSpectralTextureBatch", [_P, _UINTP, ctypes.c_uint], None),
+        ("primitiveHasSpectralTexture", [_P, ctypes.c_uint], ctypes.c_bool),
+        ("getPrimitiveSpectralTextureFile", [_P, ctypes.c_uint, ctypes.c_char_p, ctypes.c_int], ctypes.c_int),
+        ("getPrimitiveSpectralPalette", [_P, ctypes.c_uint, ctypes.c_char_p, ctypes.c_int], ctypes.c_int),
+        ("getSpectralTextureClassMap", [_P, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), _UINTP],
+         ctypes.POINTER(ctypes.c_ushort)),
+    ):
+        _f = getattr(helios_lib, _fn)
+        _f.argtypes = _args
+        _f.restype = _res
+        _f.errcheck = _check_error
+    del _fn, _args, _res, _f
+
+    _CONTEXT_TEXTURES_1395_AVAILABLE = True
+except AttributeError:
+    _CONTEXT_TEXTURES_1395_AVAILABLE = False
+
+
+def _require_ctx_textures_1395():
+    if not _CONTEXT_TEXTURES_1395_AVAILABLE:
+        raise NotImplementedError(
+            "Primitive color textures and spectral textures (setPrimitiveColorTexture, addSpectralPalette, "
+            "setPrimitiveSpectralTexture, ...) are not available in the loaded native library. They require "
+            "helios-core v1.3.95 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+
+
+def _uuid_array(uuids):
+    return (ctypes.c_uint * len(uuids))(*[int(u) for u in uuids])
+
+
+def setPrimitiveColorTextureWrapper(context, uuid: int, color_texture_file: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.setPrimitiveColorTexture(context, int(uuid), color_texture_file.encode('utf-8'))
+
+
+def setPrimitiveColorTextureBatchWrapper(context, uuids: List[int], color_texture_file: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.setPrimitiveColorTextureBatch(context, _uuid_array(uuids), len(uuids), color_texture_file.encode('utf-8'))
+
+
+def getPrimitiveColorTextureFileWrapper(context, uuid: int) -> str:
+    _require_ctx_textures_1395()
+    return _read_string_buffer(helios_lib.getPrimitiveColorTextureFile, context, int(uuid))
+
+
+def validateColorTextureWrapper(context, shape_texture_file: str, color_texture_file: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.validateColorTexture(context, shape_texture_file.encode('utf-8'), color_texture_file.encode('utf-8'))
+
+
+def addSpectralPaletteWrapper(context, label: str, reflectivity: List[str], transmissivity: List[str],
+                              provenance: List[str]) -> None:
+    _require_ctx_textures_1395()
+    n = len(reflectivity)
+    refl = (ctypes.c_char_p * n)(*[s.encode('utf-8') for s in reflectivity])
+    trans = (ctypes.c_char_p * n)(*[s.encode('utf-8') for s in transmissivity])
+    prov = (ctypes.c_char_p * n)(*[s.encode('utf-8') for s in provenance])
+    helios_lib.addSpectralPalette(context, label.encode('utf-8'), refl, trans, prov, n)
+
+
+def doesSpectralPaletteExistWrapper(context, label: str) -> bool:
+    _require_ctx_textures_1395()
+    return bool(helios_lib.doesSpectralPaletteExist(context, label.encode('utf-8')))
+
+
+def getSpectralPaletteWrapper(context, label: str):
+    """Return a list of (reflectivity_spectrum, transmissivity_spectrum, provenance) tuples."""
+    _require_ctx_textures_1395()
+    class_count = ctypes.c_uint()
+    byte_count = ctypes.c_uint()
+    ptr = helios_lib.getSpectralPalette(context, label.encode('utf-8'), ctypes.byref(class_count), ctypes.byref(byte_count))
+    n = class_count.value
+    if n == 0:
+        return []
+    if not ptr:
+        raise RuntimeError(f"Context::getSpectralPalette returned no data for palette '{label}'.")
+    fields = ctypes.string_at(ptr, byte_count.value).split(b'\0')
+    if len(fields) < 3 * n:
+        raise RuntimeError(f"Context::getSpectralPalette returned a malformed buffer for palette '{label}'.")
+    return [tuple(fields[3 * i + k].decode('utf-8', errors='replace') for k in range(3)) for i in range(n)]
+
+
+def setPrimitiveSpectralTextureWrapper(context, uuid: int, class_map_file: str, palette_label: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.setPrimitiveSpectralTexture(context, int(uuid), class_map_file.encode('utf-8'), palette_label.encode('utf-8'))
+
+
+def setPrimitiveSpectralTextureBatchWrapper(context, uuids: List[int], class_map_file: str, palette_label: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.setPrimitiveSpectralTextureBatch(context, _uuid_array(uuids), len(uuids),
+                                                class_map_file.encode('utf-8'), palette_label.encode('utf-8'))
+
+
+def setPrimitiveSpectralPaletteWrapper(context, uuid: int, palette_label: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.setPrimitiveSpectralPalette(context, int(uuid), palette_label.encode('utf-8'))
+
+
+def setPrimitiveSpectralPaletteBatchWrapper(context, uuids: List[int], palette_label: str) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.setPrimitiveSpectralPaletteBatch(context, _uuid_array(uuids), len(uuids), palette_label.encode('utf-8'))
+
+
+def clearPrimitiveSpectralTextureWrapper(context, uuid: int) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.clearPrimitiveSpectralTexture(context, int(uuid))
+
+
+def clearPrimitiveSpectralTextureBatchWrapper(context, uuids: List[int]) -> None:
+    _require_ctx_textures_1395()
+    helios_lib.clearPrimitiveSpectralTextureBatch(context, _uuid_array(uuids), len(uuids))
+
+
+def primitiveHasSpectralTextureWrapper(context, uuid: int) -> bool:
+    _require_ctx_textures_1395()
+    return bool(helios_lib.primitiveHasSpectralTexture(context, int(uuid)))
+
+
+def getPrimitiveSpectralTextureFileWrapper(context, uuid: int) -> str:
+    _require_ctx_textures_1395()
+    return _read_string_buffer(helios_lib.getPrimitiveSpectralTextureFile, context, int(uuid))
+
+
+def getPrimitiveSpectralPaletteWrapper(context, uuid: int) -> str:
+    _require_ctx_textures_1395()
+    return _read_string_buffer(helios_lib.getPrimitiveSpectralPalette, context, int(uuid))
+
+
+def getSpectralTextureClassMapWrapper(context, class_map_file: str):
+    """Return (classes, width, height): a uint16 ndarray of shape (height, width), row 0 at the top."""
+    import numpy as np
+    _require_ctx_textures_1395()
+    width = ctypes.c_int()
+    height = ctypes.c_int()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getSpectralTextureClassMap(context, class_map_file.encode('utf-8'),
+                                                ctypes.byref(width), ctypes.byref(height), ctypes.byref(size))
+    w, h, n = width.value, height.value, size.value
+    if n != w * h:
+        raise RuntimeError(f"Context::getSpectralTextureClassMap returned {n} values for a {w} x {h} class map.")
+    if n == 0 or not ptr:
+        return np.zeros((h, w), dtype=np.uint16), w, h
+    classes = np.ctypeslib.as_array(ptr, shape=(n,)).astype(np.uint16, copy=True).reshape(h, w)
+    return classes, w, h

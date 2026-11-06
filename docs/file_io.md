@@ -381,6 +381,7 @@ Objects are identified by primitive data (or, with `use_object_data=True`, objec
 | `writeLabelBoundingBoxes()` | YOLO `.txt` file named after the image, plus a class file |
 | `labelMasks()` | Dict of label value to a boolean `(height, width)` NumPy mask |
 | `writeLabelSegmentationMasks()` | COCO JSON segmentation masks, optionally with per-mask data attributes |
+| `writeClassMapSegmentationMasks()` | COCO JSON segmentation masks for the regions of chosen classes in a per-pixel class map |
 
 A bounding box encloses whole every pixel in which its object is visible, so an object visible in a single pixel still gets a one-pixel box. Each connected region of a segmentation label becomes its own COCO annotation; a region of one or two pixels is too small to outline and is not written.
 
@@ -403,9 +404,31 @@ annotation.writeLabelSegmentationMasks(context, pixel_uuids, resolution, "leaf_i
 
 \note `writeLabelSegmentationMasks()` requires `image_file` to exist; `writeLabelBoundingBoxes()` only uses its name.
 
+`writeClassMapSegmentationMasks()` annotates a per-pixel *class map* instead of data labels: `pixel_classes` holds a class for each pixel (0 for none) in the same orientation as the pixel-to-primitive map, and `class_names` maps each class value to annotate (1 or more) to its COCO category name. Each connected region of one class becomes an annotation whose category ID is the class value; classes not listed are not annotated. The pixel-to-primitive map is used only for the `data_attribute_labels` means. A per-pixel class map is, for example, the spectral class each radiation camera pixel sees (see \ref SpectralTexture).
+
+```python
+annotation.writeClassMapSegmentationMasks(context, pixel_classes, pixel_uuids, resolution,
+                                          {1: "lamina", 2: "lesion"},
+                                          json_filename="lesions.json", image_file="scene.jpeg")
+```
+
+## Single-Channel PNG Images {#SingleChannelPNG}
+
+`Global.readPNGSingleChannel(filename)` and `Global.writePNGSingleChannel(filename, width, height, pixel_values, bit_depth)` read and write 8-bit and 16-bit grayscale PNG images whose pixel values are integers, such as the class maps of spectral textures. The values are stored and returned exactly, without scaling to [0,1]: `readPNGSingleChannel()` returns a `numpy.uint16` array of shape `(height, width)` with row 0 at the top of the image, and rejects color, indexed-color and grayscale-with-alpha images rather than converting them. Values above 255 need a bit depth of 16.
+
+```python
+import numpy as np
+from pyhelios import Global
+
+classes = np.ones((64, 128), dtype=np.uint16)
+classes[:, 64:] = 2
+Global.writePNGSingleChannel("leaf_classes.png", 128, 64, classes, 8)
+assert (Global.readPNGSingleChannel("leaf_classes.png") == classes).all()
+```
+
 ## Exporting Project to XML File Format {#Export}
 
-All geometry and global/primitive data loaded into the Context can be written to an XML file using the [writeXML()](pyhelios.Context.Context.writeXML) function, which can be later read back in using the [loadXML()](pyhelios.Context.Context.loadXML). This functionality can be used to save progress during a simulation run, or to ensure that consistent geometry is always used across simulation runs, among other things.
+All geometry and global/primitive data loaded into the Context can be written to an XML file using the [writeXML()](pyhelios.Context.Context.writeXML) function, which can be later read back in using the [loadXML()](pyhelios.Context.Context.loadXML). Color textures set with `setPrimitiveColorTexture()`, spectral palettes and spectral textures (see \ref SpectralTexture) are written and read as well. This functionality can be used to save progress during a simulation run, or to ensure that consistent geometry is always used across simulation runs, among other things.
 
 An XML file can be written as follows:
 

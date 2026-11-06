@@ -1082,6 +1082,69 @@ try:
 except AttributeError:
     _PLANTARCHITECTURE_1393_AVAILABLE = False
 
+# Per-phytomer petiole shape and leaflets (helios-core 1.3.95).
+# NOTE: every wrapper function below must guard with _require_plantarch_1395(); guarding with an
+# older flag would skip the RuntimeError and call a symbol with no argtypes set.
+_PLANTARCHITECTURE_1395_AVAILABLE = False
+try:
+    # plantID, shootID, node_index, petiole_index, outward_direction[3], pitch_degrees, curvature, length
+    helios_lib.setPetioleShape.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setPetioleShape.restype = ctypes.c_int
+    helios_lib.setPetioleShape.errcheck = _check_error
+
+    # plantID, shootID, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale
+    helios_lib.setPetioleLeaflets.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.c_uint, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setPetioleLeaflets.restype = ctypes.c_int
+    helios_lib.setPetioleLeaflets.errcheck = _check_error
+
+    # plantID, shootID, node_index, petiole_index, pitch_degrees, yaw_degrees, roll_degrees
+    helios_lib.setPetioleLeafletAngles.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setPetioleLeafletAngles.restype = ctypes.c_int
+    helios_lib.setPetioleLeafletAngles.errcheck = _check_error
+
+    # plantID, shootID, node_index, petiole_index, aspect_ratio, longitudinal, lateral, midrib_fold
+    helios_lib.setPetioleLeafShape.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    helios_lib.setPetioleLeafShape.restype = ctypes.c_int
+    helios_lib.setPetioleLeafShape.errcheck = _check_error
+
+    # plantID, shootID, node_index, petiole_index, pitch[count], yaw[count], roll[count], count
+    helios_lib.setPetioleLeafletAngleOffsets.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),
+        ctypes.c_uint]
+    helios_lib.setPetioleLeafletAngleOffsets.restype = ctypes.c_int
+    helios_lib.setPetioleLeafletAngleOffsets.errcheck = _check_error
+
+    # plantID, stage
+    helios_lib.setPlantMinimumLeafTextureStage.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.setPlantMinimumLeafTextureStage.restype = ctypes.c_int
+    helios_lib.setPlantMinimumLeafTextureStage.errcheck = _check_error
+
+    # plantID, stage (out)
+    helios_lib.getPlantMinimumLeafTextureStage.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getPlantMinimumLeafTextureStage.restype = ctypes.c_int
+    helios_lib.getPlantMinimumLeafTextureStage.errcheck = _check_error
+
+    # leaf_texture, output_directory, stage_count, options_json -> JSON array of paths (static; no PlantArchitecture)
+    helios_lib.generateLeafTextureStages.argtypes = [
+        ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p]
+    helios_lib.generateLeafTextureStages.restype = ctypes.c_char_p
+    helios_lib.generateLeafTextureStages.errcheck = _check_error
+
+    _PLANTARCHITECTURE_1395_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1395_AVAILABLE = False
+
 # Per-timestep phytomer callback (PhytomerParameters::phytomer_callback_function).
 # NOTE: guard with _require_plantarch_phytomer_callback(); an older flag would call the symbol with no argtypes set.
 _PLANTARCHITECTURE_PHYTOMER_CALLBACK_AVAILABLE = False
@@ -3833,6 +3896,102 @@ def _require_plantarch_1393() -> None:
             "It requires helios-core v1.3.93 or newer; rebuild with "
             "'build_scripts/build_helios --clean'."
         )
+
+
+def _require_plantarch_1395() -> None:
+    """Raise if the native library predates the helios-core 1.3.95 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1395_AVAILABLE:
+        raise RuntimeError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.95 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def setPetioleShape(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                    outward_direction, pitch_degrees: float, curvature: float, length: float) -> None:
+    """Regenerate one petiole from its own pitch, curvature, length and lean, and rebuild its leaves."""
+    _require_plantarch_1395()
+    direction = (ctypes.c_float * 3)(*(float(v) for v in outward_direction))
+    helios_lib.setPetioleShape(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, direction,
+                               ctypes.c_float(pitch_degrees), ctypes.c_float(curvature),
+                               ctypes.c_float(length))
+
+
+def setPetioleLeaflets(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                       leaf_count: int, leaflet_offset: float, leaflet_scale: float,
+                       prototype_scale: float) -> None:
+    """Rebuild one petiole's leaflets with their own count, spacing and sizes."""
+    _require_plantarch_1395()
+    helios_lib.setPetioleLeaflets(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                  ctypes.c_uint(leaf_count), ctypes.c_float(leaflet_offset),
+                                  ctypes.c_float(leaflet_scale), ctypes.c_float(prototype_scale))
+
+
+def setPetioleLeafletAngles(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                            petiole_index: int, pitch_degrees: float, yaw_degrees: float,
+                            roll_degrees: float) -> None:
+    """Rebuild one petiole's leaflets turned by their own pitch, yaw and roll."""
+    _require_plantarch_1395()
+    helios_lib.setPetioleLeafletAngles(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                       ctypes.c_float(pitch_degrees), ctypes.c_float(yaw_degrees),
+                                       ctypes.c_float(roll_degrees))
+
+
+def setPetioleLeafletAngleOffsets(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                                  petiole_index: int, pitch_degrees, yaw_degrees, roll_degrees) -> None:
+    """Rebuild one petiole's leaflets each turned by its own offset from the leaf's angles."""
+    _require_plantarch_1395()
+    count = len(pitch_degrees)
+    arrays = [(ctypes.c_float * count)(*(float(v) for v in values))
+              for values in (pitch_degrees, yaw_degrees, roll_degrees)]
+    helios_lib.setPetioleLeafletAngleOffsets(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                             *arrays, ctypes.c_uint(count))
+
+
+def setPetioleLeafShape(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
+                        petiole_index: int, aspect_ratio: float, longitudinal_curvature: float,
+                        lateral_curvature: float, midrib_fold_fraction: float) -> None:
+    """Rebuild one petiole's leaflets with their own blade shape."""
+    _require_plantarch_1395()
+    helios_lib.setPetioleLeafShape(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                   ctypes.c_float(aspect_ratio), ctypes.c_float(longitudinal_curvature),
+                                   ctypes.c_float(lateral_curvature),
+                                   ctypes.c_float(midrib_fold_fraction))
+
+
+def setPlantMinimumLeafTextureStage(plantarch_ptr, plant_id: int, stage: int) -> None:
+    """Make every leaf of a plant use at least the given image of its leaf texture series."""
+    _require_plantarch_1395()
+    if plant_id < 0 or stage < 0:
+        raise ValueError("Plant ID and stage must be non-negative")
+    helios_lib.setPlantMinimumLeafTextureStage(plantarch_ptr, plant_id, stage)
+
+
+def getPlantMinimumLeafTextureStage(plantarch_ptr, plant_id: int) -> int:
+    """The image of the leaf texture series every leaf of a plant uses at minimum."""
+    _require_plantarch_1395()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    stage = ctypes.c_uint()
+    helios_lib.getPlantMinimumLeafTextureStage(plantarch_ptr, plant_id, ctypes.byref(stage))
+    return int(stage.value)
+
+
+def generateLeafTextureStages(leaf_texture: str, output_directory: str, stage_count: int,
+                              options_json: str) -> List[str]:
+    """Static PlantArchitecture::generateLeafTextureStages(); options are a JSON object string."""
+    _require_plantarch_1395()
+    import json
+    result = helios_lib.generateLeafTextureStages(
+        leaf_texture.encode('utf-8'), output_directory.encode('utf-8'), stage_count,
+        options_json.encode('utf-8'))
+    if result is None:
+        raise RuntimeError("generateLeafTextureStages returned no result")
+    files = json.loads(result.decode('utf-8'))
+    if len(files) != stage_count:
+        raise RuntimeError(f"generateLeafTextureStages returned {len(files)} images, expected {stage_count}")
+    return [str(f) for f in files]
 
 
 def getSeasonPeakLightExposureAtPoint(plantarch_ptr, plant_id: int, position) -> float:

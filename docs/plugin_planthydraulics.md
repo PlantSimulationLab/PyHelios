@@ -33,7 +33,6 @@ Leaves are grouped into plants by a "plantID". It is read from the object data o
 
 ## Known Issues
 
-- Steady-state mode is functional; non-steady-state mode (`timespan > 0`) is under construction in the native plugin.
 - `getModelCoefficients(UUID)` reads only coefficients that were set for specific primitives. The model-wide coefficients cannot be read back, so it raises for a primitive that has none of its own.
 
 ## Quick Start

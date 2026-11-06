@@ -244,7 +244,7 @@ class TestPhytomerFunctionPreservation:
     jsonToShootParameters rebuilds ShootParameters from values alone and leaves
     them null. For maize, MaizePhytomerCreationFunction is the only thing that
     assigns ears (BUD_ACTIVE, MaizeEarPrototype) at nodes 9-11 and kills the
-    floral buds elsewhere; losing it puts a 7-flower tassel on nearly every node.
+    floral buds elsewhere; losing it puts a tassel on nearly every node.
 
     Leaf count is identical either way, so it carries no signal here -- peduncle
     and fruit counts are what distinguish the two states.

@@ -248,3 +248,59 @@ def blackbodySpectralRadiance(wavelength_nm: float, temperature_K: float) -> flo
     for name, v in (("wavelength_nm", wavelength_nm), ("temperature_K", temperature_K)):
         _require_real_number(name, v)
     return float(helios_lib.blackbodySpectralRadiance(ctypes.c_float(wavelength_nm), ctypes.c_float(temperature_K)))
+
+
+# Single-channel PNG images from core/global.h (helios-core v1.3.95+), probed
+# separately for the same reason as the blocks above.
+_PNG_SINGLE_CHANNEL_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.readPNGSingleChannel.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint),
+                                                ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.readPNGSingleChannel.restype = ctypes.POINTER(ctypes.c_ushort)
+    helios_lib.readPNGSingleChannel.errcheck = _check_error
+
+    helios_lib.writePNGSingleChannel.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint,
+                                                 ctypes.POINTER(ctypes.c_ushort), ctypes.c_uint, ctypes.c_uint]
+    helios_lib.writePNGSingleChannel.restype = None
+    helios_lib.writePNGSingleChannel.errcheck = _check_error
+
+    _PNG_SINGLE_CHANNEL_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _PNG_SINGLE_CHANNEL_FUNCTIONS_AVAILABLE = False
+
+
+def _require_png_single_channel_functions(name: str) -> None:
+    if not _PNG_SINGLE_CHANNEL_FUNCTIONS_AVAILABLE:
+        raise RuntimeError(
+            f"{name} is not available in the current native library. It requires "
+            "helios-core v1.3.95 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def readPNGSingleChannel(filename: str):
+    """Read a grayscale PNG as integers. Returns (values, width, height), values a uint16 ndarray of shape (height, width)."""
+    import numpy as np
+    _require_png_single_channel_functions("readPNGSingleChannel")
+    width = ctypes.c_uint()
+    height = ctypes.c_uint()
+    size = ctypes.c_uint()
+    ptr = helios_lib.readPNGSingleChannel(filename.encode('utf-8'), ctypes.byref(width), ctypes.byref(height),
+                                          ctypes.byref(size))
+    w, h, n = width.value, height.value, size.value
+    if n != w * h:
+        raise RuntimeError(f"readPNGSingleChannel returned {n} values for a {w} x {h} image '{filename}'.")
+    if n == 0 or not ptr:
+        return np.zeros((h, w), dtype=np.uint16), w, h
+    values = np.ctypeslib.as_array(ptr, shape=(n,)).astype(np.uint16, copy=True).reshape(h, w)
+    return values, w, h
+
+
+def writePNGSingleChannel(filename: str, width: int, height: int, pixel_values, bit_depth: int) -> None:
+    """Write a grayscale PNG of integer values. ``pixel_values`` is a flat uint16 ndarray of width*height values."""
+    import numpy as np
+    _require_png_single_channel_functions("writePNGSingleChannel")
+    arr = np.ascontiguousarray(pixel_values, dtype=np.uint16).ravel()
+    helios_lib.writePNGSingleChannel(filename.encode('utf-8'), ctypes.c_uint(width), ctypes.c_uint(height),
+                                     arr.ctypes.data_as(ctypes.POINTER(ctypes.c_ushort)), ctypes.c_uint(arr.size),
+                                     ctypes.c_uint(bit_depth))

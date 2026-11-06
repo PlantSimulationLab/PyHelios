@@ -204,6 +204,23 @@ PYHELIOS_API void leafOpticsRunNitrogen(LeafOptics* leafoptics, const unsigned i
  */
 PYHELIOS_API void leafOpticsUpdateNitrogenBasedSpectra(LeafOptics* leafoptics);
 
+/**
+ * @brief Give each leaf the spectra for the value of one of its object data (LeafOptics::runFromObjectData)
+ * @param leafoptics Pointer to the LeafOptics instance
+ * @param uuids Array of leaf primitive UUIDs; each must belong to an object carrying the object data
+ * @param uuid_count Number of UUIDs in the array
+ * @param object_data_label Label of the int or uint object data that selects the properties
+ * @param properties Flattened array of property_count * 11 floats, one LeafOpticsProperties per value
+ *                   starting from 0, each in the layout of leafOpticsRun: [numberlayers, brownpigments,
+ *                   chlorophyllcontent, carotenoidcontent, anthocyancontent, watermass, drymass, protein,
+ *                   carbonconstituents, V2Z, fqe]
+ * @param property_count Number of property sets (must be >= 1)
+ * @param label Label from which the spectra labels are made ("leaf_reflectivity_<label>_<value>")
+ */
+PYHELIOS_API void leafOpticsRunFromObjectData(LeafOptics* leafoptics, const unsigned int* uuids, unsigned int uuid_count,
+                                              const char* object_data_label, const float* properties,
+                                              unsigned int property_count, const char* label);
+
 #ifdef __cplusplus
 }
 #endif

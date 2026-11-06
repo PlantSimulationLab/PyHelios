@@ -301,7 +301,7 @@ photo.setFarquharMesophyllConductance(0.4, dha=49.8, uuids=[uuid])
 photo.setFarquharMesophyllConductance(0.4, dha=49.8, topt=35.0, uuids=[uuid])
 ```
 
-The default value `gm = +∞` reproduces the legacy Farquhar `Cc = Ci` behaviour bit-for-bit, so existing parameter libraries that do not set `gm` are unaffected.
+The default value `gm = +∞` gives `Cc = Ci` (no mesophyll diffusion limitation), so parameter sets that do not specify `gm` follow the standard Farquhar model.
 
 
 ### Temperature response of model parameters {#FvCBtemperature}

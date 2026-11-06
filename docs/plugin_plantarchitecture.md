@@ -81,7 +81,7 @@ PlantArchitecture includes the following plant models (`getAvailablePlantModels(
 - `"bean"` - Common bean with climbing growth habit
 - `"cowpea"` - Cowpea with determinate growth pattern
 - `"maize"` - Corn with C4 photosynthetic characteristics
-- `"rice"` - Rice with tillering growth pattern
+- `"rice"` - Semi-dwarf irrigated rice: a hill of tillered culms with procedural panicles
 - `"sorghum"` - Sorghum grain crop
 - `"soybean"` - Soybean with determinate/indeterminate varieties
 - `"wheat"` - Wheat with tiller development
@@ -135,12 +135,36 @@ Library changes in helios-core 1.3.93 that affect code customizing these models:
 
 Custom shoot parameters that set the old `fruit_prototype_scale` values must be updated.
 
+Library changes in helios-core 1.3.95 that affect code customizing these models:
+
+- `rice` was rebuilt to follow published measurements of modern semi-dwarf cultivars. A mature
+  plant was a single 37 cm stem; it is now a hill of 13 culms about 0.97 m tall with leaves up to
+  43 cm long and leaf textures that yellow and dry as leaves age (see Leaf texture series and
+  aging below). It has a new `"tiller"` shoot type, its phyllochron is 6 days instead of 2 (panicles
+  appear at about day 78 and begin ripening at about day 91), and a mature plant has about 150,000
+  primitives instead of about 10,000.
+- The `rice` panicle is now procedural (see Rice panicle below): a culm carries one fruit object
+  instead of 300 grains, and the prototype function name `RiceSpikePrototype` is replaced by
+  `RicePaniclePrototype` (fruit) and `RiceFloweringPaniclePrototype` (flower).
+- The `maize` tassel is now procedural (see Maize tassel below): it is one fruit object instead of
+  11, the maize `inflorescence.flowers_per_peduncle` and `inflorescence.fruit_prototype_scale` are
+  now 1, and a mature plant is about 0.2 m taller at its tassel tip.
+- `rice` and `maize` now accept build parameters (see Build Parameters below).
+- Fruit are no longer two-sided surfaces. After a fruit prototype is built, each connected part
+  that is a closed surface with outward-facing normals (a grape berry, an apple) is given a
+  one-sided copy of its material labelled `<material>_closed`; open parts such as a calyx, stem
+  or flat pod keep their two-sided material. A custom fruit prototype whose closed parts should be
+  one-sided needs consistently outward-facing normals.
+- Each shoot type's stem, petiole and peduncle now has its own named material, and library plants
+  are named for their model while they are built, so materials are no longer shared between organ
+  kinds that happen to have the same color.
+
 ### Build Parameters
 
 Some features of a library plant are specific to its species and have no place in the generic
 shoot and phytomer parameters: the dimensions of a grapevine trellis, the trunk height and
 scaffold layout of an orchard tree, the size of grape berries and clusters, the number of tillers
-of a sorghum plant, or the form and color of a sorghum panicle. These are set per plant by passing
+of a sorghum or rice plant, or the form and color of a sorghum or rice panicle or a maize tassel. These are set per plant by passing
 `build_parameters` (a `dict` of name to number) to `buildPlantInstanceFromLibrary()` or
 `buildPlantCanopyFromLibrary()`, so plants of different genotypes can be built side by side.
 `getPlantModelBuildParameterNames(plant_model)` lists the names a model accepts (the model need
@@ -188,6 +212,25 @@ the cube root of berry count, so the defaults give a cluster about 12 cm long (C
 
 The sorghum model also accepts the panicle form, grain and glume keys listed under
 Sorghum panicle below.
+
+**Rice (rice)** (helios-core 1.3.95+)
+
+| Parameter | Default | Range | Meaning |
+|---|---|---|---|
+| `tiller_count` | 12 | 0-18 | Number of tillers (see Rice tillering below) |
+| `panicle_type` | 0.5 | 0-1 | Panicle preset: 0 erect, 0.5 the defaults, 1 lax |
+
+The rice model also accepts the panicle size, branching, droop, spikelet, ripeness, hull and
+anther keys listed under Rice panicle below.
+
+**Maize (maize)** (helios-core 1.3.95+)
+
+| Parameter | Default | Range | Meaning |
+|---|---|---|---|
+| `tassel_type` | (preset) | 0-1 | Tassel preset: 0 few-branched, 0.5 the defaults, 1 many-branched |
+
+The maize model also accepts the tassel length, branch, spikelet, glume and anther keys listed
+under Maize tassel below.
 
 As of helios-core 1.3.90 the `grapevine_Wye` row runs along the y-axis, as for `grapevine_VSP`
 (it previously ran along x), and its `trunk_height` is the height of the cordon wires rather than
@@ -336,6 +379,151 @@ plant_id = plantarch.buildPlantInstanceFromLibrary(
   degrees by maturity. These angles are estimates; they are set by the `"tiller"` shoot type and
   can be changed with `getCurrentShootParameters("tiller")` / `defineShootType("tiller", ...)`.
 
+### Rice panicle
+
+As of helios-core 1.3.95 the rice panicle is generated procedurally, with every spikelet resolved
+as its own small mesh. A rachis bears primary branches, the lowest close together at the panicle
+base; a primary branch carries short secondary branches on its lower part and spikelets directly
+on its upper part, and each spikelet stands on a short pedicel.
+
+The panicle changes through three stages, each its own prototype. At heading it stands erect and
+green with its branches held against the rachis. At anthesis it is green and upright with spread
+branches, and anthers hang from a fraction of its spikelets (`RiceFloweringPaniclePrototype`). As
+it ripens the rachis bends over under the weight of the grain, the branches hang, and the hulls
+take their ripe color (`RicePaniclePrototype`). A panicle does not change after the ripening
+prototype replaces the flowering one, so `ripeness` sets the color for the whole of grain fill.
+
+The defaults describe a modern semi-dwarf irrigated cultivar: a 24 cm panicle with about 10
+primary branches and 100-170 spikelets, and about 6,000 triangles when ripe. The insertion angles,
+droop, pedicel and filament lengths and all colors are read from photographs rather than
+measurements.
+
+`panicle_type` is applied first: 0 gives an erect, short, dense panicle (as in the dep1 types), 0.5
+the defaults below, and 1 a long, lax panicle with freely hanging branches, with values in between
+blending linearly between neighbouring presets. Each other key then overrides one field.
+
+| Build parameter | Default | Range | Meaning |
+|---|---|---|---|
+| `panicle_type` | 0.5 | 0-1 | Preset (erect, default, lax) |
+| `panicle_length` | 0.24 | 0.05-0.6 m | Length from the panicle base to its tip |
+| `panicle_length_variation` | 0.06 | 0-0.3 | Coefficient of variation of panicle length |
+| `rachis_droop` | 75 | 0-180° | Angle through which the rachis of a ripe panicle turns from base to tip |
+| `branch_count` | 10 | 1-40 | Mean number of primary branches |
+| `branch_count_variation` | 0.12 | 0-0.5 | Coefficient of variation of the number of primary branches |
+| `branch_length_base`, `branch_length_tip` | 0.115, 0.045 | 0.01-0.4, 0.005-0.4 m | Length of the lowest and uppermost primary branches |
+| `branch_length_variation` | 0.12 | 0-0.5 | Coefficient of variation of primary branch length |
+| `branch_angle_base`, `branch_angle_tip` | 24, 12 | 0-90° | Insertion angle of the lowest and uppermost primary branches on a ripe panicle |
+| `branch_hang` | 0.85 | 0-1 | How far a primary branch of a ripe panicle turns toward hanging |
+| `branch_bare_fraction` | 0.07 | 0-0.9 | Fraction of each primary branch, from its base, that bears nothing |
+| `secondary_branches_per_primary` | 2.5 | 0-10 | Mean number of secondary branches on the longest primary branches |
+| `secondary_zone_fraction` | 0.5 | 0.05-1 | Fraction of a primary branch, from its base, over which secondary branches arise |
+| `secondary_branch_length` | 0.017 | 0.003-0.1 m | Length of a secondary branch |
+| `spikelets_per_secondary` | 3 | 1-12 | Number of spikelets on a secondary branch |
+| `spikelet_spacing` | 0.0055 | 0.002-0.03 m | Distance along a primary branch between successive spikelets |
+| `spikelet_length`, `spikelet_width`, `spikelet_thickness` | 7.6, 2.8, 2 mm | 4-15, 1-6, 1-5 mm | Spikelet dimensions |
+| `spikelet_size_variation` | 0.05 | 0-0.3 | Coefficient of variation of spikelet size |
+| `spikelet_angle` | 12 | 0-60° | Angle of a spikelet from the branch bearing it |
+| `spikelet_subdivisions` | 6 | 3-12 | Number of facets around a spikelet |
+| `pedicel_length` | 0.0015 | 0-0.015 m | Length of the pedicel |
+| `ripeness` | 0.85 | 0-1 | Ripeness of the hulls from 0 (green) to 1 (fully ripe); the top of a panicle ripens first |
+| `hull_green_color_r`, `_g`, `_b` | 0.42, 0.54, 0.22 | 0-1 | Hull color of an unripe spikelet, and of all spikelets at heading and anthesis |
+| `hull_ripe_color_r`, `_g`, `_b` | 0.72, 0.60, 0.36 | 0-1 | Hull color of a ripe spikelet |
+| `hull_color_variation` | 0.08 | 0-0.5 | Coefficient of variation of hull brightness |
+| `anther_fraction` | 0.3 | 0-1 | Fraction of spikelets open at anthesis, each hanging six anthers |
+| `anther_length`, `anther_width` | 2.2, 0.5 mm | 0.5-6, 0.2-2 mm | Anther dimensions |
+| `filament_length` | 4 mm | 0-15 mm | Length of the filament on which an anther hangs |
+| `anther_color_r`, `_g`, `_b` | 0.85, 0.78, 0.42 | 0-1 | Anther color |
+| `anther_color_variation` | 0.08 | 0-0.5 | Coefficient of variation of anther brightness |
+
+```python
+plantarch.loadPlantModelFromLibrary("rice")
+plant_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 110.0, build_parameters={"panicle_type": 0.2, "panicle_length": 0.2})
+```
+
+### Rice tillering
+
+A library rice plant has 12 tillers by default, giving 13 culms. The `tiller_count` build
+parameter (0-18) sets the number. Tillers are added in the order they emerge: a tiller appears
+from the axil of leaf n of its parent as leaf n+3 appears, starting from main-stem leaf 2, and
+secondary tillers grow from the lowest four leaves of a primary tiller. All tillers come from a
+crown at the soil surface, where the internodes stay short, and each tiller carries as many fewer
+leaves than its parent as it was late in appearing, so the plant comes into head nearly together.
+Tillers use the `"tiller"` shoot type. The model has no separate leaf sheath, so its internodes run
+from collar to collar.
+
+```python
+plantarch.loadPlantModelFromLibrary("rice")
+plant_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 110.0, build_parameters={"tiller_count": 6})
+```
+
+### Maize tassel
+
+As of helios-core 1.3.95 the maize tassel is generated procedurally as a single object, with every
+spikelet and anther resolved as its own small mesh. A central axis bears the primary branches over
+its lower part and continues above them as the central spike; a few secondary branches leave the
+lowest primary branches, and florets at anthesis hang their three anthers below the spikelets. The
+tassel is built in meters along +x, so the library maize uses it with a `fruit_prototype_scale` of
+1, and its primitives carry the object label `"fruit"`.
+
+The defaults describe a commercial hybrid: 39 cm from the lowest branch to the tip, 10 primary
+branches, about 1250 spikelets and 35,000 triangles (the few-branched preset about 20,000, the
+many-branched about 63,000). `anther_fraction` is the main lever on cost, followed by the spikelet
+densities. Anthesis is not simulated: set `anther_fraction` to 0 for a tassel before or well after
+pollen shed.
+
+`tassel_type` is applied first: 0 gives the few-branched preset (6 stiff, erect branches and a
+long central spike), 0.5 the defaults, and 1 the many-branched preset (22 long, spreading
+branches), with values in between blending linearly. These are points on a continuum, not
+recognized tassel classes. Each other key then overrides one field.
+
+| Build parameter | Default | Range | Meaning |
+|---|---|---|---|
+| `tassel_type` | (preset) | 0-1 | Preset (few-branched, default, many-branched) |
+| `tassel_length` | 0.387 | 0.05-0.8 m | Length from the lowest branch to the tip, excluding the peduncle |
+| `tassel_length_variation` | 0.06 | 0-0.3 | Coefficient of variation of length between tassels |
+| `tassel_central_spike_fraction` | 0.69 | 0.1-1 | Fraction of the length spanned by the central spike |
+| `tassel_axis_curvature` | 8 | 0-90° | Total bend of the axis |
+| `tassel_branch_count` | 10 | 0-60 | Mean number of primary branches |
+| `tassel_branch_count_variation` | 0.15 | 0-0.5 | Coefficient of variation of the number of primary branches |
+| `tassel_secondary_branch_count` | 2 | 0-40 | Number of secondary branches |
+| `tassel_branch_length` | 0.2 | 0.02-0.5 m | Length of the longest primary branches |
+| `tassel_branch_length_tip_fraction` | 0.5 | 0.1-1 | Length of the uppermost primary branch as a fraction of the longest |
+| `tassel_branch_length_variation` | 0.1 | 0-0.5 | Coefficient of variation of primary branch length |
+| `tassel_branch_angle_base`, `tassel_branch_angle_tip` | 38, 20 | 0-100° | Insertion angle of the lowest and uppermost primary branches |
+| `tassel_branch_droop_base`, `tassel_branch_droop_tip` | 30, 5 | 0-120° | Downward arch of the lowest and uppermost primary branches |
+| `tassel_branch_bare_fraction` | 0.12 | 0-0.9 | Fraction of each branch, from its base, that bears no spikelets |
+| `tassel_branch_radius` | 0.00095 | 0.0002-0.003 m | Primary branch radius at its base |
+| `tassel_spike_spikelet_density` | 14.1 | 1-40 | Spikelets per cm of central spike |
+| `tassel_branch_spikelet_density` | 5.2 | 1-20 | Spikelets per cm of branch |
+| `spikelet_length`, `spikelet_width`, `spikelet_thickness` | 10.2, 3.2, 2.6 mm | 3-20, 1-8, 1-8 mm | Spikelet dimensions |
+| `spikelet_size_variation` | 0.08 | 0-0.3 | Coefficient of variation of spikelet size |
+| `spikelet_angle` | 16 | 0-60° | Angle of a spikelet from the axis or branch bearing it |
+| `spikelet_subdivisions` | 4 | 3-12 | Number of facets around a spikelet |
+| `glume_color_r`, `_g`, `_b` | 0.40, 0.46, 0.24 | 0-1 | Color of the body of the glumes |
+| `glume_tip_color_r`, `_g`, `_b` | 0.50, 0.46, 0.27 | 0-1 | Color of the glume tips |
+| `glume_color_variation` | 0.1 | 0-0.5 | Coefficient of variation of glume brightness |
+| `anther_fraction` | 0.5 | 0-1 | Fraction of spikelets with a floret at anthesis, each hanging three anthers |
+| `anther_length`, `anther_width` | 5.5, 1.3 mm | 1-12, 0.3-4 mm | Anther dimensions |
+| `filament_length` | 4 mm | 0-20 mm | Length of the filament on which an anther hangs |
+| `anther_color_r`, `_g`, `_b` | 0.76, 0.60, 0.30 | 0-1 | Mean anther color |
+| `anther_color_variation` | 0.1 | 0-0.5 | Coefficient of variation of anther brightness |
+
+The axis radius and color and the tube subdivisions are not build parameters, because they are
+matched to the library peduncle. Tassels are copied from three prototypes per parameter set, so
+neighbouring plants differ in branch number and layout.
+
+```python
+plantarch.loadPlantModelFromLibrary("maize")
+few_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 75.0, build_parameters={"tassel_type": 0})
+purple_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0.5, 0, 0), 75.0,
+    build_parameters={"tassel_type": 1, "tassel_branch_count": 16,
+                      "anther_color_r": 0.4, "anther_color_g": 0.15, "anther_color_b": 0.25})
+```
+
 ## Shoot, Phenology, and Resource Parameters
 
 Beyond loading a named library model, PyHelios exposes the underlying parameter
@@ -376,8 +564,9 @@ be expressed: an explicitly empty list leaves whatever the shoot type being repl
 carried.
 
 `InflorescenceParameters.inflorescence_maturity_period` (helios-core 1.3.85) sets how many
-days an inflorescence takes to expand from its initial quarter size to full size. Its default of
-`-1` defers to the plant-level fruit-maturity threshold from `setPlantPhenologicalThresholds()`,
+days an inflorescence takes to expand from its initial quarter size to full size. Zero means it is
+already full size when it forms (helios-core 1.3.95+; zero previously deferred like a negative
+value, and the rice model now uses it). Its default of `-1` defers to the plant-level fruit-maturity threshold from `setPlantPhenologicalThresholds()`,
 which is the right clock for a fruit but not for an inflorescence that finishes elongating long
 before the fruit it subtends even sets: the maize library model gives its tassel 6 days, roughly
 two months ahead of the ear's grain fill.
@@ -433,6 +622,81 @@ grapevine cluster is (the `grapevine_VSP` and `grapevine_Wye` models set 180).
 peduncle continues the culm, the color at the top of the peduncle: as of helios-core 1.3.93 the
 color is blended along the peduncle from the internode color at its base, so it meets the culm
 without a step. A lateral peduncle, or one on a woody stem, is this color throughout.
+
+#### Leaf texture series and aging
+
+A plant whose leaves all use one image can look artificially uniform. As of helios-core 1.3.95,
+`LeafPrototype.leaf_texture_series` gives the prototype several images. It is keyed by
+compound-leaf index like `leaf_texture_file` (a single entry applies to every leaflet), and each
+value is a list of variants, each variant a list of images:
+
+```python
+sp = plantarch.getCurrentShootParameters("mainstem", return_typed=True)
+proto = sp.phytomer_parameters.leaf.prototype
+proto.leaf_texture_series = {0: [["LeafVariantA.png"], ["LeafVariantB.png"], ["LeafVariantC.png"]]}
+proto.unique_prototypes = 6
+plantarch.defineShootType("mainstem", sp)
+```
+
+Unique prototype k uses variant `k % len(variants)`, and each leaf keeps the variant of the
+prototype it draws, so `unique_prototypes` must be at least the number of variants. When set,
+`leaf_texture_file` is ignored. Variants may have different outlines. The series is not available
+for leaves built from an OBJ model or a custom prototype function, or with `unique_prototypes` = 0,
+which raise an error. The variants are not written to the plant structure XML, so set the same
+series and `unique_prototypes` before `readPlantStructureXML()`.
+
+A variant can also list the images a leaf passes through as it ages, such as green, yellow and
+brown. `LeafPrototype.leaf_texture_stage_ages` gives the leaf age in days at which each image
+begins (starting at 0 and strictly increasing), and every variant must have the same number of
+images:
+
+```python
+proto.leaf_texture_series = {0: [["A_green.png", "A_yellow.png", "A_brown.png"],
+                                 ["B_green.png", "B_yellow.png", "B_brown.png"]]}
+proto.leaf_texture_stage_ages = [0.0, 40.0, 55.0]
+proto.unique_prototypes = 4
+```
+
+The images of one variant must have the same resolution and exactly the same transparency, since
+they change only the leaf's color; its material, area and shape do not change. The ages are in
+the same days as `advanceTime()`. The `rice` library model uses a two-variant, three-stage series.
+
+- `setPlantMinimumLeafTextureStage(plant_id, stage)` moves every leaf of a plant to at least the
+  given image, for changes that do not follow leaf age, such as a canopy turning in autumn; 0
+  returns each leaf to the image for its age. `getPlantMinimumLeafTextureStage(plant_id)` reads it.
+- `optionalOutputObjectData("leaf_texture_stage")` writes the index of the image each leaf
+  currently uses as object data (0 for a shoot type without stages), including to leaves that
+  already exist.
+- **The radiation model does not use image color, only transparency**, so these images change
+  how leaves look in the visualizer and exported files but not the radiation they absorb. To give
+  each stage its own optical properties, pass one `LeafOpticsProperties` per stage to
+  `LeafOptics.runFromObjectData(leaf_uuids, "leaf_texture_stage", stage_properties, label)` after
+  each time step.
+
+`PlantArchitecture.generateLeafTextureStages(leaf_texture, output_directory, stage_count, options)`
+is a static method (no Context or PlantArchitecture instance needed) that makes the images from
+an image of the young leaf, returning the path of each stage starting with the leaf texture
+itself. Each pixel changes at its own point in the aging, so color spreads across the leaf as a
+front, and the images keep the leaf's transparency (PNG output for a transparent leaf texture,
+JPEG otherwise). `LeafTextureStageOptions` controls what the leaf turns into
+(`senescence_colors`, a list of `RGBcolor`, by default yellow then brown, or `senesced_textures`,
+images to blend into), which parts turn first (by default from the margin inward with random
+patches set by `patchiness` and `noise_seed`, or an `onset_map` image in which black turns first),
+and how sharp the front is (`transition_width`). The defaults are for appearance and are not
+calibrated to any species. Images of the same name in `output_directory` are overwritten.
+
+```python
+from pyhelios import LeafTextureStageOptions
+
+variant_a = PlantArchitecture.generateLeafTextureStages("TomatoLeaf_blade.png", "stages_A", 6)
+variant_b = PlantArchitecture.generateLeafTextureStages(
+    "TomatoLeaf_blade.png", "stages_B", 6, LeafTextureStageOptions(noise_seed=1))
+
+proto.leaf_texture_series = {0: [variant_a, variant_b]}
+proto.leaf_texture_stage_ages = [0.0, 30.0, 36.0, 42.0, 48.0, 54.0]
+proto.unique_prototypes = 4
+plantarch.defineShootType("mainstem", sp)
+```
 
 #### Leaves without a petiole
 
@@ -702,6 +966,15 @@ the C++ default-constructed template (a flat `dict`, or a typed object with
 API has no per-plant getter for these, so the get methods return the default
 template rather than the values currently in effect on a specific plant.
 `getPlantAvailableNitrogen(plant_id)` reports the nitrogen (g N) in a plant's available pool.
+
+The carbohydrate defaults are `carbon_conductance_down` 0.95, `carbon_conductance_up` 0.475 and
+`carbohydrate_pruning_threshold` 0.025 g C/g DW (the native documentation gave 0.9, 0.18 and 0.01
+before helios-core 1.3.95).
+
+As of helios-core 1.3.95 the nitrogen model also remobilizes nitrogen from older leaves to younger
+fully expanded leaves below `target_leaf_N_area`, after the demand of expanding leaves and fruit is
+served. Previously a leaf that expanded while the plant had no nitrogen to give it stayed depleted,
+so a nitrogen-limited plant could end with its youngest leaves lowest in nitrogen per area.
 
 helios-core 1.3.88 reworked leaf senescence and remobilization: `remobilization_age_threshold` was
 removed, and `leaf_remobilization_rate`, `leaf_senescence_duration_fraction` and
@@ -1130,6 +1403,11 @@ segmented point cloud.
 | `setPetioleNodePositions(plant_id, shoot_id, node_index, petiole_index, node_positions, node_radii)` | Prescribe the centerline of one petiole on an existing phytomer |
 | `setPetioleLeafGeometry(plant_id, shoot_id, node_index, petiole_index, leaf_bases, leaf_rotations, leaf_sizes)` | Prescribe the base position, orientation and size of every leaf on a petiole |
 | `setPetioleLeafCount(plant_id, shoot_id, node_index, petiole_index, leaf_count)` | Change the number of leaves (leaflets) on one petiole, rebuilding them procedurally |
+| `setPetioleShape(plant_id, shoot_id, node_index, petiole_index, outward_direction, pitch_degrees, curvature, length)` | Regenerate one petiole from its own pitch, curvature (degrees per meter) and length, leaning toward `outward_direction`, and rebuild its leaves on it (1.3.95+) |
+| `setPetioleLeaflets(plant_id, shoot_id, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale)` | Rebuild one petiole's leaflets with their own count, spacing, size ratio and terminal size; a spacing too large for the count is refused (1.3.95+) |
+| `setPetioleLeafletAngles(plant_id, shoot_id, node_index, petiole_index, pitch_degrees, yaw_degrees, roll_degrees)` | Rebuild one petiole's leaflets turned by their own pitch, yaw and roll (1.3.95+) |
+| `setPetioleLeafletAngleOffsets(plant_id, shoot_id, node_index, petiole_index, pitch_offsets_degrees, yaw_offsets_degrees, roll_offsets_degrees)` | Turn each leaflet of one petiole by its own offset, so the members of a pair need not mirror each other (1.3.95+) |
+| `setPetioleLeafShape(plant_id, shoot_id, node_index, petiole_index, aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction)` | Rebuild one petiole's leaflets with their own blade aspect ratio, curvatures and midrib fold (1.3.95+) |
 | `setShootInternodeLengthMax(plant_id, shoot_id, internode_length_max)` | Target length of internodes grown at the apex of an existing shoot |
 | `isShootGeometryPrescribed(plant_id, shoot_id)` | Whether a shoot was built from prescribed node positions |
 

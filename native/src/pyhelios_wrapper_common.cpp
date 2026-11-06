@@ -194,4 +194,50 @@ extern "C" {
         }
     }
 
+    //=============================================================================
+    // Single-channel PNG images (core/global.h; helios-core v1.3.95+)
+    //=============================================================================
+
+    static thread_local std::vector<unsigned short> s_png_single_channel_buffer;
+
+    PYHELIOS_API const unsigned short* readPNGSingleChannel(const char* filename, unsigned int* width, unsigned int* height, unsigned int* size) {
+        clearError();
+        try {
+            if (!width || !height || !size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (readPNGSingleChannel): Output pointer is null"); return nullptr; }
+            *width = 0;
+            *height = 0;
+            *size = 0;
+            if (!filename) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (readPNGSingleChannel): File name pointer is null"); return nullptr; }
+            uint w = 0;
+            uint h = 0;
+            std::vector<uint16_t> values;
+            helios::readPNGSingleChannel(std::string(filename), w, h, values);
+            s_png_single_channel_buffer.assign(values.begin(), values.end());
+            *width = w;
+            *height = h;
+            *size = static_cast<unsigned int>(s_png_single_channel_buffer.size());
+            return s_png_single_channel_buffer.empty() ? nullptr : s_png_single_channel_buffer.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (readPNGSingleChannel): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (readPNGSingleChannel): Unknown error.");
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API void writePNGSingleChannel(const char* filename, unsigned int width, unsigned int height, const unsigned short* pixel_values, unsigned int count, unsigned int bit_depth) {
+        clearError();
+        try {
+            if (!filename) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (writePNGSingleChannel): File name pointer is null"); return; }
+            if (count > 0 && !pixel_values) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (writePNGSingleChannel): Pixel value pointer is null"); return; }
+            std::vector<uint16_t> values(pixel_values, pixel_values + count);
+            helios::writePNGSingleChannel(std::string(filename), width, height, values, bit_depth);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_FILE_IO, std::string("ERROR (writePNGSingleChannel): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (writePNGSingleChannel): Unknown error.");
+        }
+    }
+
 } //extern "C"

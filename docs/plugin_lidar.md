@@ -13,7 +13,7 @@
 ## Known Issues {#LiDARissues}
 
 - The LiDAR plugin requires the Visualizer plugin to be loaded in the build (it is a build-time dependency).
-- The current version of `calculateLeafArea()` handles both single-return and multi-return data automatically. `isMultiReturnData()` (helios-core 1.3.85) reports which kind the cloud holds: True if any hit has `target_count` greater than 1. This is a behavioral switch, not just a descriptive property — `triangulateHitPoints()` triangulates first returns only (with an adaptive separation filter) for multi-return data and treats every return independently otherwise, and the two can differ substantially in reconstructed surface area — so a cloud assembled by hand (for example through `addHitPoints()`) can confirm which branch will run. Multi-return data must also carry the `timestamp` and `target_index` fields; if `target_count > 1` is present but either is missing, `isMultiReturnData()` raises rather than reporting an answer the rest of the pipeline cannot act on.
+- `calculateLeafArea()` handles both single-return and multi-return data automatically. `isMultiReturnData()` (helios-core 1.3.85) reports which kind the cloud holds: True if any hit has `target_count` greater than 1. This is a behavioral switch, not just a descriptive property — `triangulateHitPoints()` triangulates first returns only (with an adaptive separation filter) for multi-return data and treats every return independently otherwise, and the two can differ substantially in reconstructed surface area — so a cloud assembled by hand (for example through `addHitPoints()`) can confirm which branch will run. Multi-return data must also carry the `timestamp` and `target_index` fields; if `target_count > 1` is present but either is missing, `isMultiReturnData()` raises rather than reporting an answer the rest of the pipeline cannot act on.
 
 ## Introduction {#LiDARintro}
 
@@ -592,7 +592,7 @@ After triangulation, `getTriangleCount()` returns the number of triangles, and `
 
 ### Calculating Leaf Area for Each Grid Cell {#LiDARleafarea}
 
-Using the triangulation and defined grid cells, the plugin can calculate the leaf area (and leaf area density) for each grid cell. The algorithm for calculating leaf area is described in detail in [Bailey and Mahaffee (2017b)](http://dx.doi.org/doi:10.1088/1361-6501/aa5cfd) (except that in the current implementation, weighting by the sine of the scan zenith direction has been removed).
+Using the triangulation and defined grid cells, the plugin can calculate the leaf area (and leaf area density) for each grid cell. The algorithm for calculating leaf area is described in detail in [Bailey and Mahaffee (2017b)](http://dx.doi.org/doi:10.1088/1361-6501/aa5cfd) (except that weighting by the sine of the scan zenith direction is not applied).
 
 Performing the calculations is simple and requires no inputs. Note that the leaf area calculation requires that the triangulation has been performed beforehand. If no triangulation is available, the plugin will assume a uniformly distributed leaf angle orientation (\f$G=0.5\f$). The leaf area calculation also requires that at least one grid cell was defined.
 

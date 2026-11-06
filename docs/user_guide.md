@@ -457,6 +457,65 @@ for i in range(10):
 context.deletePrimitive(UUID)
 ```
 
+#### Changing a Primitive's Color Image {#ColorTexture}
+
+`setPrimitiveColorTexture()` gives a textured primitive a different image for its color, while the texture of its material continues to give its shape. It changes the primitive's appearance in the visualizer and in exported files without changing its material, its area or its transparency mask, so it can be used to change the appearance of many primitives repeatedly, such as leaves that yellow as they age, and a radiation model does not rebuild its geometry as a result.
+
+The image must have the same resolution as the primitive's texture and identical transparency, pixel by pixel; `validateColorTexture(shape_texture_file, color_texture_file)` checks this and raises an error describing any mismatch. An empty file name removes the image. The image is removed if the primitive's texture later changes, and is written and read by `writeXML()` and `loadXML()`.
+
+```python
+context.setPrimitiveColorTexture(leaf_uuids, "GrapeLeaf_yellow.png")
+context.getPrimitiveColorTextureFile(leaf_uuids[0])  # "GrapeLeaf_yellow.png"
+context.getPrimitiveTextureFile(leaf_uuids[0])       # still "GrapeLeaf.png", which gives the shape
+```
+
+### Spectral Textures {#SpectralTexture}
+
+A spectral texture gives a primitive optical properties that vary across its surface, such as the veins, lesions and yellowing margin of a leaf. It has two parts:
+
+- A **class map**: a single-channel 8-bit or 16-bit grayscale PNG whose pixel values are integer classes. It is laid over the primitive with the same (u,v) coordinates as its texture. Class 0 marks transparent texels.
+- A **spectral palette**: a list of `SpectralTextureClass` entries giving, for classes 1, 2, ..., the labels of the global data that hold the class's reflectivity and transmissivity spectra.
+
+The class map must agree with the primitive's shape. For a texture with a transparency channel, it has the texture's resolution and class 0 marks exactly the texture's transparent pixels. A pixel counts as opaque if its alpha is at least 250 (of 255), as for every texture mask in Helios, so partly transparent pixels at a leaf's edge must be class 0. For a texture without one, it has the texture's resolution and no class 0. A patch without a texture maps the whole class map, which may have any resolution but no class 0. A mismatch raises an error that names the first texel that disagrees.
+
+Class maps can be written and read with `Global.writePNGSingleChannel()` and `Global.readPNGSingleChannel()`, which store integer values exactly, without scaling.
+
+```python
+from pyhelios import Context, Global, SpectralTextureClass
+from pyhelios.types import vec3, vec2
+
+context = Context()
+
+# Spectra of the healthy leaf blade (class 1) and of a necrotic lesion (class 2), which transmits nothing
+context.addSpectralPalette("grape_lesions", [
+    SpectralTextureClass("grape_lamina_reflectivity", "grape_lamina_transmissivity", "measured"),
+    SpectralTextureClass("grape_necrosis_reflectivity", "", "PROSPECT-D fit"),
+])
+
+UUID = context.addPatchTextured(vec3(0, 0, 0), vec2(0.1, 0.1), "GrapeLeaf.png")
+context.setPrimitiveSpectralTexture(UUID, "GrapeLeaf_classes.png", "grape_lesions")
+
+classes, resolution = context.getSpectralTextureClassMap("GrapeLeaf_classes.png")  # uint16 array (height, width)
+```
+
+Changing a primitive's class map changes its shape as far as plug-ins are concerned, whereas changing only its palette with `setPrimitiveSpectralPalette()` does not. Keeping one class map per leaf and switching palettes is therefore the cheap way to change optical properties over time. For example, a senescing leaf's class map can record where each change begins, and each stage is a palette. A primitive's spectral texture is copied with it, and removed if its texture changes. A tile without a texture whose sub-patches have spectral textures cannot be subdivided again, since each sub-patch maps the whole class map. Palettes and spectral textures are written by `writeXML()` and read by `loadXML()`.
+
+Registering the same classes under an existing palette label does nothing; different classes under an existing label raise an error, so register them under a new label and switch primitives to it.
+
+> **Note:** The radiation model uses spectral textures for the radiation that primitives absorb, reflect and transmit, and radiation cameras see the class at each pixel (see the radiation plug-in documentation).
+
+| Property | Method |
+|----------|--------|
+| Register a palette | `addSpectralPalette(label, classes)` |
+| Check / read a palette | `doesSpectralPaletteExist(label)`, `getSpectralPalette(label)` |
+| Assign a class map and palette | `setPrimitiveSpectralTexture(uuids, class_map_file, palette_label)` |
+| Change only the palette | `setPrimitiveSpectralPalette(uuids, palette_label)` |
+| Remove | `clearPrimitiveSpectralTexture(uuids)` |
+| Has a spectral texture | `primitiveHasSpectralTexture(uuid)` |
+| Class map file | `getPrimitiveSpectralTextureFile(uuid)` |
+| Palette | `getPrimitiveSpectralPalette(uuid)` |
+| Classes of a class map | `getSpectralTextureClassMap(class_map_file)` |
+
 ### Compound Geometry {#Compound}
 
 The Context has functions to rapidly generate various shapes, which consist of many primitives. These functions simply add the primitives needed to make the specified geometry, and return a vector of UUIDs corresponding to each of the primitives. The important distinction between these functions and those to add "Objects" (described below) is that Objects retain information about the overall 3D object such as the radius of the sphere.
@@ -757,6 +816,14 @@ tint = context.getMaterialData("leaf", "tint")  # auto-detects vec3
 ```
 
 For an entry whose type is unknown at runtime, `getMaterialDataType(material_label, data_label)` returns the `HeliosDataType` enum value (0=INT, 1=UINT, 2=FLOAT, 3=DOUBLE, 4=VEC2, 5=VEC3, 6=VEC4, 7=INT2, 8=INT3, 9=INT4, 10=STRING). Use `doesMaterialDataExist()` to check for presence and `clearMaterialData()` to remove an entry.
+
+### Automatic and Renamed Materials {#AutomaticMaterials}
+
+A primitive created without an explicit material is given an *automatic* material shared by every primitive with the same color or texture. Changing one primitive's appearance with `setPrimitiveColor()`, `setPrimitiveTextureFile()`, `overridePrimitiveTextureColor()` or `usePrimitiveTextureColor()` (or the object-level equivalents such as `setObjectColor()`) moves that primitive to the automatic material of its new appearance, so primitives created later with the original appearance are unaffected. A named material is changed in place if the primitive is its only user, and otherwise copied for it; a material renamed from an automatic one, such as the leaf and fruit materials PlantArchitecture names, is always copied. To change a named material for every primitive using it, use `setMaterialColor()`, `setMaterialTexture()` or `setMaterialTextureColorOverride()`.
+
+**Behavior change (helios-core 1.3.95):** `renameMaterial()` no longer keeps an automatic material's old label as a lookup alias. Renaming an automatic material does not make it the material of primitives created afterward with the same color or texture: they get an automatic material of their own, and the renamed material is shared only by the primitives it is assigned to.
+
+`getObjectTextureFile()` and `objectHasTexture()` report the texture of the object's first primitive, so they follow material changes and work for polymesh objects.
 
 ### Unique Data Values {#UniqueValues}
 

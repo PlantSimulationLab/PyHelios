@@ -440,6 +440,29 @@ PYHELIOS_API const char* getPlantModelBuildParameterNames(PlantArchitecture* pla
 // the matching values; *count is the number of parameters. nullptr (with *count 0) when there are none or on error.
 PYHELIOS_API float* getPlantBuildParameters(PlantArchitecture* plantarch, unsigned int plantID, const char** names_out, int* count);
 
+// ---- helios-core 1.3.95 additions ----
+// Regenerate one petiole of an existing phytomer from its own pitch (degrees off the internode), curvature (degrees per
+// meter), length (m) and the world direction it leans toward (3 floats), and rebuild its leaves on it. 0 on success, -1 on error.
+PYHELIOS_API int setPetioleShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* outward_direction, float pitch_degrees, float curvature, float length);
+// Rebuild one petiole's leaflets with their own count, leaflet_offset, leaflet_scale and prototype_scale. 0 on success, -1 on error.
+PYHELIOS_API int setPetioleLeaflets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count, float leaflet_offset, float leaflet_scale, float prototype_scale);
+// Rebuild one petiole's leaflets turned by their own pitch, yaw and roll (degrees). 0 on success, -1 on error.
+PYHELIOS_API int setPetioleLeafletAngles(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float pitch_degrees, float yaw_degrees, float roll_degrees);
+// Rebuild one petiole's leaflets with their own aspect ratio, longitudinal and lateral curvature and midrib fold. 0 on success, -1 on error.
+PYHELIOS_API int setPetioleLeafShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float aspect_ratio, float longitudinal_curvature, float lateral_curvature, float midrib_fold_fraction);
+// Rebuild one petiole's leaflets each turned by its own (pitch, yaw, roll) offset in degrees: three arrays of count floats,
+// count the petiole's number of leaflets. 0 on success, -1 on error.
+PYHELIOS_API int setPetioleLeafletAngleOffsets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* pitch_degrees, const float* yaw_degrees, const float* roll_degrees, unsigned int count);
+// Make every leaf of a plant use at least the given image of LeafPrototype::leaf_texture_series. 0 on success, -1 on error.
+PYHELIOS_API int setPlantMinimumLeafTextureStage(PlantArchitecture* plantarch, unsigned int plantID, unsigned int stage);
+// Write the plant's minimum leaf texture stage to *stage. 0 on success, -1 on error.
+PYHELIOS_API int getPlantMinimumLeafTextureStage(PlantArchitecture* plantarch, unsigned int plantID, unsigned int* stage);
+// Static PlantArchitecture::generateLeafTextureStages(); needs no PlantArchitecture or Context. options_json is a JSON object
+// with any of "senescence_colors" ([[r,g,b],...]), "senesced_textures" ([path,...]), "onset_map", "patchiness",
+// "transition_width", "noise_seed"; omitted keys keep the LeafTextureStageOptions defaults (nullptr or "" for all defaults).
+// Returns a JSON array of the stage image paths (stage 0 is the leaf texture); nullptr on error.
+PYHELIOS_API const char* generateLeafTextureStages(const char* leaf_texture, const char* output_directory, unsigned int stage_count, const char* options_json);
+
 // ---- Plant-level queries ----
 // "dormant", "vegetative", "reproductive" or "senescent"; nullptr on error.
 PYHELIOS_API const char* determinePhenologyStage(PlantArchitecture* plantarch, unsigned int plantID);

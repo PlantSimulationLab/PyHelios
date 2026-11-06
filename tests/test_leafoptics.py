@@ -798,3 +798,193 @@ class TestLeafOpticsNitrogenMode:
             lo.run(uuids, LeafOpticsProperties_Nauto())
 
         assert basic_context.getPrimitiveDataFloat(uuids[0], "chlorophyll") == pytest.approx(50.0, rel=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Spectra selected by object data (LeafOptics.runFromObjectData)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.cross_platform
+class TestLeafOpticsRunFromObjectDataValidation:
+    """Argument validation that runs before any native call."""
+
+    @staticmethod
+    def _stub():
+        try:
+            from pyhelios.LeafOptics import LeafOptics
+        except ImportError:
+            pytest.skip("pyhelios.LeafOptics not importable in this environment")
+        lo = LeafOptics.__new__(LeafOptics)
+        lo.context = None
+        lo._leafoptics_ptr = None
+        return lo
+
+    @pytest.mark.parametrize("args", [
+        ([], "stage", "props", "lbl"),
+        (5, "stage", "props", "lbl"),
+        ([1, -1], "stage", "props", "lbl"),
+        ([1.0], "stage", "props", "lbl"),
+        ([2 ** 32], "stage", "props", "lbl"),
+        ([1], "", "props", "lbl"),
+        ([1], 3, "props", "lbl"),
+        ([1], "stage", [], "lbl"),
+        ([1], "stage", "not a list", "lbl"),
+        ([1], "stage", [[1.5, 0, 30, 7, 1, 0.015, 0.09, 0, 0, 0, 1]], "lbl"),
+        ([1], "stage", "props", ""),
+        ([1], "stage", "props", None),
+    ])
+    def test_invalid_arguments_raise_value_error(self, args):
+        from pyhelios.LeafOptics import LeafOpticsProperties
+        lo = self._stub()
+        args = tuple([LeafOpticsProperties()] if a == "props" else a for a in args)
+        with pytest.raises(ValueError):
+            lo.runFromObjectData(*args)
+        with pytest.raises(ValueError):
+            lo.runFromObjectData(UUIDs=args[0], object_data_label=args[1], properties=args[2], label=args[3])
+
+    def test_wrapper_without_native_symbol_raises_actionable_error(self, monkeypatch):
+        from pyhelios.wrappers import ULeafOpticsWrapper as wrapper
+        if not wrapper._LEAFOPTICS_FUNCTIONS_AVAILABLE:
+            pytest.skip("LeafOptics wrapper in mock mode")
+        monkeypatch.setattr(wrapper, '_LEAFOPTICS_OBJECT_DATA_FUNCTIONS_AVAILABLE', False)
+        with pytest.raises(NotImplementedError, match="build_helios"):
+            wrapper.leafOpticsRunFromObjectData(object(), [0], "stage", [[0.0] * 11], "lbl")
+
+
+@pytest.mark.native_only
+class TestLeafOpticsRunFromObjectData:
+    """runFromObjectData against the native library"""
+
+    @pytest.fixture(autouse=True)
+    def _require_symbol(self):
+        from pyhelios.wrappers import ULeafOpticsWrapper as wrapper
+        if not wrapper.is_leafoptics_object_data_available():
+            pytest.skip("native library predates LeafOptics::runFromObjectData (rebuild needed)")
+
+    @staticmethod
+    def _leaf(context, x, stage, setter="setObjectDataUInt"):
+        from pyhelios.types import vec2, int2
+        objID = context.addTileObject(center=vec3(x, 0, 1), size=vec2(0.1, 0.1), subdiv=int2(2, 2))
+        if stage is not None:
+            getattr(context, setter)(objID, "leaf_texture_stage", stage)
+        return objID, context.getObjectPrimitiveUUIDs(objID)
+
+    @staticmethod
+    def _stages():
+        from pyhelios import LeafOpticsProperties
+        return [LeafOpticsProperties(chlorophyllcontent=45.0),
+                LeafOpticsProperties(chlorophyllcontent=15.0),
+                LeafOpticsProperties(chlorophyllcontent=2.0, brownpigments=0.5)]
+
+    @pytest.mark.parametrize("setter", ["setObjectDataUInt", "setObjectDataInt"])
+    def test_assigns_spectra_per_value(self, basic_context, setter):
+        from pyhelios import LeafOptics
+        _, green = self._leaf(basic_context, 0, 0, setter)
+        _, senesced = self._leaf(basic_context, 1, 2, setter)
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.optionalOutputPrimitiveData("chlorophyll")
+            lo.runFromObjectData(green + senesced, "leaf_texture_stage", self._stages(), "leaf_stage")
+
+        assert basic_context.doesGlobalDataExist("leaf_reflectivity_leaf_stage_0")
+        assert basic_context.doesGlobalDataExist("leaf_transmissivity_leaf_stage_0")
+        assert basic_context.doesGlobalDataExist("leaf_reflectivity_leaf_stage_2")
+        # No leaf has value 1, so no spectrum is made for it
+        assert not basic_context.doesGlobalDataExist("leaf_reflectivity_leaf_stage_1")
+
+        for uuid in green:
+            assert basic_context.getPrimitiveData(uuid, "reflectivity_spectrum") == "leaf_reflectivity_leaf_stage_0"
+            assert basic_context.getPrimitiveData(uuid, "transmissivity_spectrum") == "leaf_transmissivity_leaf_stage_0"
+            assert basic_context.getPrimitiveDataFloat(uuid, "chlorophyll") == pytest.approx(45.0)
+        for uuid in senesced:
+            assert basic_context.getPrimitiveData(uuid, "reflectivity_spectrum") == "leaf_reflectivity_leaf_stage_2"
+            assert basic_context.getPrimitiveDataFloat(uuid, "chlorophyll") == pytest.approx(2.0)
+
+    def test_rerun_follows_changed_object_data(self, basic_context):
+        from pyhelios import LeafOptics
+        objID, uuids = self._leaf(basic_context, 0, 0)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")
+            assert basic_context.getPrimitiveData(uuids[0], "reflectivity_spectrum") == "leaf_reflectivity_leaf_stage_0"
+            basic_context.setObjectDataUInt(objID, "leaf_texture_stage", 1)
+            lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")
+        for uuid in uuids:
+            assert basic_context.getPrimitiveData(uuid, "reflectivity_spectrum") == "leaf_reflectivity_leaf_stage_1"
+
+    def test_value_without_properties_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+        _, ok = self._leaf(basic_context, 0, 0)
+        _, bad = self._leaf(basic_context, 1, 3)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(LeafOpticsError, match="only for values 0 to 2"):
+                lo.runFromObjectData(ok + bad, "leaf_texture_stage", self._stages(), "leaf_stage")
+        # An error leaves every primitive unchanged
+        assert not basic_context.doesPrimitiveDataExist(ok[0], "reflectivity_spectrum")
+
+    def test_negative_value_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+        _, uuids = self._leaf(basic_context, 0, -1, "setObjectDataInt")
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(LeafOpticsError):
+                lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")
+
+    def test_missing_object_data_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+        _, uuids = self._leaf(basic_context, 0, None)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(LeafOpticsError, match="does not have"):
+                lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")
+
+    def test_float_object_data_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+        _, uuids = self._leaf(basic_context, 0, 1.0, "setObjectDataFloat")
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(LeafOpticsError, match="int or uint"):
+                lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")
+
+    def test_primitive_without_parent_object_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.types import vec2
+        _, uuids = self._leaf(basic_context, 0, 0)
+        loose = basic_context.addPatch(center=vec3(2, 0, 1), size=vec2(0.1, 0.1))
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(ValueError, match="no parent object"):
+                lo.runFromObjectData(uuids + [loose], "leaf_texture_stage", self._stages(), "leaf_stage")
+
+    def test_nonexistent_uuid_raises(self, basic_context):
+        from pyhelios import LeafOptics
+        _, uuids = self._leaf(basic_context, 0, 0)
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            with pytest.raises(ValueError, match="do not refer to existing primitives"):
+                lo.runFromObjectData(uuids + [999999], "leaf_texture_stage", self._stages(), "leaf_stage")
+
+    def test_cannot_mix_with_nitrogen_mode(self, basic_context):
+        from pyhelios import LeafOptics
+        from pyhelios.LeafOptics import LeafOpticsError
+        LeafOpticsProperties_Nauto = _import_nauto()
+        objID, uuids = self._leaf(basic_context, 0, 0)
+        basic_context.setObjectDataFloat(objID, "leaf_nitrogen_gN_m2", 2.0)
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")
+            with pytest.raises(LeafOpticsError, match="runFromObjectData"):
+                lo.run(uuids, LeafOpticsProperties_Nauto(num_bins=1))
+
+        with LeafOptics(basic_context) as lo:
+            lo.disableMessages()
+            lo.run(uuids, LeafOpticsProperties_Nauto(num_bins=1))
+            with pytest.raises(LeafOpticsError, match="nitrogen-based mode"):
+                lo.runFromObjectData(uuids, "leaf_texture_stage", self._stages(), "leaf_stage")

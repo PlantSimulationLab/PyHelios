@@ -801,6 +801,37 @@ except AttributeError:
     _CAMERA_IMAGE_CORRECTIONS_AVAILABLE = False
 
 
+# Light/camera model visualization bindings. Probed separately so libraries built before
+# these shims existed keep the rest of the RadiationModel API working.
+_MODEL_VISUALIZATION_AVAILABLE = False
+try:
+    for _fn_name in ('enableLightModelVisualization', 'disableLightModelVisualization',
+                     'enableCameraModelVisualization', 'disableCameraModelVisualization'):
+        _fn = getattr(helios_lib, _fn_name)
+        _fn.argtypes = [ctypes.POINTER(URadiationModel)]
+        _fn.restype = None
+        _fn.errcheck = _check_error
+    _MODEL_VISUALIZATION_AVAILABLE = True
+except AttributeError:
+    _MODEL_VISUALIZATION_AVAILABLE = False
+
+
+# Spectral-class segmentation masks (helios-core 1.3.95). Probed separately so libraries
+# built before this shim existed keep the rest of the RadiationModel API working.
+_SPECTRAL_CLASS_MASKS_AVAILABLE = False
+try:
+    helios_lib.writeImageSegmentationMasksBySpectralClass.argtypes = [
+        ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t,
+        ctypes.c_char_p, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_size_t, ctypes.c_int]
+    helios_lib.writeImageSegmentationMasksBySpectralClass.restype = None
+    helios_lib.writeImageSegmentationMasksBySpectralClass.errcheck = _check_error
+    _SPECTRAL_CLASS_MASKS_AVAILABLE = True
+except AttributeError:
+    _SPECTRAL_CLASS_MASKS_AVAILABLE = False
+
+
 # Python wrapper functions
 
 #=============================================================================
@@ -2726,3 +2757,73 @@ def applyCameraColorCorrectionMatrix(radiation_model, camera_label: str, red_ban
     helios_lib.applyCameraColorCorrectionMatrix(radiation_model, camera_label.encode('utf-8'),
                                                 red_band_label.encode('utf-8'), green_band_label.encode('utf-8'),
                                                 blue_band_label.encode('utf-8'), ccm_file_path.encode('utf-8'))
+
+
+def _require_model_visualization() -> None:
+    """Raise if the native library predates the light/camera model visualization bindings."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE or not _MODEL_VISUALIZATION_AVAILABLE:
+        raise RuntimeError(
+            "Light/camera model visualization functions are not available in the current native library. "
+            "Rebuild PyHelios with the radiation plugin: 'build_scripts/build_helios --clean'."
+        )
+
+
+def _call_model_visualization(radiation_model, fn_name: str) -> None:
+    _require_model_visualization()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+    getattr(helios_lib, fn_name)(radiation_model)
+
+
+def enableLightModelVisualization(radiation_model) -> None:
+    """Add 3D models of the sphere, disk and rectangle radiation sources to the Context."""
+    _call_model_visualization(radiation_model, 'enableLightModelVisualization')
+
+
+def disableLightModelVisualization(radiation_model) -> None:
+    """Remove the radiation source 3D models from the Context."""
+    _call_model_visualization(radiation_model, 'disableLightModelVisualization')
+
+
+def enableCameraModelVisualization(radiation_model) -> None:
+    """Add 3D models of the radiation cameras to the Context."""
+    _call_model_visualization(radiation_model, 'enableCameraModelVisualization')
+
+
+def disableCameraModelVisualization(radiation_model) -> None:
+    """Remove the radiation camera 3D models from the Context."""
+    _call_model_visualization(radiation_model, 'disableCameraModelVisualization')
+
+
+def _require_spectral_class_masks() -> None:
+    """Raise if the native library predates writeImageSegmentationMasksBySpectralClass."""
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE or not _SPECTRAL_CLASS_MASKS_AVAILABLE:
+        raise RuntimeError(
+            "writeImageSegmentationMasksBySpectralClass is not available in the current native library "
+            "(requires helios-core 1.3.95 or later). Rebuild PyHelios with the radiation plugin: "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def writeImageSegmentationMasksBySpectralClass(radiation_model, camera_label: str, class_names: dict,
+                                               json_filename: str, image_file: str,
+                                               data_attribute_labels: List[str] = None,
+                                               append_file: bool = False) -> None:
+    """Write COCO segmentation masks for the spectral-texture classes a camera sees."""
+    _require_spectral_class_masks()
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None. Cannot write spectral class segmentation masks.")
+
+    items = sorted(class_names.items())
+    n = len(items)
+    values_array = (ctypes.c_uint * n)(*[int(k) for k, _ in items])
+    names_array = (ctypes.c_char_p * n)(*[v.encode('utf-8') for _, v in items])
+
+    attrs = list(data_attribute_labels or [])
+    attrs_array = (ctypes.c_char_p * len(attrs))(*[a.encode('utf-8') for a in attrs]) if attrs else None
+
+    helios_lib.writeImageSegmentationMasksBySpectralClass(
+        radiation_model, camera_label.encode('utf-8'),
+        values_array, names_array, n,
+        json_filename.encode('utf-8'), image_file.encode('utf-8'),
+        attrs_array, len(attrs), int(append_file))

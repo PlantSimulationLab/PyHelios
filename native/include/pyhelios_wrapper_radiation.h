@@ -1390,6 +1390,50 @@ PYHELIOS_API void applyCameraColorCorrectionMatrix(RadiationModel* radiation_mod
                                                    const char* red_band_label, const char* green_band_label,
                                                    const char* blue_band_label, const char* ccm_file_path);
 
+/**
+ * @brief Add 3D models of the sphere, sun-sphere, disk and rectangle radiation sources to the Context for visualization
+ * @param radiation_model Pointer to the RadiationModel
+ * @note The model primitives carry primitive data "invisibility_flag" = 1, so they do not interact with the radiation field
+ */
+PYHELIOS_API void enableLightModelVisualization(RadiationModel* radiation_model);
+
+/**
+ * @brief Remove the radiation source 3D models from the Context
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void disableLightModelVisualization(RadiationModel* radiation_model);
+
+/**
+ * @brief Add 3D models of the radiation cameras to the Context for visualization
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void enableCameraModelVisualization(RadiationModel* radiation_model);
+
+/**
+ * @brief Remove the radiation camera 3D models from the Context
+ * @param radiation_model Pointer to the RadiationModel
+ */
+PYHELIOS_API void disableCameraModelVisualization(RadiationModel* radiation_model);
+
+/**
+ * @brief Write COCO JSON segmentation masks for the spectral-texture classes a camera sees
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Camera label
+ * @param class_values Array of class values to annotate (each >= 1); used as the COCO category IDs
+ * @param class_names Array of category names, one per class value
+ * @param class_count Number of entries in class_values and class_names (must be >= 1)
+ * @param json_filename JSON output filename (".json" is added if there is no extension)
+ * @param image_file Image filename the annotations refer to
+ * @param data_attribute_labels Array of primitive/object data labels averaged within each mask (may be NULL if count is 0)
+ * @param data_attribute_count Number of data attribute labels
+ * @param append_file Whether to append to an existing file (1 = true, 0 = false)
+ */
+PYHELIOS_API void writeImageSegmentationMasksBySpectralClass(RadiationModel* radiation_model, const char* camera_label,
+                                                             const unsigned int* class_values, const char** class_names,
+                                                             size_t class_count, const char* json_filename,
+                                                             const char* image_file, const char** data_attribute_labels,
+                                                             size_t data_attribute_count, int append_file);
+
 #ifdef __cplusplus
 }
 #endif

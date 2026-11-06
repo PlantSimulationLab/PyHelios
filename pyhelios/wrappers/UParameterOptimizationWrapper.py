@@ -120,6 +120,16 @@ class PyHeliosCMAES(ctypes.Structure):
     ]
 
 
+class PyHeliosTPE(ctypes.Structure):
+    """Tree-structured Parzen Estimator settings."""
+    _fields_ = [
+        ("max_evaluations", ctypes.c_size_t),
+        ("n_startup_trials", ctypes.c_size_t),
+        ("n_ei_candidates", ctypes.c_size_t),
+        ("random_seed", ctypes.c_uint),
+    ]
+
+
 class PyHeliosLBFGS(ctypes.Structure):
     """L-BFGS settings."""
     _fields_ = [
@@ -346,6 +356,33 @@ try:
 
 except AttributeError:
     _PARAMETEROPTIMIZATION_FUNCTIONS_AVAILABLE = False
+
+
+# TPE (helios-core 1.3.95), probed separately so an older library keeps the other
+# algorithms usable.
+try:
+    helios_lib.setParameterOptimizationTPE.argtypes = [
+        ctypes.POINTER(UParameterOptimization), ctypes.POINTER(PyHeliosTPE)]
+    helios_lib.setParameterOptimizationTPE.restype = None
+    helios_lib.setParameterOptimizationTPE.errcheck = _check_error
+
+    helios_lib.getParameterOptimizationTPEDefaults.argtypes = [ctypes.POINTER(PyHeliosTPE)]
+    helios_lib.getParameterOptimizationTPEDefaults.restype = None
+
+    _TPE_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _TPE_FUNCTIONS_AVAILABLE = False
+
+
+def _require_tpe() -> None:
+    """Raise an actionable error if the library predates the TPE algorithm."""
+    _require_available()
+    if not _TPE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "The TPE algorithm is not available in the current Helios library "
+            "(requires helios-core 1.3.95 or later). Rebuild PyHelios:\n"
+            "  build_scripts/build_helios --clean"
+        )
 
 
 def isParameterOptimizationAvailable() -> bool:
@@ -654,9 +691,11 @@ def isAlgorithmAvailable(algorithm_name: str) -> bool:
     LGPL Luksan solvers that implement it.
 
     Args:
-        algorithm_name: One of "GA", "BO", "CMAES", "LBFGS", "ADAM", "BOBYQA", "SLSQP"
+        algorithm_name: One of "GA", "BO", "CMAES", "TPE", "LBFGS", "ADAM", "BOBYQA", "SLSQP"
     """
     if not _PARAMETEROPTIMIZATION_FUNCTIONS_AVAILABLE:
+        return False
+    if algorithm_name == "TPE" and not _TPE_FUNCTIONS_AVAILABLE:
         return False
     return bool(helios_lib.parameterOptimizationAlgorithmAvailable(algorithm_name.encode("utf-8")))
 
@@ -681,6 +720,12 @@ def setCMAES(opt, settings: PyHeliosCMAES) -> None:
     """Select CMA-ES."""
     _require_available()
     helios_lib.setParameterOptimizationCMAES(opt, ctypes.byref(settings))
+
+
+def setTPE(opt, settings: PyHeliosTPE) -> None:
+    """Select the Tree-structured Parzen Estimator."""
+    _require_tpe()
+    helios_lib.setParameterOptimizationTPE(opt, ctypes.byref(settings))
 
 
 def setAdam(opt, settings: PyHeliosAdam) -> None:
@@ -717,6 +762,12 @@ def _fetch_preset(function_name: str, struct_type):
     settings = struct_type()
     getattr(helios_lib, function_name)(ctypes.byref(settings))
     return settings
+
+
+def getTPEDefaults() -> PyHeliosTPE:
+    """Get the plugin's default TPE settings."""
+    _require_tpe()
+    return _fetch_preset("getParameterOptimizationTPEDefaults", PyHeliosTPE)
 
 
 def getGeneticAlgorithmDefaults() -> PyHeliosGeneticAlgorithm:

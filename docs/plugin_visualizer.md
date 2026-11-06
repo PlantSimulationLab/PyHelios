@@ -103,7 +103,7 @@ with Visualizer(width=1200, height=800) as vis:
   ```
   UNSUPPORTED (log once): POSSIBLE ISSUE: unit 6 GLD_TEXTURE_INDEX_2D is unloadable and bound to sampler type (Float) - using zero texture because texture unloadable
   ```
-  This appears once per run when a sampler is bound to a texture unit that holds no texture. It is benign for lighting models that do not sample the shadow map. Note that prior to helios-core 1.3.80, this same warning was also emitted in headless mode with `LIGHTING_PHONG_SHADOWED`, where it was *not* benign: it indicated that the shadow map had never been created, and shadows were silently missing from the rendered output.
+  This appears once per run when a sampler is bound to a texture unit that holds no texture. It is benign for lighting models that do not sample the shadow map.
 
 - Large point clouds are supported with automatic culling optimization.
 
@@ -171,8 +171,6 @@ with Context() as context:
 - Image export via \ref pyhelios.Visualizer.Visualizer::printWindow "printWindow()"
 - No display or window manager required
 - Identical visual output to windowed mode
-
-> **Note:** Shadowed lighting in headless mode requires helios-core 1.3.80 or later. Earlier versions created the shadow-map framebuffer only in windowed mode, so a headless render using `LIGHTING_PHONG_SHADOWED` came out with the *entire* scene rendered at the fully-shadowed brightness — not merely missing its shadows.
 
 > **Note:** As of helios-core 1.3.80, a headless render that never calls \ref pyhelios.Visualizer.Visualizer::setLightDirection "setLightDirection()" uses the same default (1,1,1) light direction as windowed mode. In earlier versions the default light direction was never sent to the shader in headless mode, so headless and windowed renders shaded the same scene differently.
 

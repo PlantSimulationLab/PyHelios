@@ -155,6 +155,32 @@ try:
 except AttributeError:
     _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE = False
 
+# Object-data-selected spectra (helios-core 1.3.95), probed separately so an older library
+# without this symbol keeps the rest of LeafOptics usable
+try:
+    helios_lib.leafOpticsRunFromObjectData.argtypes = [
+        ctypes.POINTER(ULeafOptics),
+        ctypes.POINTER(ctypes.c_uint),
+        ctypes.c_uint,
+        ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_uint,
+        ctypes.c_char_p
+    ]
+    helios_lib.leafOpticsRunFromObjectData.restype = None
+    helios_lib.leafOpticsRunFromObjectData.errcheck = _check_error
+
+    _LEAFOPTICS_OBJECT_DATA_FUNCTIONS_AVAILABLE = True
+
+except AttributeError:
+    _LEAFOPTICS_OBJECT_DATA_FUNCTIONS_AVAILABLE = False
+
+_OBJECT_DATA_NOT_AVAILABLE_MSG = (
+    "LeafOptics.runFromObjectData is not available in the current Helios library "
+    "(requires helios-core 1.3.95 or later). Rebuild PyHelios to include it:\n"
+    "  build_scripts/build_helios"
+)
+
 _NITROGEN_NOT_AVAILABLE_MSG = (
     "LeafOptics nitrogen-mode functions not available in current Helios library. "
     "Rebuild PyHelios to include them:\n"
@@ -483,6 +509,44 @@ def leafOpticsUpdateNitrogenBasedSpectra(leafoptics: ctypes.POINTER(ULeafOptics)
     helios_lib.leafOpticsUpdateNitrogenBasedSpectra(leafoptics)
 
 
+def leafOpticsRunFromObjectData(leafoptics: ctypes.POINTER(ULeafOptics),
+                                uuids: List[int],
+                                object_data_label: str,
+                                properties: List[List[float]],
+                                label: str) -> None:
+    """Give each leaf the spectra for the value of one of its int/uint object data
+
+    Args:
+        leafoptics: Pointer to LeafOptics instance
+        uuids: List of leaf primitive UUIDs
+        object_data_label: Label of the int or uint object data selecting the properties
+        properties: One list of LEAF_OPTICS_PROPERTIES_COUNT floats per object data value, from 0
+        label: Label from which the spectra labels are made
+    """
+    if not _LEAFOPTICS_OBJECT_DATA_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_OBJECT_DATA_NOT_AVAILABLE_MSG)
+    if not leafoptics:
+        raise ValueError("LeafOptics instance is None.")
+    if not properties:
+        raise ValueError("properties cannot be empty.")
+    flat = []
+    for i, values in enumerate(properties):
+        if len(values) != LEAF_OPTICS_PROPERTIES_COUNT:
+            raise ValueError(f"properties[{i}] must have exactly {LEAF_OPTICS_PROPERTIES_COUNT} elements.")
+        flat.extend(values)
+
+    uuid_array = (ctypes.c_uint * len(uuids))(*uuids) if uuids else None
+    properties_array = (ctypes.c_float * len(flat))(*flat)
+
+    helios_lib.leafOpticsRunFromObjectData(leafoptics, uuid_array, len(uuids), object_data_label.encode('utf-8'),
+                                           properties_array, len(properties), label.encode('utf-8'))
+
+
+def is_leafoptics_object_data_available() -> bool:
+    """Check if LeafOptics.runFromObjectData is available in the current library"""
+    return _LEAFOPTICS_OBJECT_DATA_FUNCTIONS_AVAILABLE
+
+
 def is_leafoptics_nitrogen_available() -> bool:
     """Check if the LeafOptics nitrogen-mode functions are available in the current library"""
     return _LEAFOPTICS_NITROGEN_FUNCTIONS_AVAILABLE
@@ -518,3 +582,4 @@ if not _LEAFOPTICS_FUNCTIONS_AVAILABLE:
     leafOpticsGetPropertiesFromLibrary = mock_method
     leafOpticsRunNitrogen = mock_method
     leafOpticsUpdateNitrogenBasedSpectra = mock_method
+    leafOpticsRunFromObjectData = mock_method

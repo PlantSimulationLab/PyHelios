@@ -483,6 +483,62 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void leafOpticsRunFromObjectData(LeafOptics* leafoptics, const unsigned int* uuids, unsigned int uuid_count,
+                                                  const char* object_data_label, const float* properties,
+                                                  unsigned int property_count, const char* label) {
+        try {
+            clearError();
+            if (!leafoptics) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "LeafOptics pointer is null");
+                return;
+            }
+            if (uuid_count > 0 && !uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUIDs array is null");
+                return;
+            }
+            if (!object_data_label || !label) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Object data label or spectrum label is null");
+                return;
+            }
+            if (property_count > 0 && !properties) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Properties array is null");
+                return;
+            }
+
+            std::vector<uint> uuid_vector;
+            if (uuid_count > 0) {
+                uuid_vector.assign(uuids, uuids + uuid_count);
+            }
+
+            constexpr size_t stride = 11;
+            std::vector<LeafOpticsProperties> props_vector;
+            props_vector.reserve(property_count);
+            for (unsigned int i = 0; i < property_count; i++) {
+                const float* p = properties + size_t(i) * stride;
+                LeafOpticsProperties leafprops;
+                leafprops.numberlayers = p[0];
+                leafprops.brownpigments = p[1];
+                leafprops.chlorophyllcontent = p[2];
+                leafprops.carotenoidcontent = p[3];
+                leafprops.anthocyancontent = p[4];
+                leafprops.watermass = p[5];
+                leafprops.drymass = p[6];
+                leafprops.protein = p[7];
+                leafprops.carbonconstituents = p[8];
+                leafprops.V2Z = p[9];
+                leafprops.fqe = p[10];
+                props_vector.push_back(leafprops);
+            }
+
+            leafoptics->runFromObjectData(uuid_vector, std::string(object_data_label), props_vector, std::string(label));
+
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (LeafOptics::runFromObjectData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (LeafOptics::runFromObjectData): Unknown error running LeafOptics from object data.");
+        }
+    }
+
 } // extern "C"
 
 #endif // LEAFOPTICS_PLUGIN_AVAILABLE

@@ -352,6 +352,7 @@ PYHELIOS_API int parameterOptimizationAlgorithmAvailable(const char* algorithm_n
     if (std::strcmp(algorithm_name, "GA") == 0 ||
         std::strcmp(algorithm_name, "BO") == 0 ||
         std::strcmp(algorithm_name, "CMAES") == 0 ||
+        std::strcmp(algorithm_name, "TPE") == 0 ||
         std::strcmp(algorithm_name, "ADAM") == 0) {
         return 1;
     }
@@ -504,6 +505,31 @@ PYHELIOS_API void setParameterOptimizationCMAES(ParameterOptimization* opt, cons
         setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setParameterOptimizationCMAES): ") + e.what());
     } catch (...) {
         setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setParameterOptimizationCMAES): Unknown error.");
+    }
+}
+
+PYHELIOS_API void setParameterOptimizationTPE(ParameterOptimization* opt, const PyHeliosTPE* settings) {
+    try {
+        clearError();
+        if (!opt || !settings) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ParameterOptimization or settings pointer is null");
+            return;
+        }
+
+        TPE tpe;
+        tpe.max_evaluations = settings->max_evaluations;
+        tpe.n_startup_trials = settings->n_startup_trials;
+        tpe.n_ei_candidates = settings->n_ei_candidates;
+        tpe.random_seed = settings->random_seed;
+
+        opt->setAlgorithm(tpe);
+
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setParameterOptimizationTPE): ") + e.what());
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setParameterOptimizationTPE): Unknown error.");
     }
 }
 
@@ -701,6 +727,16 @@ PYHELIOS_API void getParameterOptimizationBOBYQADefaults(PyHeliosBOBYQA* out) {
         out->ftol_rel = bobyqa.ftol_rel;
         out->xtol_rel = bobyqa.xtol_rel;
         out->initial_step = bobyqa.initial_step;
+    }
+}
+
+PYHELIOS_API void getParameterOptimizationTPEDefaults(PyHeliosTPE* out) {
+    if (out) {
+        TPE tpe;
+        out->max_evaluations = tpe.max_evaluations;
+        out->n_startup_trials = tpe.n_startup_trials;
+        out->n_ei_candidates = tpe.n_ei_candidates;
+        out->random_seed = tpe.random_seed;
     }
 }
 

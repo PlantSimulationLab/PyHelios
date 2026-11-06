@@ -31,7 +31,7 @@
   </tr>
 </table>
 
-**Note:** As of helios-core v1.3.61, CUDA is **optional**. The plugin automatically selects the best available execution mode: GPU acceleration with CUDA if available, parallel CPU with OpenMP if available, or serial CPU as fallback. OpenMP is recommended for most workloads on systems without CUDA.
+**Note:** CUDA is **optional**. The plugin automatically selects the best available execution mode: GPU acceleration with CUDA if available, parallel CPU with OpenMP if available, or serial CPU as fallback. OpenMP is recommended for most workloads on systems without CUDA.
 
 ## Quick Start
 
@@ -99,7 +99,7 @@ with Context() as context:
  </tr>
 </table>
 
-**Execution Mode Selection (v1.3.61+):**
+**Execution Mode Selection:**
 The plugin automatically selects the best available execution mode at runtime:
 1. **GPU mode (CUDA)** - Fastest, requires NVIDIA GPU and CUDA
 2. **Parallel CPU mode (OpenMP)** - Recommended for systems without GPU, uses multi-core parallelization

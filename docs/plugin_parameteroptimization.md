@@ -12,15 +12,16 @@ build geometry, run radiation and energy balance, compare against measurements �
 and return a scalar error. That makes this plugin the natural way to fit model
 parameters to observed data.
 
-Six algorithms are available, in two families:
+Seven algorithms are available, in two families:
 
 **Global search** — no gradient required, handles rough or multi-modal objectives:
 
 | Algorithm | Best for |
 |---|---|
-| `GeneticAlgorithm` | Large or awkward search spaces; searches integer and categorical parameters natively |
-| `CMAES` | Continuous, non-separable problems; a strong general-purpose default |
-| `BayesianOptimization` | Expensive objectives where you can afford few evaluations |
+| `GeneticAlgorithm` | Large budgets, highly multimodal or 50+ parameter problems; supports integer and categorical parameters |
+| `TPE` | Expensive objectives on a budget of tens to hundreds of evaluations, around 5-10 parameters; supports integer and categorical parameters |
+| `CMAES` | Continuous, non-separable problems with 5-50 parameters; a strong general-purpose default |
+| `BayesianOptimization` | Very expensive objectives with only 1-3 parameters |
 
 **Local search** — refines a good starting point:
 
@@ -32,6 +33,24 @@ Six algorithms are available, in two families:
 
 A common pattern is to run a global search first and polish the result with a local
 one — see [Two-stage optimization](#two-stage) below.
+
+### Default algorithm
+
+If `setAlgorithm()` is never called, `run()` chooses:
+
+1. A gradient is available (`gradient=...` or `finite_difference=True`) and every parameter is FLOAT: `Adam`
+2. Otherwise, more than 50 parameters: `GeneticAlgorithm`
+3. Otherwise, any INTEGER or CATEGORICAL parameter: `TPE` (a gradient, if given, is ignored)
+4. Otherwise: `CMAES`
+
+`runConstrained()` requires `SLSQP` to be selected explicitly.
+
+> **Note:** As of helios-core 1.3.95 the default for discrete parameters is `TPE` rather
+> than `GeneticAlgorithm`. The default TPE budget is 100 evaluations, while the default
+> genetic algorithm can spend up to 2000, so a discrete optimization that relied on the
+> default gives different results, and `setInputFile()` now makes it raise. Call
+> `setAlgorithm(GeneticAlgorithm())` to keep the previous behavior, or `setAlgorithm(TPE(...))`
+> to set the budget.
 
 ## System Requirements
 
@@ -142,8 +161,10 @@ evaluations per gradient:
 
 ### Integer and categorical parameters
 
-**Use `GeneticAlgorithm` for discrete parameters.** It is the only algorithm that
-searches integer and categorical spaces correctly.
+**Use `TPE` or `GeneticAlgorithm` for discrete parameters.** They are the only
+algorithms that search integer and categorical spaces correctly. Prefer `TPE` when
+evaluations are expensive, and `GeneticAlgorithm` when a large budget is affordable or
+the problem is highly multimodal.
 
 Every other algorithm (`CMAES`, `BayesianOptimization`, `Adam`, `BOBYQA`, `SLSQP`,
 `L-BFGS`) searches a continuous space and requires all parameters to be `FLOAT`.
@@ -172,7 +193,55 @@ def objective(p):
 with ParameterOptimization() as opt:
     opt.setAlgorithm(GeneticAlgorithm(generations=200, population_size=40))
     result = opt.run(objective, params)
+
+# Or, on a tighter budget:
+with ParameterOptimization() as opt:
+    opt.setAlgorithm(TPE(max_evaluations=150, random_seed=1))
+    result = opt.run(objective, params)
 ```
+
+### Tree-structured Parzen Estimator (TPE)
+
+`TPE` is a C++ port of the default sampler of [Optuna](https://optuna.org) (version
+5.0.0). After an initial set of random evaluations, it divides all evaluations so far
+into a small group of the best and a group of the rest, and fits a kernel density
+estimate to each. Each new evaluation is the candidate, out of those drawn from the
+density of the best group, with the highest ratio of the two densities.
+
+| Setting | Description | Default |
+|---|---|---|
+| `max_evaluations` | Total number of objective evaluations | 100 |
+| `n_startup_trials` | Initial evaluations sampled uniformly at random; must be at least 1 | 10 |
+| `n_ei_candidates` | Candidates scored per evaluation; higher values favor exploitation | 24 |
+| `random_seed` | 0 selects a nondeterministic seed | 0 |
+
+```python
+from pyhelios import ParameterOptimization, Parameter, TPE
+
+with ParameterOptimization() as opt:
+    opt.setAlgorithm(TPE(max_evaluations=200, random_seed=7))
+    result = opt.run(objective, params)
+```
+
+Things to keep in mind:
+
+- The initial `value` of each parameter is not used as a starting point, and
+  `setInputFile()` makes `run()` raise.
+- A zero `max_evaluations`, `n_startup_trials` or `n_ei_candidates` raises when `run()`
+  starts.
+- TPE models each parameter's range as continuous, while the objective receives
+  single-precision values, so a FLOAT range spanning few representable values (such as
+  1000.0 to 1000.001) is searched inefficiently. Repeated values in `categories` count as
+  separate categories, which makes that value more likely to be sampled.
+- TPE locates a good region more readily than it converges precisely within it. To
+  converge precisely, refine its result with a local optimizer (see
+  [Two-stage optimization](#two-stage)).
+- For a given `random_seed`, TPE evaluates the same parameter values as Optuna's
+  `TPESampler` with that seed, up to single-precision rounding, except for INTEGER
+  parameters on x86 CPUs with AVX2 or AVX-512, where NumPy orders tied values
+  differently. Optuna's log-scale parameters, multi-objective optimization, constraints
+  and pruning are not included.
+- TPE has no `explore()` / `exploit()` presets, matching Optuna; set its fields directly.
 
 ### Constrained optimization
 
@@ -263,7 +332,7 @@ with ParameterOptimization() as refiner:
 ### Tuning presets
 
 `GeneticAlgorithm`, `BayesianOptimization`, and `CMAES` offer `explore()` and
-`exploit()` presets with tuned values:
+`exploit()` presets with tuned values (`TPE` and the local optimizers have none):
 
 ```python
 opt.setAlgorithm(CMAES.explore())    # wider search
@@ -324,6 +393,10 @@ ValueError: Objective function returned nan, which is not a finite number.
 Gradient functions must return an entry for every parameter; omissions and unknown
 keys are both reported by name.
 
+A `FLOAT` or `INTEGER` parameter with an infinite `min` or `max` raises when `run()`
+starts (helios-core 1.3.95+); set finite bounds. The bounds of a `CATEGORICAL`
+parameter are ignored.
+
 Selecting an unavailable algorithm raises immediately, rather than failing part-way
 through a long run:
 
@@ -332,7 +405,7 @@ from pyhelios import ParameterOptimization
 
 with ParameterOptimization() as opt:
     print(opt.availableAlgorithms())
-    # {'GA': True, 'BO': True, 'CMAES': True, 'ADAM': True,
+    # {'GA': True, 'BO': True, 'CMAES': True, 'TPE': True, 'ADAM': True,
     #  'LBFGS': False, 'BOBYQA': True, 'SLSQP': True}
 ```
 
@@ -353,7 +426,8 @@ reproducibility.
 
 **The run is slow.** The objective dominates: with a genetic algorithm the plugin
 calls it up to `generations x population_size` times. Reduce the evaluation budget, or
-use `BayesianOptimization`, which is designed for expensive objectives.
+use `TPE` (or `BayesianOptimization` for 1-3 parameters), which make good use of a small
+budget.
 
 ## Performance Notes
 
@@ -361,7 +435,7 @@ The total number of objective evaluations governs runtime. Budget accordingly:
 
 - `GeneticAlgorithm`: at most `generations x population_size`, since individuals carried
   forward unchanged are not re-evaluated. Treat the product as an upper bound when budgeting.
-- `CMAES` / `BayesianOptimization`: exactly `max_evaluations`
+- `CMAES` / `BayesianOptimization` / `TPE`: exactly `max_evaluations`
 - `Adam` / `BOBYQA` / `SLSQP`: up to `max_iterations`, plus `2N` per gradient when
   using `finite_difference=True`
 - `runConstrained`: one simulation call per parameter point regardless of how many
@@ -382,7 +456,9 @@ setting is written by the build script, not read from the CMake command line —
 OFF ...)` line emitted in `build_scripts/build_helios.py` and rebuild from clean.
 
 **Constraints require SLSQP and continuous parameters.** No algorithm supports both
-discrete parameters and nonlinear constraints. For a discrete problem, fold the
+discrete parameters and nonlinear constraints: SLSQP handles constraints but requires
+`FLOAT` parameters, and `GeneticAlgorithm` and `TPE` handle discrete parameters but have no
+constraint mechanism. For a discrete problem, fold the
 constraint into the objective as a penalty term and use `run()`:
 
 ```python

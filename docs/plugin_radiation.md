@@ -221,6 +221,33 @@ sun_id = radiation.addSunSphereRadiationSource(
 radiation.setSourceFlux(sun_id, "PAR", 1200.0)
 ```
 
+### Visualizing Sources and Cameras
+
+Radiation sources and cameras have no geometry of their own. `enableLightModelVisualization()`
+adds a 3D model of each sphere, sun-sphere, disk and rectangle source to the Context (collimated
+sources have no position and get none), and `enableCameraModelVisualization()` adds one at each
+camera, pointed along its view. Sources and cameras added later get a model too, and moving a
+source with `setSourcePosition()` moves its model.
+
+The models are ordinary Context primitives, so they show in the Visualizer and in OBJ exports. They
+carry `invisibility_flag = 1` (see Invisible Primitives below), so they do not
+affect the simulation. The sun-sphere model is sized and placed from the domain's bounding sphere,
+so enable visualization after adding the scene geometry. The disable methods remove the models.
+Calling an enable method again rebuilds the models rather than adding a second set, and calling a
+disable method twice, or after some model primitives were deleted, is harmless.
+
+```python
+radiation.addSphereRadiationSource(vec3(0, 0, 2), 0.25)
+radiation.addRectangleRadiationSource(vec3(1, 0, 2), vec2(0.5, 0.5), vec3(0, 0, 0))
+radiation.enableLightModelVisualization()
+radiation.enableCameraModelVisualization()
+
+context.writeOBJ("scene_with_sources.obj")
+
+radiation.disableLightModelVisualization()
+radiation.disableCameraModelVisualization()
+```
+
 ## Flux Configuration
 
 ### Source Flux Management
@@ -316,7 +343,8 @@ looking below the horizon show no sky.
 # Remove domain edge effects (recommended)
 radiation.enforcePeriodicBoundary("xy")
 
-# Or restore the full-sphere sky of helios-core before 1.3.92
+# Or fill the full sphere with sky radiation, so rays leaving below the horizon
+# receive the same diffuse radiation as rays leaving upward (all bands and cameras)
 radiation.enableBelowHorizonDiffuseRadiation()
 radiation.disableBelowHorizonDiffuseRadiation()   # back to the default
 ```
@@ -336,6 +364,47 @@ a material. Call `updateGeometry()` after setting it on existing primitives.
 context.setPrimitiveDataUInt(uuid, "invisibility_flag", 1)
 radiation.updateGeometry()
 ```
+
+### Spectral Textures {#RadSpectralTexture}
+
+A patch or triangle with a spectral texture (`Context.setPrimitiveSpectralTexture()`, with the
+class spectra named by a palette registered with `Context.addSpectralPalette()`; spectral textures
+are also read and written by `Context.loadXML()` / `writeXML()`) takes its reflectivity and
+transmissivity from the class of its class map at each point, instead of from its
+`reflectivity_spectrum` and `transmissivity_spectrum` primitive data, which it ignores. Each
+class's spectra are weighted over a band exactly as a primitive's are, and are looked up in the
+Context's global data or the plug-in's spectral libraries; a spectrum that cannot be found raises
+an error.
+
+- **Absorption** follows the class map: every ray leaving the primitive uses the class at the point
+  it leaves from, so a leaf whose sunlit half is green and shaded half is brown absorbs as such. The
+  radiation the primitive reflects and transmits is still one flux per face, spread evenly over it.
+- **Cameras** see each pixel in the outgoing radiation of the class its ray hits. The radiation
+  reaching each face is that of the primitive as a whole, so the pattern within a primitive comes
+  from its classes, not from shadows across it. With camera flux smoothing
+  (`enableCameraFluxSmoothing()`) the light is interpolated smoothly across facets while the
+  classes stay sharp.
+- **Per-pixel classes** are recorded as global data `camera_<camera>_pixel_spectral_class` and can
+  be written as COCO masks with `writeImageSegmentationMasksBySpectralClass()` (see
+  [Segmentation Masks](#segmentation-masks-for-instance-segmentation)).
+- The optional output primitive data `reflectivity` and `transmissivity`
+  (`optionalOutputPrimitiveData()`) report the area-weighted means of the primitive's classes.
+- Each class must conserve energy on its own: reflectivity plus transmissivity above 1 in any class
+  the primitive covers raises an error, even if the mean does not. A class spectrum that does not
+  overlap a band with wavelength bounds raises an error when the band is run; in a band without
+  bounds every class takes the default reflectivity and transmissivity of 0.
+- In a band with thermal emission a primitive has one emissivity, so rays use the primitive's own
+  values there. Its classes must then agree in that band, or the primitive can be given constant
+  `reflectivity_<band>` / `transmissivity_<band>` data for it, which override the palette in such a
+  band only. A SIF band is treated like a band without emission.
+
+The following raise an error when combined with a spectral texture:
+
+- Primitive data `reflectivity_<band>` or `transmissivity_<band>` in a band without thermal
+  emission (including a fluorescence band).
+- Translucent covers and specular surface layers.
+- Classes whose reflectivity or transmissivity differ in a band with thermal emission, unless the
+  primitive has constant values for that band.
 
 ### Reproducibility
 
@@ -1506,6 +1575,43 @@ radiation.writeImageSegmentationMasks(
     image_file="plant_instances.jpg"
 )
 ```
+
+Note that one label value can produce more than one annotation: an object partly hidden behind
+something closer to the camera is visible as several separate regions, each annotated in its own
+right.
+
+#### Masks by Spectral-Texture Class
+
+Masks can also follow the classes of [spectral textures](#RadSpectralTexture), which vary within a
+primitive. Whenever `runBand()` renders a camera and some primitive has a spectral texture, it
+records the class each pixel sees as the global data `camera_<camera>_pixel_spectral_class` (one
+`uint` per pixel, 0 where the pixel sees no primitive with a spectral texture, mirrored
+left-to-right relative to the written image, as `camera_<camera>_pixel_UUID` is).
+`writeImageSegmentationMasksBySpectralClass()` writes one annotation for each connected region of
+pixels of one class, with the class value as the COCO category ID. A class spanning several
+primitives, such as the lesions of a leaf, gives one mask per region it forms in the image, however
+many primitives it covers. Classes mean the same thing in every palette of a class map, so the
+masks do not depend on which palette is in use.
+
+```python
+radiation.runBand(["red", "green", "blue"])
+image_file = radiation.writeCameraImage("visible", ["red", "green", "blue"], "leaf", "./")
+
+# Class 1 of the leaves' class map is healthy lamina and class 2 is lesion
+radiation.writeImageSegmentationMasksBySpectralClass(
+    camera_label="visible",
+    class_names={1: "lamina", 2: "lesion"},   # class value (>= 1) -> category name
+    json_filename="lesion_masks.json",
+    image_file=image_file,
+    data_attribute_labels=[],                 # optional: data averaged within each mask
+    append_file=False,
+)
+```
+
+Only the classes listed in `class_names` are annotated. It raises if the camera does not exist, if
+`class_names` is empty or contains class 0, if the image file does not exist, or if the classes
+were not recorded (the camera has not been rendered by `runBand()` -- which needs a scattering depth
+above 0 in some band -- or no primitive in the model's geometry has a spectral texture).
 
 ### Per-Pixel Data Label Maps
 

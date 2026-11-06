@@ -4434,8 +4434,8 @@ class TestBuildParameterValidation:
             )
 
     def test_key_for_model_that_reads_none_is_rejected(self, plantarch):
-        """Maize reads no build parameters at all."""
-        plantarch.loadPlantModelFromLibrary("maize")
+        """Bean reads no build parameters at all."""
+        plantarch.loadPlantModelFromLibrary("bean")
 
         with pytest.raises(ValueError, match="accepts no build parameters"):
             plantarch.buildPlantInstanceFromLibrary(
@@ -6020,3 +6020,221 @@ class TestPlantArchitecture1387LeafExpansionRate:
         assert fast > 2.0 * slow, (
             f"leaf_expansion_rate_max did not change leaf expansion: "
             f"rate=0.01 gave {slow:.6f} m2, rate=1.0 gave {fast:.6f} m2")
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitecture1395Validation:
+    """Argument validation for the helios-core 1.3.95 per-phytomer setters (pure Python)."""
+
+    def _pa(self):
+        return PlantArchitecture.__new__(PlantArchitecture)
+
+    def test_setPetioleShape_rejects_bad_arguments(self):
+        with pytest.raises(ValueError, match="between 0 and"):
+            PlantArchitecture.setPetioleShape(self._pa(), -1, 0, 0, 0, vec3(1, 0, 0), 45.0, 0.0, 0.1)
+        with pytest.raises(ValueError, match="must be a vec3"):
+            PlantArchitecture.setPetioleShape(self._pa(), 0, 0, 0, 0, (1, 0, 0), 45.0, 0.0, 0.1)
+        with pytest.raises(ValueError, match="greater than zero"):
+            PlantArchitecture.setPetioleShape(self._pa(), 0, 0, 0, 0, vec3(1, 0, 0), 45.0, 0.0, 0.0)
+
+    def test_setPetioleShape_rejects_wrong_direction_type_by_keyword(self):
+        with pytest.raises(ValueError, match="must be a vec3"):
+            PlantArchitecture.setPetioleShape(self._pa(), 0, 0, 0, 0, outward_direction=(1, 0, 0),
+                                              pitch_degrees=45.0, curvature=0.0, length=0.1)
+
+    @pytest.mark.parametrize("pitch, curvature, length", [
+        (float("nan"), 0.0, 0.1), (45.0, float("inf"), 0.1), (45.0, 0.0, float("inf")), (45.0, "a", 0.1)])
+    def test_setPetioleShape_rejects_non_finite_values(self, pitch, curvature, length):
+        with pytest.raises(ValueError):
+            PlantArchitecture.setPetioleShape(self._pa(), 0, 0, 0, 0, vec3(1, 0, 0), pitch, curvature, length)
+
+    def test_setters_reject_indices_outside_unsigned_range(self):
+        # ctypes would silently wrap 2**32 to 0 and edit the wrong phytomer.
+        with pytest.raises(ValueError, match="between 0 and"):
+            PlantArchitecture.setPetioleShape(self._pa(), 2 ** 32, 0, 0, 0, vec3(1, 0, 0), 45.0, 0.0, 0.1)
+        with pytest.raises(ValueError, match="must be an int"):
+            PlantArchitecture.setPetioleLeafShape(self._pa(), 0, 1.5, 0, 0, 0.5, 0.0, 0.0, 0.0)
+        with pytest.raises(ValueError, match="between 0 and"):
+            PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, 0, 0, 2 ** 32, 0.2, 0.5, 0.04)
+
+    def test_setPetioleLeaflets_rejects_bad_arguments(self):
+        with pytest.raises(ValueError, match="between 0 and"):
+            PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, -1, 0, 5, 0.2, 0.5, 0.04)
+        with pytest.raises(ValueError, match="at least 1"):
+            PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, 0, 0, 0, 0.2, 0.5, 0.04)
+        with pytest.raises(ValueError, match="zero or greater"):
+            PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, 0, 0, 5, -0.1, 0.5, 0.04)
+        with pytest.raises(ValueError, match="greater than zero"):
+            PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, 0, 0, 5, 0.2, 0.5, 0.0)
+
+    def test_wrapper_guard_uses_1395_flag(self):
+        with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1395_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.95"):
+                plantarch_wrapper.setPetioleShape(None, 0, 0, 0, 0, [1, 0, 0], 45.0, 0.0, 0.1)
+            with pytest.raises(RuntimeError, match="1.3.95"):
+                plantarch_wrapper.setPetioleLeaflets(None, 0, 0, 0, 0, 5, 0.2, 0.5, 0.04)
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(not plantarch_wrapper._PLANTARCHITECTURE_1395_AVAILABLE,
+                    reason="native library predates helios-core 1.3.95; rebuild required")
+class TestPlantArchitecture1395Native:
+    """setPetioleShape and setPetioleLeaflets against the native library."""
+
+    PATH = [vec3(0, 0, 0), vec3(0, 0, 0.05), vec3(0, 0, 0.1)]
+    RADII = [0.004, 0.0035, 0.003]
+
+    def _plant(self, plantarch):
+        if not get_plugin_registry().is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+        plantarch.loadPlantModelFromLibrary("tomato")
+        plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+        stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "mainstem")
+        return plant_id, stem
+
+    def test_setPetioleShape_generates_the_petiole_it_is_given(self):
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant(plantarch)
+                leaves = len(plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 0)[0])
+                # A vertical stem: leaning toward +x at 90 degrees, straight, is level along +x.
+                plantarch.setPetioleShape(plant_id, stem, 0, 0, vec3(1, 0, 0.2), 90.0, 0.0, 0.08)
+                path = plantarch.getPetioleVertices(plant_id, stem, 0, 0)
+                tip = (path[-1].x - path[0].x, path[-1].y - path[0].y, path[-1].z - path[0].z)
+                assert tip == pytest.approx((0.08, 0.0, 0.0), abs=1e-5)
+                # Bent down, its tip falls below its base; the leaves are rebuilt, not lost.
+                plantarch.setPetioleShape(plant_id, stem, 0, 0, vec3(1, 0, 0), 90.0, -500.0, 0.08)
+                path = plantarch.getPetioleVertices(plant_id, stem, 0, 0)
+                assert path[-1].z < path[0].z
+                assert len(plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 0)[0]) == leaves
+                with pytest.raises(PlantArchitectureError, match="parallel"):
+                    plantarch.setPetioleShape(plant_id, stem, 0, 0, vec3(0, 0, 1), 45.0, 0.0, 0.08)
+
+    def test_setPetioleLeaflets_rebuilds_one_petiole(self):
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plant_id, stem = self._plant(plantarch)
+                other = len(plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 1)[0])
+                plantarch.setPetioleLeaflets(plant_id, stem, 0, 0, 5, 0.2, 0.5, 0.04)
+                assert len(plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 0)[0]) == 5
+                assert len(plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 1)[0]) == other
+                # Nine leaflets cannot be spaced 0.3 apart on one petiole; refused, not shrunk.
+                with pytest.raises(PlantArchitectureError, match="beyond the base"):
+                    plantarch.setPetioleLeaflets(plant_id, stem, 0, 0, 9, 0.3, 0.5, 0.04)
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitecture1395LeafletValidation:
+    """Argument validation for the 1.3.95 leaflet angle and blade shape setters (pure Python)."""
+
+    def _pa(self):
+        return PlantArchitecture.__new__(PlantArchitecture)
+
+    def test_setPetioleLeafletAngles_rejects_bad_arguments(self):
+        with pytest.raises(ValueError, match="between 0 and"):
+            PlantArchitecture.setPetioleLeafletAngles(self._pa(), 0, -1, 0, 0, 10.0, 0.0, 0.0)
+        with pytest.raises(ValueError, match="finite"):
+            PlantArchitecture.setPetioleLeafletAngles(self._pa(), 0, 0, 0, 0, float("nan"), 0.0, 0.0)
+
+    def test_setPetioleLeafShape_rejects_bad_arguments(self):
+        with pytest.raises(ValueError, match="greater than zero"):
+            PlantArchitecture.setPetioleLeafShape(self._pa(), 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.1)
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            PlantArchitecture.setPetioleLeafShape(self._pa(), 0, 0, 0, 0, 0.5, 0.0, 0.0, 1.5)
+
+    def test_wrapper_guard_uses_1395_flag(self):
+        with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1395_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.95"):
+                plantarch_wrapper.setPetioleLeafletAngles(None, 0, 0, 0, 0, 10.0, 0.0, 0.0)
+            with pytest.raises(RuntimeError, match="1.3.95"):
+                plantarch_wrapper.setPetioleLeafShape(None, 0, 0, 0, 0, 0.5, 0.0, 0.0, 0.1)
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(not plantarch_wrapper._PLANTARCHITECTURE_1395_AVAILABLE,
+                    reason="native library predates helios-core 1.3.95; rebuild required")
+class TestPlantArchitecture1395LeafletNative:
+    """setPetioleLeafletAngles and setPetioleLeafShape against the native library."""
+
+    PATH = [vec3(0, 0, 0), vec3(0, 0, 0.05), vec3(0, 0, 0.1)]
+    RADII = [0.004, 0.0035, 0.003]
+
+    def test_a_wider_blade_has_more_area_and_a_turned_one_moves(self):
+        if not get_plugin_registry().is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+                stem = plantarch.addShootFromNodePositions(plant_id, -1, 0, self.PATH, self.RADII, "mainstem")
+
+                def area():
+                    ids = plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 0)[0]
+                    return sum(context.getObjectArea(i) for i in ids)
+
+                plantarch.setPetioleLeafShape(plant_id, stem, 0, 0, 0.3, 0.0, 0.0, 0.0)
+                narrow = area()
+                plantarch.setPetioleLeafShape(plant_id, stem, 0, 0, 0.6, 0.0, 0.0, 0.0)
+                assert area() == pytest.approx(2 * narrow, rel=0.03)
+
+                def first_vertex():
+                    leaf = plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 0)[0][0]
+                    v = context.getPrimitiveVertices(context.getObjectPrimitiveUUIDs(leaf)[-1])[0]
+                    return (v.x, v.y, v.z)
+
+                plantarch.setPetioleLeafletAngles(plant_id, stem, 0, 0, 0.0, 0.0, 0.0)
+                level = first_vertex()
+                plantarch.setPetioleLeafletAngles(plant_id, stem, 0, 0, 40.0, 0.0, 0.0)
+                assert first_vertex() != pytest.approx(level, abs=1e-4)
+
+
+@pytest.mark.cross_platform
+class TestPlantArchitecture1395OffsetValidation:
+    """Argument validation for setPetioleLeafletAngleOffsets (pure Python)."""
+
+    def _pa(self):
+        return PlantArchitecture.__new__(PlantArchitecture)
+
+    def test_rejects_bad_arguments(self):
+        with pytest.raises(ValueError, match="between 0 and"):
+            PlantArchitecture.setPetioleLeafletAngleOffsets(self._pa(), 0, 0, -1, 0, [0.0], [0.0], [0.0])
+        with pytest.raises(ValueError, match="one entry per leaflet"):
+            PlantArchitecture.setPetioleLeafletAngleOffsets(self._pa(), 0, 0, 0, 0, [0.0], [0.0, 1.0], [0.0])
+        with pytest.raises(ValueError, match="finite"):
+            PlantArchitecture.setPetioleLeafletAngleOffsets(self._pa(), 0, 0, 0, 0, [float("inf")], [0.0], [0.0])
+
+    def test_wrapper_guard_uses_1395_flag(self):
+        with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1395_AVAILABLE', False):
+            with pytest.raises(RuntimeError, match="1.3.95"):
+                plantarch_wrapper.setPetioleLeafletAngleOffsets(None, 0, 0, 0, 0, [0.0], [0.0], [0.0])
+
+
+@pytest.mark.native_only
+@pytest.mark.skipif(not plantarch_wrapper._PLANTARCHITECTURE_1395_AVAILABLE,
+                    reason="native library predates helios-core 1.3.95; rebuild required")
+class TestPlantArchitecture1395OffsetNative:
+    """setPetioleLeafletAngleOffsets against the native library."""
+
+    def test_one_leaflet_turns_and_its_partner_does_not(self):
+        if not get_plugin_registry().is_plugin_available('plantarchitecture'):
+            pytest.skip("PlantArchitecture plugin not available")
+        with Context() as context:
+            with PlantArchitecture(context) as plantarch:
+                plantarch.loadPlantModelFromLibrary("tomato")
+                plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+                stem = plantarch.addShootFromNodePositions(
+                    plant_id, -1, 0, [vec3(0, 0, 0), vec3(0, 0, 0.05), vec3(0, 0, 0.1)],
+                    [0.004, 0.0035, 0.003], "mainstem")
+                plantarch.setPetioleLeaflets(plant_id, stem, 0, 0, 3, 0.2, 0.8, 0.04)
+
+                def first_vertex(k):
+                    leaf = plantarch.getPhytomerLeafObjectIDs(plant_id, stem, 0)[0][k]
+                    v = context.getPrimitiveVertices(context.getObjectPrimitiveUUIDs(leaf)[-1])[0]
+                    return (v.x, v.y, v.z)
+
+                before = [first_vertex(k) for k in range(3)]
+                plantarch.setPetioleLeafletAngleOffsets(plant_id, stem, 0, 0, [0, 0, 0], [25, 0, 0], [0, 0, 0])
+                assert first_vertex(0) != pytest.approx(before[0], abs=1e-4)
+                assert first_vertex(2) == pytest.approx(before[2], abs=1e-6)
+                with pytest.raises(PlantArchitectureError, match="carries 3 leaves"):
+                    plantarch.setPetioleLeafletAngleOffsets(plant_id, stem, 0, 0, [0], [0], [0])

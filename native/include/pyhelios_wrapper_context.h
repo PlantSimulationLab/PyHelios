@@ -2999,6 +2999,84 @@ PYHELIOS_API void annotationWriteLabelSegmentationMasks(helios::Context* context
                                                         unsigned int label_count, const char* json_filename, const char* image_file, const char** data_attribute_labels, unsigned int attribute_count, bool append_file,
                                                         bool use_object_data);
 
+/**
+ * @brief Write COCO JSON segmentation masks for the connected regions of chosen classes in a per-pixel class map (helios-core 1.3.95)
+ * @param pixel_classes Class of each pixel (0 for none), pixel_count elements, row-major with row 0 at the top
+ * @param pixel_UUIDs Pixel-to-primitive map (UUID+1 per pixel), pixel_count elements, same orientation
+ * @param class_values Class value of each annotated class (class_count elements)
+ * @param class_names Category name of each annotated class, in the same order as class_values
+ */
+PYHELIOS_API void annotationWriteClassMapSegmentationMasks(helios::Context* context, const unsigned int* pixel_classes, const unsigned int* pixel_UUIDs, unsigned int pixel_count, int width, int height,
+                                                           const unsigned int* class_values, const char** class_names, unsigned int class_count, const char* json_filename, const char* image_file,
+                                                           const char** data_attribute_labels, unsigned int attribute_count, bool append_file);
+
+// ---- Primitive color textures and spectral textures (helios-core 1.3.95) ----
+
+/** @brief Give a primitive an image for its color while its texture keeps giving its shape; an empty file name removes it */
+PYHELIOS_API void setPrimitiveColorTexture(helios::Context* context, unsigned int uuid, const char* color_texture_file);
+
+/** @brief Give several primitives an image for their color (every primitive is checked before any is changed) */
+PYHELIOS_API void setPrimitiveColorTextureBatch(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* color_texture_file);
+
+/** @brief Copy the image that gives a primitive its color into buffer; returns the number of bytes copied */
+PYHELIOS_API int getPrimitiveColorTextureFile(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size);
+
+/** @brief Check that an image can give color to primitives shaped by a texture; sets an error describing the mismatch if not */
+PYHELIOS_API void validateColorTexture(helios::Context* context, const char* shape_texture_file, const char* color_texture_file);
+
+/**
+ * @brief Register a spectral palette from parallel arrays of class_count strings each
+ * @param transmissivity_spectra May hold empty strings for classes that transmit nothing
+ */
+PYHELIOS_API void addSpectralPalette(helios::Context* context, const char* label, const char** reflectivity_spectra, const char** transmissivity_spectra, const char** provenances, unsigned int class_count);
+
+/** @brief Check whether a spectral palette has been registered */
+PYHELIOS_API bool doesSpectralPaletteExist(helios::Context* context, const char* label);
+
+/**
+ * @brief Get the classes of a spectral palette
+ * @param class_count Output: number of classes
+ * @param byte_count Output: number of bytes in the returned buffer
+ * @return 3*class_count NUL-terminated strings (reflectivity, transmissivity, provenance for each class in order), valid until the next call on this thread
+ */
+PYHELIOS_API const char* getSpectralPalette(helios::Context* context, const char* label, unsigned int* class_count, unsigned int* byte_count);
+
+/** @brief Give a primitive a spectral texture (class map and palette) */
+PYHELIOS_API void setPrimitiveSpectralTexture(helios::Context* context, unsigned int uuid, const char* class_map_file, const char* palette_label);
+
+/** @brief Give several primitives a spectral texture (every primitive is checked before any is changed) */
+PYHELIOS_API void setPrimitiveSpectralTextureBatch(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* class_map_file, const char* palette_label);
+
+/** @brief Change the palette of a primitive that has a spectral texture */
+PYHELIOS_API void setPrimitiveSpectralPalette(helios::Context* context, unsigned int uuid, const char* palette_label);
+
+/** @brief Change the palette of several primitives that have a spectral texture */
+PYHELIOS_API void setPrimitiveSpectralPaletteBatch(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* palette_label);
+
+/** @brief Remove a primitive's spectral texture, if it has one */
+PYHELIOS_API void clearPrimitiveSpectralTexture(helios::Context* context, unsigned int uuid);
+
+/** @brief Remove the spectral textures of several primitives */
+PYHELIOS_API void clearPrimitiveSpectralTextureBatch(helios::Context* context, const unsigned int* uuids, unsigned int count);
+
+/** @brief Check whether a primitive has a spectral texture */
+PYHELIOS_API bool primitiveHasSpectralTexture(helios::Context* context, unsigned int uuid);
+
+/** @brief Copy the class map file of a primitive's spectral texture into buffer (empty if none); returns the number of bytes copied */
+PYHELIOS_API int getPrimitiveSpectralTextureFile(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size);
+
+/** @brief Copy the palette label of a primitive's spectral texture into buffer (empty if none); returns the number of bytes copied */
+PYHELIOS_API int getPrimitiveSpectralPalette(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size);
+
+/**
+ * @brief Get the classes of a class map already read by setPrimitiveSpectralTexture
+ * @param width Output: class map width in texels
+ * @param height Output: class map height in texels
+ * @param size Output: number of values returned (width*height)
+ * @return Class of each texel, row-major from the top of the image; valid until the next call on this thread
+ */
+PYHELIOS_API const unsigned short* getSpectralTextureClassMap(helios::Context* context, const char* class_map_file, int* width, int* height, unsigned int* size);
+
 #ifdef __cplusplus
 }
 #endif

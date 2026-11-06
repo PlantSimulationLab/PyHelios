@@ -325,14 +325,15 @@ class AssetPathManager:
             os.environ['HELIOS_ASSET_ROOT'] = str(helios_core)
             logger.debug(f"Set HELIOS_ASSET_ROOT = {helios_core}")
 
-            # CRITICAL: Set HELIOS_BUILD environment variable
-            # This is REQUIRED by Helios C++ core for asset discovery
-            helios_build_path = self._get_helios_build_path()
-            if helios_build_path and helios_build_path.exists():
-                os.environ['HELIOS_BUILD'] = str(helios_build_path)
-                logger.debug(f"Set HELIOS_BUILD = {helios_build_path}")
-            else:
-                self._log_helios_build_error()
+        # CRITICAL: Set HELIOS_BUILD environment variable
+        # This is REQUIRED by Helios C++ core for asset discovery. It must be set even
+        # without a helios-core directory: wheel installs have only the packaged assets.
+        helios_build_path = self._get_helios_build_path()
+        if helios_build_path and helios_build_path.exists():
+            os.environ['HELIOS_BUILD'] = str(helios_build_path)
+            logger.debug(f"Set HELIOS_BUILD = {helios_build_path}")
+        else:
+            self._log_helios_build_error()
 
         asset_paths = self.get_all_asset_paths()
 

@@ -8,6 +8,7 @@ capabilities with graceful plugin handling and informative error messages.
 import functools
 import logging
 import math
+import numbers
 import os
 import weakref
 from contextlib import contextmanager
@@ -54,12 +55,34 @@ from .plant_architecture_params import (
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
+    LeafTextureStageOptions,
     RandomParameter,
     RandomParameterFloat,
     RandomParameterInt,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _check_uint_args(pairs) -> None:
+    """Raise ValueError unless each (name, value) is an integer in the C unsigned int range.
+
+    ctypes silently wraps a negative or oversized value passed as c_uint, so the range is checked here.
+    """
+    for name, v in pairs:
+        if isinstance(v, bool) or not isinstance(v, numbers.Integral):
+            raise ValueError(f"{name} must be an int, got {type(v).__name__}")
+        if v < 0 or v > 0xFFFFFFFF:
+            raise ValueError(f"{name} must be between 0 and 2**32-1, got {v}")
+
+
+def _check_finite_args(pairs) -> None:
+    """Raise ValueError unless each (name, value) is a finite real number."""
+    for name, v in pairs:
+        if isinstance(v, bool) or not isinstance(v, numbers.Real):
+            raise ValueError(f"{name} must be a number, got {type(v).__name__}")
+        if not math.isfinite(v):
+            raise ValueError(f"{name} must be finite, got {v}")
 
 
 def _validate_build_parameters(build_parameters: Optional[dict], plant_model: Optional[str],
@@ -399,6 +422,11 @@ class PlantArchitecture:
                               catch_wire_height, berry_diameter, cluster_berry_count
                             - sorghum: tiller_count, panicle_type, and the panicle form,
                               grain and glume keys
+                            - rice (helios-core 1.3.95+): tiller_count, panicle_type, and the
+                              panicle size, branching, droop, spikelet, ripeness, hull and
+                              anther keys
+                            - maize (helios-core 1.3.95+): tassel_type and the tassel length,
+                              branch, spikelet, glume and anther keys
                             All other models accept none. getPlantModelBuildParameterNames()
                             returns the full list for a model. Out-of-range or non-finite
                             values, and fractional values for parameters that count something
@@ -2140,8 +2168,12 @@ class PlantArchitecture:
                 Valid labels include: "age", "rank", "plantID", "plant_name",
                 "plant_height", "plant_type", "phenology_stage", "leafID",
                 "peduncleID", "closedflowerID", "openflowerID", "fruitID",
-                "carbohydrate_concentration". The special label "all" enables
-                every available field.
+                "carbohydrate_concentration", "leaf_texture_stage". The special
+                label "all" enables every available field. "leaf_texture_stage"
+                (helios-core 1.3.95+) is the index of the
+                ``LeafPrototype.leaf_texture_series`` image each leaf currently
+                uses (0 for a shoot type without stages); enabling it also writes
+                it to leaves that already exist.
 
         Raises:
             ValueError: If a label is empty or not a string
@@ -2271,6 +2303,139 @@ class PlantArchitecture:
                 plantarch_wrapper.disablePlantPhenology(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to disable phenology for plant {plant_id}: {e}")
+
+    def setPlantMinimumLeafTextureStage(self, plant_id: int, stage: int) -> None:
+        """
+        Make every leaf of a plant use at least a given image of its leaf texture series.
+
+        A leaf normally moves through the images of ``LeafPrototype.leaf_texture_series`` according
+        to its own age (see ``LeafPrototype.leaf_texture_stage_ages``). This is for changes that do
+        not follow leaf age, such as a whole canopy turning color in autumn or senescing at the end
+        of a crop's season. A leaf already past ``stage`` for its age keeps the image for its age,
+        and a shoot type with fewer images uses its last one.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            stage: Index of the image; 0 (the default) returns every leaf to the image for its age
+
+        Raises:
+            ValueError: If plant_id or stage is negative or not an int
+            PlantArchitectureError: If the plant does not exist or the library predates v1.3.95
+
+        Example:
+            >>> plantarch.setPlantMinimumLeafTextureStage(plant_id, 2)  # whole plant senesced
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Stage", stage)))
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPlantMinimumLeafTextureStage(self._plantarch_ptr, plant_id, stage)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set minimum leaf texture stage for plant {plant_id}: {e}")
+
+    def getPlantMinimumLeafTextureStage(self, plant_id: int) -> int:
+        """
+        Get the image of the leaf texture series that every leaf of a plant uses at minimum.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            The stage set by :meth:`setPlantMinimumLeafTextureStage`, 0 by default
+
+        Raises:
+            ValueError: If plant_id is negative
+            PlantArchitectureError: If the plant does not exist or the library predates v1.3.95
+        """
+        _check_uint_args((("Plant ID", plant_id),))
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.getPlantMinimumLeafTextureStage(self._plantarch_ptr, plant_id)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get minimum leaf texture stage for plant {plant_id}: {e}")
+
+    @staticmethod
+    def generateLeafTextureStages(leaf_texture: Union[str, Path], output_directory: Union[str, Path],
+                                  stage_count: int,
+                                  options: Optional[LeafTextureStageOptions] = None) -> List[str]:
+        """
+        Generate images of a leaf at successive stages of aging, for ``LeafPrototype.leaf_texture_series``.
+
+        Each pixel changes color at its own point in the aging, so color spreads across the leaf as
+        an aging front rather than fading in everywhere at once. The images keep exactly the
+        transparency of the leaf texture, as ``leaf_texture_series`` requires. This is a static
+        method: it needs neither a Context nor a PlantArchitecture instance, only the native
+        library.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            leaf_texture: Path to the young-leaf image, or a plant-library texture name such as
+                ``"AlmondLeaf.png"`` (resolved like ``LeafPrototype.leaf_texture_file``)
+            output_directory: Directory to write the images to; created if it does not exist.
+                Images named after the leaf texture are overwritten, so use different directories
+                for different options.
+            stage_count: Number of stages including the leaf texture itself; at least 2
+            options: How the leaf ages; defaults to :class:`LeafTextureStageOptions` ()
+
+        Returns:
+            Paths of the image for each stage, starting with the (resolved) leaf texture. Generated
+            images are PNG if the leaf texture has transparency and JPEG otherwise.
+
+        Raises:
+            ValueError: If an argument has the wrong type or is out of range
+            PlantArchitectureError: If an image cannot be read or written, or the library predates
+                v1.3.95
+
+        Example:
+            >>> stages = PlantArchitecture.generateLeafTextureStages("AlmondLeaf.png", "out", 3)
+            >>> proto.leaf_texture_series = {0: [stages]}
+            >>> proto.leaf_texture_stage_ages = [0.0, 20.0, 40.0]
+        """
+        if not isinstance(leaf_texture, (str, Path)) or not str(leaf_texture):
+            raise ValueError("leaf_texture must be a non-empty path")
+        if not isinstance(output_directory, (str, Path)) or not str(output_directory):
+            raise ValueError("output_directory must be a non-empty path")
+        if isinstance(stage_count, bool) or not isinstance(stage_count, int):
+            raise ValueError(f"stage_count must be an int, got {type(stage_count).__name__}")
+        if stage_count < 2:
+            raise ValueError(
+                f"stage_count must be at least 2 (the first stage is the leaf texture itself), got {stage_count}")
+        if options is None:
+            options = LeafTextureStageOptions()
+        if not isinstance(options, LeafTextureStageOptions):
+            raise ValueError(
+                f"options must be a LeafTextureStageOptions, got {type(options).__name__}")
+        options.validate()
+
+        def _absolute_if_local(path: str) -> str:
+            # The native call runs from the asset directory, so paths relative to the caller's
+            # working directory are made absolute first; bare library texture names are kept.
+            return os.path.abspath(path) if path and os.path.exists(path) else path
+
+        options_dict = options.to_dict()
+        options_dict["senesced_textures"] = [_absolute_if_local(t) for t in options_dict["senesced_textures"]]
+        options_dict["onset_map"] = _absolute_if_local(options_dict["onset_map"])
+        texture = _absolute_if_local(str(leaf_texture))
+        out_dir = os.path.abspath(str(output_directory))
+
+        import json
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.generateLeafTextureStages(
+                    texture, out_dir, stage_count, json.dumps(options_dict))
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to generate leaf texture stages from '{leaf_texture}': {e}")
 
     # Dormancy control methods
     def makePlantDormant(self, plant_id: int) -> None:
@@ -4329,6 +4494,254 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(
                 f"Failed to set petiole leaf count (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleShape(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                        outward_direction: vec3, pitch_degrees: float, curvature: float,
+                        length: float) -> None:
+        """
+        Regenerate one petiole of an existing phytomer from its own pitch, curvature, length and lean.
+
+        A shoot type gives every phytomer one distribution of petiole pitch and curvature. A plant
+        built or fitted leaf by leaf needs each petiole to have its own, generated by the same rules
+        a new phytomer's petiole is. The petiole leaves the tip of its internode ``pitch_degrees`` off
+        the internode axis, toward ``outward_direction`` projected onto the plane perpendicular to
+        that axis, and turns by ``curvature`` degrees per meter of its length (negative bends it
+        down, as the shoot parameter ``petiole.curvature`` does). The path is then held as given, as
+        :meth:`setPetioleNodePositions` holds one, and the petiole's leaves are rebuilt on it.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            outward_direction: World direction the petiole leans toward; any vector not parallel
+                to the internode axis
+            pitch_degrees: Angle between the petiole's base and the internode axis, in degrees
+            curvature: Change in the petiole's direction along its length, in degrees per meter
+            length: Petiole length in meters; must be greater than zero
+
+        Raises:
+            ValueError: If an index is negative, the direction is not a vec3, or the length is not
+                positive
+            PlantArchitectureError: If the native call fails (for example, a direction parallel to
+                the internode) or the library predates v1.3.95
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                          ("Node index", node_index), ("Petiole index", petiole_index)))
+        if not isinstance(outward_direction, vec3):
+            raise ValueError(
+                f"outward_direction must be a vec3, got {type(outward_direction).__name__}")
+        _check_finite_args((("Pitch", pitch_degrees), ("Curvature", curvature), ("Length", length)))
+        if not length > 0:
+            raise ValueError(f"Petiole length must be greater than zero, got {length}")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleShape(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                    [outward_direction.x, outward_direction.y, outward_direction.z],
+                    pitch_degrees, curvature, length)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set petiole shape (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeaflets(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                           leaf_count: int, leaflet_offset: float, leaflet_scale: float,
+                           prototype_scale: float) -> None:
+        """
+        Rebuild the leaflets of one petiole with their own count, spacing and sizes.
+
+        The per-phytomer counterpart of the shoot parameters ``leaf.leaves_per_petiole``,
+        ``leaf.leaflet_offset``, ``leaf.leaflet_scale`` and ``leaf.prototype_scale``: this
+        phytomer's own values are set and its leaflets rebuilt from them, as
+        :meth:`setPetioleLeafCount` rebuilds them. Other phytomers and the shoot type are unchanged.
+        A ``leaflet_offset`` too large for ``leaf_count`` (the outermost pair would sit beyond the
+        petiole's base) is refused rather than reduced.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            leaf_count: Number of leaflets; at least 1
+            leaflet_offset: Spacing between lateral pairs as a fraction of the petiole length; >= 0
+            leaflet_scale: Size of each lateral pair relative to the pair nearer the tip; > 0
+            prototype_scale: Fully-elongated size of the terminal leaflet in meters; > 0
+
+        Raises:
+            ValueError: If an index is negative or a value is out of range
+            PlantArchitectureError: If the native call fails or the library predates v1.3.95
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                          ("Node index", node_index), ("Petiole index", petiole_index)))
+        _check_uint_args((("Leaf count", leaf_count),))
+        _check_finite_args((("Leaflet offset", leaflet_offset), ("Leaflet scale", leaflet_scale),
+                            ("Prototype scale", prototype_scale)))
+        if leaf_count < 1:
+            raise ValueError(f"Leaf count must be at least 1, got {leaf_count}")
+        if not leaflet_offset >= 0:
+            raise ValueError(f"Leaflet offset must be zero or greater, got {leaflet_offset}")
+        if not leaflet_scale > 0 or not prototype_scale > 0:
+            raise ValueError(
+                f"Leaflet scale ({leaflet_scale}) and prototype scale ({prototype_scale}) "
+                "must be greater than zero")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeaflets(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                    leaf_count, leaflet_offset, leaflet_scale, prototype_scale)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set petiole leaflets (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeafletAngles(self, plant_id: int, shoot_id: int, node_index: int,
+                                petiole_index: int, pitch_degrees: float, yaw_degrees: float,
+                                roll_degrees: float) -> None:
+        """
+        Rebuild one petiole's leaflets turned by their own pitch, yaw and roll.
+
+        The per-phytomer counterpart of the shoot parameters ``leaf.pitch``, ``leaf.yaw`` and
+        ``leaf.roll``, the angles each leaflet is turned by relative to its petiole. The values
+        become the phytomer's own, and the petiole's leaflets are rebuilt with them.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            pitch_degrees: Leaflet pitch in degrees
+            yaw_degrees: Leaflet yaw in degrees
+            roll_degrees: Leaflet roll in degrees
+
+        Raises:
+            ValueError: If an index is negative or an angle is not finite
+            PlantArchitectureError: If the native call fails or the library predates v1.3.95
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                          ("Node index", node_index), ("Petiole index", petiole_index)))
+        _check_finite_args((("Leaflet pitch", pitch_degrees), ("Leaflet yaw", yaw_degrees),
+                            ("Leaflet roll", roll_degrees)))
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeafletAngles(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                    pitch_degrees, yaw_degrees, roll_degrees)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set leaflet angles (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeafletAngleOffsets(self, plant_id: int, shoot_id: int, node_index: int,
+                                      petiole_index: int, pitch_offsets_degrees: List[float],
+                                      yaw_offsets_degrees: List[float],
+                                      roll_offsets_degrees: List[float]) -> None:
+        """
+        Rebuild one petiole's leaflets, each turned by its own offset from the leaf's angles.
+
+        Every leaflet of a leaf is otherwise turned by one ``leaf.pitch``, ``leaf.yaw`` and
+        ``leaf.roll``, mirrored across the petiole, so a pair's two members are mirror images.
+        The offsets are added to those angles, one per leaflet in the petiole's leaf order. Yaw is
+        in the leaf's mirrored sense: a positive offset swings a lateral further toward the tip on
+        either side. They are kept through later rebuilds with the same number of leaflets.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            pitch_offsets_degrees: Pitch offset of each leaflet in degrees
+            yaw_offsets_degrees: Yaw offset of each leaflet in degrees
+            roll_offsets_degrees: Roll offset of each leaflet in degrees
+
+        Raises:
+            ValueError: If an index is negative, the lists differ in length, or a value is not finite
+            PlantArchitectureError: If the count is not the petiole's, the native call fails, or the
+                library predates v1.3.95
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                          ("Node index", node_index), ("Petiole index", petiole_index)))
+        lists = (pitch_offsets_degrees, yaw_offsets_degrees, roll_offsets_degrees)
+        for values in lists:
+            if not isinstance(values, (list, tuple)):
+                raise ValueError(f"offsets must be lists of floats, got {type(values).__name__}")
+        if len({len(values) for values in lists}) != 1:
+            raise ValueError("pitch, yaw and roll offsets must have one entry per leaflet each")
+        if not all(math.isfinite(float(v)) for values in lists for v in values):
+            raise ValueError("leaflet angle offsets must be finite")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeafletAngleOffsets(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, *lists)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set leaflet angle offsets (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeafShape(self, plant_id: int, shoot_id: int, node_index: int,
+                            petiole_index: int, aspect_ratio: float, longitudinal_curvature: float,
+                            lateral_curvature: float, midrib_fold_fraction: float) -> None:
+        """
+        Rebuild one petiole's leaflets with their own blade shape.
+
+        The per-phytomer counterpart of the leaf prototype's ``leaf_aspect_ratio``,
+        ``longitudinal_curvature``, ``lateral_curvature`` and ``midrib_fold_fraction``, which
+        are otherwise one shape for every phytomer of a shoot type. The values become the
+        phytomer's own, and the petiole's leaflets are rebuilt from them.
+
+        Requires helios-core v1.3.95 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            aspect_ratio: Ratio of blade width to length; > 0
+            longitudinal_curvature: Curvature along the blade (+ up, - down)
+            lateral_curvature: Curvature across the blade (+ up, - down)
+            midrib_fold_fraction: Fold along the midrib, from 0 (flat) to 1 (folded shut)
+
+        Raises:
+            ValueError: If an index is negative or a value is out of range
+            PlantArchitectureError: If the native call fails or the library predates v1.3.95
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                          ("Node index", node_index), ("Petiole index", petiole_index)))
+        _check_finite_args((("Aspect ratio", aspect_ratio), ("Longitudinal curvature", longitudinal_curvature),
+                            ("Lateral curvature", lateral_curvature), ("Midrib fold fraction", midrib_fold_fraction)))
+        if not aspect_ratio > 0:
+            raise ValueError(f"Aspect ratio must be greater than zero, got {aspect_ratio}")
+        if not 0 <= midrib_fold_fraction <= 1:
+            raise ValueError(f"Midrib fold fraction must be between 0 and 1, got {midrib_fold_fraction}")
+        if not (math.isfinite(longitudinal_curvature) and math.isfinite(lateral_curvature)):
+            raise ValueError("Curvatures must be finite")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeafShape(
+                    self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                    aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set leaf shape (plant {plant_id}, shoot {shoot_id}, "
                 f"node {node_index}, petiole {petiole_index}): {e}")
 
     def setShootInternodeLengthMax(self, plant_id: int, shoot_id: int,

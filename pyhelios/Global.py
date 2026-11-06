@@ -285,3 +285,87 @@ class Global:
             RuntimeError: If the native library predates helios-core v1.3.90
         """
         return global_wrapper.blackbodySpectralRadiance(wavelength_nm, temperature_K)
+
+    # =========================================================================
+    # Single-channel PNG images (helios-core v1.3.95+)
+    # =========================================================================
+
+    @staticmethod
+    def readPNGSingleChannel(filename: str):
+        """Read a single-channel (grayscale) PNG image whose pixel values are integers, such as a class map.
+
+        The values are returned exactly as stored, without scaling to ``[0, 1]``, so that
+        each pixel can be used as an index (for example the class of a spectral texture,
+        see :meth:`pyhelios.Context.setPrimitiveSpectralTexture`). The image must be 8-bit
+        or 16-bit grayscale without transparency: color, indexed-color and
+        grayscale-with-alpha images are rejected rather than converted, since converting
+        them would change the values.
+
+        Args:
+            filename: Path to the PNG image
+
+        Returns:
+            A ``numpy.uint16`` array of shape ``(height, width)``, indexed ``[row, column]``
+            with row 0 at the top of the image.
+
+        Raises:
+            ValueError: If ``filename`` is not a non-empty string
+            HeliosError: If the file cannot be read or is not a single-channel 8- or 16-bit PNG
+            RuntimeError: If the native library predates helios-core v1.3.95
+
+        Example:
+            >>> from pyhelios import Global
+            >>> classes = Global.readPNGSingleChannel("leaf_classes.png")
+            >>> height, width = classes.shape
+        """
+        if not isinstance(filename, (str, os.PathLike)) or not str(filename).strip():
+            raise ValueError(f"filename must be a non-empty string, got {filename!r}")
+        values, _, _ = global_wrapper.readPNGSingleChannel(os.fspath(filename))
+        return values
+
+    @staticmethod
+    def writePNGSingleChannel(filename: str, width: int, height: int, pixel_values, bit_depth: int = 8) -> None:
+        """Write a single-channel (grayscale) PNG image whose pixel values are integers, such as a class map.
+
+        Args:
+            filename: Path of the PNG image to write
+            width: Image width in pixels
+            height: Image height in pixels
+            pixel_values: Value of each pixel, row-major with row 0 at the top of the image: a
+                flat sequence of ``width * height`` integers or an array of shape
+                ``(height, width)``. Values must be in ``[0, 65535]``.
+            bit_depth: 8 (default) or 16. Every value must fit, so values above 255 need a
+                bit depth of 16.
+
+        Raises:
+            ValueError: If an argument has the wrong type, ``pixel_values`` does not hold
+                ``width * height`` integers in ``[0, 65535]``, or ``bit_depth`` is not 8 or 16
+            HeliosError: If the file cannot be written, or a value does not fit in ``bit_depth``
+            RuntimeError: If the native library predates helios-core v1.3.95
+
+        Example:
+            >>> import numpy as np
+            >>> from pyhelios import Global
+            >>> classes = np.ones((32, 64), dtype=np.uint16)
+            >>> classes[:, 32:] = 2
+            >>> Global.writePNGSingleChannel("leaf_classes.png", 64, 32, classes, 8)
+        """
+        import numpy as np
+        if not isinstance(filename, (str, os.PathLike)) or not str(filename).strip():
+            raise ValueError(f"filename must be a non-empty string, got {filename!r}")
+        for name, v in (("width", width), ("height", height)):
+            if isinstance(v, bool) or not isinstance(v, (int, np.integer)) or v <= 0:
+                raise ValueError(f"{name} must be a positive int, got {v!r}")
+        if isinstance(bit_depth, bool) or not isinstance(bit_depth, (int, np.integer)) or int(bit_depth) not in (8, 16):
+            raise ValueError(f"bit_depth must be 8 or 16, got {bit_depth!r}")
+        if isinstance(pixel_values, (str, bytes)):
+            raise ValueError("pixel_values must be a sequence or array of integers")
+        arr = np.asarray(pixel_values)
+        if arr.size > 0 and arr.dtype.kind not in "iu":
+            raise ValueError(f"pixel_values must hold integers, got dtype {arr.dtype}")
+        if arr.size != int(width) * int(height):
+            raise ValueError(f"pixel_values has {arr.size} values, but a {width} x {height} image needs "
+                             f"{int(width) * int(height)}")
+        if arr.size > 0 and (arr.min() < 0 or arr.max() > 0xFFFF):
+            raise ValueError("pixel_values must be in [0, 65535]")
+        global_wrapper.writePNGSingleChannel(os.fspath(filename), int(width), int(height), arr, int(bit_depth))

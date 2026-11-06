@@ -210,7 +210,7 @@ def copy_assets_for_packaging(project_root):
         'atmosphere_lut': ['*.bin'],
         'thermal_atmosphere_lut': ['*.bin'],
         'ozone_climatology': ['*.txt'],
-        'camera_light_models': ['*.xml', '*.json']
+        'camera_light_models': ['*.obj', '*.mtl']
     }
 
     # Plugin-specific asset directory mappings (actual directory names in helios-core)
@@ -259,6 +259,11 @@ def copy_assets_for_packaging(project_root):
     # ship even though nothing else references it at build time.
     if Path(plugins_src_dir / 'radiation' / 'camera_library').exists():
         radiation_assets.append('camera_library')
+
+    # enableLightModelVisualization()/enableCameraModelVisualization() load
+    # "plugins/radiation/camera_light_models/<model>.obj" (and its .mtl) at runtime.
+    if Path(plugins_src_dir / 'radiation' / 'camera_light_models').exists():
+        radiation_assets.append('camera_light_models')
 
     # Copy generated GPU backend files from build directory
     radiation_build_dir = build_dir / 'plugins' / 'radiation'

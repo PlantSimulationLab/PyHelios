@@ -1,5 +1,57 @@
 # Changelog
 
+# [v0.1.40] 2026-11-05
+
+- Updated helios-core to v1.3.95
+
+## Context
+- Added `setPrimitiveColorTexture()` and `getPrimitiveColorTextureFile()`, which give a textured primitive a different color image while its texture keeps giving its shape
+- Added `validateColorTexture()`, which checks that a color image has the same resolution and transparency as a shape texture
+- Added spectral textures: `setPrimitiveSpectralTexture()` lays a grayscale class map over a primitive, and a palette registered with `addSpectralPalette()` names each class's reflectivity and transmissivity spectra
+- Added the `SpectralTextureClass` dataclass, and `doesSpectralPaletteExist()` and `getSpectralPalette()` to query registered palettes
+- Added `setPrimitiveSpectralPalette()`, which switches a primitive's palette without changing its class map or shape
+- Added `clearPrimitiveSpectralTexture()`, `primitiveHasSpectralTexture()`, `getPrimitiveSpectralTextureFile()` and `getPrimitiveSpectralPalette()`
+- Added `getSpectralTextureClassMap()`, returning a class map's classes as a `uint16` array with its resolution
+- Color textures and spectral textures are now written by `writeXML()` and read by `loadXML()`
+- **Behavior change:** `renameMaterial()` no longer makes a renamed automatic material the material of primitives created later with the same color or texture
+- `getObjectTextureFile()` and `objectHasTexture()` now report the texture of the object's first primitive, instead of the texture the object was created with
+- Fixed `setPrimitiveColor()`, `setPrimitiveTextureFile()`, `overridePrimitiveTextureColor()` and `usePrimitiveTextureColor()` editing a shared automatic material, which changed the appearance of primitives created later
+- Fixed `setTileObjectSubdivisionCount()` replacing a material assigned to the tile's sub-patches with an automatic one
+
+## Global
+- Added `Global.readPNGSingleChannel()` and `Global.writePNGSingleChannel()`, which read and write 8-bit and 16-bit grayscale PNGs as integers without scaling
+- Fixed pip-installed PyHelios looking up native asset files relative to the current working directory instead of the installed package
+
+## Annotation
+- Added `annotation.writeClassMapSegmentationMasks()`, which writes COCO segmentation masks for chosen classes of a per-pixel class map
+
+## PlantArchitecture
+- Added `setPetioleShape()`, which regenerates one petiole from its own pitch, curvature, length and lean and rebuilds its leaves on it
+- Added `setPetioleLeaflets()`, which rebuilds one petiole's leaflets with their own count, spacing and sizes
+- Added `setPetioleLeafletAngles()` and `setPetioleLeafShape()`, which rebuild one petiole's leaflets with their own angles and blade shape
+- Added `setPetioleLeafletAngleOffsets()`, which turns each leaflet of a petiole by its own offset, so a pair's members need not mirror each other
+- Renamed the rice fruit prototype `RiceSpikePrototype` to `RicePaniclePrototype` and added the `RiceFloweringPaniclePrototype` flower prototype, following helios-core
+- Added `LeafPrototype.leaf_texture_series` and `LeafPrototype.leaf_texture_stage_ages`, which give leaves several texture variants and images that change as each leaf ages
+- Added `setPlantMinimumLeafTextureStage()` and `getPlantMinimumLeafTextureStage()`, which move every leaf of a plant to at least a given texture stage
+- Added the static `generateLeafTextureStages()` and the `LeafTextureStageOptions` class, which generate aging leaf images from an image of the young leaf
+- Added the `"leaf_texture_stage"` optional output object data
+- The "rice" and "maize" library models now accept build parameters (`tiller_count`, `panicle_type` and panicle keys for rice; `tassel_type` and tassel keys for maize)
+- **Behavior change:** the "rice" model was rebuilt as a tillering hill about 0.97 m tall with a procedural panicle, and the "maize" tassel is now one procedural object
+
+## RadiationModel
+- Added `enableLightModelVisualization()` and `disableLightModelVisualization()`, which add and remove 3D models of sphere, sun-sphere, disk and rectangle sources in the Context so they show in the Visualizer and in OBJ exports
+- Added `enableCameraModelVisualization()` and `disableCameraModelVisualization()`, which do the same for radiation cameras
+- Wheels now ship the radiation plugin's light and camera model files
+- Added `writeImageSegmentationMasksBySpectralClass()`, which writes COCO segmentation masks for each spectral-texture class a camera sees
+
+## LeafOptics
+- Added `runFromObjectData()`, which gives each leaf the spectra for the value of an integer object data such as "leaf_texture_stage", using one `LeafOpticsProperties` per value
+
+## ParameterOptimization
+- Added the `TPE` (Tree-structured Parzen Estimator) algorithm, which supports FLOAT, INTEGER and CATEGORICAL parameters
+- **Behavior change:** `run()` now defaults to `TPE` instead of `GeneticAlgorithm` when no algorithm is set and there are 50 or fewer parameters including an INTEGER or CATEGORICAL one; call `setAlgorithm(GeneticAlgorithm())` to keep the previous behavior
+- `run()` now raises if a FLOAT or INTEGER parameter has an infinite `min` or `max`
+
 # [v0.1.39] 2026-11-01
 
 - Updated helios-core to v1.3.94

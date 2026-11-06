@@ -25,7 +25,7 @@ from pyhelios import (
     ParameterOptimization, ParameterOptimizationError, OptimizationResult,
     ConstrainedResult, make_constrained_simulation,
     Parameter, ParameterType,
-    GeneticAlgorithm, BayesianOptimization, CMAES, Adam, BOBYQA, LBFGS, SLSQP,
+    GeneticAlgorithm, BayesianOptimization, CMAES, TPE, Adam, BOBYQA, LBFGS, SLSQP,
     BLXAlphaCrossover, BLXPCACrossover,
     PerGeneMutation, IsotropicMutation, HybridMutation,
 )
@@ -185,6 +185,7 @@ class TestStructureLayout:
             wrapper.PyHeliosGeneticAlgorithm: 88,
             wrapper.PyHeliosBayesianOptimization: 48,
             wrapper.PyHeliosCMAES: 24,
+            wrapper.PyHeliosTPE: 32,
             wrapper.PyHeliosLBFGS: 40,
             wrapper.PyHeliosAdam: 40,
             wrapper.PyHeliosBOBYQA: 32,
@@ -749,10 +750,17 @@ class TestAlgorithmSelection:
         """Availability is reported for every algorithm."""
         available = optimizer.availableAlgorithms()
 
-        assert set(available) == {"GA", "BO", "CMAES", "ADAM", "LBFGS", "BOBYQA", "SLSQP"}
+        assert set(available) == {"GA", "BO", "CMAES", "TPE", "ADAM", "LBFGS", "BOBYQA", "SLSQP"}
         # These need no external solver and are always compiled in.
         for name in ("GA", "BO", "CMAES", "ADAM"):
             assert available[name] is True
+
+    def test_tpe_reported_available(self, optimizer):
+        """TPE needs no external solver, so it is available whenever the library has it."""
+        from pyhelios.wrappers import UParameterOptimizationWrapper as wrapper
+        if not wrapper._TPE_FUNCTIONS_AVAILABLE:
+            pytest.skip("native library predates TPE (rebuild needed)")
+        assert optimizer.availableAlgorithms()["TPE"] is True
 
     def test_unavailable_algorithm_raises_actionable_error(self, optimizer):
         """Selecting an unavailable algorithm explains the alternatives."""
@@ -1256,3 +1264,203 @@ class TestContextIntegration:
 
         assert result["x"] == pytest.approx(3.0, abs=0.3)
         assert result["y"] == pytest.approx(-1.0, abs=0.3)
+
+
+#=============================================================================
+# Tree-structured Parzen Estimator
+#=============================================================================
+
+def _require_tpe():
+    from pyhelios.wrappers import UParameterOptimizationWrapper as wrapper
+    if not wrapper._TPE_FUNCTIONS_AVAILABLE:
+        pytest.skip("native library predates TPE (rebuild needed)")
+
+
+def _mixed_parameters():
+    return {
+        "x": Parameter.continuous(0.0, -5.0, 5.0),
+        "n": Parameter.integer(0.0, 0.0, 10.0),
+        "c": Parameter.categorical(0.5, [0.5, 1.7, 3.14, 7.2]),
+    }
+
+
+def _mixed_objective(counter=None):
+    def objective(p):
+        if counter is not None:
+            counter.append(dict(p))
+        return (p["x"] - 1.0) ** 2 + (p["n"] - 6.0) ** 2 + (p["c"] - 3.14) ** 2
+    return objective
+
+
+class TestTPESettings:
+    """TPE dataclass, structure layout and settings validation."""
+
+    @pytest.mark.cross_platform
+    def test_defaults_match_native_header(self):
+        tpe = TPE()
+        assert (tpe.max_evaluations, tpe.n_startup_trials, tpe.n_ei_candidates, tpe.random_seed) == (100, 10, 24, 0)
+
+    @pytest.mark.cross_platform
+    def test_structure_offsets(self):
+        from pyhelios.wrappers import UParameterOptimizationWrapper as wrapper
+        assert wrapper.PyHeliosTPE.n_startup_trials.offset == 8
+        assert wrapper.PyHeliosTPE.n_ei_candidates.offset == 16
+        assert wrapper.PyHeliosTPE.random_seed.offset == 24
+        assert getattr(wrapper.PyHeliosTPE, '_pack_', 0) == 0
+
+    @pytest.mark.cross_platform
+    def test_fields_round_trip_into_struct(self):
+        struct = TPE(max_evaluations=77, n_startup_trials=5, n_ei_candidates=12, random_seed=42)._to_struct()
+        assert (struct.max_evaluations, struct.n_startup_trials, struct.n_ei_candidates, struct.random_seed) == (77, 5, 12, 42)
+
+    @pytest.mark.cross_platform
+    @pytest.mark.parametrize("field, value, exc", [
+        ("max_evaluations", -1, ValueError),
+        ("n_startup_trials", -5, ValueError),
+        ("n_ei_candidates", 2.5, TypeError),
+        ("random_seed", 2 ** 32, ValueError),
+        ("random_seed", True, TypeError),
+    ])
+    def test_out_of_range_fields_rejected_before_native(self, field, value, exc):
+        with pytest.raises(exc, match=field):
+            TPE(**{field: value})._to_struct()
+
+    @pytest.mark.cross_platform
+    def test_tpe_accepts_discrete_parameters(self):
+        """TPE is not subject to the FLOAT-only guard that rejects CMAES and BO."""
+        ParameterOptimization._validate_parameter_types_for_algorithm(_mixed_parameters(), TPE())
+        with pytest.raises(ValueError, match="GeneticAlgorithm and TPE"):
+            ParameterOptimization._validate_parameter_types_for_algorithm(_mixed_parameters(), CMAES())
+
+    @pytest.mark.native_only
+    def test_native_defaults_match_dataclass(self):
+        _require_tpe()
+        from pyhelios.wrappers import UParameterOptimizationWrapper as wrapper
+        native = wrapper.getTPEDefaults()
+        tpe = TPE()
+        assert (native.max_evaluations, native.n_startup_trials, native.n_ei_candidates, native.random_seed) == \
+            (tpe.max_evaluations, tpe.n_startup_trials, tpe.n_ei_candidates, tpe.random_seed)
+
+    @pytest.mark.cross_platform
+    def test_wrapper_without_native_symbol_raises_actionable_error(self, monkeypatch):
+        from pyhelios.wrappers import UParameterOptimizationWrapper as wrapper
+        if not wrapper._PARAMETEROPTIMIZATION_FUNCTIONS_AVAILABLE:
+            pytest.skip("ParameterOptimization wrapper in mock mode")
+        monkeypatch.setattr(wrapper, '_TPE_FUNCTIONS_AVAILABLE', False)
+        assert wrapper.isAlgorithmAvailable("TPE") is False
+        with pytest.raises(NotImplementedError, match="build_helios"):
+            wrapper.setTPE(None, wrapper.PyHeliosTPE())
+
+
+@pytest.mark.native_only
+class TestTPEOptimization:
+    """TPE against the native library."""
+
+    @pytest.fixture(autouse=True)
+    def _tpe(self):
+        _require_tpe()
+
+    def test_mixed_problem_with_seed(self, optimizer):
+        evaluations = []
+        optimizer.setAlgorithm(TPE(max_evaluations=80, random_seed=11))
+        result = optimizer.run(_mixed_objective(evaluations), _mixed_parameters())
+
+        assert len(evaluations) == 80
+        assert result["n"] == pytest.approx(round(result["n"]), abs=1e-4)
+        assert 0.0 <= result["n"] <= 10.0
+        assert any(result["c"] == pytest.approx(c, abs=1e-5) for c in (0.5, 1.7, 3.14, 7.2))
+        assert -5.0 <= result["x"] <= 5.0
+        # Every evaluation stays in bounds, and integers/categories stay discrete
+        for p in evaluations:
+            assert -5.0 <= p["x"] <= 5.0
+            assert p["n"] == pytest.approx(round(p["n"]), abs=1e-4)
+            assert any(p["c"] == pytest.approx(c, abs=1e-5) for c in (0.5, 1.7, 3.14, 7.2))
+        # The best value seen is the one returned, and it beats random search's typical start
+        assert result.fitness == pytest.approx(min(_mixed_objective()(p) for p in evaluations), rel=1e-5, abs=1e-6)
+        assert result.fitness < 3.0
+
+    def test_seed_is_reproducible(self):
+        def run_once():
+            seen = []
+            with ParameterOptimization() as opt:
+                opt.setAlgorithm(TPE(max_evaluations=25, random_seed=3))
+                opt.run(_mixed_objective(seen), _mixed_parameters())
+            return seen
+        assert run_once() == run_once()
+
+    def test_respects_max_evaluations(self, optimizer):
+        calls = []
+        optimizer.setAlgorithm(TPE(max_evaluations=7, n_startup_trials=3, random_seed=1))
+        optimizer.run(_mixed_objective(calls), _mixed_parameters())
+        assert len(calls) == 7
+
+    def test_continuous_quadratic(self, optimizer):
+        optimizer.setAlgorithm(TPE(max_evaluations=150, random_seed=5))
+        result = optimizer.run(quadratic, quadratic_parameters())
+        assert result["x"] == pytest.approx(3.0, abs=1.0)
+        assert result["y"] == pytest.approx(-1.0, abs=1.0)
+
+    @pytest.mark.parametrize("field", ["max_evaluations", "n_startup_trials", "n_ei_candidates"])
+    def test_zero_count_raises(self, optimizer, field):
+        calls = []
+        optimizer.setAlgorithm(TPE(**{field: 0}))
+        with pytest.raises(HeliosError, match=f"{field} must be at least 1"):
+            optimizer.run(_mixed_objective(calls), _mixed_parameters())
+        assert calls == []
+
+    def test_input_file_raises(self, optimizer, tmp_path):
+        path = tmp_path / "start.csv"
+        path.write_text("x,0,-5,5\n")
+        optimizer.setInputFile(str(path))
+        optimizer.setAlgorithm(TPE(max_evaluations=5))
+        with pytest.raises(HeliosError, match="read_input_from_file"):
+            optimizer.run(quadratic, quadratic_parameters())
+
+    def test_default_for_discrete_parameters_is_tpe(self, optimizer):
+        """Without setAlgorithm, discrete parameters run TPE's 100-evaluation budget."""
+        calls = []
+        optimizer.run(_mixed_objective(calls), _mixed_parameters())
+        assert len(calls) == 100
+
+    def test_default_for_discrete_parameters_with_input_file_raises(self, optimizer, tmp_path):
+        path = tmp_path / "start.csv"
+        path.write_text("n,3,0,10\n")
+        optimizer.setInputFile(str(path))
+        with pytest.raises(HeliosError, match="GeneticAlgorithm"):
+            optimizer.run(lambda p: (p["n"] - 4.0) ** 2, {"n": Parameter.integer(0.0, 0.0, 10.0)})
+
+
+@pytest.mark.native_only
+class TestInfiniteBounds:
+    """helios-core 1.3.95 rejects an infinite min or max for FLOAT and INTEGER parameters."""
+
+    @pytest.fixture(autouse=True)
+    def _requires_1395(self):
+        # The bound check landed in the same helios-core release as TPE.
+        _require_tpe()
+
+    @pytest.mark.parametrize("algorithm", [
+        CMAES(max_evaluations=10, random_seed=1),
+        GeneticAlgorithm(generations=2, population_size=4, random_seed=1),
+        TPE(max_evaluations=5, random_seed=1),
+    ], ids=["CMAES", "GA", "TPE"])
+    @pytest.mark.parametrize("parameter", [
+        Parameter.continuous(0.0, -math.inf, 5.0),
+        Parameter.continuous(0.0, -5.0, math.inf),
+        Parameter.integer(0.0, 0.0, math.inf),
+    ], ids=["float-min", "float-max", "integer-max"])
+    def test_infinite_bound_raises(self, optimizer, algorithm, parameter):
+        if isinstance(algorithm, CMAES) and parameter.type == ParameterType.INTEGER:
+            pytest.skip("CMAES rejects INTEGER parameters before the bound check")
+        calls = []
+        optimizer.setAlgorithm(algorithm)
+        with pytest.raises(HeliosError, match="infinite bound"):
+            optimizer.run(lambda p: calls.append(p) or p["v"] ** 2, {"v": parameter})
+        assert calls == []
+
+    def test_categorical_ignores_bounds(self, optimizer):
+        optimizer.setAlgorithm(TPE(max_evaluations=5, random_seed=1))
+        parameter = Parameter(value=1.0, min=-math.inf, max=math.inf,
+                              type=ParameterType.CATEGORICAL, categories=(1.0, 2.0))
+        result = optimizer.run(lambda p: p["v"], {"v": parameter})
+        assert result["v"] in (1.0, 2.0)

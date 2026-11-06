@@ -1,6 +1,15 @@
+# Initialize asset paths before anything loads the native library: on Windows the
+# library snapshots the environment at load time and would never see HELIOS_BUILD.
+try:
+    from .assets import initialize_asset_paths
+    initialize_asset_paths()
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Failed to initialize asset paths: {e}")
+
 from .Global import Global
 from .Logger import Logger
-from .Context import Context, PrimitiveType, VertexNormalSource, VertexWeldMode
+from .Context import Context, PrimitiveType, VertexNormalSource, VertexWeldMode, SpectralTextureClass
 
 # Version information with robust fallback strategies
 def _get_version():
@@ -33,14 +42,6 @@ def _get_version():
     return "unknown"
 
 __version__ = _get_version()
-
-# Initialize asset paths for C++ plugins
-try:
-    from .assets import initialize_asset_paths
-    initialize_asset_paths()
-except Exception as e:
-    import logging
-    logging.getLogger(__name__).warning(f"Failed to initialize asset paths: {e}")
 
 # Optional plugin imports - only load if the native functions are available
 try:
@@ -169,6 +170,7 @@ from .plant_architecture_params import (
     ShootParameters,
     CarbohydrateParameters,
     NitrogenParameters,
+    LeafTextureStageOptions,
     LEAF_EXPANSION_RATE_UNSET,
 )
 
@@ -201,7 +203,7 @@ try:
         ParameterOptimization, ParameterOptimizationError, OptimizationResult,
         ConstrainedResult, make_constrained_simulation,
         Parameter, ParameterType,
-        GeneticAlgorithm, BayesianOptimization, CMAES, Adam, LBFGS, BOBYQA, SLSQP,
+        GeneticAlgorithm, BayesianOptimization, CMAES, TPE, Adam, LBFGS, BOBYQA, SLSQP,
         BLXAlphaCrossover, BLXPCACrossover,
         PerGeneMutation, IsotropicMutation, HybridMutation,
     )
@@ -217,6 +219,7 @@ except (AttributeError, ImportError):
     GeneticAlgorithm = None
     BayesianOptimization = None
     CMAES = None
+    TPE = None
     Adam = None
     LBFGS = None
     BOBYQA = None

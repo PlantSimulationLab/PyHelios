@@ -199,6 +199,14 @@ typedef struct {
     unsigned int random_seed;   //!< 0 selects a nondeterministic seed
 } PyHeliosCMAES;
 
+//! Tree-structured Parzen Estimator settings. Supports FLOAT, INTEGER and CATEGORICAL parameters.
+typedef struct {
+    size_t max_evaluations;     //!< Total number of function evaluations
+    size_t n_startup_trials;    //!< Initial evaluations sampled uniformly at random; must be at least 1
+    size_t n_ei_candidates;     //!< Candidates scored per evaluation
+    unsigned int random_seed;   //!< 0 selects a nondeterministic seed
+} PyHeliosTPE;
+
 //! L-BFGS settings. Requires an NLopt build that includes the Luksan solvers.
 typedef struct {
     int max_iterations;
@@ -265,7 +273,7 @@ PYHELIOS_API void destroyParameterOptimization(ParameterOptimization* opt);
  * front lets the caller fail at algorithm-selection time instead of part-way
  * through a long run.
  *
- * @param algorithm_name One of "GA", "BO", "CMAES", "LBFGS", "ADAM", "BOBYQA", "SLSQP"
+ * @param algorithm_name One of "GA", "BO", "CMAES", "TPE", "LBFGS", "ADAM", "BOBYQA", "SLSQP"
  * @return 1 if available, 0 if unavailable or the name is unrecognized
  */
 PYHELIOS_API int parameterOptimizationAlgorithmAvailable(const char* algorithm_name);
@@ -280,6 +288,8 @@ PYHELIOS_API void setParameterOptimizationGeneticAlgorithm(ParameterOptimization
 PYHELIOS_API void setParameterOptimizationBayesian(ParameterOptimization* opt, const PyHeliosBayesianOptimization* settings);
 /** @brief Select CMA-ES. */
 PYHELIOS_API void setParameterOptimizationCMAES(ParameterOptimization* opt, const PyHeliosCMAES* settings);
+/** @brief Select the Tree-structured Parzen Estimator. Settings are validated when run() starts. */
+PYHELIOS_API void setParameterOptimizationTPE(ParameterOptimization* opt, const PyHeliosTPE* settings);
 /** @brief Select L-BFGS. Fails if NLopt's Luksan solvers were not built. */
 PYHELIOS_API void setParameterOptimizationLBFGS(ParameterOptimization* opt, const PyHeliosLBFGS* settings);
 /** @brief Select AdamW. */
@@ -325,6 +335,8 @@ PYHELIOS_API void getParameterOptimizationAdamDefaults(PyHeliosAdam* out);
 PYHELIOS_API void getParameterOptimizationBOBYQADefaults(PyHeliosBOBYQA* out);
 /** @brief Fill with the plugin's default SLSQP settings. */
 PYHELIOS_API void getParameterOptimizationSLSQPDefaults(PyHeliosSLSQP* out);
+/** @brief Fill a TPE settings struct from the plugin's defaults. */
+PYHELIOS_API void getParameterOptimizationTPEDefaults(PyHeliosTPE* out);
 
 //=============================================================================
 // I/O configuration

@@ -56,6 +56,7 @@ __all__ = [
     "ShootParameters",
     "CarbohydrateParameters",
     "NitrogenParameters",
+    "LeafTextureStageOptions",
     "LEAF_EXPANSION_RATE_UNSET",
 ]
 
@@ -243,6 +244,20 @@ class LeafPrototype:
     petiolule_length: Dict[int, float] = field(default_factory=lambda: {0: 0.05})
     OBJ_model_file: str = ""
     leaf_texture_file: Dict[int, str] = field(default_factory=dict)
+    #: Sets of leaf texture images the unique prototypes draw from, so that leaves vary across a
+    #: plant and can change as they age (helios-core 1.3.95+). Keyed by compound-leaf index like
+    #: :attr:`leaf_texture_file` (a single entry applies to every leaflet). Each value is a list of
+    #: variants; each variant is a list of the images a leaf of that variant passes through as it
+    #: ages, youngest first. Unique prototype k uses variant ``k % len(variants)``, so
+    #: :attr:`unique_prototypes` must be at least the number of variants, and every variant must
+    #: have the same number of images. When set, :attr:`leaf_texture_file` is ignored. Only
+    #: available with the default :attr:`prototype_function` and no :attr:`OBJ_model_file`.
+    #: :meth:`PlantArchitecture.generateLeafTextureStages` can generate the aging images.
+    leaf_texture_series: Dict[int, List[List[str]]] = field(default_factory=dict)
+    #: Leaf age in days at which each image of a variant in :attr:`leaf_texture_series` begins:
+    #: one value per image, starting at 0 and strictly increasing. Required when the variants
+    #: have more than one image (helios-core 1.3.95+).
+    leaf_texture_stage_ages: List[float] = field(default_factory=list)
     prototype_function: Optional[str] = None
 
     def _warn_if_deprecated_buckle_set(self) -> None:
@@ -291,6 +306,9 @@ class LeafPrototype:
             "petiolule_length": {str(int(k)): float(v) for k, v in self.petiolule_length.items()},
             "OBJ_model_file": self.OBJ_model_file,
             "leaf_texture_file": {str(k): v for k, v in self.leaf_texture_file.items()},
+            "leaf_texture_series": {str(int(k)): [[str(f) for f in variant] for variant in variants]
+                                    for k, variants in self.leaf_texture_series.items()},
+            "leaf_texture_stage_ages": [float(a) for a in self.leaf_texture_stage_ages],
             "prototype_function": self.prototype_function or "",
         }
 
@@ -321,6 +339,9 @@ class LeafPrototype:
                               if "petiolule_length" in d else base.petiolule_length),
             OBJ_model_file=str(d.get("OBJ_model_file", base.OBJ_model_file)),
             leaf_texture_file={int(k): str(v) for k, v in tex.items()},
+            leaf_texture_series={int(k): [[str(f) for f in variant] for variant in variants]
+                                 for k, variants in d.get("leaf_texture_series", {}).items()},
+            leaf_texture_stage_ages=[float(a) for a in d.get("leaf_texture_stage_ages", [])],
             prototype_function=(d.get("prototype_function") or None),
         )
 
@@ -538,8 +559,9 @@ class InflorescenceParameters:
     fruit_gravity_factor_fraction: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     unique_prototypes: int = 1
     #: Days for the inflorescence to expand from its initial quarter size to full size (helios-core
-    #: 1.3.85+). A non-positive value (the default, -1) defers to the plant-level fruit-maturity
-    #: threshold set by ``setPlantPhenologicalThresholds()``. Set it where the inflorescence finishes
+    #: 1.3.85+). Zero means it is already full size when it forms (helios-core 1.3.95+); a negative
+    #: value (the default, -1) defers to the plant-level fruit-maturity threshold set by
+    #: ``setPlantPhenologicalThresholds()``. Set it where the inflorescence finishes
     #: elongating on a different schedule from the fruit, as a maize tassel does (6 days).
     inflorescence_maturity_period: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(-1.0))
     flower_prototype_function: Optional[str] = None
@@ -852,3 +874,75 @@ class NitrogenParameters:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "NitrogenParameters":
         return _flat_from_dict(cls, d, _NITROGEN_FIELDS)
+
+
+# --------------------------------------------------------------------------- #
+# Leaf texture aging stages
+# --------------------------------------------------------------------------- #
+def _default_senescence_colors() -> List[Any]:
+    from .wrappers.DataTypes import RGBcolor
+    return [RGBcolor(0.76, 0.66, 0.18), RGBcolor(0.36, 0.22, 0.10)]
+
+
+@dataclass
+class LeafTextureStageOptions:
+    """Options for :meth:`PlantArchitecture.generateLeafTextureStages` (helios-core 1.3.95+).
+
+    Defaults mirror the native ``LeafTextureStageOptions``. The default colors are for
+    appearance; they are not calibrated to measurements of any species.
+    """
+
+    #: Colors (:class:`~pyhelios.types.RGBcolor`) a leaf passes through after its original
+    #: color, in order, keeping the leaf's own veins and shading. Not used if
+    #: :attr:`senesced_textures` is given.
+    senescence_colors: List[Any] = field(default_factory=_default_senescence_colors)
+    #: Images a leaf passes through after its original image, in order, each with the same
+    #: resolution as the leaf texture. If given, these are used in place of
+    #: :attr:`senescence_colors`.
+    senesced_textures: List[str] = field(default_factory=list)
+    #: Image giving when each pixel turns, with the same resolution as the leaf texture: black
+    #: pixels turn first and white last. If empty, a leaf turns from its margin inward with
+    #: patches given by :attr:`patchiness`.
+    onset_map: str = ""
+    #: Fraction of the generated order of turning that is random patches rather than distance
+    #: from the leaf margin, between 0 and 1. Not used if :attr:`onset_map` is given.
+    patchiness: float = 0.3
+    #: Fraction of the leaf's aging over which any one pixel changes color, greater than 0 and at
+    #: most 1. Smaller values give sharper fronts.
+    transition_width: float = 0.25
+    #: Selects the random patches, so different variants of a leaf can turn in different patterns.
+    noise_seed: int = 0
+
+    def validate(self) -> None:
+        """Raise ``ValueError`` if a field has the wrong type or is out of range."""
+        from .wrappers.DataTypes import RGBcolor
+        if not isinstance(self.senescence_colors, (list, tuple)):
+            raise ValueError(
+                f"senescence_colors must be a list of RGBcolor, got {type(self.senescence_colors).__name__}")
+        for c in self.senescence_colors:
+            if not isinstance(c, RGBcolor):
+                raise ValueError(f"senescence_colors must contain RGBcolor values, got {type(c).__name__}")
+        if not isinstance(self.senesced_textures, (list, tuple)) or \
+                not all(isinstance(t, str) for t in self.senesced_textures):
+            raise ValueError("senesced_textures must be a list of file paths (str)")
+        if not isinstance(self.onset_map, str):
+            raise ValueError(f"onset_map must be a str, got {type(self.onset_map).__name__}")
+        if not self.senesced_textures and not self.senescence_colors:
+            raise ValueError("senescence_colors and senesced_textures are both empty, so there is "
+                             "nothing for the leaf to change into; give at least one color or image")
+        if not 0.0 <= float(self.patchiness) <= 1.0:
+            raise ValueError(f"patchiness must be between 0 and 1, got {self.patchiness}")
+        if not 0.0 < float(self.transition_width) <= 1.0:
+            raise ValueError(f"transition_width must be greater than 0 and at most 1, got {self.transition_width}")
+        if isinstance(self.noise_seed, bool) or not isinstance(self.noise_seed, int) or self.noise_seed < 0:
+            raise ValueError(f"noise_seed must be a non-negative int, got {self.noise_seed!r}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "senescence_colors": [[float(c.r), float(c.g), float(c.b)] for c in self.senescence_colors],
+            "senesced_textures": [str(t) for t in self.senesced_textures],
+            "onset_map": str(self.onset_map),
+            "patchiness": float(self.patchiness),
+            "transition_width": float(self.transition_width),
+            "noise_seed": int(self.noise_seed),
+        }

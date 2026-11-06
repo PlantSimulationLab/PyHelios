@@ -225,6 +225,31 @@ PYHELIOS_API float blackbodyBandFraction(float wavelength_min_nm, float waveleng
 PYHELIOS_API float blackbodySpectralRadiance(float wavelength_nm, float temperature_K);
 
 //=============================================================================
+// Single-channel PNG images (core/global.h; helios-core v1.3.95+)
+//=============================================================================
+
+/**
+ * @brief Read an 8-bit or 16-bit grayscale PNG whose pixel values are integers, without scaling
+ * @param filename Path to the PNG image
+ * @param width Output: image width in pixels
+ * @param height Output: image height in pixels
+ * @param size Output: number of values returned (width*height)
+ * @return Value of each pixel, row-major from the top of the image; valid until the next call on this thread. NULL on error (check getLastErrorCode())
+ */
+PYHELIOS_API const unsigned short* readPNGSingleChannel(const char* filename, unsigned int* width, unsigned int* height, unsigned int* size);
+
+/**
+ * @brief Write a single-channel (grayscale) PNG whose pixel values are integers
+ * @param filename Path to the PNG image
+ * @param width Image width in pixels
+ * @param height Image height in pixels
+ * @param pixel_values Value of each pixel, row-major from the top of the image
+ * @param count Number of values in pixel_values (must equal width*height)
+ * @param bit_depth 8 or 16
+ */
+PYHELIOS_API void writePNGSingleChannel(const char* filename, unsigned int width, unsigned int height, const unsigned short* pixel_values, unsigned int count, unsigned int bit_depth);
+
+//=============================================================================
 // Internal Helper Functions (for use by other wrapper modules)
 //=============================================================================
 
