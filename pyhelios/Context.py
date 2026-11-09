@@ -433,6 +433,27 @@ class Context:
         self._check_context_available()
         return context_wrapper.getShapeRevisionWrapper(self.context)
 
+    def getMaterialRevision(self) -> int:
+        """
+        Get a counter that advances whenever a material is added, deleted or renamed, or its properties or data change.
+
+        Material properties are its color, texture, texture color override and two-sided flag;
+        material data is anything set by the ``setMaterialData*`` methods (e.g.
+        :meth:`setMaterialDataFloat`) or removed by :meth:`clearMaterialData`. Setting material data does not mark the primitives using the
+        material dirty, so code that caches something derived from material data checks this
+        counter instead. If two calls return the same value, no material changed in between.
+        Assigning a material to a primitive changes the primitive, not the material (see
+        :meth:`getModifiedUUIDs`).
+
+        Returns:
+            Current material revision
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_available()
+        return context_wrapper.getMaterialRevisionWrapper(self.context)
+
     def seedRandomGenerator(self, seed: int):
         """
         Seed the random number generator for reproducible stochastic results.
@@ -6424,6 +6445,55 @@ class Context:
             int(normal_source),
         )
 
+    def replacePolymeshObjectPrimitives(self, objID: int, old_UUIDs: List[int], new_UUIDs: List[int],
+                                        data_source_UUIDs: List[int]) -> None:
+        """Replace some of the primitives of a polymesh object with new ones, keeping the object itself.
+
+        Re-meshing an object by deleting it and grouping new primitives into a fresh one changes
+        its object ID and discards its object data, which breaks anything that keys state on the
+        object. This instead swaps the primitives inside the existing object: its ID, object data
+        and transformation matrix are kept. Each new primitive first receives a copy of the
+        primitive data of its paired source primitive, and then the old primitives are deleted.
+
+        The face set no longer describes the object once its primitives change, so it is
+        cleared; call :meth:`setPolymeshObjectTopology` afterwards if the object should carry one.
+
+        Args:
+            objID: Object ID of the polymesh object
+            old_UUIDs: Primitives of the object to remove and delete. All must be members of the
+                object, and at least one member must remain or be added.
+            new_UUIDs: Existing primitives, not yet members of any object, to add to the object
+            data_source_UUIDs: Parallel to ``new_UUIDs``: the existing primitive whose primitive
+                data each new primitive receives (typically one of ``old_UUIDs``)
+
+        Raises:
+            ValueError: If an argument has the wrong type, or ``new_UUIDs`` and
+                ``data_source_UUIDs`` differ in length
+            HeliosError: If the object is not a polymesh, an old UUID is not a member, a new UUID
+                already belongs to an object, or the object would be left empty
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_available()
+        if isinstance(objID, bool) or not isinstance(objID, int) or not 0 <= objID <= 0xFFFFFFFF:
+            raise ValueError(f"objID must be an integer in [0, 2**32-1], got {objID!r}")
+        lists = {}
+        for name, values in (("old_UUIDs", old_UUIDs), ("new_UUIDs", new_UUIDs),
+                             ("data_source_UUIDs", data_source_UUIDs)):
+            if isinstance(values, (str, bytes)) or not hasattr(values, "__iter__"):
+                raise ValueError(f"{name} must be a list of UUIDs, got {type(values).__name__}")
+            values = list(values)
+            for i, u in enumerate(values):
+                if isinstance(u, bool) or not isinstance(u, int) or not 0 <= u <= 0xFFFFFFFF:
+                    raise ValueError(f"{name}[{i}] must be an integer in [0, 2**32-1], got {u!r}")
+            lists[name] = values
+        if len(lists["new_UUIDs"]) != len(lists["data_source_UUIDs"]):
+            raise ValueError(
+                f"data_source_UUIDs must be parallel to new_UUIDs: got {len(lists['data_source_UUIDs'])} "
+                f"source UUIDs for {len(lists['new_UUIDs'])} new UUIDs"
+            )
+        context_wrapper.replacePolymeshObjectPrimitivesWrapper(
+            self.context, objID, lists["old_UUIDs"], lists["new_UUIDs"], lists["data_source_UUIDs"])
+
     def doesObjectHaveAnalyticVertexNormals(self, objID: int) -> bool:
         """
         Return True if a compound object can report analytic vertex normals.
@@ -6601,6 +6671,45 @@ class Context:
         """
         self._check_context_available()
         return context_wrapper.getDirtyUUIDsWrapper(self.context, include_deleted)
+
+    def getModifiedUUIDs(self, mark: int = 0) -> Tuple[List[int], int]:
+        """Return the primitives created or modified since an earlier call, and the caller's advanced mark.
+
+        Dirty flags are shared: they stay set until something calls :meth:`markGeometryClean`
+        or :meth:`markPrimitiveClean`, so code that only reads them sees every primitive ever
+        modified. This gives each caller its own view instead. Keep one mark per caller,
+        starting at 0, and pass back the mark the previous call returned: each call returns the
+        primitives created or modified since that call, whatever other callers do and whether
+        or not anything marks the geometry clean in between.
+
+        A modification is anything that marks a primitive dirty, and also hiding or showing
+        it, which does not mark it dirty: hidden primitives are returned like any other, so
+        check :meth:`isPrimitiveHidden`. Deleted primitives are not returned (see
+        :meth:`getDeletedUUIDs`). The cost is one comparison per primitive in the Context.
+
+        Args:
+            mark: The caller's mark: 0 on the first call, which returns every primitive, and
+                afterwards the mark returned by the previous call.
+
+        Returns:
+            ``(uuids, new_mark)``: the UUIDs created or modified since the call that produced
+            ``mark``, and the mark to pass to the next call.
+
+        Raises:
+            ValueError: If ``mark`` is not a non-negative integer
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> uuids, mark = context.getModifiedUUIDs()      # every primitive
+            >>> context.setPrimitiveColor(uuids[0], RGBcolor(1, 0, 0))
+            >>> changed, mark = context.getModifiedUUIDs(mark)
+            >>> changed == [uuids[0]]
+            True
+        """
+        self._check_context_available()
+        if isinstance(mark, bool) or not isinstance(mark, int) or mark < 0 or mark > 0xFFFFFFFFFFFFFFFF:
+            raise ValueError(f"mark must be a non-negative integer returned by getModifiedUUIDs, got {mark!r}")
+        return context_wrapper.getModifiedUUIDsWrapper(self.context, mark)
 
     def getUniquePrimitiveParentObjectIDs(self, uuids: List[int],
                                           include_zero: bool = True) -> List[int]:

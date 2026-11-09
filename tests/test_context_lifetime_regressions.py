@@ -213,6 +213,31 @@ class TestPluginModelOutlivingContext:
             f"expected RuntimeError, got:\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
+    @pytest.mark.skipif(not plugin_available('soiltransport'),
+                        reason="soiltransport plugin not built")
+    def test_soiltransport_after_context_exit_raises_not_segfault(self):
+        # addSoilVisualization writes geometry into the stored Context*, so after the
+        # Context is destroyed it is the call that would dereference freed memory.
+        result = run_in_subprocess("""
+            from pyhelios import Context, SoilTransportModel, SoilColorMode
+            ctx = Context()
+            soil = SoilTransportModel(ctx)
+            soil.disableMessages()
+            soil.setInitialCondition(-1.0)
+            ctx.__exit__(None, None, None)
+            try:
+                soil.addSoilVisualization(SoilColorMode.WATER_CONTENT)
+            except RuntimeError:
+                print("RAISED_RUNTIMEERROR")
+                raise SystemExit(0)
+            print("NO_ERROR_RAISED")
+            raise SystemExit(2)
+        """)
+        assert_did_not_segfault(result)
+        assert "RAISED_RUNTIMEERROR" in result.stdout, (
+            f"expected RuntimeError, got:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
     def test_live_context_is_not_falsely_rejected(self):
         """The liveness guard must not reject a Context that is still alive."""
         from pyhelios.Context import check_context_alive

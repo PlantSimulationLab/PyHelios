@@ -9288,3 +9288,67 @@ def getSpectralTextureClassMapWrapper(context, class_map_file: str):
         return np.zeros((h, w), dtype=np.uint16), w, h
     classes = np.ctypeslib.as_array(ptr, shape=(n,)).astype(np.uint16, copy=True).reshape(h, w)
     return classes, w, h
+
+
+# helios-core 1.3.96: material revision, per-caller modification tracking, polymesh re-meshing.
+# NOTE: every wrapper function below must guard with _require_ctx_1396().
+_CONTEXT_1396_AVAILABLE = False
+try:
+    helios_lib.getMaterialRevision.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.getMaterialRevision.restype = ctypes.c_uint64
+    helios_lib.getMaterialRevision.errcheck = _check_error
+
+    helios_lib.getModifiedUUIDs.argtypes = [ctypes.POINTER(UContext), ctypes.POINTER(ctypes.c_uint64),
+                                            ctypes.POINTER(ctypes.c_uint)]
+    helios_lib.getModifiedUUIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getModifiedUUIDs.errcheck = _check_error
+
+    helios_lib.replacePolymeshObjectPrimitives.argtypes = [
+        ctypes.POINTER(UContext), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.replacePolymeshObjectPrimitives.restype = None
+    helios_lib.replacePolymeshObjectPrimitives.errcheck = _check_error
+
+    _CONTEXT_1396_AVAILABLE = True
+except AttributeError:
+    _CONTEXT_1396_AVAILABLE = False
+
+
+def _require_ctx_1396():
+    if not _CONTEXT_1396_AVAILABLE:
+        raise NotImplementedError(
+            "getMaterialRevision, getModifiedUUIDs and replacePolymeshObjectPrimitives are not available "
+            "in the loaded native library. They require helios-core v1.3.96 or newer; rebuild with: "
+            "build_scripts/build_helios --clean"
+        )
+
+
+def getMaterialRevisionWrapper(context) -> int:
+    _require_ctx_1396()
+    return int(helios_lib.getMaterialRevision(context))
+
+
+def getModifiedUUIDsWrapper(context, mark: int):
+    """Return (uuids, new_mark)."""
+    _require_ctx_1396()
+    mark_c = ctypes.c_uint64(mark)
+    count = ctypes.c_uint()
+    ptr = helios_lib.getModifiedUUIDs(context, ctypes.byref(mark_c), ctypes.byref(count))
+    uuids = [] if count.value == 0 or not ptr else [int(ptr[i]) for i in range(count.value)]
+    return uuids, int(mark_c.value)
+
+
+def replacePolymeshObjectPrimitivesWrapper(context, objID: int, old_uuids: List[int], new_uuids: List[int],
+                                           data_source_uuids: List[int]) -> None:
+    _require_ctx_1396()
+    if len(new_uuids) != len(data_source_uuids):
+        raise ValueError(f"new_UUIDs ({len(new_uuids)}) and data_source_UUIDs ({len(data_source_uuids)}) "
+                         "must have the same length")
+    old_arr = (ctypes.c_uint * max(len(old_uuids), 1))(*old_uuids)
+    new_arr = (ctypes.c_uint * max(len(new_uuids), 1))(*new_uuids)
+    src_arr = (ctypes.c_uint * max(len(data_source_uuids), 1))(*data_source_uuids)
+    helios_lib.replacePolymeshObjectPrimitives(context, ctypes.c_uint(objID), old_arr, len(old_uuids),
+                                               new_arr, len(new_uuids), src_arr)

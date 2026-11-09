@@ -147,8 +147,8 @@ class SolarPosition:
         
         Usage with explicit coordinates:
         >>> with Context() as context:
-        ...     # Davis, California coordinates
-        ...     with SolarPosition(context, utc_offset=-8, latitude=38.5, longitude=-121.7) as solar:
+        ...     # Davis, California: UTC-8 and 121.7 W, both positive in Helios's west-positive convention
+        ...     with SolarPosition(context, utc_offset=8, latitude=38.5, longitude=121.7) as solar:
         ...         azimuth = solar.getSunAzimuth()
         ...         flux = solar.getSolarFlux(101325, 288.15, 0.6, 0.1)
         ...         print(f"Solar flux: {flux:.1f} W/m²")
@@ -166,8 +166,17 @@ class SolarPosition:
                        span, so the range is asymmetric. If provided with
                        latitude/longitude, creates plugin with explicit coordinates.
             latitude: Latitude in degrees (-90 to +90). Required if utc_offset provided.
-            longitude: Longitude in degrees (-180 to +180). Required if utc_offset provided.
-            
+            longitude: Longitude in degrees (-180 to +180), positive in the Western
+                       hemisphere. Required if utc_offset provided.
+
+        Warning:
+            Helios counts longitude and the UTC offset positive to the WEST, opposite to most
+            maps, GPS receivers and satellite metadata. Davis, CA (121.76 W, UTC-8) is
+            ``longitude=121.76, utc_offset=8``; Beijing (116.40 E, UTC+8) is
+            ``longitude=-116.40, utc_offset=-8``. Since helios-core v1.3.96 the native model
+            warns when the offset and longitude are more than 3 hours of solar time apart,
+            which usually means only one of them was flipped.
+
         Raises:
             SolarPositionError: If plugin not available in current build
             ValueError: If coordinate parameters are invalid or incomplete
@@ -487,7 +496,20 @@ class SolarPosition:
     def getSolarFlux(self, pressure_Pa: Optional[float] = None, temperature_K: Optional[float] = None,
                      humidity_rel: Optional[float] = None, turbidity: Optional[float] = None) -> float:
         """
-        Calculate total solar flux (supports legacy and modern APIs).
+        Calculate the global (direct + diffuse) solar flux, expressed on a surface perpendicular to the sun.
+
+        The value is the global flux on a horizontal surface divided by cos(zenith); multiply it
+        by cos(zenith) for the global flux on a horizontal surface. Since helios-core v1.3.96 this
+        includes the diffuse flux (previously it was the direct beam only), as do
+        :meth:`getSolarFluxPAR` and :meth:`getSolarFluxNIR`.
+
+        To drive a radiation model use :meth:`getDirectSolarFlux` for the sun source and
+        :meth:`getDiffuseSolarFlux` for the diffuse sky. Giving the radiation model ``R*(1-f)``
+        and ``R*f`` (R from this method, f from :meth:`getDiffuseFraction`) overestimates the
+        diffuse flux by 1/cos(zenith); the diffuse flux on a horizontal surface is
+        ``R*f*cos(zenith)``.
+
+        Supports legacy and modern APIs.
 
         This method supports both legacy and modern APIs:
         - **Legacy API**: Pass all 4 atmospheric parameters explicitly
@@ -500,7 +522,7 @@ class SolarPosition:
             turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
-            Total solar flux in W/m²
+            Global solar flux referenced to a surface normal to the sun direction in W/m²
 
         Raises:
             ValueError: If some parameters provided but not all, or if values are invalid
@@ -568,7 +590,9 @@ class SolarPosition:
             turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
-            PAR solar flux in W/m² (wavelength range ~400-700 nm)
+            Global PAR flux (direct + diffuse) referenced to a surface normal to the sun direction
+            in W/m² (wavelength range ~400-700 nm). See :meth:`getDirectSolarFluxPAR` and
+            :meth:`getDiffuseSolarFluxPAR` for the components.
 
         Raises:
             ValueError: If some parameters provided but not all
@@ -616,7 +640,9 @@ class SolarPosition:
             turbidity: Ångström's aerosol turbidity coefficient (β), the aerosol optical depth at 1 µm [optional]
 
         Returns:
-            NIR solar flux in W/m² (wavelength range >700 nm)
+            Global NIR flux (direct + diffuse) referenced to a surface normal to the sun direction
+            in W/m² (wavelength range >700 nm). See :meth:`getDirectSolarFluxNIR` and
+            :meth:`getDiffuseSolarFluxNIR` for the components.
 
         Raises:
             ValueError: If some parameters provided but not all
@@ -653,7 +679,7 @@ class SolarPosition:
     def getDiffuseFraction(self, pressure_Pa: Optional[float] = None, temperature_K: Optional[float] = None,
                            humidity_rel: Optional[float] = None, turbidity: Optional[float] = None) -> float:
         """
-        Calculate the diffuse fraction of solar radiation.
+        Calculate the fraction of the global solar flux on a horizontal surface that is diffuse.
 
         Supports both legacy (parameter-based) and modern (state-based) APIs.
 
@@ -699,6 +725,170 @@ class SolarPosition:
                 )
         else:
             raise ValueError("Provide all atmospheric parameters or none (use setAtmosphericConditions()).")
+
+    def getDirectSolarFlux(self) -> float:
+        """
+        Get the direct-beam solar radiation flux (PAR + NIR) on a surface perpendicular to the sun direction.
+
+        This is the flux to give a collimated sun source with
+        :meth:`pyhelios.RadiationModel.setSourceFlux`, which takes a flux perpendicular to the
+        source. Multiply by cos(zenith) to get the direct flux on a horizontal surface.
+
+        With cloud calibration enabled (:meth:`enableCloudCalibration`), the measured global flux
+        is split into direct and diffuse components using the correlation of Erbs et al. (1982).
+
+        Uses the atmospheric conditions set with :meth:`setAtmosphericConditions` (defaults, with a
+        warning, if none were set).
+
+        Returns:
+            Direct solar flux normal to the sun direction in W/m²
+
+        Raises:
+            SolarPositionError: If the calculation fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> solar.setAtmosphericConditions(101325, 288.15, 0.6, 0.1)
+            >>> radiation.setSourceFlux(sun_source, "PAR", solar.getDirectSolarFluxPAR())
+            >>> radiation.setDiffuseRadiationFlux("PAR", solar.getDiffuseSolarFluxPAR())
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getDirectDiffuseFluxFromState(self._solar_pos, "getDirectSolarFlux")
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate DirectSolarFlux: {e}")
+
+    def getDirectSolarFluxPAR(self) -> float:
+        """
+        Get the PAR component of the direct-beam solar flux on a surface perpendicular to the sun direction.
+
+        See :meth:`getDirectSolarFlux`.
+
+        Uses the atmospheric conditions set with :meth:`setAtmosphericConditions` (defaults, with a
+        warning, if none were set).
+
+        Returns:
+            Direct PAR flux normal to the sun direction in W/m²
+
+        Raises:
+            SolarPositionError: If the calculation fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getDirectDiffuseFluxFromState(self._solar_pos, "getDirectSolarFluxPAR")
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate DirectSolarFluxPAR: {e}")
+
+    def getDirectSolarFluxNIR(self) -> float:
+        """
+        Get the NIR component of the direct-beam solar flux on a surface perpendicular to the sun direction.
+
+        See :meth:`getDirectSolarFlux`.
+
+        Uses the atmospheric conditions set with :meth:`setAtmosphericConditions` (defaults, with a
+        warning, if none were set).
+
+        Returns:
+            Direct NIR flux normal to the sun direction in W/m²
+
+        Raises:
+            SolarPositionError: If the calculation fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getDirectDiffuseFluxFromState(self._solar_pos, "getDirectSolarFluxNIR")
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate DirectSolarFluxNIR: {e}")
+
+    def getDiffuseSolarFlux(self) -> float:
+        """
+        Get the diffuse solar radiation flux (PAR + NIR) on a horizontal surface.
+
+        This is the flux to give :meth:`pyhelios.RadiationModel.setDiffuseRadiationFlux`, which
+        takes the diffuse flux on a horizontal surface.
+
+        With cloud calibration enabled (:meth:`enableCloudCalibration`), the measured global flux
+        is split into direct and diffuse components using the correlation of Erbs et al. (1982).
+
+        Uses the atmospheric conditions set with :meth:`setAtmosphericConditions` (defaults, with a
+        warning, if none were set).
+
+        Returns:
+            Diffuse solar flux on a horizontal surface in W/m²
+
+        Raises:
+            SolarPositionError: If the calculation fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getDirectDiffuseFluxFromState(self._solar_pos, "getDiffuseSolarFlux")
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate DiffuseSolarFlux: {e}")
+
+    def getDiffuseSolarFluxPAR(self) -> float:
+        """
+        Get the PAR component of the diffuse solar flux on a horizontal surface.
+
+        See :meth:`getDiffuseSolarFlux`.
+
+        Uses the atmospheric conditions set with :meth:`setAtmosphericConditions` (defaults, with a
+        warning, if none were set).
+
+        Returns:
+            Diffuse PAR flux on a horizontal surface in W/m²
+
+        Raises:
+            SolarPositionError: If the calculation fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getDirectDiffuseFluxFromState(self._solar_pos, "getDiffuseSolarFluxPAR")
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate DiffuseSolarFluxPAR: {e}")
+
+    def getDiffuseSolarFluxNIR(self) -> float:
+        """
+        Get the NIR component of the diffuse solar flux on a horizontal surface.
+
+        See :meth:`getDiffuseSolarFlux`.
+
+        Uses the atmospheric conditions set with :meth:`setAtmosphericConditions` (defaults, with a
+        warning, if none were set).
+
+        Returns:
+            Diffuse NIR flux on a horizontal surface in W/m²
+
+        Raises:
+            SolarPositionError: If the calculation fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_alive()
+        try:
+            with _solarposition_working_directory((_OZONE_CLIMATOLOGY,)):
+                return solar_wrapper.getDirectDiffuseFluxFromState(self._solar_pos, "getDiffuseSolarFluxNIR")
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise SolarPositionError(f"Failed to calculate DiffuseSolarFluxNIR: {e}")
 
     def getAmbientLongwaveFlux(self, temperature_K: Optional[float] = None,
                                humidity_rel: Optional[float] = None) -> float:
@@ -1511,6 +1701,6 @@ def create_solar_position(context: Context, utc_offset: Optional[float] = None,
         SolarPosition instance
         
     Example:
-        >>> solar = create_solar_position(context, utc_offset=-8, latitude=38.5, longitude=-121.7)
+        >>> solar = create_solar_position(context, utc_offset=8, latitude=38.5, longitude=121.7)  # Davis, CA
     """
     return SolarPosition(context, utc_offset, latitude, longitude)

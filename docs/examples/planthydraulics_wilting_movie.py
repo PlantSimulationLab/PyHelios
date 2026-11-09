@@ -361,16 +361,17 @@ def main():
                 # ---- radiation ----
                 sun_up = solar.getSunElevation() > math.radians(1.0)
                 if sun_up:
-                    diffuse_fraction = solar.getDiffuseFraction(PRESSURE, air_temperature, air_humidity, TURBIDITY)
-                    par = solar.getSolarFluxPAR(PRESSURE, air_temperature, air_humidity, TURBIDITY)
-                    nir = solar.getSolarFluxNIR(PRESSURE, air_temperature, air_humidity, TURBIDITY)
+                    solar.setAtmosphericConditions(PRESSURE, air_temperature, air_humidity, TURBIDITY)
+                    # Direct flux is perpendicular to the sun; diffuse flux is on a horizontal surface.
+                    par_dir, nir_dir = solar.getDirectSolarFluxPAR(), solar.getDirectSolarFluxNIR()
+                    par_diff, nir_diff = solar.getDiffuseSolarFluxPAR(), solar.getDiffuseSolarFluxNIR()
                     radiation.setSourcePosition(sun, solar.getSunDirectionVector())
                 else:
-                    diffuse_fraction, par, nir = 1.0, 0.0, 0.0
-                radiation.setSourceFlux(sun, "PAR", par * (1.0 - diffuse_fraction))
-                radiation.setSourceFlux(sun, "NIR", nir * (1.0 - diffuse_fraction))
-                radiation.setDiffuseRadiationFlux("PAR", par * diffuse_fraction)
-                radiation.setDiffuseRadiationFlux("NIR", nir * diffuse_fraction)
+                    par_dir = nir_dir = par_diff = nir_diff = 0.0
+                radiation.setSourceFlux(sun, "PAR", par_dir)
+                radiation.setSourceFlux(sun, "NIR", nir_dir)
+                radiation.setDiffuseRadiationFlux("PAR", par_diff)
+                radiation.setDiffuseRadiationFlux("NIR", nir_diff)
                 radiation.setDiffuseRadiationFlux("LW", solar.getAmbientLongwaveFlux(air_temperature, air_humidity))
                 radiation.updateGeometry()
                 radiation.runBand(["PAR", "NIR", "LW"])

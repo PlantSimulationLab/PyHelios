@@ -264,6 +264,7 @@ Retained connectivity is what makes a loaded mesh a surface rather than a triang
 | [getPolymeshObjectFaceIndexForPrimitive(objID, uuid)](pyhelios.Context.Context.getPolymeshObjectFaceIndexForPrimitive) | Face index of a member primitive |
 | [getPolymeshObjectPrimitiveUUIDForFace(objID, face_index)](pyhelios.Context.Context.getPolymeshObjectPrimitiveUUIDForFace) | UUID of the primitive making up a face |
 | [setPolymeshObjectTopology(objID, vertices, faces, face_UUIDs, ...)](pyhelios.Context.Context.setPolymeshObjectTopology) | Attach a face set to a mesh built programmatically |
+| [replacePolymeshObjectPrimitives(objID, old_UUIDs, new_UUIDs, data_source_UUIDs)](pyhelios.Context.Context.replacePolymeshObjectPrimitives) | Re-mesh part of an object while keeping its ID, object data and transform (helios-core 1.3.96) |
 
 A mesh assembled with [addPolymeshObject()](pyhelios.Context.Context.addPolymeshObject) has no topology until one is attached: its face count is zero, it cannot report a volume, and it is written out as independent per-triangle vertices.
 
@@ -371,7 +372,7 @@ context.setPolymeshObjectVertices(objID, [vec3(v.x, v.y, v.z * 1.5) for v in ver
 
 The [pyhelios.annotation](pyhelios.annotation) module writes machine-learning labels for an image from a *pixel-to-primitive map*: a record of which Context primitive is visible in each pixel. It does not depend on how the image was produced, so any renderer that can produce such a map writes the same annotations for the same labeled Context. The radiation model's camera annotations and the Visualizer's annotation output use the same routines.
 
-The map holds `width * height` unsigned integers, row-major with row 0 at the **top** of the image. Each element is the UUID of the visible primitive **plus one**, and 0 means no primitive is visible. A flat list, a nested list or a NumPy array is accepted; [Visualizer.getPixelUUIDs()](pyhelios.Visualizer.Visualizer.getPixelUUIDs) returns one in exactly this form.
+The map holds `width * height` unsigned integers, row-major with row 0 at the **top** of the image. Each element is the UUID of the visible primitive **plus one**, and 0 means no primitive is visible. A flat list, a nested list or a NumPy array is accepted; [Visualizer.getPixelUUIDs()](pyhelios.Visualizer.Visualizer.getPixelUUIDs) returns a flat NumPy array in exactly this form.
 
 Objects are identified by primitive data (or, with `use_object_data=True`, object data of each primitive's parent object) of type `uint` or `int`: every primitive carrying the same value of a label belongs to one object, and primitives without the label are not annotated.
 

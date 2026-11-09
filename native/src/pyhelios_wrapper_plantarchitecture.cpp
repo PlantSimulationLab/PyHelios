@@ -15,6 +15,7 @@
 #ifdef PLANTARCHITECTURE_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_plantarchitecture.h"
 #include "PlantArchitecture.h"
+#include "CollisionGeometry.h"
 #include "../../helios-core/core/lib/json/json.hpp"
 
 // Helper functions for JSON serialization (outside extern "C" - internal C++ helpers)
@@ -229,6 +230,7 @@ nlohmann::json leafPrototypeToJSON(const LeafPrototype& p) {
     j["longitudinal_curvature"] = randomParameterFloatToJSON(p.longitudinal_curvature);
     j["lateral_curvature"] = randomParameterFloatToJSON(p.lateral_curvature);
     j["petiole_roll"] = randomParameterFloatToJSON(p.petiole_roll);
+    j["roll_fraction"] = randomParameterFloatToJSON(p.roll_fraction);
     j["wave_period"] = randomParameterFloatToJSON(p.wave_period);
     j["wave_amplitude"] = randomParameterFloatToJSON(p.wave_amplitude);
     j["longitudinal_curvature_exponent"] = randomParameterFloatToJSON(p.longitudinal_curvature_exponent);
@@ -255,6 +257,11 @@ nlohmann::json leafPrototypeToJSON(const LeafPrototype& p) {
         tex[std::to_string(kv.first)] = kv.second;
     }
     j["leaf_texture_file"] = tex;
+    nlohmann::json class_maps = nlohmann::json::object();
+    for (const auto& kv : p.leaf_class_map_file) {
+        class_maps[std::to_string(kv.first)] = kv.second;
+    }
+    j["leaf_class_map_file"] = class_maps;
     nlohmann::json tex_series = nlohmann::json::object();
     for (const auto& kv : p.leaf_texture_series) {
         tex_series[std::to_string(kv.first)] = kv.second;
@@ -271,6 +278,7 @@ void jsonToLeafPrototype(LeafPrototype& p, const nlohmann::json& j, std::minstd_
     if (j.contains("longitudinal_curvature")) p.longitudinal_curvature = jsonToRandomParameterFloat(j["longitudinal_curvature"], generator);
     if (j.contains("lateral_curvature")) p.lateral_curvature = jsonToRandomParameterFloat(j["lateral_curvature"], generator);
     if (j.contains("petiole_roll")) p.petiole_roll = jsonToRandomParameterFloat(j["petiole_roll"], generator);
+    if (j.contains("roll_fraction")) p.roll_fraction = jsonToRandomParameterFloat(j["roll_fraction"], generator);
     if (j.contains("wave_period")) p.wave_period = jsonToRandomParameterFloat(j["wave_period"], generator);
     if (j.contains("wave_amplitude")) p.wave_amplitude = jsonToRandomParameterFloat(j["wave_amplitude"], generator);
     if (j.contains("longitudinal_curvature_exponent")) p.longitudinal_curvature_exponent = jsonToRandomParameterFloat(j["longitudinal_curvature_exponent"], generator);
@@ -299,6 +307,12 @@ void jsonToLeafPrototype(LeafPrototype& p, const nlohmann::json& j, std::minstd_
             p.leaf_texture_file[std::stoi(it.key())] = it.value().get<std::string>();
         }
     }
+    if (j.contains("leaf_class_map_file")) {
+        p.leaf_class_map_file.clear();
+        for (auto it = j["leaf_class_map_file"].begin(); it != j["leaf_class_map_file"].end(); ++it) {
+            p.leaf_class_map_file[std::stoi(it.key())] = it.value().get<std::string>();
+        }
+    }
     if (j.contains("leaf_texture_series")) {
         p.leaf_texture_series.clear();
         for (auto it = j["leaf_texture_series"].begin(); it != j["leaf_texture_series"].end(); ++it) {
@@ -321,6 +335,7 @@ nlohmann::json phytomerParametersToJSON(const PhytomerParameters& pp) {
     in["max_floral_buds_per_petiole"] = randomParameterIntToJSON(pp.internode.max_floral_buds_per_petiole);
     in["color"] = rgbToJSON(pp.internode.color);
     in["image_texture"] = pp.internode.image_texture;
+    in["image_class_map_file"] = pp.internode.image_class_map_file;
     in["length_segments"] = pp.internode.length_segments;
     in["radial_subdivisions"] = pp.internode.radial_subdivisions;
     j["internode"] = in;
@@ -372,6 +387,7 @@ nlohmann::json phytomerParametersToJSON(const PhytomerParameters& pp) {
     inf["fruit_prototype_scale"] = randomParameterFloatToJSON(pp.inflorescence.fruit_prototype_scale);
     inf["fruit_gravity_factor_fraction"] = randomParameterFloatToJSON(pp.inflorescence.fruit_gravity_factor_fraction);
     inf["unique_prototypes"] = pp.inflorescence.unique_prototypes;
+    inf["fruit_class_map_file"] = pp.inflorescence.fruit_class_map_file;
     inf["inflorescence_maturity_period"] = randomParameterFloatToJSON(pp.inflorescence.inflorescence_maturity_period);
     inf["flower_prototype_function"] = prototypeFunctionName(flowerPrototypeRegistry(), pp.inflorescence.flower_prototype_function);
     inf["fruit_prototype_function"] = prototypeFunctionName(fruitPrototypeRegistry(), pp.inflorescence.fruit_prototype_function);
@@ -390,6 +406,7 @@ void jsonToPhytomerParameters(PhytomerParameters& pp, const nlohmann::json& j, s
         if (in.contains("max_floral_buds_per_petiole")) pp.internode.max_floral_buds_per_petiole = jsonToRandomParameterInt(in["max_floral_buds_per_petiole"], generator);
         if (in.contains("color")) pp.internode.color = jsonToRGB(in["color"], pp.internode.color);
         if (in.contains("image_texture")) pp.internode.image_texture = in["image_texture"].get<std::string>();
+        if (in.contains("image_class_map_file")) pp.internode.image_class_map_file = in["image_class_map_file"].get<std::string>();
         if (in.contains("length_segments")) pp.internode.length_segments = in["length_segments"];
         if (in.contains("radial_subdivisions")) pp.internode.radial_subdivisions = in["radial_subdivisions"];
     }
@@ -441,6 +458,7 @@ void jsonToPhytomerParameters(PhytomerParameters& pp, const nlohmann::json& j, s
         if (inf.contains("fruit_prototype_scale")) pp.inflorescence.fruit_prototype_scale = jsonToRandomParameterFloat(inf["fruit_prototype_scale"], generator);
         if (inf.contains("fruit_gravity_factor_fraction")) pp.inflorescence.fruit_gravity_factor_fraction = jsonToRandomParameterFloat(inf["fruit_gravity_factor_fraction"], generator);
         if (inf.contains("unique_prototypes")) pp.inflorescence.unique_prototypes = inf["unique_prototypes"];
+        if (inf.contains("fruit_class_map_file")) pp.inflorescence.fruit_class_map_file = inf["fruit_class_map_file"].get<std::string>();
         if (inf.contains("inflorescence_maturity_period")) pp.inflorescence.inflorescence_maturity_period = jsonToRandomParameterFloat(inf["inflorescence_maturity_period"], generator);
         resolvePrototypeFunction(flowerPrototypeRegistry(), inf, "flower_prototype_function", pp.inflorescence.flower_prototype_function, "flower");
         resolvePrototypeFunction(fruitPrototypeRegistry(), inf, "fruit_prototype_function", pp.inflorescence.fruit_prototype_function, "fruit");
@@ -3722,14 +3740,14 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API int setPetioleLeaflets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count, float leaflet_offset, float leaflet_scale, float prototype_scale) {
+    PYHELIOS_API int setPetioleLeaflets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count, float leaflet_offset, float leaflet_scale, float prototype_scale, float intercalary_leaflet_scale) {
         try {
             clearError();
             if (!plantarch) {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
                 return -1;
             }
-            plantarch->setPetioleLeaflets(plantID, shootID, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale);
+            plantarch->setPetioleLeaflets(plantID, shootID, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale, intercalary_leaflet_scale);
             return 0;
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeaflets): ") + e.what());
@@ -4779,6 +4797,7 @@ extern "C" {
             freeze(pp.leaf.prototype.longitudinal_curvature);
             freeze(pp.leaf.prototype.lateral_curvature);
             freeze(pp.leaf.prototype.petiole_roll);
+            freeze(pp.leaf.prototype.roll_fraction);
             freeze(pp.leaf.prototype.wave_period);
             freeze(pp.leaf.prototype.wave_amplitude);
             freeze(pp.leaf.prototype.flexibility);
@@ -5015,6 +5034,168 @@ extern "C" {
     PYHELIOS_API float* getPlantLeafAzimuthAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count) {
         return returnPlantAngleDistribution(plantarch, plantIDs, plant_count, Nbins, normalize, count, "getPlantLeafAzimuthAngleDistribution",
                                             &PlantArchitecture::getPlantLeafAzimuthAngleDistribution, &PlantArchitecture::getPlantLeafAzimuthAngleDistribution);
+    }
+
+    // ---- helios-core 1.3.96: leaf roll, leaf shape, fruit-branch collision, nitrogen pools ---- //
+
+    PYHELIOS_API int setPetioleLeafRoll(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float roll_fraction) {
+        return guardedPhytomerCall(plantarch, "setPetioleLeafRoll", -1, [&]() {
+            plantarch->setPetioleLeafRoll(plantID, shootID, node_index, petiole_index, roll_fraction);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPlantLeafRoll(PlantArchitecture* plantarch, unsigned int plantID, float roll_fraction) {
+        return guardedPhytomerCall(plantarch, "setPlantLeafRoll", -1, [&]() {
+            plantarch->setPlantLeafRoll(plantID, roll_fraction);
+            return 0;
+        });
+    }
+
+    // LeafShapeValues flat layout: floats[12] = {aspect_ratio, midrib_fold_fraction, longitudinal_curvature,
+    // longitudinal_curvature_exponent, lateral_curvature, petiole_roll, wave_period, wave_amplitude, roll_fraction,
+    // lattice_offset.x, lattice_offset.y, lattice_offset.z}; subdivisions[2] = {subdivisions_x, subdivisions_y}.
+    PYHELIOS_API int getLeafShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index, float* values,
+                                  unsigned int* subdivisions) {
+        return guardedPhytomerCall(plantarch, "getLeafShape", -1, [&]() {
+            if (!values || !subdivisions) {
+                throw std::invalid_argument("Output pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->leaf_objIDs.size(), petiole_index, node_index);
+            checkLeafIndex(phytomer->leaf_objIDs.at(petiole_index).size(), leaf_index, petiole_index);
+            const LeafShapeValues shape = phytomer->getLeafShape(petiole_index, leaf_index);
+            values[0] = shape.aspect_ratio;
+            values[1] = shape.midrib_fold_fraction;
+            values[2] = shape.longitudinal_curvature;
+            values[3] = shape.longitudinal_curvature_exponent;
+            values[4] = shape.lateral_curvature;
+            values[5] = shape.petiole_roll;
+            values[6] = shape.wave_period;
+            values[7] = shape.wave_amplitude;
+            values[8] = shape.roll_fraction;
+            values[9] = shape.lattice_offset.x;
+            values[10] = shape.lattice_offset.y;
+            values[11] = shape.lattice_offset.z;
+            subdivisions[0] = shape.subdivisions_x;
+            subdivisions[1] = shape.subdivisions_y;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int reshapeLeaf(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index, const float* values,
+                                 const unsigned int* subdivisions) {
+        return guardedPhytomerCall(plantarch, "reshapeLeaf", -1, [&]() {
+            if (!values || !subdivisions) {
+                throw std::invalid_argument("Input pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->leaf_objIDs.size(), petiole_index, node_index);
+            checkLeafIndex(phytomer->leaf_objIDs.at(petiole_index).size(), leaf_index, petiole_index);
+            LeafShapeValues shape;
+            shape.aspect_ratio = values[0];
+            shape.midrib_fold_fraction = values[1];
+            shape.longitudinal_curvature = values[2];
+            shape.longitudinal_curvature_exponent = values[3];
+            shape.lateral_curvature = values[4];
+            shape.petiole_roll = values[5];
+            shape.wave_period = values[6];
+            shape.wave_amplitude = values[7];
+            shape.roll_fraction = values[8];
+            shape.lattice_offset = helios::make_vec3(values[9], values[10], values[11]);
+            shape.subdivisions_x = subdivisions[0];
+            shape.subdivisions_y = subdivisions[1];
+            phytomer->reshapeLeaf(petiole_index, leaf_index, shape);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int enableFruitBranchCollisionAvoidance(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "enableFruitBranchCollisionAvoidance", -1, [&]() {
+            plantarch->enableFruitBranchCollisionAvoidance();
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int disableFruitBranchCollisionAvoidance(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "disableFruitBranchCollisionAvoidance", -1, [&]() {
+            plantarch->disableFruitBranchCollisionAvoidance();
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setFruitBranchCollisionParameters(PlantArchitecture* plantarch, float max_swing_deg, float candidate_refresh_days, float clearance, float settle_rate_deg_per_day) {
+        return guardedPhytomerCall(plantarch, "setFruitBranchCollisionParameters", -1, [&]() {
+            plantarch->setFruitBranchCollisionParameters(max_swing_deg, candidate_refresh_days, clearance, settle_rate_deg_per_day);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int enablePlantLeafElevationAngleDistributionTrackingMultiple(PlantArchitecture* plantarch, const unsigned int* plantIDs, unsigned int count, float Beta_mu_inclination,
+                                                                                float Beta_nu_inclination, float lambda_degrees) {
+        return guardedPhytomerCall(plantarch, "enablePlantLeafElevationAngleDistributionTracking", -1, [&]() {
+            if (count > 0 && !plantIDs) {
+                throw std::invalid_argument("Plant ID array is null");
+            }
+            std::vector<uint> ids(plantIDs, plantIDs + count);
+            plantarch->enablePlantLeafElevationAngleDistributionTracking(ids, Beta_mu_inclination, Beta_nu_inclination, lambda_degrees);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API float getPlantFruitNitrogen(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "getPlantFruitNitrogen", -1.f, [&]() { return plantarch->getPlantFruitNitrogen(plantID); });
+    }
+
+    PYHELIOS_API float getPlantRootNitrogen(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "getPlantRootNitrogen", -1.f, [&]() { return plantarch->getPlantRootNitrogen(plantID); });
+    }
+
+    // ---- helios::collision closest-point queries (helios-core 1.3.96) ---- //
+
+    PYHELIOS_API float collisionClosestPointsOnSegments(const float* p1, const float* q1, const float* p2, const float* q2, float* closest1, float* closest2) {
+        clearError();
+        try {
+            if (!p1 || !q1 || !p2 || !q2 || !closest1 || !closest2) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (collision::closestPointsOnSegments): Null pointer argument"); return 0.f; }
+            helios::vec3 c1, c2;
+            float d2 = helios::collision::closestPointsOnSegments(helios::make_vec3(p1[0], p1[1], p1[2]), helios::make_vec3(q1[0], q1[1], q1[2]), helios::make_vec3(p2[0], p2[1], p2[2]), helios::make_vec3(q2[0], q2[1], q2[2]), c1, c2);
+            closest1[0] = c1.x; closest1[1] = c1.y; closest1[2] = c1.z;
+            closest2[0] = c2.x; closest2[1] = c2.y; closest2[2] = c2.z;
+            return d2;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (collision::closestPointsOnSegments): ") + e.what()); return 0.f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (collision::closestPointsOnSegments): Unknown error."); return 0.f;
+        }
+    }
+
+    PYHELIOS_API void collisionClosestPointOnTriangle(const float* p, const float* a, const float* b, const float* c, float* out) {
+        clearError();
+        try {
+            if (!p || !a || !b || !c || !out) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (collision::closestPointOnTriangle): Null pointer argument"); return; }
+            helios::vec3 r = helios::collision::closestPointOnTriangle(helios::make_vec3(p[0], p[1], p[2]), helios::make_vec3(a[0], a[1], a[2]), helios::make_vec3(b[0], b[1], b[2]), helios::make_vec3(c[0], c[1], c[2]));
+            out[0] = r.x; out[1] = r.y; out[2] = r.z;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (collision::closestPointOnTriangle): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (collision::closestPointOnTriangle): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API float collisionClosestPointsSegmentTriangle(const float* p, const float* q, const float* a, const float* b, const float* c, float* on_segment, float* on_triangle) {
+        clearError();
+        try {
+            if (!p || !q || !a || !b || !c || !on_segment || !on_triangle) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (collision::closestPointsSegmentTriangle): Null pointer argument"); return 0.f; }
+            helios::vec3 s_pt, t_pt;
+            float d2 = helios::collision::closestPointsSegmentTriangle(helios::make_vec3(p[0], p[1], p[2]), helios::make_vec3(q[0], q[1], q[2]), helios::make_vec3(a[0], a[1], a[2]), helios::make_vec3(b[0], b[1], b[2]), helios::make_vec3(c[0], c[1], c[2]), s_pt, t_pt);
+            on_segment[0] = s_pt.x; on_segment[1] = s_pt.y; on_segment[2] = s_pt.z;
+            on_triangle[0] = t_pt.x; on_triangle[1] = t_pt.y; on_triangle[2] = t_pt.z;
+            return d2;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (collision::closestPointsSegmentTriangle): ") + e.what()); return 0.f;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (collision::closestPointsSegmentTriangle): Unknown error."); return 0.f;
+        }
     }
 
 } // extern "C"

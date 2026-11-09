@@ -1070,6 +1070,127 @@ bool pragueSkyModelNeedsUpdate(HeliosSolarPosition* solar_pos, float ground_albe
     }
 }
 
+// Direct and diffuse solar flux for driving a radiation model (helios-core v1.3.96+)
+float getDirectSolarFluxFromState(HeliosSolarPosition* solar_pos) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return 0.0f;
+        }
+        return reinterpret_cast<SolarPosition*>(solar_pos)->getDirectSolarFlux();
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        return 0.0f;
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getDirectSolarFlux): ") + e.what());
+        return 0.0f;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getDirectSolarFlux): Unknown error");
+        return 0.0f;
+    }
+}
+
+float getDirectSolarFluxPARFromState(HeliosSolarPosition* solar_pos) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return 0.0f;
+        }
+        return reinterpret_cast<SolarPosition*>(solar_pos)->getDirectSolarFluxPAR();
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        return 0.0f;
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getDirectSolarFluxPAR): ") + e.what());
+        return 0.0f;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getDirectSolarFluxPAR): Unknown error");
+        return 0.0f;
+    }
+}
+
+float getDirectSolarFluxNIRFromState(HeliosSolarPosition* solar_pos) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return 0.0f;
+        }
+        return reinterpret_cast<SolarPosition*>(solar_pos)->getDirectSolarFluxNIR();
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        return 0.0f;
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getDirectSolarFluxNIR): ") + e.what());
+        return 0.0f;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getDirectSolarFluxNIR): Unknown error");
+        return 0.0f;
+    }
+}
+
+float getDiffuseSolarFluxFromState(HeliosSolarPosition* solar_pos) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return 0.0f;
+        }
+        return reinterpret_cast<SolarPosition*>(solar_pos)->getDiffuseSolarFlux();
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        return 0.0f;
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getDiffuseSolarFlux): ") + e.what());
+        return 0.0f;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getDiffuseSolarFlux): Unknown error");
+        return 0.0f;
+    }
+}
+
+float getDiffuseSolarFluxPARFromState(HeliosSolarPosition* solar_pos) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return 0.0f;
+        }
+        return reinterpret_cast<SolarPosition*>(solar_pos)->getDiffuseSolarFluxPAR();
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        return 0.0f;
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getDiffuseSolarFluxPAR): ") + e.what());
+        return 0.0f;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getDiffuseSolarFluxPAR): Unknown error");
+        return 0.0f;
+    }
+}
+
+float getDiffuseSolarFluxNIRFromState(HeliosSolarPosition* solar_pos) {
+    try {
+        clearError();
+        if (!solar_pos) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "SolarPosition pointer is null");
+            return 0.0f;
+        }
+        return reinterpret_cast<SolarPosition*>(solar_pos)->getDiffuseSolarFluxNIR();
+    } catch (const std::runtime_error& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        return 0.0f;
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (getDiffuseSolarFluxNIR): ") + e.what());
+        return 0.0f;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (getDiffuseSolarFluxNIR): Unknown error");
+        return 0.0f;
+    }
+}
+
 // Note: Additional utility functions can be added here as needed
 
 } // extern "C"

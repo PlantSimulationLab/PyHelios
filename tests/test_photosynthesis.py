@@ -630,6 +630,7 @@ class TestC4ConstantsAndImports:
             "SetariaViridis_vC2021",
             "GenericC4_vC2000",
             "Maize_Massad2007",
+            "Sorghum_GEMINI2026",
         ]
 
     def test_c4_methods_present_on_class(self):
@@ -652,9 +653,9 @@ class TestC4ConstantsAndImports:
 class TestC4PhotosynthesisNative:
     """End-to-end checks for the C4 + Farquhar gm bindings (require native build)."""
 
-    C4_COEFF_LEN = 43
+    C4_COEFF_LEN = 42
 
-    def test_get_c4_library_returns_43_floats(self):
+    def test_get_c4_library_returns_42_floats(self):
         context = Context()
         with PhotosynthesisModel(context) as photo:
             coeffs = photo.getC4CoefficientsFromLibrary("SetariaViridis_vC2021")

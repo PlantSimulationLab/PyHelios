@@ -361,6 +361,43 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void visualizerSetCameraUpDirection(Visualizer* visualizer, const float* up) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            if (!up) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (setCameraUpDirection): Up direction array is null"); return; }
+            visualizer->setCameraUpDirection(helios::make_vec3(up[0], up[1], up[2]));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setCameraUpDirection): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setCameraUpDirection): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerClearCameraUpDirection(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->clearCameraUpDirection();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (clearCameraUpDirection): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (clearCameraUpDirection): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerSetCameraPrincipalPoint(Visualizer* visualizer, float column, float row) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->setCameraPrincipalPoint(column, row);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (setCameraPrincipalPoint): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (setCameraPrincipalPoint): Unknown error");
+        }
+    }
+
     PYHELIOS_API void getCameraPosition(Visualizer* visualizer, float* camera_position, float* look_at_point) {
         try {
             clearError();

@@ -6,7 +6,7 @@ the native Helios RadiationModel plugin via the C++ wrapper layer.
 """
 
 import ctypes
-from typing import List
+from typing import List, Optional
 
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
@@ -2267,6 +2267,8 @@ _CAMERA_STRING_FIELDS = (
     "lens_make",
     "lens_model",
     "lens_specification",
+    "color_correction",  # helios-core v1.3.96+
+    "tone_curve",        # helios-core v1.3.96+
 )
 
 
@@ -2827,3 +2829,68 @@ def writeImageSegmentationMasksBySpectralClass(radiation_model, camera_label: st
         values_array, names_array, n,
         json_filename.encode('utf-8'), image_file.encode('utf-8'),
         attrs_array, len(attrs), int(append_file))
+
+
+
+# helios-core 1.3.96: surface class maps, camera colour correction matrix, brightness temperature.
+# Registered separately so that an older library keeps the rest of the radiation API.
+_RADIATION_1396_AVAILABLE = False
+try:
+    helios_lib.applySpectralClassMaps.argtypes = [ctypes.POINTER(URadiationModel), ctypes.POINTER(ctypes.c_uint),
+                                                  ctypes.c_size_t, ctypes.c_int]
+    helios_lib.applySpectralClassMaps.restype = None
+    helios_lib.applySpectralClassMaps.errcheck = _check_error
+
+    helios_lib.getCameraColorCorrectionMatrix.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                          ctypes.POINTER(ctypes.c_float)]
+    helios_lib.getCameraColorCorrectionMatrix.restype = None
+    helios_lib.getCameraColorCorrectionMatrix.errcheck = _check_error
+
+    helios_lib.getCameraPixelBrightnessTemperature.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                               ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)]
+    helios_lib.getCameraPixelBrightnessTemperature.restype = ctypes.POINTER(ctypes.c_float)
+    helios_lib.getCameraPixelBrightnessTemperature.errcheck = _check_error
+
+    _RADIATION_1396_AVAILABLE = True
+except AttributeError:
+    _RADIATION_1396_AVAILABLE = False
+
+
+def _require_radiation_1396(radiation_model, name: str) -> None:
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE or not _RADIATION_1396_AVAILABLE:
+        raise NotImplementedError(
+            f"RadiationModel.{name}() is not available in the loaded native library. It requires helios-core "
+            "1.3.96 or later; rebuild PyHelios with the radiation plugin: 'build_scripts/build_helios --clean'."
+        )
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+
+def applySpectralClassMaps(radiation_model, uuids: Optional[List[int]] = None) -> None:
+    """Give primitives carrying a surface class map a spectral texture (all primitives when uuids is None)."""
+    _require_radiation_1396(radiation_model, "applySpectralClassMaps")
+    if uuids is None:
+        helios_lib.applySpectralClassMaps(radiation_model, None, 0, 1)
+        return
+    n = len(uuids)
+    arr = (ctypes.c_uint * max(n, 1))(*uuids)
+    helios_lib.applySpectralClassMaps(radiation_model, arr, n, 0)
+
+
+def getCameraColorCorrectionMatrix(radiation_model, camera_label: str) -> List[List[float]]:
+    """Return a camera's 3x3 colour correction matrix as three rows."""
+    _require_radiation_1396(radiation_model, "getCameraColorCorrectionMatrix")
+    m = (ctypes.c_float * 9)()
+    helios_lib.getCameraColorCorrectionMatrix(radiation_model, camera_label.encode('utf-8'), m)
+    return [[float(m[3 * i + j]) for j in range(3)] for i in range(3)]
+
+
+def getCameraPixelBrightnessTemperature(radiation_model, camera_label: str, band_label: str) -> List[float]:
+    """Return the brightness temperature (K) of each pixel of a camera in an emission band."""
+    _require_radiation_1396(radiation_model, "getCameraPixelBrightnessTemperature")
+    size = ctypes.c_size_t()
+    ptr = helios_lib.getCameraPixelBrightnessTemperature(radiation_model, camera_label.encode('utf-8'),
+                                                          band_label.encode('utf-8'), ctypes.byref(size))
+    if not ptr or size.value == 0:
+        return []
+    return list(ptr[:size.value])

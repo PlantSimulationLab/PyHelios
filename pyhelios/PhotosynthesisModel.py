@@ -38,6 +38,7 @@ AVAILABLE_C4_SPECIES = [
     "SetariaViridis_vC2021",
     "GenericC4_vC2000",
     "Maize_Massad2007",
+    "Sorghum_GEMINI2026",  # also accepted as "Sorghum" (helios-core 1.3.96)
 ]
 
 
@@ -252,7 +253,7 @@ class PhotosynthesisModel:
 
     def getC4CoefficientsFromLibrary(self, species: str) -> List[float]:
         """
-        Return the 43-float C4 coefficient array for ``species``.
+        Return the 42-float C4 coefficient array for ``species``.
         """
         self._check_context_alive()
         return photosynthesis_wrapper.getC4CoefficientsFromLibrary(self._native_ptr, species)
@@ -261,12 +262,14 @@ class PhotosynthesisModel:
                                uuids: Optional[List[int]] = None,
                                material_label: Optional[str] = None):
         """
-        Apply a 43-float C4 coefficient array.
+        Apply a 42-float C4 coefficient array.
 
         Pair with :meth:`getC4CoefficientsFromLibrary` to round-trip a species' defaults.
 
         Args:
-            coefficients: 43-float C4 coefficient array.
+            coefficients: 42-float C4 coefficient array (see the C4 Coefficient Layout section of
+                the photosynthesis plug-in documentation). The 43-float layout from before
+                helios-core 1.3.96, which had an ``absorptance`` slot, is rejected.
             uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
                 also None, applies to all primitives in the Context.
             material_label: Optional material label. When set, applies the coefficients
@@ -288,7 +291,7 @@ class PhotosynthesisModel:
             photosynthesis_wrapper.setC4ModelCoefficients(self._native_ptr, coefficients, uuids)
 
     def getC4ModelCoefficients(self, uuid: int) -> List[float]:
-        """Return the 43-float C4 coefficient array for a single primitive."""
+        """Return the 42-float C4 coefficient array for a single primitive."""
         self._check_context_alive()
         return photosynthesis_wrapper.getC4ModelCoefficients(self._native_ptr, uuid)
 

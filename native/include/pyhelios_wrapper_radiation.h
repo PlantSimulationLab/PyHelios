@@ -790,13 +790,13 @@ PYHELIOS_API const char* autoCalibrateCameraImage(RadiationModel* radiation_mode
  * @param lookat_z Lookat point Z coordinate
  * @param camera_properties Camera properties array of 11 floats: [resolution_x, resolution_y, focal_distance, lens_diameter,
  *        HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+),
- *        exposure_target (v1.3.85+; target median scene luminance for "auto" exposure, default 0.18)]
+ *        exposure_target (v1.3.85+; target centre-weighted mean scene luminance for "auto" exposure of an RGB camera, default 0.235 since v1.3.96)]
  * @param antialiasing_samples Number of antialiasing samples
  * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto".
  *        Superseded by camera_strings[0] when that entry is non-NULL.
  * @param camera_strings Optional array of camera string properties, indexed as
  *        [0]=exposure, [1]=white_balance, [2]=manufacturer, [3]=model, [4]=lens_make,
- *        [5]=lens_model, [6]=lens_specification. NULL, a short array, or a NULL entry
+ *        [5]=lens_model, [6]=lens_specification, [7]=color_correction (v1.3.96+), [8]=tone_curve (v1.3.96+). NULL, a short array, or a NULL entry
  *        leaves the corresponding field at its CameraProperties default.
  * @param string_count Number of valid entries in camera_strings (0 when NULL)
  */
@@ -822,7 +822,7 @@ PYHELIOS_API void addRadiationCameraVec3(RadiationModel* radiation_model, const 
  * @param azimuth Spherical coordinate azimuth
  * @param camera_properties Camera properties array of 11 floats: [resolution_x, resolution_y, focal_distance, lens_diameter,
  *        HFOV, FOV_aspect_ratio, lens_focal_length, sensor_width_mm, shutter_speed, camera_zoom (v1.3.60+),
- *        exposure_target (v1.3.85+; target median scene luminance for "auto" exposure, default 0.18)]
+ *        exposure_target (v1.3.85+; target centre-weighted mean scene luminance for "auto" exposure of an RGB camera, default 0.235 since v1.3.96)]
  * @param antialiasing_samples Number of antialiasing samples
  * @param exposure Exposure mode string ("auto", "manual", or "ISOXXX"); NULL defaults to "auto"
  */
@@ -1433,6 +1433,37 @@ PYHELIOS_API void writeImageSegmentationMasksBySpectralClass(RadiationModel* rad
                                                              size_t class_count, const char* json_filename,
                                                              const char* image_file, const char** data_attribute_labels,
                                                              size_t data_attribute_count, int append_file);
+
+//=============================================================================
+// helios-core 1.3.96: surface class maps, camera colour correction matrix, brightness temperature
+//=============================================================================
+
+/**
+ * @brief Give primitives that carry a surface class map ("spectral_class_map" primitive data) a spectral texture
+ * @param radiation_model Pointer to the RadiationModel
+ * @param uuids Primitives to consider; NULL with count 0 considers every primitive in the Context
+ * @param count Number of UUIDs
+ * @param all_primitives Nonzero to call the overload that considers every primitive in the Context (uuids ignored)
+ */
+PYHELIOS_API void applySpectralClassMaps(RadiationModel* radiation_model, const unsigned int* uuids, size_t count, int all_primitives);
+
+/**
+ * @brief Get the colour correction matrix a camera applies to its images
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label of the camera
+ * @param matrix Output: 9 floats, row-major 3x3
+ */
+PYHELIOS_API void getCameraColorCorrectionMatrix(RadiationModel* radiation_model, const char* camera_label, float* matrix);
+
+/**
+ * @brief Get the brightness temperature (K) of each pixel of a camera in an emission band
+ * @param radiation_model Pointer to the RadiationModel
+ * @param camera_label Label of the camera
+ * @param band_label Label of an emission band of the camera
+ * @param size Output: number of pixels
+ * @return Brightness temperatures in the order of getCameraPixelData(); valid until the next call on this thread
+ */
+PYHELIOS_API const float* getCameraPixelBrightnessTemperature(RadiationModel* radiation_model, const char* camera_label, const char* band_label, size_t* size);
 
 #ifdef __cplusplus
 }

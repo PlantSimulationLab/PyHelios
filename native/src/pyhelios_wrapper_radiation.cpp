@@ -41,7 +41,9 @@ enum CameraStringProperty {
     CAMERA_STR_LENS_MAKE = 4,
     CAMERA_STR_LENS_MODEL = 5,
     CAMERA_STR_LENS_SPECIFICATION = 6,
-    CAMERA_STR_COUNT = 7
+    CAMERA_STR_COLOR_CORRECTION = 7, // helios-core v1.3.96+
+    CAMERA_STR_TONE_CURVE = 8,       // helios-core v1.3.96+
+    CAMERA_STR_COUNT = 9
 };
 
 //! Apply the string camera properties, leaving defaults in place for NULL entries.
@@ -65,6 +67,8 @@ inline void applyCameraStringProperties(CameraProperties &props,
     props.lens_specification = "";
     props.exposure = exposure_legacy ? std::string(exposure_legacy) : "auto";
     props.white_balance = "auto";
+    props.color_correction = "auto";
+    props.tone_curve = "auto";
 
     if (!camera_strings) {
         return;
@@ -81,6 +85,8 @@ inline void applyCameraStringProperties(CameraProperties &props,
     if (const char* v = entry(CAMERA_STR_LENS_MAKE)) props.lens_make = v;
     if (const char* v = entry(CAMERA_STR_LENS_MODEL)) props.lens_model = v;
     if (const char* v = entry(CAMERA_STR_LENS_SPECIFICATION)) props.lens_specification = v;
+    if (const char* v = entry(CAMERA_STR_COLOR_CORRECTION)) props.color_correction = v;
+    if (const char* v = entry(CAMERA_STR_TONE_CURVE)) props.tone_curve = v;
 }
 
 } // namespace pyhelios_radiation_internal
@@ -3514,6 +3520,78 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::writeImageSegmentationMasksBySpectralClass): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::writeImageSegmentationMasksBySpectralClass): Unknown error writing spectral class segmentation masks.");
+        }
+    }
+
+    // ---- helios-core 1.3.96: surface class maps, camera colour correction matrix, brightness temperature ---- //
+
+    PYHELIOS_API void applySpectralClassMaps(RadiationModel* radiation_model, const unsigned int* uuids, size_t count, int all_primitives) {
+        try {
+            clearError();
+            if (!radiation_model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null"); return; }
+            if (all_primitives) {
+                radiation_model->applySpectralClassMaps();
+                return;
+            }
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (RadiationModel::applySpectralClassMaps): UUID array is null"); return; }
+            std::vector<uint> uuid_vec(uuids, uuids + count);
+            radiation_model->applySpectralClassMaps(uuid_vec);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::applySpectralClassMaps): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::applySpectralClassMaps): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API void getCameraColorCorrectionMatrix(RadiationModel* radiation_model, const char* camera_label, float* matrix) {
+        try {
+            clearError();
+            if (!radiation_model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null"); return; }
+            if (!camera_label || !matrix) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (RadiationModel::getCameraColorCorrectionMatrix): Required parameter is null"); return; }
+            std::vector<std::vector<float>> m = radiation_model->getCameraColorCorrectionMatrix(std::string(camera_label));
+            if (m.size() != 3 || m[0].size() != 3 || m[1].size() != 3 || m[2].size() != 3) {
+                setError(PYHELIOS_ERROR_RUNTIME, "ERROR (RadiationModel::getCameraColorCorrectionMatrix): Native call did not return a 3x3 matrix.");
+                return;
+            }
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    matrix[3 * i + j] = m[i][j];
+                }
+            }
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraColorCorrectionMatrix): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraColorCorrectionMatrix): Unknown error.");
+        }
+    }
+
+    PYHELIOS_API const float* getCameraPixelBrightnessTemperature(RadiationModel* radiation_model, const char* camera_label, const char* band_label, size_t* size) {
+        try {
+            clearError();
+            if (!size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Size pointer is null"); return nullptr; }
+            *size = 0;
+            if (!radiation_model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null"); return nullptr; }
+            if (!camera_label || !band_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Required parameter is null"); return nullptr; }
+            static thread_local std::vector<float> buffer;
+            buffer = radiation_model->getCameraPixelBrightnessTemperature(std::string(camera_label), std::string(band_label));
+            *size = buffer.size();
+            return buffer.empty() ? nullptr : buffer.data();
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+            if (size) *size = 0;
+            return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::getCameraPixelBrightnessTemperature): ") + e.what());
+            if (size) *size = 0;
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::getCameraPixelBrightnessTemperature): Unknown error.");
+            if (size) *size = 0;
+            return nullptr;
         }
     }
 

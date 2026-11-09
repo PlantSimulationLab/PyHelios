@@ -1,5 +1,91 @@
 # Changelog
 
+# [v0.1.41] 2026-11-09
+
+- Updated helios-core to v1.3.96
+
+## Context
+- Added `getMaterialRevision()`, a counter that advances whenever a material or its data changes
+- Added `getModifiedUUIDs(mark)`, which returns the primitives created or modified since the caller's previous call, independent of the shared dirty flags
+- Added `replacePolymeshObjectPrimitives()`, which swaps some of a polymesh object's primitives for new ones while keeping the object's ID, object data and transform
+
+## Global
+- Added `Global.classMapAreaFractions()`, giving the fraction of a primitive's (u,v) area in each class of a class map
+
+## Collision
+- Added the `pyhelios.collision` module with `closestPointsOnSegments()`, `closestPointOnTriangle()` and `closestPointsSegmentTriangle()`
+
+## PlantArchitecture
+- Added leaf rolling: `LeafPrototype.roll_fraction`, and `setPetioleLeafRoll()` and `setPlantLeafRoll()` to roll the leaves of an existing plant in place
+- Added `getLeafShape()` and `reshapeLeaf()`, with the `LeafShapeValues` dataclass, to read and change one leaf's blade shape in place
+- Added `enableFruitBranchCollisionAvoidance()`, `disableFruitBranchCollisionAvoidance()` and `setFruitBranchCollisionParameters()`, which keep growing fruit out of their own plant's branches
+- Added `getPlantFruitNitrogen()` and `getPlantRootNitrogen()`, returning a plant's fruit and root nitrogen pools
+- `enableLeafElevationAngleDistributionTracking()` now accepts a list of plants
+- Added the optional `intercalary_leaflet_scale` argument to `setPetioleLeaflets()`
+- Added `LeafPrototype.leaf_class_map_file`, a class map of the leaf texture that LeafOptics uses to give leaf tissues their own spectra
+- Added `InternodeParameters.image_class_map_file` and `InflorescenceParameters.fruit_class_map_file`, class maps of bark and fruit textures used by `RadiationModel.applySpectralClassMaps()`
+- **Behavior change:** `setPetioleLeafShape()` now reshapes leaves in place, keeping their object IDs and object data, instead of replacing them
+- **Behavior change:** `LeafPrototype.lateral_curvature` no longer stretches the blade, which changes the leaf area of sorghum, wheat, maize and rice
+- **Behavior change:** the per-phytomer leaflet setters now let a leaf that is still expanding keep growing instead of freezing it at full size
+- **Behavior change:** the "apple_fruitingwall" model is now a tall-spindle fruiting wall trained from a feathered nursery tree, with new build parameters and shoot types
+- **Behavior change:** "sorghum" plants now vary from plant to plant in lean, head angle and internode length
+- **Behavior change:** replacing the leaf texture of the "sorghum", "maize" or "wheat" models with an image of another size or outline now raises an error unless `leaf_class_map_file` is cleared or replaced
+- The "apple" and "apple_fruitingwall" fruit now carry a default reflectivity spectrum and specular surface layer
+
+## RadiationModel
+- Added `CameraProperties.color_correction`: RGB cameras with spectral responses now convert their images to linear sRGB with a matrix derived from those responses (set `"off"` to keep the camera's own RGB)
+- Added `CameraProperties.tone_curve`: `writeCameraImage()` now applies the typical in-camera tone curve to RGB images (set `"off"` for sRGB encoding only)
+- Added `getCameraColorCorrectionMatrix()`, returning the colour correction matrix a camera applies
+- Added `getCameraPixelBrightnessTemperature()`, converting a thermal camera's pixels in an emission band to brightness temperatures
+- Added `applySpectralClassMaps()`, which gives bark and fruit carrying a surface class map a spectral texture
+- **Behavior change:** `"auto"` exposure of RGB cameras now meters a centre-weighted mean luminance, and `CameraProperties.exposure_target` defaults to 0.235 instead of 0.18
+- **Behavior change:** a camera whose bands are all thermal emission bands keeps radiance pixel values under `"auto"` exposure
+- **Behavior change:** `applyCameraColorCorrectionMatrix()` raises an error for a camera already colour corrected automatically
+- Fixed `autoCalibrateCameraImage()` fitting unusable colour correction matrices
+- Fixed camera images being re-exposed on every `runBand()` call, and cameras not rendering bands with a scattering depth of 0
+- Fixed absorbed radiation of layered scenes (e.g. a leaf over soil) in strongly scattering bands, which was over- or underestimated depending on the scattering depth
+- Fixed camera images of strongly scattering bands being too dark, and a black strip between a finite ground and the horizon
+
+## SolarPosition
+- Added `getDirectSolarFlux()`, `getDirectSolarFluxPAR()` and `getDirectSolarFluxNIR()`, the direct-beam flux perpendicular to the sun for `RadiationModel.setSourceFlux()`
+- Added `getDiffuseSolarFlux()`, `getDiffuseSolarFluxPAR()` and `getDiffuseSolarFluxNIR()`, the diffuse flux on a horizontal surface for `RadiationModel.setDiffuseRadiationFlux()`
+- Fixed the documented direct/diffuse split (`R*(1-f)` and `R*f`), which overestimated the diffuse flux; the docs and examples now use the new functions
+- **Behavior change:** `getSolarFlux()`, `getSolarFluxPAR()` and `getSolarFluxNIR()` now include the diffuse flux, as documented, so they are larger than before
+- Fixed the PAR/NIR split under cloud calibration underestimating PAR at low sun
+- Fixed the `SolarPosition` docstring examples for Davis, CA, which used east-positive coordinates
+
+## Visualizer
+- `setCameraFieldOfView()` is now documented as setting the vertical field of view
+- Added `setCameraUpDirection()`, `clearCameraUpDirection()` and `setCameraPrincipalPoint()`, so the Visualizer can reproduce a real pinhole camera
+- **Behavior change:** `getPixelUUIDs()` and `getDepthImage()` now return flat NumPy arrays instead of lists, which is several times faster for a full-size image
+- Fixed a camera set to the default position being moved to a view fitted to the scene
+
+## PlantHydraulics
+- Added `getPrimitivesByPlantIDs()`, which finds the primitives of many plants in one pass
+
+## SoilTransport
+- Added the `SoilTransportModel` plugin, which solves variably saturated soil water flow (the Richards equation) in 1D, quasi-3D or full 3D, with optional GPU acceleration of the 3D solver
+- Added pressure, flux and free-drainage boundary conditions and drip emitters for irrigation
+- Added supply-limited surface evaporation for the 3D solver
+- Added root water uptake from Vrugt or Weibull root distributions, limited by soil water stress
+- Added point sensors that record water content or pressure head over time and write them to CSV
+- Added `addSoilVisualization()` and `updateSoilVisualization()`, which render the soil domain (whole, cut, sliced or cut away) colored by water content or pressure head
+- Added the USDA soil texture library: `getSoilPropertiesFromTexture()`, `getAvailableSoilTextures()`, `isSoilTextureAvailable()` and `toModifiedVanGenuchten()`
+
+## Photosynthesis
+- **Behavior change:** the C4 model no longer applies leaf absorptance to already-absorbed PAR
+- **Behavior change:** the C4 coefficient array now has 42 elements without `absorptance`, and a 43-element array is rejected
+- Added the "Cowpea" and "CommonBean" (or "Bean") Farquhar library entries and the "Sorghum_GEMINI2026" (or "Sorghum") C4 library entry
+
+## StomatalConductance
+- Added the "Cowpea", "CommonBean" (or "Bean") and "Sorghum" BMF library entries
+- The Ball-Woodrow-Berry, Ball-Berry-Leuning and Medlyn models no longer give a negative conductance under strong respiration
+
+## LeafOptics
+- Leaves carrying a leaf class map (such as the sorghum, maize, wheat and apple library models) now get a spectral texture from `run()`, giving them a pale midrib
+- **Behavior change:** the default `LeafOpticsProperties.drymass` is now 0.006 g/cm² instead of 0.09
+- **Behavior change:** `getPropertiesFromLibrary()` now raises an error for an unknown species instead of returning the default leaf
+
 # [v0.1.40] 2026-11-05
 
 - Updated helios-core to v1.3.95

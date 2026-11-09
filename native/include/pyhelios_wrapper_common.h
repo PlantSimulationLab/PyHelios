@@ -250,6 +250,24 @@ PYHELIOS_API const unsigned short* readPNGSingleChannel(const char* filename, un
 PYHELIOS_API void writePNGSingleChannel(const char* filename, unsigned int width, unsigned int height, const unsigned short* pixel_values, unsigned int count, unsigned int bit_depth);
 
 //=============================================================================
+// Class map area fractions (core/global.h; helios-core v1.3.96+)
+//=============================================================================
+
+/**
+ * @brief Fraction of a primitive's (u,v) polygon in each class of a class map, leaving out class 0
+ * @param classes Class of each texel, row-major from the top of the image
+ * @param class_count Number of values in classes (must equal width*height)
+ * @param width Width of the class map in texels
+ * @param height Height of the class map in texels
+ * @param uv Flat (u,v) pairs of the polygon's corners, in order
+ * @param uv_count Number of corners (three for a triangle, four for a patch)
+ * @param out_classes Output: class of each entry; valid until the next call on this thread
+ * @param out_fractions Output: fraction of the covered area of each entry; valid until the next call on this thread
+ * @return Number of (class, fraction) entries, in increasing order of class
+ */
+PYHELIOS_API unsigned int classMapAreaFractions(const unsigned short* classes, unsigned int class_count, int width, int height, const float* uv, unsigned int uv_count, const unsigned short** out_classes, const float** out_fractions);
+
+//=============================================================================
 // Internal Helper Functions (for use by other wrapper modules)
 //=============================================================================
 

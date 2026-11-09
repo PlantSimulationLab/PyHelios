@@ -49,6 +49,15 @@ PYHELIOS_API float getSolarFluxNIRFromState(HeliosSolarPosition* solar_pos);
 PYHELIOS_API float getDiffuseFractionFromState(HeliosSolarPosition* solar_pos);
 PYHELIOS_API float getAmbientLongwaveFluxFromState(HeliosSolarPosition* solar_pos);
 
+// Direct-beam flux perpendicular to the sun and diffuse flux on a horizontal surface (helios-core v1.3.96+),
+// from the atmospheric conditions set with setAtmosphericConditions()
+PYHELIOS_API float getDirectSolarFluxFromState(HeliosSolarPosition* solar_pos);
+PYHELIOS_API float getDirectSolarFluxPARFromState(HeliosSolarPosition* solar_pos);
+PYHELIOS_API float getDirectSolarFluxNIRFromState(HeliosSolarPosition* solar_pos);
+PYHELIOS_API float getDiffuseSolarFluxFromState(HeliosSolarPosition* solar_pos);
+PYHELIOS_API float getDiffuseSolarFluxPARFromState(HeliosSolarPosition* solar_pos);
+PYHELIOS_API float getDiffuseSolarFluxNIRFromState(HeliosSolarPosition* solar_pos);
+
 // Time calculations - returns Time structure components
 PYHELIOS_API void getSunriseTime(HeliosSolarPosition* solar_pos, int* hour, int* minute, int* second);
 PYHELIOS_API void getSunsetTime(HeliosSolarPosition* solar_pos, int* hour, int* minute, int* second);

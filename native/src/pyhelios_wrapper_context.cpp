@@ -12672,4 +12672,57 @@ extern "C" {
         catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSpectralTextureClassMap): Unknown error."); return nullptr; }
     }
 
+    // helios-core 1.3.96: material revision, per-caller modification tracking, polymesh re-meshing
+    PYHELIOS_API uint64_t getMaterialRevision(helios::Context* context) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+            return context->getMaterialRevision();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getMaterialRevision): ") + e.what()); return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getMaterialRevision): Unknown error."); return 0;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getModifiedUUIDs(helios::Context* context, uint64_t* mark, unsigned int* count) {
+        clearError();
+        try {
+            if (!count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getModifiedUUIDs): Count out-pointer is null"); return nullptr; }
+            *count = 0;
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return nullptr; }
+            if (!mark) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getModifiedUUIDs): Mark pointer is null"); return nullptr; }
+            static thread_local std::vector<unsigned int> buf;
+            buf = context->getModifiedUUIDs(*mark);
+            *count = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what()); if (count) *count = 0; return nullptr;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getModifiedUUIDs): ") + e.what()); if (count) *count = 0; return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getModifiedUUIDs): Unknown error."); if (count) *count = 0; return nullptr;
+        }
+    }
+
+    PYHELIOS_API void replacePolymeshObjectPrimitives(helios::Context* context, unsigned int objID, const unsigned int* old_UUIDs, unsigned int old_count, const unsigned int* new_UUIDs, unsigned int new_count, const unsigned int* data_source_UUIDs) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if ((old_count > 0 && !old_UUIDs) || (new_count > 0 && (!new_UUIDs || !data_source_UUIDs))) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::replacePolymeshObjectPrimitives): UUID array pointer is null"); return;
+            }
+            std::vector<uint> old_vec(old_UUIDs, old_UUIDs + old_count);
+            std::vector<uint> new_vec(new_UUIDs, new_UUIDs + new_count);
+            std::vector<uint> src_vec(data_source_UUIDs, data_source_UUIDs + new_count);
+            context->replacePolymeshObjectPrimitives(objID, old_vec, new_vec, src_vec);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::replacePolymeshObjectPrimitives): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::replacePolymeshObjectPrimitives): Unknown error.");
+        }
+    }
+
 } //extern "C"

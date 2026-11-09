@@ -56,6 +56,10 @@ PYHELIOS_API int getPlantHydraulicsPlantIDForUUIDs(PlantHydraulicsModel* model, 
 PYHELIOS_API int* getPlantHydraulicsUniquePlantIDs(PlantHydraulicsModel* model, const unsigned int* uuids, unsigned int uuid_count, unsigned int* count);
 PYHELIOS_API unsigned int* getPlantHydraulicsPrimitivesByPlantID(PlantHydraulicsModel* model, int plantID, unsigned int* count);
 PYHELIOS_API unsigned int* getPlantHydraulicsPrimitivesWithoutPlantID(PlantHydraulicsModel* model, const unsigned int* uuids, unsigned int uuid_count, unsigned int* count);
+// Primitives of several plants in one pass over the Context (helios-core 1.3.96). Returns the UUIDs of all
+// requested plants concatenated in the order of plantIDs; counts[i] receives the number belonging to plantIDs[i].
+// The returned buffer is valid until the next call on this thread.
+PYHELIOS_API unsigned int* getPlantHydraulicsPrimitivesByPlantIDs(PlantHydraulicsModel* model, const int* plantIDs, unsigned int plant_count, unsigned int* counts, unsigned int* total_count);
 
 // Water potentials (MPa)
 PYHELIOS_API float getPlantHydraulicsStemWaterPotential(PlantHydraulicsModel* model, unsigned int uuid);

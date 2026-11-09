@@ -726,3 +726,35 @@ if not _SOLARPOSITION_FUNCTIONS_AVAILABLE:
     createSolarPosition = mock_createSolarPosition
     getSunElevation = mock_getSunElevation
     getSolarFlux = mock_getSolarFlux
+
+# Direct-beam and diffuse flux getters (helios-core v1.3.96+), registered separately so that a
+# library built before they existed keeps the rest of the SolarPosition API.
+_DIRECT_DIFFUSE_FLUX_NAMES = (
+    "getDirectSolarFlux", "getDirectSolarFluxPAR", "getDirectSolarFluxNIR",
+    "getDiffuseSolarFlux", "getDiffuseSolarFluxPAR", "getDiffuseSolarFluxNIR",
+)
+_DIRECT_DIFFUSE_FLUX_AVAILABLE = False
+try:
+    for _name in _DIRECT_DIFFUSE_FLUX_NAMES:
+        _f = getattr(helios_lib, _name + "FromState")
+        _f.argtypes = [ctypes.POINTER(USolarPosition)]
+        _f.restype = ctypes.c_float
+        _f.errcheck = _check_error
+    del _name, _f
+    _DIRECT_DIFFUSE_FLUX_AVAILABLE = True
+except AttributeError:
+    _DIRECT_DIFFUSE_FLUX_AVAILABLE = False
+
+
+def getDirectDiffuseFluxFromState(solar_pos: ctypes.POINTER(USolarPosition), name: str) -> float:
+    """Call one of the v1.3.96 direct/diffuse flux getters by its native name."""
+    if name not in _DIRECT_DIFFUSE_FLUX_NAMES:
+        raise ValueError(f"Unknown direct/diffuse flux getter '{name}'")
+    if not _DIRECT_DIFFUSE_FLUX_AVAILABLE:
+        raise NotImplementedError(
+            f"SolarPosition.{name}() is not available in the loaded native library. It requires "
+            "helios-core v1.3.96 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+    if not solar_pos:
+        raise ValueError("SolarPosition instance is NULL")
+    return float(getattr(helios_lib, name + "FromState")(solar_pos))

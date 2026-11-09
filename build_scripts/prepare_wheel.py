@@ -219,6 +219,8 @@ def copy_assets_for_packaging(project_root):
         'weberpenntree': ['leaves', 'wood', 'xml'],
         'visualizer': ['textures', 'shaders', 'fonts'],
         'plantarchitecture': ['assets/textures', 'assets/obj'],
+        # addSoilVisualization(SoilColorMode.TEXTURE) loads "plugins/soiltransport/assets/textures/dirt.jpg"
+        'soiltransport': ['assets/textures'],
         'leafoptics': ['spectral_data'],
         'lidar': ['xml', 'data'],
         # SolarPosition opens its data tables by hardcoded relative path with the

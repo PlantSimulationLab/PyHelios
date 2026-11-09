@@ -10,13 +10,14 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Union
 import math
 
-# Known species in the photosynthesis library (21 species with aliases)
+# Known species in the photosynthesis library
 PHOTOSYNTHESIS_SPECIES = [
     "Almond", "Apple", "Cherry", "Prune", "Pear", 
     "PistachioFemale", "PistachioMale", "Walnut",
     "Grape",  # cv. Cabernet Sauvignon
     "Elderberry", "Toyon", "Big_Leaf_Maple", "Western_Redbud", "Baylaurel", "Olive",
-    "EasternRedbudSunlit", "EasternRedbudShaded"
+    "EasternRedbudSunlit", "EasternRedbudShaded",
+    "Cowpea", "CommonBean",
 ]
 
 # Species aliases for case-insensitive and format-flexible lookup
@@ -39,6 +40,8 @@ SPECIES_ALIASES = {
     "olive": "Olive",
     "easternredbudsunlit": "EasternRedbudSunlit",
     "easternredbudshaded": "EasternRedbudShaded",
+    "cowpea": "Cowpea",
+    "commonbean": "CommonBean",
     
     # Common aliases and variations
     "bigleafmaple": "Big_Leaf_Maple",
@@ -49,7 +52,9 @@ SPECIES_ALIASES = {
     "pistachio": "PistachioFemale",  # Default to female
     "cabernet": "Grape",
     "cabernetSauvignon": "Grape",
-    "grapevine": "Grape"
+    "grapevine": "Grape",
+    "common_bean": "CommonBean",
+    "bean": "CommonBean",
 }
 
 

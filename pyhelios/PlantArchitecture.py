@@ -51,6 +51,7 @@ from .validation.core import validate_positive_value
 from .assets import get_asset_manager
 from .plant_architecture_params import (
     BudState,
+    LeafShapeValues,
     PhytomerParameters,
     ShootParameters,
     CarbohydrateParameters,
@@ -3255,6 +3256,105 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(f"Failed to enable solid obstacle avoidance: {e}")
 
+    def enableFruitBranchCollisionAvoidance(self) -> None:
+        """
+        Keep growing fruit from intersecting the internodes of their own plant.
+
+        Once enabled, every time step of :meth:`advanceTime` tests each fruiting floral bud's
+        fruit against the nearby internodes of the same plant. A fruit found inside a branch is
+        moved out at one of two hinges, whichever moves the contact out with the smaller
+        rotation: the peduncle swings, with everything it carries, rigidly about the node it grows
+        from, or the fruit tilts about its own attachment point on the peduncle -- the way a
+        pedicel bends and a fruit leans when it comes to rest against a limb. A fruit that cannot
+        be cleared within the allowed swing (e.g. one wedged between spurs) is left at the
+        least-penetrating pose reached. A fruit that has been moved and is clear of every branch
+        settles back toward its grown, hanging pose at a set rate, stopping where it would touch
+        wood again. Swings and tilts persist through :meth:`writePlantStructureXML` /
+        :meth:`readPlantStructureXML`.
+
+        Fruit are tested through analytic proxies of their meshes against the plant's internode
+        skeleton, so the cost is a small fraction of a growth step and no collision BVH is
+        involved. Only internodes of the fruit's own plant are considered; leaves, petioles,
+        flowers and other plants are not. Off by default. See also
+        :meth:`setFruitBranchCollisionParameters`.
+
+        Raises:
+            PlantArchitectureError: If the native call fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> plantarch.enableFruitBranchCollisionAvoidance()
+            >>> plantarch.advanceTime(60, plant_id=plant_id)
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.enableFruitBranchCollisionAvoidance(self._plantarch_ptr)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable fruit-branch collision avoidance: {e}")
+
+    def disableFruitBranchCollisionAvoidance(self) -> None:
+        """
+        Stop testing fruit against branches; peduncles already swung keep their pose.
+
+        Raises:
+            PlantArchitectureError: If the native call fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.disableFruitBranchCollisionAvoidance(self._plantarch_ptr)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to disable fruit-branch collision avoidance: {e}")
+
+    def setFruitBranchCollisionParameters(self, max_swing_deg: float = 90.0,
+                                          candidate_refresh_days: float = 10.0,
+                                          clearance: float = 0.0,
+                                          settle_rate_deg_per_day: float = 10.0) -> None:
+        """
+        Set the parameters of fruit-branch collision avoidance (see
+        :meth:`enableFruitBranchCollisionAvoidance`).
+
+        Args:
+            max_swing_deg: Largest total angle (degrees) a peduncle may be swung from its grown
+                pose, and likewise a fruit tilted about its attachment point; a fruit still in
+                contact at these angles stays there (default 90)
+            candidate_refresh_days: Days between rebuilds of each bud's list of nearby internode
+                segments; new shoots appearing between rebuilds are only seen at the next one
+                (default 10)
+            clearance: Gap (meters) to leave between a fruit and a branch surface; 0 lets them
+                touch (default 0)
+            settle_rate_deg_per_day: Rate (degrees per day) at which a swung peduncle or tilted
+                fruit that is clear of every branch turns back toward its grown, hanging pose; 0
+                leaves fruit where a contact put them (default 10)
+
+        Raises:
+            ValueError: If a value is not finite or is out of range
+            PlantArchitectureError: If the native call rejects a value
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        _check_finite_args((("max_swing_deg", max_swing_deg), ("candidate_refresh_days", candidate_refresh_days),
+                            ("clearance", clearance), ("settle_rate_deg_per_day", settle_rate_deg_per_day)))
+        if not 0 < max_swing_deg <= 180:
+            raise ValueError(f"max_swing_deg must be greater than 0 and at most 180, got {max_swing_deg}")
+        if not candidate_refresh_days > 0:
+            raise ValueError(f"candidate_refresh_days must be greater than zero, got {candidate_refresh_days}")
+        if clearance < 0:
+            raise ValueError(f"clearance must be zero or greater, got {clearance}")
+        if settle_rate_deg_per_day < 0:
+            raise ValueError(f"settle_rate_deg_per_day must be zero or greater, got {settle_rate_deg_per_day}")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.setFruitBranchCollisionParameters(
+                self._plantarch_ptr, max_swing_deg, candidate_refresh_days, clearance, settle_rate_deg_per_day)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set fruit-branch collision parameters: {e}")
+
     def setStaticObstacles(self, target_UUIDs: List[int]) -> None:
         """
         Mark geometry as static obstacles for collision detection optimization.
@@ -4552,7 +4652,7 @@ class PlantArchitecture:
 
     def setPetioleLeaflets(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
                            leaf_count: int, leaflet_offset: float, leaflet_scale: float,
-                           prototype_scale: float) -> None:
+                           prototype_scale: float, intercalary_leaflet_scale: float = -1.0) -> None:
         """
         Rebuild the leaflets of one petiole with their own count, spacing and sizes.
 
@@ -4563,7 +4663,11 @@ class PlantArchitecture:
         A ``leaflet_offset`` too large for ``leaf_count`` (the outermost pair would sit beyond the
         petiole's base) is refused rather than reduced.
 
-        Requires helios-core v1.3.95 or newer.
+        Since helios-core v1.3.96 a leaf that is still expanding, and was not prescribed, keeps
+        growing: its leaflets are rebuilt at their mature size times how far it has expanded, and
+        its petiole keeps elongating. Prescribed and fully expanded leaves are pinned as before.
+
+        Requires helios-core v1.3.96 or newer.
 
         Args:
             plant_id: ID of the plant instance
@@ -4574,16 +4678,22 @@ class PlantArchitecture:
             leaflet_offset: Spacing between lateral pairs as a fraction of the petiole length; >= 0
             leaflet_scale: Size of each lateral pair relative to the pair nearer the tip; > 0
             prototype_scale: Fully-elongated size of the terminal leaflet in meters; > 0
+            intercalary_leaflet_scale: Size of the intercalary leaflets relative to the primary
+                pair nearer the tip; 0 for a leaf with none. Negative (the default) keeps the
+                phytomer's current value, which a leaf measured with no intercalary leaflets
+                would otherwise inherit from its shoot type.
 
         Raises:
             ValueError: If an index is negative or a value is out of range
-            PlantArchitectureError: If the native call fails or the library predates v1.3.95
+            PlantArchitectureError: If the native call fails
+            NotImplementedError: If the native library predates v1.3.96
         """
         _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
                           ("Node index", node_index), ("Petiole index", petiole_index)))
         _check_uint_args((("Leaf count", leaf_count),))
         _check_finite_args((("Leaflet offset", leaflet_offset), ("Leaflet scale", leaflet_scale),
-                            ("Prototype scale", prototype_scale)))
+                            ("Prototype scale", prototype_scale),
+                            ("Intercalary leaflet scale", intercalary_leaflet_scale)))
         if leaf_count < 1:
             raise ValueError(f"Leaf count must be at least 1, got {leaf_count}")
         if not leaflet_offset >= 0:
@@ -4598,7 +4708,10 @@ class PlantArchitecture:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.setPetioleLeaflets(
                     self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
-                    leaf_count, leaflet_offset, leaflet_scale, prototype_scale)
+                    leaf_count, leaflet_offset, leaflet_scale, prototype_scale,
+                    intercalary_leaflet_scale)
+        except NotImplementedError:
+            raise
         except Exception as e:
             raise PlantArchitectureError(
                 f"Failed to set petiole leaflets (plant {plant_id}, shoot {shoot_id}, "
@@ -4699,12 +4812,16 @@ class PlantArchitecture:
                             petiole_index: int, aspect_ratio: float, longitudinal_curvature: float,
                             lateral_curvature: float, midrib_fold_fraction: float) -> None:
         """
-        Rebuild one petiole's leaflets with their own blade shape.
+        Reshape one petiole's leaflets with their own blade shape.
 
         The per-phytomer counterpart of the leaf prototype's ``leaf_aspect_ratio``,
         ``longitudinal_curvature``, ``lateral_curvature`` and ``midrib_fold_fraction``, which
         are otherwise one shape for every phytomer of a shoot type. The values become the
-        phytomer's own, and the petiole's leaflets are rebuilt from them.
+        phytomer's own, and the petiole's existing leaves are reshaped to them in place: since
+        helios-core v1.3.96 each leaf keeps its object ID, object data (e.g. the nitrogen model's
+        ``"leaf_nitrogen_gN_m2"``), size, orientation and position, and any other shape term
+        (such as its roll) it already had, and the shape is saved to and restored from the plant
+        structure XML. (Before v1.3.96 the leaves were replaced by new objects.)
 
         Requires helios-core v1.3.95 or newer.
 
@@ -4743,6 +4860,184 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to set leaf shape (plant {plant_id}, shoot {shoot_id}, "
                 f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPetioleLeafRoll(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                           roll_fraction: float) -> None:
+        """
+        Roll the leaves of one petiole of an existing plant about their midribs.
+
+        Wraps each blade's cross-section onto a circular arc about its midrib, toward its upper
+        side (see ``LeafPrototype.roll_fraction``), without changing its area: grasses roll
+        their leaves this way under water stress, and unroll them again as it eases. The leaves
+        are reshaped in place, keeping their object IDs and object data (for example the
+        nitrogen model's ``"leaf_nitrogen_gN_m2"``, ``"age"`` and ``"leaf_texture_stage"``),
+        their size, orientation and position, and the rest of their shape; a drooping leaf is
+        deflected again from its new rest shape. A blade with too few cells across its width to
+        form the arc is re-meshed finer the first time it is rolled, keeping its object but
+        replacing its blade primitives. The phytomer's own copy of the leaf prototype takes the
+        value, so leaves it builds later are rolled too, and the roll is recorded by
+        :meth:`writePlantStructureXML`.
+
+        Only leaves built by the generic leaf prototype can be rolled; an OBJ-loaded or
+        custom-built leaf raises an error.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            roll_fraction: Roll as a fraction of a closed tube, from 0 (flat) to 1 (edges meeting)
+
+        Raises:
+            ValueError: If an index is negative or roll_fraction is outside [0, 1]
+            PlantArchitectureError: If the native call fails
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> plantarch.setPetioleLeafRoll(plant_id, shoot_id=0, node_index=3, petiole_index=0,
+            ...                              roll_fraction=0.5)
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
+                          ("Node index", node_index), ("Petiole index", petiole_index)))
+        _check_finite_args((("Roll fraction", roll_fraction),))
+        if not 0 <= roll_fraction <= 1:
+            raise ValueError(f"Roll fraction must be between 0 and 1, got {roll_fraction}")
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPetioleLeafRoll(self._plantarch_ptr, plant_id, shoot_id, node_index,
+                                                     petiole_index, roll_fraction)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set leaf roll (plant {plant_id}, shoot {shoot_id}, "
+                f"node {node_index}, petiole {petiole_index}): {e}")
+
+    def setPlantLeafRoll(self, plant_id: int, roll_fraction: float) -> None:
+        """
+        Roll every leaf of an existing plant about its midrib.
+
+        Applies :meth:`setPetioleLeafRoll` to every petiole of the plant that carries leaves.
+
+        Args:
+            plant_id: ID of the plant instance
+            roll_fraction: Roll as a fraction of a closed tube, from 0 (flat) to 1 (edges meeting)
+
+        Raises:
+            ValueError: If plant_id is negative or roll_fraction is outside [0, 1]
+            PlantArchitectureError: If the plant does not exist or a leaf cannot be rolled
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> plantarch.setPlantLeafRoll(plant_id, 0.4)   # midday water stress
+            >>> plantarch.setPlantLeafRoll(plant_id, 0.0)   # unrolled again
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        _check_finite_args((("Roll fraction", roll_fraction),))
+        if not 0 <= roll_fraction <= 1:
+            raise ValueError(f"Roll fraction must be between 0 and 1, got {roll_fraction}")
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.setPlantLeafRoll(self._plantarch_ptr, plant_id, roll_fraction)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to set leaf roll of plant {plant_id}: {e}")
+
+    def getLeafShape(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                     leaf_index: int) -> LeafShapeValues:
+        """
+        Get the blade shape a leaf currently has, as recorded when it was built or last reshaped.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            leaf_index: Index of the leaf on the petiole
+
+        Returns:
+            :class:`pyhelios.plant_architecture_params.LeafShapeValues` of the leaf
+
+        Raises:
+            ValueError: If an index is negative
+            PlantArchitectureError: If an index is out of range, or the leaf's shape was not
+                recorded (a leaf not built by the generic leaf prototype)
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> shape = plantarch.getLeafShape(plant_id, 0, 3, 0, 0)
+            >>> shape.roll_fraction = 0.3
+            >>> plantarch.reshapeLeaf(plant_id, 0, 3, 0, 0, shape)
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id), ("Node index", node_index),
+                          ("Petiole index", petiole_index), ("Leaf index", leaf_index)))
+        self._check_context_alive()
+        try:
+            values, subdivisions = plantarch_wrapper.getLeafShape(
+                self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, leaf_index)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to get leaf shape (plant {plant_id}, shoot {shoot_id}, node {node_index}, "
+                f"petiole {petiole_index}, leaf {leaf_index}): {e}")
+        return LeafShapeValues.from_flat(values, subdivisions)
+
+    def reshapeLeaf(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                    leaf_index: int, shape: LeafShapeValues) -> None:
+        """
+        Rebuild one existing leaf's blade to a new shape inside its existing object.
+
+        The blade lattice is rebuilt in the leaf's own frame from ``shape`` and carried through
+        the leaf's transformation matrix, so the leaf keeps its object ID, object data, size,
+        orientation and position; a leaf that droops under its own weight is deflected again
+        from the new rest shape. When the lattice has as many cells across the blade as the new
+        shape needs, only its vertices move and its primitives (and their data) are kept. A roll
+        needs enough cells across the blade to form its arc, and a coarser blade is re-meshed
+        (with :meth:`pyhelios.Context.replacePolymeshObjectPrimitives`): its blade primitives are
+        replaced by finer ones, each taking the primitive data of the old facet whose texture
+        cell contains it.
+
+        Start from :meth:`getLeafShape` and change the fields you want: ``subdivisions_y`` is the
+        least number of cells wanted across the blade, and ``subdivisions_x`` and
+        ``lattice_offset`` must be the leaf's own.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            leaf_index: Index of the leaf on the petiole
+            shape: New blade shape
+
+        Raises:
+            ValueError: If an index is negative, ``shape`` is not a LeafShapeValues, or a value is
+                not finite
+            PlantArchitectureError: If an index is out of range or the native call rejects the shape
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id), ("Node index", node_index),
+                          ("Petiole index", petiole_index), ("Leaf index", leaf_index)))
+        if not isinstance(shape, LeafShapeValues):
+            raise ValueError(f"shape must be a LeafShapeValues, got {type(shape).__name__}")
+        values, subdivisions = shape.to_flat()
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError("Leaf shape values must be finite")
+        _check_uint_args((("subdivisions_x", subdivisions[0]), ("subdivisions_y", subdivisions[1])))
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                plantarch_wrapper.reshapeLeaf(self._plantarch_ptr, plant_id, shoot_id, node_index,
+                                              petiole_index, leaf_index, values, subdivisions)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to reshape leaf (plant {plant_id}, shoot {shoot_id}, node {node_index}, "
+                f"petiole {petiole_index}, leaf {leaf_index}): {e}")
 
     def setShootInternodeLengthMax(self, plant_id: int, shoot_id: int,
                                    internode_length_max: float) -> None:
@@ -4940,8 +5235,10 @@ class PlantArchitecture:
         closeness to the angle the model gave it against how far that bin is below its share
         of the plant's leaf area.
 
-        Pass a list of plant IDs to realize the distribution over a canopy as a whole, in
-        which case an individual plant need not follow the distribution on its own.
+        A list of plant IDs steers each plant toward the distribution on its own, from its own
+        leaves; the distribution is not pooled over the plants. To realize a distribution over a
+        canopy as a whole once the plants have grown, use :meth:`setLeafAngleDistribution` with
+        the list, which pools their leaves.
 
         Enabling tracking on an already-tracked plant replaces its target, so the target may
         be varied over the plant's life.
@@ -4964,7 +5261,7 @@ class PlantArchitecture:
         Example:
             >>> plantarch.enableLeafAngleDistributionTracking(
             ...     plant_id, 2.0, 1.5, 0.5, 0.0, 180.0)
-            >>> plantarch.advanceTime(plant_id, 20)
+            >>> plantarch.advanceTime(20, plant_id=plant_id)
         """
         multi = not isinstance(plant_ids, int) or isinstance(plant_ids, bool)
         ids = self._validatePlantIdList(plant_ids) if multi else [
@@ -4984,7 +5281,7 @@ class PlantArchitecture:
             raise PlantArchitectureError(
                 f"Failed to enable leaf angle distribution tracking for {ids}: {e}")
 
-    def enableLeafElevationAngleDistributionTracking(self, plant_id: int,
+    def enableLeafElevationAngleDistributionTracking(self, plant_id,
                                                      beta_mu_inclination: float,
                                                      beta_nu_inclination: float,
                                                      lambda_degrees: float) -> None:
@@ -4994,25 +5291,42 @@ class PlantArchitecture:
 
         The inclination-only counterpart of :meth:`enableLeafAngleDistributionTracking`.
 
+        The distribution is realized within each plant, from that plant's own leaves, also when
+        several plants are given at once (each is steered on its own). A plant with few leaves,
+        such as a grass culm with 7-14, can only approximate it. To realize a distribution over a
+        canopy as a whole once the plants have grown, use :meth:`setLeafAngleDistribution`
+        with a list of plants, which pools their leaves.
+
         Args:
-            plant_id: ID of the plant instance
+            plant_id: ID of the plant instance, or a list of plant IDs (helios-core v1.3.96+)
             beta_mu_inclination: Mean parameter of the Beta inclination distribution
             beta_nu_inclination: Shape parameter of the Beta inclination distribution
             lambda_degrees: How strongly to favour filling the distribution over keeping each
                 leaf near the angle the model gave it
 
         Raises:
-            ValueError: If ``plant_id`` is not a non-negative int
-            PlantArchitectureError: If the plant does not exist
+            ValueError: If a plant ID is not a non-negative int, or the list is empty
+            PlantArchitectureError: If a plant does not exist
             RuntimeError: If the native library predates helios-core v1.3.87
+            NotImplementedError: If a list is given and the native library predates v1.3.96
         """
-        plant_id = self._validatePlantIdentifier(plant_id)
+        multi = not isinstance(plant_id, numbers.Integral) or isinstance(plant_id, bool)
+        if multi:
+            ids = self._validatePlantIdList(plant_id)
+        else:
+            plant_id = self._validatePlantIdentifier(int(plant_id))
 
         self._check_context_alive()
         try:
+            if multi:
+                plantarch_wrapper.enablePlantLeafElevationAngleDistributionTrackingMultiple(
+                    self._plantarch_ptr, ids, beta_mu_inclination, beta_nu_inclination, lambda_degrees)
+                return
             plantarch_wrapper.enablePlantLeafElevationAngleDistributionTracking(
                 self._plantarch_ptr, plant_id, beta_mu_inclination, beta_nu_inclination,
                 lambda_degrees)
+        except NotImplementedError:
+            raise
         except Exception as e:
             raise PlantArchitectureError(
                 f"Failed to enable leaf elevation angle distribution tracking for "
@@ -6347,6 +6661,51 @@ class PlantArchitecture:
             return plantarch_wrapper.getPlantAvailableNitrogen(self._plantarch_ptr, plant_id)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to get the available nitrogen of plant {plant_id}: {e}")
+
+    def getPlantFruitNitrogen(self, plant_id: int) -> float:
+        """
+        Nitrogen (g N) a plant has delivered to its fruit since its nitrogen pools were initialized.
+
+        Includes nitrogen from the available pool and remobilized from leaves, and that of fruit
+        since removed from the plant. With :meth:`getPlantRootNitrogen`,
+        :meth:`getPlantAvailableNitrogen` and the nitrogen of the leaves (``"leaf_nitrogen_gN_m2"``
+        object data times leaf area), this accounts for all the nitrogen given to the plant, less
+        what has left with leaves that were shed.
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantFruitNitrogen(self._plantarch_ptr, plant_id)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the fruit nitrogen of plant {plant_id}: {e}")
+
+    def getPlantRootNitrogen(self, plant_id: int) -> float:
+        """
+        Nitrogen (g N) allocated to a plant's roots since its nitrogen pools were initialized.
+
+        This is ``NitrogenParameters.root_allocation_fraction`` of the nitrogen given to the plant
+        (with the C++ ``PlantArchitecture::addPlantNitrogen()``).
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.96
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.getPlantRootNitrogen(self._plantarch_ptr, plant_id)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to get the root nitrogen of plant {plant_id}: {e}")
 
     def getLeafBladeArea(self, leaf_object_id: int) -> float:
         """

@@ -233,8 +233,24 @@ except AttributeError:
 
 
 # Number of floats in the C4 model coefficient flat-array layout (see
-# pyhelios_wrapper_photosynthesis.h for the per-index meaning).
-C4_COEFFICIENTS_COUNT = 43
+# pyhelios_wrapper_photosynthesis.h for the per-index meaning). helios-core 1.3.96 removed
+# C4ModelCoefficients::absorptance (slot 37 of the earlier 43-float layout).
+C4_COEFFICIENTS_COUNT = 42
+_C4_LEGACY_COEFFICIENTS_COUNT = 43
+
+
+def _check_c4_coefficient_count(coefficients: List[float]) -> None:
+    n = len(coefficients)
+    if n == _C4_LEGACY_COEFFICIENTS_COUNT:
+        raise ValueError(
+            f"C4 coefficient array has {n} elements, the layout before helios-core 1.3.96. The C4 model no "
+            "longer has an 'absorptance' coefficient (slot 37): it reads the primitive data "
+            "\"radiation_flux_PAR\" as absorbed PAR, as the C3 model does. Delete element 37 to convert the "
+            f"array to the current {C4_COEFFICIENTS_COUNT}-element layout, and supply absorbed rather than "
+            "incident PAR."
+        )
+    if n != C4_COEFFICIENTS_COUNT:
+        raise ValueError(f"C4 coefficient array must have exactly {C4_COEFFICIENTS_COUNT} elements, got {n}.")
 
 # C4 model + Farquhar mesophyll-conductance bindings were added in helios-core v1.3.72.
 # Probe separately so wheels built against older libraries keep the rest of the API working.
@@ -841,16 +857,13 @@ def setC4CoefficientsFromLibraryForMaterial(photosynthesis_model: ctypes.POINTER
 
 def setC4ModelCoefficientsForMaterial(photosynthesis_model: ctypes.POINTER(UPhotosynthesisModel),
                                       material_label: str, coefficients: List[float]) -> None:
-    """Apply a 43-float C4 coefficient array to all primitives sharing a material label."""
+    """Apply a 42-float C4 coefficient array to all primitives sharing a material label."""
     _require_c4_available()
     if not photosynthesis_model:
         raise ValueError("PhotosynthesisModel instance is None.")
     if not material_label:
         raise ValueError("Material label cannot be empty.")
-    if len(coefficients) < C4_COEFFICIENTS_COUNT:
-        raise ValueError(
-            f"C4 coefficient array must have at least {C4_COEFFICIENTS_COUNT} elements, got {len(coefficients)}."
-        )
+    _check_c4_coefficient_count(coefficients)
     coeff_array = (ctypes.c_float * len(coefficients))(*coefficients)
     helios_lib.setC4ModelCoefficientsForMaterial(
         photosynthesis_model, material_label.encode('utf-8'),
@@ -860,7 +873,7 @@ def setC4ModelCoefficientsForMaterial(photosynthesis_model: ctypes.POINTER(UPhot
 
 def getC4CoefficientsFromLibrary(photosynthesis_model: ctypes.POINTER(UPhotosynthesisModel),
                                  species: str) -> List[float]:
-    """Return the 43-float C4 coefficient array for ``species``."""
+    """Return the 42-float C4 coefficient array for ``species``."""
     _require_c4_available()
     if not photosynthesis_model:
         raise ValueError("PhotosynthesisModel instance is None.")
@@ -882,10 +895,7 @@ def setC4ModelCoefficients(photosynthesis_model: ctypes.POINTER(UPhotosynthesisM
     _require_c4_available()
     if not photosynthesis_model:
         raise ValueError("PhotosynthesisModel instance is None.")
-    if len(coefficients) < C4_COEFFICIENTS_COUNT:
-        raise ValueError(
-            f"C4 coefficient array must have at least {C4_COEFFICIENTS_COUNT} elements, got {len(coefficients)}."
-        )
+    _check_c4_coefficient_count(coefficients)
     coeff_array = (ctypes.c_float * len(coefficients))(*coefficients)
 
     if uuids is None:
@@ -902,7 +912,7 @@ def setC4ModelCoefficients(photosynthesis_model: ctypes.POINTER(UPhotosynthesisM
 
 def getC4ModelCoefficients(photosynthesis_model: ctypes.POINTER(UPhotosynthesisModel),
                            uuid: int) -> List[float]:
-    """Return the 43-float C4 coefficient array for a single primitive."""
+    """Return the 42-float C4 coefficient array for a single primitive."""
     _require_c4_available()
     if not photosynthesis_model:
         raise ValueError("PhotosynthesisModel instance is None.")

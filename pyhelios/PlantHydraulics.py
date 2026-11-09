@@ -9,7 +9,7 @@ import logging
 import math
 import numbers
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 from .plugins.registry import get_plugin_registry
 from .wrappers import UPlantHydraulicsWrapper as hydraulics_wrapper
@@ -983,6 +983,41 @@ class PlantHydraulicsModel:
             return hydraulics_wrapper.getPrimitivesByPlantID(self.hydraulics_model, int(plantID))
         except Exception as e:
             raise PlantHydraulicsModelError(f"Failed to get primitives by plantID: {e}")
+
+    def getPrimitivesByPlantIDs(self, plantIDs: List[int]) -> Dict[int, List[int]]:
+        """
+        Get the primitives of each of several plants, found in a single pass over the Context.
+
+        Equivalent to calling :meth:`getPrimitivesByPlantID` for each plant, but much faster for
+        scenes with many plants.
+
+        Args:
+            plantIDs: Plant identifiers
+
+        Returns:
+            Dictionary from plant identifier to its sorted, de-duplicated primitive UUIDs, with an
+            entry for every requested plant (an empty list if no primitive has that plantID)
+
+        Raises:
+            ValueError: If plantIDs is not a list of integers
+            NotImplementedError: If the native library predates helios-core v1.3.96
+            PlantHydraulicsModelError: If the query fails
+        """
+        if isinstance(plantIDs, (str, bytes)) or not hasattr(plantIDs, '__iter__'):
+            raise ValueError(f"getPrimitivesByPlantIDs() plantIDs must be a list of integers, got {type(plantIDs).__name__}")
+        plantIDs = list(plantIDs)
+        for i, pid in enumerate(plantIDs):
+            if isinstance(pid, bool) or not isinstance(pid, numbers.Integral):
+                raise ValueError(f"getPrimitivesByPlantIDs() plantIDs[{i}] must be an integer, got {type(pid).__name__}")
+            if not -2**31 <= pid < 2**31:
+                raise ValueError(f"getPrimitivesByPlantIDs() plantIDs[{i}] is outside the C int range: {pid}")
+        self._check_context_alive()
+        try:
+            return hydraulics_wrapper.getPrimitivesByPlantIDs(self.hydraulics_model, [int(p) for p in plantIDs])
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantHydraulicsModelError(f"Failed to get primitives by plantIDs: {e}")
 
     def getPrimitivesWithoutPlantID(self, UUIDs: List[int]) -> List[int]:
         """

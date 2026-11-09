@@ -136,6 +136,46 @@ except (AttributeError, ImportError):
     HydraulicCapacitance = None
 
 try:
+    from .SoilTransport import (
+        SoilTransportModel,
+        SoilTransportModelError,
+        SoilProperties,
+        SolverParameters,
+        RootDistributionParams,
+        WeibullRootParameters,
+        SoilModel,
+        KWeighting,
+        NonlinearMethod,
+        SolverType,
+        SoilColorMode,
+        SoilMeasurement,
+        SoilRegion,
+        getSoilPropertiesFromTexture,
+        toModifiedVanGenuchten,
+        getAvailableSoilTextures,
+        isSoilTextureAvailable,
+    )
+except (AttributeError, ImportError):
+    # SoilTransportModel functions not available in current library
+    SoilTransportModel = None
+    SoilTransportModelError = None
+    SoilProperties = None
+    SolverParameters = None
+    RootDistributionParams = None
+    WeibullRootParameters = None
+    SoilModel = None
+    KWeighting = None
+    NonlinearMethod = None
+    SolverType = None
+    SoilColorMode = None
+    SoilMeasurement = None
+    SoilRegion = None
+    getSoilPropertiesFromTexture = None
+    toModifiedVanGenuchten = None
+    getAvailableSoilTextures = None
+    isSoilTextureAvailable = None
+
+try:
     from .PhotosynthesisModel import (
         PhotosynthesisModel,
         PhotosynthesisModelError,
@@ -233,6 +273,7 @@ except (AttributeError, ImportError):
 from .wrappers import DataTypes as DataTypes
 from . import dev_utils
 from . import annotation
+from . import collision
 from .exceptions import (
     HeliosError,
     HeliosRuntimeError,

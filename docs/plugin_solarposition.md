@@ -38,7 +38,7 @@ with Context() as context:
 
     # Create SolarPosition. The Context is always the FIRST argument, followed
     # by UTC offset, latitude, and longitude.
-    with SolarPosition(context, 7, 31.256, 119.947) as sun:
+    with SolarPosition(context, 8, 38.55, 121.76) as sun:  # Davis, CA: UTC-8 and 121.76 W, both positive (west-positive)
         # Get sun direction
         direction = sun.getSunDirectionVector()
         elevation = sun.getSunElevation()
@@ -50,16 +50,25 @@ with Context() as context:
 
         # Calculate solar flux with atmospheric conditions
         sun.setAtmosphericConditions(101000, 300, 0.6, 0.05)
-        flux = sun.getSolarFlux()
-        diffuse_fraction = sun.getDiffuseFraction()
+        direct = sun.getDirectSolarFlux()    # perpendicular to the sun
+        diffuse = sun.getDiffuseSolarFlux()  # on a horizontal surface
 
-        print(f"Solar flux: {flux} W/m²")
-        print(f"Diffuse fraction: {diffuse_fraction}")
+        print(f"Direct flux: {direct} W/m²")
+        print(f"Diffuse flux: {diffuse} W/m²")
 ```
 
 ## Introduction {#SolarIntro}
 
 This plugin calculates the position of the sun, and also implements other models for solar fluxes as well as longwave fluxes from the sky. Model theory and equations are given in the sections below.
+
+ \warning <b>Helios counts longitude and the UTC offset positive in the Western hemisphere</b>, opposite to the convention of ISO 6709 and of most maps, GPS receivers and satellite metadata, which count them positive to the East. Coordinates and time zones from those sources must have their signs flipped:
+ <table>
+ <tr><th>Site</th><th>Usual (east-positive)</th><th>Helios longitude</th><th>Helios UTC offset</th></tr>
+ <tr><td>Davis, CA, USA</td><td>121.76 W = -121.76, UTC-8</td><td>+121.76</td><td>+8</td></tr>
+ <tr><td>Madrid, Spain</td><td>3.70 W = -3.70, UTC+1</td><td>+3.70</td><td>-1</td></tr>
+ <tr><td>Beijing, China</td><td>116.40 E = +116.40, UTC+8</td><td>-116.40</td><td>-8</td></tr>
+ </table>
+ A flipped longitude moves the sun by 4 minutes of time per degree, twice over (8 minutes per degree of the true longitude), which shifts its azimuth by many degrees near midday. The constructor warns when the UTC offset and longitude are more than 3 hours of solar time apart, which happens when only one of the two was flipped and the site is more than about 22 degrees from the prime meridian. It cannot detect a flipped longitude near the prime meridian, a flipped longitude used with times in UTC (an offset of 0), or a longitude and offset that were both flipped. The same convention applies to the location set in the Context with `context.setLocation()`.
 
 ## Class Constructor {#SolarConstructor}
 
@@ -69,7 +78,7 @@ This plugin calculates the position of the sun, and also implements other models
  <tr><td>\ref pyhelios.SolarPosition.SolarPosition "SolarPosition(context, utc_offset, latitude, longitude)"</td></tr>
  </table>
 
- The \ref pyhelios.SolarPosition.SolarPosition "SolarPosition" class can be initialized by simply passing a Helios context as an argument to the constructor. This gives the class access to the time and date currently set in the Context. The model must also know certain parameters about the simulated location, in particular the offset from UTC time, latitude, and longitude. A description of these parameters are given in the table below. These can be supplied using the second constructor listed in the table above. If only the Context is supplied to the constructor, the plugin uses the Context's currently configured location.
+ The \ref pyhelios.SolarPosition.SolarPosition "SolarPosition" class can be initialized by simply passing a Helios context as an argument to the constructor. This gives the class access to the time and date currently set in the Context. The model must also know certain parameters about the simulated location, in particular the offset from UTC time, latitude, and longitude. A description of these parameters are given in the table below. These can be supplied using the second constructor listed in the table above. If only the Context is supplied to the constructor, the plugin uses the Context's currently configured location. A latitude, longitude or UTC offset outside its range (latitude -90 to 90, longitude -180 to 180, UTC offset -14 to 12 hours) raises an error.
 
  The Context's location can be set ahead of time with `context.setLocation(latitude, longitude, utc_offset)` or with the immutable `Location` dataclass from `pyhelios.types`. See [Geographic Location](user_guide.html#Location) in the user guide for details. With this approach, location is configured once and shared across plugins:
 
@@ -84,7 +93,7 @@ This plugin calculates the position of the sun, and also implements other models
  <table>
  <caption>SolarPosition constructor inputs</caption>
  <tr><th>Input Parameter</th><th>Description</th><th>Convention</th><th>Default Behavior</th></tr>
- <tr><td>UTC</td><td>Difference in hours between Coordinated Universal Time (UTC) for a particular location.  See the figure below to determine a particular UTC offset.</td><td>UTC offset value is positive moving West.</td><td>+8:00</td></tr>
+ <tr><td>UTC</td><td>Difference in hours between Coordinated Universal Time (UTC) for a particular location.  See the figure below to determine a particular UTC offset; the figure uses the usual convention, so its offsets must have their signs flipped (UTC-8 in the figure is +8 here).</td><td>UTC offset value is positive moving West.</td><td>+8:00</td></tr>
  <tr><td>latitude</td><td>Geographic coordinate that specifies the north–south position of a point on the Earth's surface in degrees.</td><td>Latitude is positive in the northern hemisphere.</td><td>+38.55</td></tr>
  <tr><td>longitude</td><td>Geographic coordinate that specifies the east-west position of a point on the Earth's surface in degrees.</td><td>Longitude is positive in the western hemisphere.</td><td>+121.76</td></tr>
  </table>
@@ -251,7 +260,7 @@ with Context() as context:
 
     # Initialize the SolarPosition class with coordinates
     # Arguments: context, utc_offset, latitude, longitude
-    with SolarPosition(context, 7, 31.256, 119.947) as sun:
+    with SolarPosition(context, 8, 38.55, 121.76) as sun:  # Davis, CA: UTC-8 and 121.76 W, both positive (west-positive)
         # Get the sun position
         direction = sun.getSunDirectionVector()  # unit vector
 
@@ -277,7 +286,7 @@ with Context() as context:
     context.setTime(12, 30)      # 12:30
 
     # Initialize the SolarPosition class
-    with SolarPosition(context, 7, 31.256, 119.947) as sun:
+    with SolarPosition(context, 8, 38.55, 121.76) as sun:  # Davis, CA: UTC-8 and 121.76 W, both positive (west-positive)
         # Set atmospheric conditions once
         sun.setAtmosphericConditions(
             pressure_Pa=101000,      # Atmospheric pressure (Pa)
@@ -291,13 +300,15 @@ with Context() as context:
         zenith = sun.getSunZenith()
         R_horiz = R * math.cos(zenith)
 
-        f_diff = sun.getDiffuseFraction()
-        R_dir = R * (1.0 - f_diff)
+        f_diff = sun.getDiffuseFraction()  # fraction of the horizontal flux that is diffuse
+        R_dir = sun.getDirectSolarFlux()     # direct flux perpendicular to sun, equal to R*(1-f_diff)
+        R_diff = sun.getDiffuseSolarFlux()   # diffuse flux on a horizontal surface, equal to R*f_diff*cos(zenith)
 
-        print(f"Total flux: {R:.2f} W/m²")
-        print(f"Horizontal flux: {R_horiz:.2f} W/m²")
+        print(f"Global flux (perpendicular to sun): {R:.2f} W/m²")
+        print(f"Global horizontal flux: {R_horiz:.2f} W/m²")
         print(f"Diffuse fraction: {f_diff:.3f}")
         print(f"Direct flux: {R_dir:.2f} W/m²")
+        print(f"Diffuse flux: {R_diff:.2f} W/m²")
 ```
 
 #### Understanding the Turbidity Parameter {#TurbidityDefinition}
@@ -342,11 +353,14 @@ ozone_DU = sun.getOzoneColumn()  # 310.0
 
 ### Getting the Solar Flux {#SolarFlux}
 
- The solar flux can be calculated using the REST-2 model of <a href="https://www.sciencedirect.com/science/article/pii/S0038092X07000990?casa_token=BAJYGez71awAAAAA:CfmA4oT9MLiHGvpD6oUkkDu4EJ1S9uRabZq4-wM07jtcmviZ12jvhD8VVcAkjLWoGNMtg8hDaqo">Gueymard (2008)</a> using the \ref pyhelios.SolarPosition.SolarPosition::getSolarFlux "getSolarFlux()" function. IT IS CRITICAL TO NOTE THAT THE CALCULATED FLUX IS FOR A SURFACE PERPENDICULAR TO THE SUN DIRECTION. To get the flux on a horizontal surface, multiply by the cosine of the solar zenith angle.
+ The solar flux can be calculated using the REST-2 model of <a href="https://www.sciencedirect.com/science/article/pii/S0038092X07000990?casa_token=BAJYGez71awAAAAA:CfmA4oT9MLiHGvpD6oUkkDu4EJ1S9uRabZq4-wM07jtcmviZ12jvhD8VVcAkjLWoGNMtg8hDaqo">Gueymard (2008)</a>. The direct and diffuse components are referenced to different surfaces, matching what the radiation model expects:
 
- Methods are available to get the incoming solar radiation flux perpendicular to the direction of the sun 1) for the entire solar spectrum (\ref pyhelios.SolarPosition.SolarPosition::getSolarFlux "getSolarFlux()"), 2) for the PAR band (\ref pyhelios.SolarPosition.SolarPosition::getSolarFluxPAR "getSolarFluxPAR()"), and 3) for the NIR band (\ref pyhelios.SolarPosition.SolarPosition::getSolarFluxNIR "getSolarFluxNIR()").
+ - \ref pyhelios.SolarPosition.SolarPosition::getDirectSolarFlux "getDirectSolarFlux()", \ref pyhelios.SolarPosition.SolarPosition::getDirectSolarFluxPAR "getDirectSolarFluxPAR()" and \ref pyhelios.SolarPosition.SolarPosition::getDirectSolarFluxNIR "getDirectSolarFluxNIR()" give the direct-beam flux on a surface PERPENDICULAR TO THE SUN DIRECTION. This is the flux of a collimated sun source (`RadiationModel.setSourceFlux()`).
+ - \ref pyhelios.SolarPosition.SolarPosition::getDiffuseSolarFlux "getDiffuseSolarFlux()", \ref pyhelios.SolarPosition.SolarPosition::getDiffuseSolarFluxPAR "getDiffuseSolarFluxPAR()" and \ref pyhelios.SolarPosition.SolarPosition::getDiffuseSolarFluxNIR "getDiffuseSolarFluxNIR()" give the diffuse flux on a HORIZONTAL surface. This is the diffuse sky flux of the radiation model (`RadiationModel.setDiffuseRadiationFlux()`).
 
- The very similar function \ref pyhelios.SolarPosition.SolarPosition::getDiffuseFraction "getDiffuseFraction()" calculates the fraction of the total flux that is diffuse. The fraction that is direct is simply one minus the diffuse fraction.
+ The global (direct plus diffuse) flux on a horizontal surface is therefore the direct flux times the cosine of the solar zenith angle \f$\theta_s\f$ plus the diffuse flux. The REST-2 model computes the PAR and NIR bands separately, and clear-sky diffuse light is much richer in PAR than the direct beam, since Rayleigh scattering moves short wavelengths from the beam into the sky.
+
+ \ref pyhelios.SolarPosition.SolarPosition::getSolarFlux "getSolarFlux()", \ref pyhelios.SolarPosition.SolarPosition::getSolarFluxPAR "getSolarFluxPAR()" and \ref pyhelios.SolarPosition.SolarPosition::getSolarFluxNIR "getSolarFluxNIR()" give the global flux referenced to a surface perpendicular to the sun, i.e., the global flux on a horizontal surface divided by \f$\cos\theta_s\f$. \ref pyhelios.SolarPosition.SolarPosition::getDiffuseFraction "getDiffuseFraction()" gives the fraction \f$f\f$ of the global horizontal flux that is diffuse. With \f$R\f$ from these functions, the direct flux perpendicular to the sun is \f$R(1-f)\f$ and the diffuse flux on a horizontal surface is \f$R f\cos\theta_s\f$ (not \f$R f\f$). The diffuse fraction is the same for both bands in this decomposition, so for band-resolved fluxes use the direct and diffuse functions above.
 
  Example code for using these solar flux functions is given below.
 
@@ -360,7 +374,7 @@ with Context() as context:
     context.setTime(12, 30)      # 12:30
 
     # Initialize the SolarPosition class
-    with SolarPosition(context, 7, 31.256, 119.947) as sun:
+    with SolarPosition(context, 8, 38.55, 121.76) as sun:  # Davis, CA: UTC-8 and 121.76 W, both positive (west-positive)
         # Define atmospheric conditions
         pressure_Pa = 101000      # pressure
         temperature_K = 300       # temperature
@@ -372,11 +386,12 @@ with Context() as context:
 
         # Calculate solar flux with atmospheric parameters
         R = sun.getSolarFlux(pressure_Pa, temperature_K, humidity_rel, turbidity)
-        R_horiz = R * math.cos(zenith)  # flux on horizontal surface
+        R_horiz = R * math.cos(zenith)  # global flux on horizontal surface
 
-        f_diff = sun.getDiffuseFraction(pressure_Pa, temperature_K, humidity_rel, turbidity)
+        f_diff = sun.getDiffuseFraction(pressure_Pa, temperature_K, humidity_rel, turbidity)  # fraction of the horizontal flux that is diffuse
 
-        R_dir = R * (1.0 - f_diff)  # direct component of flux (W/m²)
+        R_dir = sun.getDirectSolarFlux()    # direct flux perpendicular to sun (W/m²), equal to R*(1-f_diff)
+        R_diff = sun.getDiffuseSolarFlux()  # diffuse flux on a horizontal surface (W/m²), equal to R*f_diff*cos(zenith)
 ```
 
 #### Calibrating the turbidity using weather station (radiometer) data {#SolarFluxTurb}
@@ -389,23 +404,25 @@ with Context() as context:
 
  The REST2 model for solar fluxes was developed for clear-sky conditions and cannot directly be used when clouds are present. If incident solar radiation data is available (e.g., from a weather station), this can be used to calibrate the model to account for the possible presence of clouds. A simple model is described below for doing so.
 
- Consider \f$R_{meas,h}\f$ to be the measured all-wave incoming solar radiation flux on a horizontal plane (clear or cloudy conditions), and \f$R_{clear}\f$ to be the predicted all-wave incoming solar radiation flux predicted by the REST2 model for clear-sky conditions perpendicular to the direction of the sun. This flux can be projected onto the horizontal plane according to
+ Consider \f$R_{meas,h}\f$ to be the measured all-wave incoming solar radiation flux on a horizontal plane (clear or cloudy conditions), and \f$R_{clear,h}\f$ to be the global (direct plus diffuse) all-wave flux on a horizontal plane predicted by the REST2 model for clear-sky conditions.
+
+ The diffuse fraction \f$f_{diff}\f$ is estimated from the hourly clearness index \f$k_T = R_{meas,h}/R_{0,h}\f$, where \f$R_{0,h}\f$ is the extraterrestrial irradiance on a horizontal surface, using the correlation of <a href="https://doi.org/10.1016/0038-092X(82)90302-4">Erbs et al. (1982)</a>.
+
+ The measured flux is split between the PAR and NIR bands using the clear-sky fraction of the global horizontal flux that is PAR,
 
  \f[
-    R_{clear,h} = R_{clear}\mathrm{cos}\,\theta_s.
+   \phi_{PAR} = \frac{R_{clear,h}^{PAR}}{R_{clear,h}},
  \f]
 
- The diffuse fraction can be approximated as
+ where both fluxes include the direct and diffuse components. The fraction of the global (rather than the direct) flux is used because the measured flux is global; the direct beam alone becomes much redder than the global flux at low sun, and its PAR fraction would underestimate PAR by about 30% at a solar zenith angle of 80 degrees. Each band is then split into direct and diffuse components with the diffuse fraction \f$f_{diff}\f$. For the PAR band, the diffuse flux on a horizontal surface and the direct flux perpendicular to the sun are
 
  \f[
-    f_{diff} = 1-\frac{R_{meas,h} - R_{clear,h}}{R_{clear,h}},
+   R_{diff}^{PAR} = \phi_{PAR}\,f_{diff}\,R_{meas,h}, \qquad R_{dir}^{PAR} = \frac{\phi_{PAR}\,(1-f_{diff})\,R_{meas,h}}{\cos\theta_s},
  \f]
 
- where it is enforced that \f$0\leq f_{diff} \leq 1\f$. The resulting flux that is output from the model is (flux perpendicular to the sun)
+ and likewise for the NIR band with \f$1-\phi_{PAR}\f$. The global flux referenced to a surface perpendicular to the sun, given by \ref pyhelios.SolarPosition.SolarPosition::getSolarFlux "getSolarFlux()", is \f$R_{meas,h}/\cos\theta_s\f$.
 
- \f[
-   R_{model} = R_{clear}\frac{R_{meas,h}}{R_{clear,h}}.
- \f]
+ When the sun is so close to the horizon that the clear-sky global horizontal flux is 1 W/m<sup>2</sup> or less (a solar zenith angle above about 89.6 degrees), a positive measured flux cannot be represented as a flux perpendicular to the sun, which diverges as \f$1/\cos\theta_s\f$, and the flux functions raise an error. Skip such timesteps, or set their measured flux to zero. A measured flux of zero gives zero fluxes, and when the sun is below the horizon all fluxes are zero regardless of the measurement.
 
  In order to enable flux calibration for cloudy conditions, you must 1) Load timeseries data containing the measured all-wave solar radiation flux. This data must cover the entire period of the simulation. 2) Call \ref pyhelios.SolarPosition.SolarPosition::enableCloudCalibration "enableCloudCalibration()", which requires a string corresponding to the timeseries data label.
 
@@ -423,7 +440,7 @@ with Context() as context:
         headerlines=1
     )
 
-    with SolarPosition(context, 7, 31.256, 119.947) as sun:
+    with SolarPosition(context, 8, 38.55, 121.76) as sun:  # Davis, CA: UTC-8 and 121.76 W, both positive (west-positive)
         # Enable cloud calibration using measured radiation timeseries
         sun.enableCloudCalibration("R_tot_Wm2")
 
@@ -445,11 +462,11 @@ with Context() as context:
             sun.setAtmosphericConditions(Patm_Pa, Tair_K, humidity_rel, turbidity)
 
             # Calculate solar flux
-            R = sun.getSolarFlux()
-            f_diff = sun.getDiffuseFraction()
+            R_dir = sun.getDirectSolarFlux()    # direct flux perpendicular to sun (W/m²)
+            R_diff = sun.getDiffuseSolarFlux()  # diffuse flux on a horizontal surface (W/m²)
 
-            R_dir = R * (1.0 - f_diff)  # direct component
-            R_diff = R * f_diff          # diffuse component
+            PAR_dir = sun.getDirectSolarFluxPAR()  # likewise for the PAR band
+            PAR_diff = sun.getDiffuseSolarFluxPAR()
 ```
 
  It should be emphasized that the above model is a relatively simple approximation that produces reasonable fluxes, but more accurate predictions are possible and require much more complicated models.

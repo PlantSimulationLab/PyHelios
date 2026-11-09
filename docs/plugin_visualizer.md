@@ -724,6 +724,26 @@ with Visualizer(width=1200, height=800) as vis:
     vis.setCameraPositionSpherical(SphericalCoord(15, 0.785, 1.57), vec3(0, 0, 0))
 ```
 
+A camera set with `setCameraPosition()` keeps that pose; only a camera that was never set is fitted to the scene by `plotInteractive()` and `plotUpdate()` (helios-core 1.3.96 fixed a camera set to the default pose being re-fitted).
+
+\ref pyhelios.Visualizer.Visualizer::setCameraFieldOfView "setCameraFieldOfView(angle)" sets the **vertical** field of view in degrees (default 45): the angle spans the image from its top edge to its bottom edge, and the horizontal field of view follows from the aspect ratio. A pinhole camera with a focal length of f pixels and an image H pixels high has a vertical field of view of 2·atan(H/(2f)).
+
+#### Reproducing a Real Camera {#RealCamera}
+
+By default the camera's roll is chosen automatically: world +z is up in the image, except for a camera looking within about 2.6 degrees of straight up or down, where world +y is up. \ref pyhelios.Visualizer.Visualizer::setCameraUpDirection "setCameraUpDirection(up)" fixes the world direction that appears up in the image instead (only its component perpendicular to the viewing direction matters, and it must not be parallel to the viewing direction when the frame is rendered); \ref pyhelios.Visualizer.Visualizer::clearCameraUpDirection "clearCameraUpDirection()" returns to the automatic choice. \ref pyhelios.Visualizer.Visualizer::setCameraPrincipalPoint "setCameraPrincipalPoint(column, row)" places the optical axis at a given pixel, counted from the left and top edges of the framebuffer (the default is the image centre). With these and the vertical field of view, the Visualizer can reproduce a calibrated pinhole camera (helios-core 1.3.96):
+
+```python
+import math
+
+with Visualizer(width=1200, height=800, headless=True) as vis:
+    vis.buildContextGeometry(context)
+    vis.setCameraPosition(vec3(0, -3, 1.5), vec3(0, 0, 0.5))
+    vis.setCameraFieldOfView(math.degrees(2 * math.atan(800 / (2 * 1100.0))))  # f = 1100 px
+    vis.setCameraUpDirection(vec3(0, 0, 1))
+    vis.setCameraPrincipalPoint(604.5, 397.2)
+    vis.printWindow("calibrated_view.jpeg")
+```
+
 \image html CameraSchematic.jpeg
 
 ### Exact Color Mode {#ExactColor}
@@ -817,9 +837,9 @@ A bounding box encloses whole every pixel in which its object is visible. Each c
 
 #### Pixel-to-Primitive Map and Depth {#PixelUUIDs}
 
-\ref pyhelios.Visualizer.Visualizer::getPixelUUIDs "getPixelUUIDs()" returns `(pixel_UUIDs, width, height)`, the Context primitive visible in each pixel of the current view. Each element is the **UUID plus one**, with 0 where no Context primitive is visible, row-major with row 0 at the top of the image. This is the map the annotations are computed from, and it can be passed directly to the functions in `pyhelios.annotation`.
+\ref pyhelios.Visualizer.Visualizer::getPixelUUIDs "getPixelUUIDs()" returns `(pixel_UUIDs, width, height)`, the Context primitive visible in each pixel of the current view, as a flat NumPy array of `width * height` unsigned integers. Each element is the **UUID plus one**, with 0 where no Context primitive is visible, row-major with row 0 at the top of the image. This is the map the annotations are computed from, and it can be passed directly to the functions in `pyhelios.annotation`.
 
-\ref pyhelios.Visualizer.Visualizer::getDepthImage "getDepthImage()" returns `(depth_pixels, width, height)`, the distance in world units from the camera to the visible surface, measured along the viewing direction (the same definition as the radiation camera depth images), with row 0 at the top and -1 where no geometry is visible. It can be written to file with `writeDepthImageData(filename)` (text), `writeDepthImageDataEXR(filename)` (EXR), or `writeNormDepthImage(filename, max_depth)` (grayscale JPEG, white at the nearest surface and black at `max_depth`).
+\ref pyhelios.Visualizer.Visualizer::getDepthImage "getDepthImage()" returns `(depth_pixels, width, height)`, a flat NumPy array of the distance in world units from the camera to the visible surface, measured along the viewing direction (the same definition as the radiation camera depth images), with row 0 at the top and -1 where no geometry is visible. It can be written to file with `writeDepthImageData(filename)` (text), `writeDepthImageDataEXR(filename)` (EXR), or `writeNormDepthImage(filename, max_depth)` (grayscale JPEG, white at the nearest surface and black at `max_depth`).
 
 Both methods render the frame if needed, as `printWindow()` does, and return framebuffer-sized images (see \ref pyhelios.Visualizer.Visualizer::getFramebufferSize "getFramebufferSize()"). Geometry nearer than the near clipping plane, lines, points, the sky dome and 2D overlays are not part of either map, and semi-transparent primitives are treated as opaque.
 

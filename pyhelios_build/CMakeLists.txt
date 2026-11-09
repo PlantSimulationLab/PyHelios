@@ -128,6 +128,10 @@ if("planthydraulics" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_planthydraulics.cpp)
 endif()
 
+if("soiltransport" IN_LIST PLUGINS)
+    list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_soiltransport.cpp)
+endif()
+
 if("leafoptics" IN_LIST PLUGINS)
     list(APPEND PYHELIOS_WRAPPER_SOURCES ../native/src/pyhelios_wrapper_leafoptics.cpp)
 endif()
@@ -240,9 +244,22 @@ if(NOT DEFINED ENV{CIBUILDWHEEL})
 endif()
 
 if(NOT DEFINED ENV{CIBUILDWHEEL})
+    if("soiltransport" IN_LIST PLUGINS)
+        target_include_directories(pyhelios_interface PRIVATE
+            ${BASE_DIRECTORY}/plugins/soiltransport/include
+        )
+        # HELIOS_CUDA_AVAILABLE is PUBLIC on the soiltransport target and changes the
+        # layout of SoilSolver3D, so the shim must see it through a target dependency.
+        target_link_libraries(pyhelios_interface PUBLIC soiltransport)
+    endif()
+endif()
+
+if(NOT DEFINED ENV{CIBUILDWHEEL})
     if("plantarchitecture" IN_LIST PLUGINS)
         target_include_directories(pyhelios_interface PRIVATE
             ${BASE_DIRECTORY}/plugins/plantarchitecture/include
+            # CollisionGeometry.h (helios::collision closest-point queries, helios-core 1.3.96)
+            ${BASE_DIRECTORY}/plugins/collisiondetection/include
         )
     endif()
 endif()
@@ -394,9 +411,17 @@ if("planthydraulics" IN_LIST PLUGINS)
     )
 endif()
 
+if("soiltransport" IN_LIST PLUGINS)
+    target_include_directories(pyhelios_shared PRIVATE
+        ${BASE_DIRECTORY}/plugins/soiltransport/include
+    )
+endif()
+
 if("plantarchitecture" IN_LIST PLUGINS)
     target_include_directories(pyhelios_shared PRIVATE
         ${BASE_DIRECTORY}/plugins/plantarchitecture/include
+        # CollisionGeometry.h (helios::collision closest-point queries, helios-core 1.3.96)
+        ${BASE_DIRECTORY}/plugins/collisiondetection/include
     )
 endif()
 

@@ -18,6 +18,7 @@ PyHelios uses a flexible plugin architecture with **13 integrated plugins** that
 - **stomatalconductance**: Stomatal conductance modeling and gas exchange
 - **boundarylayerconductance**: Boundary layer conductance for heat/mass transfer
 - **planthydraulics**: Plant hydraulic modeling and water transport
+- **soiltransport**: Variably saturated soil water transport (Richards equation) with root water uptake
 
 ### Analysis and Simulation Plugins
 - **lidar**: LiDAR simulation and point cloud processing

@@ -18,7 +18,7 @@
 
 namespace pyhelios_photosynthesis_internal {
 
-constexpr unsigned int C4_COEFF_COUNT = 43;
+constexpr unsigned int C4_COEFF_COUNT = 42;
 // Sentinel: PhotosyntheticTemperatureResponseParameters initializes Topt = 10000 K when no
 // optimum is set. After K → C conversion this is ~9726.85 — far above any realistic Topt.
 // Helios's own validation (validateOptimalTemperature in PhotosynthesisModel.h) rejects
@@ -52,7 +52,7 @@ inline void packTempResponse(const PhotosyntheticTemperatureResponseParameters &
     out[3] = p.dHd;
 }
 
-// Unpack a 43-float coefficient array into a C4ModelCoefficients struct.
+// Unpack a 42-float coefficient array into a C4ModelCoefficients struct.
 inline C4ModelCoefficients unpackC4Coefficients(const float *coefficients) {
     C4ModelCoefficients c;
 
@@ -81,17 +81,16 @@ inline C4ModelCoefficients unpackC4Coefficients(const float *coefficients) {
     c.fcyc = coefficients[34];
     c.gbs = coefficients[35];
     c.ao = coefficients[36];
-    c.absorptance = coefficients[37];
-    c.f_spectral = coefficients[38];
-    c.theta_etr = coefficients[39];
-    c.h_protons = coefficients[40];
-    c.H_J = coefficients[41];
-    c.H_Jcyc = coefficients[42];
+    c.f_spectral = coefficients[37];
+    c.theta_etr = coefficients[38];
+    c.h_protons = coefficients[39];
+    c.H_J = coefficients[40];
+    c.H_Jcyc = coefficients[41];
 
     return c;
 }
 
-// Pack a C4ModelCoefficients struct into a 43-float coefficient array.
+// Pack a C4ModelCoefficients struct into a 42-float coefficient array.
 inline void packC4Coefficients(const C4ModelCoefficients &c, float *out) {
     packTempResponse(c.getVpmaxTempResponse(), &out[0]);
     packTempResponse(c.getVcmaxTempResponse(), &out[4]);
@@ -118,12 +117,11 @@ inline void packC4Coefficients(const C4ModelCoefficients &c, float *out) {
     out[34] = c.fcyc;
     out[35] = c.gbs;
     out[36] = c.ao;
-    out[37] = c.absorptance;
-    out[38] = c.f_spectral;
-    out[39] = c.theta_etr;
-    out[40] = c.h_protons;
-    out[41] = c.H_J;
-    out[42] = c.H_Jcyc;
+    out[37] = c.f_spectral;
+    out[38] = c.theta_etr;
+    out[39] = c.h_protons;
+    out[40] = c.H_J;
+    out[41] = c.H_Jcyc;
 }
 
 // =============================================================================
@@ -1192,7 +1190,7 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 return;
             }
             if (coeff_size < C4_COEFF_COUNT) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 coefficients array must have at least 43 elements");
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 coefficients array must have at least 42 elements");
                 return;
             }
 
@@ -1221,8 +1219,8 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
                 return;
             }
-            if (coeff_count < C4_COEFF_COUNT) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have at least 43 elements");
+            if (coeff_count != C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have exactly 42 elements (helios-core 1.3.96 removed absorptance, slot 37 of the old 43-element layout)");
                 return;
             }
 
@@ -1251,8 +1249,8 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
                 return;
             }
-            if (coeff_count < pyhelios_photosynthesis_internal::C4_COEFF_COUNT) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have at least 43 elements");
+            if (coeff_count != pyhelios_photosynthesis_internal::C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have exactly 42 elements (helios-core 1.3.96 removed absorptance, slot 37 of the old 43-element layout)");
                 return;
             }
 
@@ -1302,8 +1300,8 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Coefficients array is null");
                 return;
             }
-            if (coeff_count < C4_COEFF_COUNT) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have at least 43 elements");
+            if (coeff_count != C4_COEFF_COUNT) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 model coefficients array must have exactly 42 elements (helios-core 1.3.96 removed absorptance, slot 37 of the old 43-element layout)");
                 return;
             }
             if (!uuids) {
@@ -1338,7 +1336,7 @@ using pyhelios_photosynthesis_internal::unpackC4Coefficients;
                 return;
             }
             if (coeff_size < C4_COEFF_COUNT) {
-                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 coefficients array must have at least 43 elements");
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "C4 coefficients array must have at least 42 elements");
                 return;
             }
 

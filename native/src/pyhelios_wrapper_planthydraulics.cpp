@@ -8,6 +8,7 @@
 #include <exception>
 #include <stdexcept>
 #include <vector>
+#include <map>
 
 #ifdef PLANTHYDRAULICS_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_planthydraulics.h"
@@ -473,6 +474,47 @@ extern "C" {
             return nullptr;
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantHydraulicsModel::getPrimitivesByPlantID): Unknown error.");
+            return nullptr;
+        }
+    }
+
+    PYHELIOS_API unsigned int* getPlantHydraulicsPrimitivesByPlantIDs(PlantHydraulicsModel* model, const int* plantIDs, unsigned int plant_count, unsigned int* counts, unsigned int* total_count) {
+        try {
+            clearError();
+            if (!total_count) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Total count pointer is null");
+                return nullptr;
+            }
+            *total_count = 0;
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantHydraulicsModel pointer is null");
+                return nullptr;
+            }
+            if (plant_count > 0 && (!plantIDs || !counts)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "plantIDs or counts pointer is null");
+                return nullptr;
+            }
+            std::vector<int> ids(plantIDs, plantIDs + plant_count);
+            std::map<int, std::vector<uint>> by_plant = model->getPrimitivesByPlantIDs(ids);
+
+            static thread_local std::vector<unsigned int> static_result;
+            static_result.clear();
+            for (unsigned int i = 0; i < plant_count; ++i) {
+                auto it = by_plant.find(ids[i]);
+                if (it == by_plant.end()) {
+                    counts[i] = 0;
+                    continue;
+                }
+                counts[i] = static_cast<unsigned int>(it->second.size());
+                static_result.insert(static_result.end(), it->second.begin(), it->second.end());
+            }
+            *total_count = static_cast<unsigned int>(static_result.size());
+            return static_result.empty() ? nullptr : static_result.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantHydraulicsModel::getPrimitivesByPlantIDs): ") + e.what());
+            return nullptr;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantHydraulicsModel::getPrimitivesByPlantIDs): Unknown error.");
             return nullptr;
         }
     }

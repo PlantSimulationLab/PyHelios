@@ -141,6 +141,7 @@ INPUT                  = pyhelios \
                          docs/plugin_photosynthesis.md \
                          docs/plugin_plantarchitecture.md \
                          docs/plugin_planthydraulics.md \
+                         docs/plugin_soiltransport.md \
                          docs/plugin_radiation.md \
                          docs/plugin_solarposition.md \
                          docs/plugin_stomatalconductance.md \
@@ -165,6 +166,7 @@ EXCLUDE                = pyhelios/plugins/__pycache__ \
                          pyhelios/wrappers/ULoggerWrapper.py \
                          pyhelios/wrappers/UPlantArchitectureWrapper.py \
                          pyhelios/wrappers/UPlantHydraulicsWrapper.py \
+                         pyhelios/wrappers/USoilTransportWrapper.py \
                          pyhelios/wrappers/URadiationModelWrapper.py \
                          pyhelios/wrappers/UEnergyBalanceWrapper.py \
                          pyhelios/wrappers/UPhotosynthesisWrapper.py \

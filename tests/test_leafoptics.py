@@ -138,7 +138,7 @@ class TestLeafOpticsInterface:
             assert props.carotenoidcontent == 7.0
             assert props.anthocyancontent == 1.0
             assert props.watermass == 0.015
-            assert props.drymass == 0.09
+            assert props.drymass == 0.006
             assert props.protein == 0.0
             assert props.carbonconstituents == 0.0
 

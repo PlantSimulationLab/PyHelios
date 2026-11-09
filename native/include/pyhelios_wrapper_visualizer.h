@@ -156,11 +156,32 @@ PYHELIOS_API void colorContextPrimitivesByDataUUIDs(Visualizer* visualizer, cons
 //=============================================================================
 
 /**
- * @brief Set camera field of view angle
+ * @brief Set the camera's vertical field of view
  * @param visualizer Pointer to the Visualizer
- * @param angle_FOV Field of view angle in degrees
+ * @param angle_FOV Vertical field of view angle in degrees
  */
 PYHELIOS_API void setCameraFieldOfView(Visualizer* visualizer, float angle_FOV);
+
+/**
+ * @brief Set the world direction that appears up in the image, fixing the camera's roll (helios-core 1.3.96)
+ * @param visualizer Pointer to the Visualizer
+ * @param up World direction [x, y, z]
+ */
+PYHELIOS_API void visualizerSetCameraUpDirection(Visualizer* visualizer, const float* up);
+
+/**
+ * @brief Return to choosing the camera's up direction automatically (helios-core 1.3.96)
+ * @param visualizer Pointer to the Visualizer
+ */
+PYHELIOS_API void visualizerClearCameraUpDirection(Visualizer* visualizer);
+
+/**
+ * @brief Set where the camera's optical axis meets the image, in framebuffer pixels (helios-core 1.3.96)
+ * @param visualizer Pointer to the Visualizer
+ * @param column Column from the left edge of the framebuffer
+ * @param row Row from the top edge of the framebuffer
+ */
+PYHELIOS_API void visualizerSetCameraPrincipalPoint(Visualizer* visualizer, float column, float row);
 
 /**
  * @brief Get camera position and look-at point

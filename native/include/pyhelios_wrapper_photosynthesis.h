@@ -240,7 +240,8 @@ PYHELIOS_API void setFarquharMesophyllConductance(PhotosynthesisModel* photosynt
 //=============================================================================
 
 //
-// C4 coefficient flat-array layout (43 floats):
+// C4 coefficient flat-array layout (42 floats; helios-core 1.3.96 removed C4ModelCoefficients::absorptance,
+// which was slot 37 of the earlier 43-float layout):
 //
 //   [ 0..3]   Vpmax temperature response: value_at_25C, dHa, Topt(C), dHd
 //   [ 4..7]   Vcmax temperature response: value_at_25C, dHa, Topt(C), dHd
@@ -249,8 +250,8 @@ PYHELIOS_API void setFarquharMesophyllConductance(PhotosynthesisModel* photosynt
 //   [16..19]  gm    temperature response: value_at_25C, dHa, Topt(C), dHd
 //   [20..24]  Rubisco/PEPC kinetic constants at 25C: Kc_25, Ko_25, Kp_25, gamma_star_25, Om_25
 //   [25..29]  Activation energies (kJ/mol): dH_Kc, dH_Ko, dH_Kp, dH_gamma_star, dH_Om
-//   [30..42]  User-tunable scalars: alpha_psII_fraction, x_etr_partition, Vpr, Rm_frac, fcyc,
-//             gbs, ao, absorptance, f_spectral, theta_etr, h_protons, H_J, H_Jcyc
+//   [30..41]  User-tunable scalars: alpha_psII_fraction, x_etr_partition, Vpr, Rm_frac, fcyc,
+//             gbs, ao, f_spectral, theta_etr, h_protons, H_J, H_Jcyc
 //
 // Topt is exposed in Celsius (helios stores it internally as Kelvin). When packing,
 // values >= 1000 (the "no optimum" sentinel 10000-273.15) are written as -1; on input
@@ -278,7 +279,7 @@ PYHELIOS_API void setC4CoefficientsFromLibraryForUUIDs(PhotosynthesisModel* phot
  * @brief Get C4 model coefficients for a species from the C4 library
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param species Name of the species
- * @param coefficients Output array (must be at least 43 floats)
+ * @param coefficients Output array (must be at least 42 floats)
  * @param coeff_size Size of coefficients array
  */
 PYHELIOS_API void getC4CoefficientsFromLibrary(PhotosynthesisModel* photosynthesis_model, const char* species, float* coefficients, unsigned int coeff_size);
@@ -286,16 +287,16 @@ PYHELIOS_API void getC4CoefficientsFromLibrary(PhotosynthesisModel* photosynthes
 /**
  * @brief Set C4 model coefficients for all primitives
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
- * @param coefficients Array of 43 floats (see layout comment above)
- * @param coeff_count Number of coefficients (must be 43)
+ * @param coefficients Array of 42 floats (see layout comment above)
+ * @param coeff_count Number of coefficients (must be 42)
  */
 PYHELIOS_API void setC4ModelCoefficients(PhotosynthesisModel* photosynthesis_model, const float* coefficients, unsigned int coeff_count);
 
 /**
  * @brief Set C4 model coefficients for specific primitives
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
- * @param coefficients Array of 43 floats (see layout comment above)
- * @param coeff_count Number of coefficients (must be 43)
+ * @param coefficients Array of 42 floats (see layout comment above)
+ * @param coeff_count Number of coefficients (must be 42)
  * @param uuids Array of primitive UUIDs
  * @param uuid_count Number of UUIDs in the array
  */
@@ -310,8 +311,8 @@ PYHELIOS_API void setC4ModelCoefficientsForUUIDs(PhotosynthesisModel* photosynth
  *
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param material_label Material identifier (must already exist on at least one primitive)
- * @param coefficients Array of 43 floats (see layout comment above)
- * @param coeff_count Number of coefficients (must be 43)
+ * @param coefficients Array of 42 floats (see layout comment above)
+ * @param coeff_count Number of coefficients (must be 42)
  */
 PYHELIOS_API void setC4ModelCoefficientsForMaterial(PhotosynthesisModel* photosynthesis_model, const char* material_label, const float* coefficients, unsigned int coeff_count);
 
@@ -331,7 +332,7 @@ PYHELIOS_API void setC4CoefficientsFromLibraryForMaterial(PhotosynthesisModel* p
  * @brief Get C4 model coefficients for a specific primitive
  * @param photosynthesis_model Pointer to the PhotosynthesisModel
  * @param uuid Primitive UUID
- * @param coefficients Output array (must be at least 43 floats)
+ * @param coefficients Output array (must be at least 42 floats)
  * @param coeff_size Size of coefficients array
  */
 PYHELIOS_API void getC4ModelCoefficients(PhotosynthesisModel* photosynthesis_model, unsigned int uuid, float* coefficients, unsigned int coeff_size);

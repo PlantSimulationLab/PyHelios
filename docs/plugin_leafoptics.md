@@ -89,7 +89,7 @@ model.
  <tr><td>carotenoidcontent</td><td>\f$\mu\f$g&nbsp;cm\f$^{-2}\f$</td><td>Total carotenoids</td><td>7</td></tr>
  <tr><td>anthocyancontent</td><td>\f$\mu\f$g&nbsp;cm\f$^{-2}\f$</td><td>Anthocyanins</td><td>1</td></tr>
  <tr><td>watermass</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Equivalent water thickness</td><td>0.015</td></tr>
- <tr><td>drymass</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Dry matter mass</td><td>0.09</td></tr>
+ <tr><td>drymass</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Dry matter mass (PROSPECT-D mode), i.e. the leaf mass per area. Typical leaves hold 0.003-0.01 g/cm\f$^2\f$; the leaves of the ANGERS and LOPEX datasets, to which PROSPECT was calibrated, average about 0.005.</td><td>0.006</td></tr>
  <tr><td>protein</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Protein mass</td><td>0</td></tr>
  <tr><td>carbonconstituents</td><td>g&nbsp;cm\f$^{-2}\f$</td><td>Cellulose and other carbon compounds</td><td>0</td></tr>
  <tr><td>V2Z</td><td>unitless, [0,1]</td><td>Violaxanthin↔zeaxanthin de-epoxidation state. Used by the radiation plugin's solar-induced fluorescence (SIF) pipeline; ignored by PROSPECT.</td><td>0</td></tr>
@@ -242,7 +242,7 @@ The library contains PROSPECT-D parameters fitted to measured leaf spectra by ro
 
 <table>
  <tr><th>Species Label</th><th>Scientific Name</th><th>N</th><th>Cab<br>(µg/cm²)</th><th>Car<br>(µg/cm²)</th><th>Ant<br>(µg/cm²)</th><th>Cbrown</th><th>Cw<br>(g/cm²)</th><th>Cm<br>(g/cm²)</th><th>R²</th><th>Source</th></tr>
- <tr><td>"default"</td><td>-</td><td>1.50</td><td>30.0</td><td>7.00</td><td>1.00</td><td>0.000</td><td>0.0150</td><td>0.0900</td><td>-</td><td>Original Helios defaults</td></tr>
+ <tr><td>"default"</td><td>-</td><td>1.50</td><td>30.0</td><td>7.00</td><td>1.00</td><td>0.000</td><td>0.0150</td><td>0.0060</td><td>-</td><td>Helios defaults (the defaults of `LeafOpticsProperties`)</td></tr>
  <tr><td>"garden_lettuce"</td><td><i>Lactuca sativa</i> L.</td><td>2.01</td><td>30.3</td><td>6.99</td><td>1.36</td><td>0.107</td><td>0.0282</td><td>0.0053</td><td>0.993</td><td>LOPEX93 sample 0021</td></tr>
  <tr><td>"alfalfa"</td><td><i>Medicago sativa</i> L.</td><td>2.01</td><td>43.6</td><td>10.3</td><td>1.34</td><td>0.000</td><td>0.0190</td><td>0.0047</td><td>0.994</td><td>LOPEX93 sample 0036</td></tr>
  <tr><td>"corn"</td><td><i>Zea mays</i> L.</td><td>1.59</td><td>22.9</td><td>3.97</td><td>0.00</td><td>0.727</td><td>0.0150</td><td>0.0044</td><td>0.975</td><td>LOPEX93 sample 0041</td></tr>
@@ -264,12 +264,7 @@ The library contains PROSPECT-D parameters fitted to measured leaf spectra by ro
 
 ### Error Handling {#LOLibraryError}
 
-If an unknown species name is provided, the method:
-1. Issues a warning message (if messages are enabled)
-2. Populates the properties structure with default values
-3. Does not throw an error
-
-This ensures that code continues to run even if a species name is misspelled or not yet in the library.
+A species name that is not in the library (e.g., a misspelled one) raises `LeafOpticsError`, whose message lists the species the library holds (since helios-core 1.3.96; previously the default leaf was returned with a warning). The lookup is case-insensitive. Use `"default"` for the default leaf.
 
 ### Extending the Species Library {#LOLibraryExtend}
 
@@ -463,6 +458,51 @@ Some things to keep in mind:
 - Primitives given spectra by this method cannot also be given spectra by the nitrogen-based mode (below) of the same LeafOptics, or the other way around, since each would overwrite the other's. A `LeafOpticsError` is raised instead.
 - LeafOptics does not provide properties for stages of senescence, which differ between species. During senescence, chlorophyll is generally lost faster than carotenoids, which is why leaves turn yellow, and brown pigments accumulate later.
 
+## Leaves with a Class Map {#LeafOpticsClassMaps}
+
+A leaf photograph used as a leaf texture shows tissues that differ optically, such as the pale midrib of a grass leaf. A **class map** of the texture (a grayscale PNG of integer classes with the texture's resolution, in which class 0 marks exactly its transparent texels) records where each tissue is, and the XML file of the same name beside it defines each class relative to the leaf:
+
+```xml
+<helios>
+  <leaf_class_map provenance="...">
+    <class id="1" chlorophyll_scale="0.87" visible_reflectance_scale="0.43"/>
+    <class id="2" chlorophyll_scale="0.26" visible_reflectance_scale="2.19"/>
+  </leaf_class_map>
+</helios>
+```
+
+Since helios-core 1.3.96, when \ref pyhelios.LeafOptics.LeafOptics::run "run()" is given primitives that carry the primitive data `"spectral_class_map"`, it gives them a spectral texture (see [Spectral Textures](user_guide.html#SpectralTexture) in the user guide) instead of a single spectrum. Each class has the spectra of the given properties with:
+
+- the chlorophyll and carotenoid contents multiplied by its `chlorophyll_scale`, and
+- the reflectivity below 700 nm multiplied by its `visible_reflectance_scale`, blending linearly to no change at 750 nm, and where that increases it, no further than a reflectivity plus transmissivity of 0.98.
+
+So the classes follow the properties the leaf is given, and a class with both scales equal to 1 has exactly the leaf's spectra. The spectra are written as global data `leaf_reflectivity_[label]_[class map]_class[k]` and `leaf_transmissivity_[label]_[class map]_class[k]`, and the palette is named `leaf_[label]_[class map]`, where `[class map]` is the class map's file name without its extension. The primitives are still given `"reflectivity_spectrum"`, `"transmissivity_spectrum"` and `"fluspect_spectrum"` as usual, though the radiation model uses the spectral texture rather than the first two. Calling `run()` again with new properties recalculates the class spectra, and \ref pyhelios.LeafOptics.LeafOptics::runFromObjectData "runFromObjectData()" and the nitrogen-based mode give each value or nitrogen bin its own palette in the same way.
+
+The sorghum, maize and wheat library models of the PlantArchitecture plug-in record the class map of their leaf photograph (SorghumLeaf_classes.png, which picks out the midrib) on their leaves, and the apple models record AppleLeaf_classes.png, so running LeafOptics on them is all that is needed (see `LeafPrototype.leaf_class_map_file`):
+
+```python
+from pyhelios import Context, LeafOptics, PlantArchitecture
+from pyhelios.types import vec3
+
+with Context() as context:
+    with PlantArchitecture(context) as plantarch:
+        plantarch.loadPlantModelFromLibrary("sorghum")
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 40)
+        uuids = plantarch.getAllPlantUUIDs(plant_id)
+
+    with LeafOptics(context) as leafoptics:
+        properties = leafoptics.getPropertiesFromLibrary("corn")
+        leafoptics.run(uuids, properties, "sorghum")  # leaves with a midrib, stems with one spectrum
+```
+
+Without LeafOptics, the class map is not used, and leaves have whatever spectra or values they are given. Bark and fruit class maps, which are defined relative to a library spectrum rather than to a leaf, are applied by `RadiationModel.applySpectralClassMaps()` instead; LeafOptics leaves them alone.
+
+Some things to keep in mind:
+
+- An error is raised, before any primitive is changed, if a class map does not exist, has no class definitions, defines its classes other than as 1, 2, 3 and so on, has a class the definitions lack, or has a scale that is not a positive number.
+- A leaf triangle whose (u,v) coordinates cover only transparent texels of the texture can take no class, so PlantArchitecture does not record the class map on it, and it gets the single spectrum.
+- Class maps and their definitions for other leaf textures can be made with the scripts in `helios-core/utilities/leaf_class_maps` (see its README), which fit the classes to the colors of the leaf photograph after removing its shading.
+
 ## Nitrogen-Based Automatic Leaf Optics {#LONitrogenAuto}
 
 Instead of specifying pigments directly, LeafOptics can derive each leaf's chlorophyll and carotenoid content from its nitrogen content. Pass a `LeafOpticsProperties_Nauto` to `run()` **without a label**. The plug-in groups the primitives by parent object, reads the `"leaf_nitrogen_gN_m2"` object data (g N m\f$^{-2}\f$, normally written by the PlantArchitecture nitrogen model) from each object, and computes:
@@ -492,13 +532,15 @@ with Context() as context:
 | Member | Default | Description |
 |---|---|---|
 | `f_photosynthetic` | 0.50 | Fraction of leaf N in photosynthetic machinery [0-1] |
-| `N_to_Cab_coefficient` | 0.40 | Empirical N-to-chlorophyll coefficient |
+| `N_to_Cab_coefficient` | 0.40 | Chlorophyll per unit photosynthetic N (g chlorophyll per g N); only its product with `f_photosynthetic` matters (see below) |
 | `Car_to_Cab_ratio` | 0.25 | Carotenoid to chlorophyll ratio |
-| `numberlayers`, `anthocyancontent`, `brownpigments`, `watermass`, `drymass`, `protein`, `carbonconstituents` | 1.5, 1.0, 0.0, 0.015, 0.006, 0.0, 0.0 | Fixed PROSPECT parameters (note the lower `drymass` default than `LeafOpticsProperties`) |
+| `numberlayers`, `anthocyancontent`, `brownpigments`, `watermass`, `drymass`, `protein`, `carbonconstituents` | 1.5, 1.0, 0.0, 0.015, 0.006, 0.0, 0.0 | Fixed PROSPECT parameters |
 | `V2Z`, `fqe` | 0.0, 1.0 | SIF parameters, fixed across bins |
 | `num_bins` | 20 | Number of spectrum bins (one bin if all leaves share the same nitrogen) |
 | `reassignment_threshold` | 0.0 | Relative N change (fraction of bin centre) required before reassignment; 0 disables it |
 | `min_reassignment_change` | 0.05 | Absolute N change (g m\f$^{-2}\f$) required before reassignment; the new bin must also be closer by half this amount |
+
+**The nitrogen-to-chlorophyll factor is a model assumption, not a measured relationship.** Only the product `f_photosynthetic` \f$\times\f$ `N_to_Cab_coefficient` affects the result: it is the mass of chlorophyll per unit mass of leaf nitrogen. The defaults (0.50 \f$\times\f$ 0.40) give 0.20 g chlorophyll per g N, about 3.1 mmol chlorophyll per mol N. No source gives this value directly; it is consistent with about 1.25% of leaf N lying in the chlorophyll molecules themselves and about 12% in the chlorophyll-protein complexes (Evans and Seemann, 1989, as used by <a href="https://doi.org/10.1046/j.1365-3040.2001.00724.x">Evans and Poorter, 2001</a>), and with leaf chlorophyll being approximately proportional to leaf N (<a href="https://doi.org/10.1104/pp.72.2.297">Evans, 1983</a>). The ratio varies: shade-grown leaves can have roughly 1.5-2.5 times more chlorophyll per unit N than sun leaves (<a href="https://doi.org/10.1007/BF00377192">Evans, 1989</a>). Plausible values of the product range from about 0.10 g/g (sun-grown, high-N leaves) to 0.30 g/g (shade-grown or low-N leaves); calibrate it for the species and conditions simulated where measurements are available.
 
 Behavior notes:
 

@@ -6,11 +6,15 @@ capabilities with graceful plugin handling and informative error messages.
 """
 
 import logging
+import math
+import numbers
 import os
 import ctypes
 from pathlib import Path
 from contextlib import contextmanager
 from typing import List, Optional, Union, Tuple
+
+import numpy as np
 
 from .plugins.registry import get_plugin_registry
 from .plugins import helios_lib
@@ -787,10 +791,14 @@ class Visualizer:
 
     def setCameraFieldOfView(self, angle_FOV: float) -> None:
         """
-        Set camera field of view angle.
-        
+        Set the camera's vertical field of view in degrees. The default is 45 degrees.
+
+        The angle spans the image from its top edge to its bottom edge; the horizontal field of
+        view follows from the framebuffer's aspect ratio. A pinhole camera with a focal length of
+        f pixels and an image H pixels high has a vertical field of view of 2*atan(H/(2f)).
+
         Args:
-            angle_FOV: Field of view angle in degrees
+            angle_FOV: Vertical field of view angle in degrees
             
         Raises:
             ValueError: If angle is invalid
@@ -810,6 +818,100 @@ class Visualizer:
             helios_lib.setCameraFieldOfView(self.visualizer, ctypes.c_float(angle_FOV))
         except Exception as e:
             raise VisualizerError(f"Failed to set camera field of view: {e}")
+
+    def setCameraUpDirection(self, up: vec3) -> None:
+        """
+        Set the world direction that appears up in the image, fixing the camera's roll.
+
+        By default the roll is chosen automatically: world +z is up in the image, except for a
+        camera looking within about 2.6 degrees of straight up or down, where world +y is up
+        instead. That rule cannot express every camera, so a camera reproducing a real one sets
+        its up direction here. Only the component perpendicular to the viewing direction matters.
+        It must not be parallel to the viewing direction when the frame is rendered, or rendering
+        raises an error.
+
+        Args:
+            up: Direction, in world coordinates, that should point toward the top of the image.
+                Need not be a unit vector.
+
+        Raises:
+            ValueError: If ``up`` is not a vec3, or is zero or non-finite
+            NotImplementedError: If the native library predates helios-core v1.3.96
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.setCameraPosition(vec3(0, -5, 1), vec3(0, 0, 1))
+            >>> vis.setCameraUpDirection(vec3(1, 0, 0))   # camera rolled 90 degrees
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        if not isinstance(up, vec3):
+            raise ValueError(f"up must be a vec3, got {type(up).__name__}")
+        if not all(math.isfinite(c) for c in (up.x, up.y, up.z)):
+            raise ValueError("up must have finite components")
+        if up.x == 0 and up.y == 0 and up.z == 0:
+            raise ValueError("up must not be the zero vector")
+        try:
+            visualizer_wrapper.set_camera_up_direction(self.visualizer, [up.x, up.y, up.z])
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to set camera up direction: {e}")
+
+    def clearCameraUpDirection(self) -> None:
+        """
+        Return to choosing the camera's up direction automatically (the default).
+
+        See :meth:`setCameraUpDirection`.
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.96
+            VisualizerError: If the operation fails
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.clear_camera_up_direction(self.visualizer)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to clear camera up direction: {e}")
+
+    def setCameraPrincipalPoint(self, column: float, row: float) -> None:
+        """
+        Set where the camera's optical axis meets the image, in framebuffer pixels.
+
+        By default the optical axis passes through the centre of the image. A calibrated camera's
+        principal point is usually a few pixels off centre, and a crop moves it further. The
+        position is given in the pixel coordinates of the images and maps the Visualizer reads
+        back: column from the left edge and row from the top edge, so that
+        ``(width/2, height/2)`` is the default. The field of view set by
+        :meth:`setCameraFieldOfView` keeps its meaning as the angle subtended by the image
+        height; only where the image is centred changes.
+
+        Together with :meth:`setCameraFieldOfView` and :meth:`setCameraUpDirection` this lets the
+        Visualizer reproduce a real pinhole camera.
+
+        Args:
+            column: Horizontal position of the principal point in pixels, from the left edge
+            row: Vertical position of the principal point in pixels, from the top edge
+
+        Raises:
+            ValueError: If ``column`` or ``row`` is not a finite number
+            NotImplementedError: If the native library predates helios-core v1.3.96
+            VisualizerError: If the operation fails
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        for name, v in (("column", column), ("row", row)):
+            if isinstance(v, bool) or not isinstance(v, numbers.Real) or not math.isfinite(v):
+                raise ValueError(f"{name} must be a finite number, got {v!r}")
+        try:
+            visualizer_wrapper.set_camera_principal_point(self.visualizer, float(column), float(row))
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to set camera principal point: {e}")
 
     def getCameraPosition(self) -> Tuple[vec3, vec3]:
         """
@@ -1720,7 +1822,7 @@ class Visualizer:
 
     # Annotation and Depth Image Methods (helios-core 1.3.91)
 
-    def getDepthImage(self) -> Tuple[List[float], int, int]:
+    def getDepthImage(self) -> Tuple[np.ndarray, int, int]:
         """
         Get the distance from the camera to the nearest surface in each pixel of the current view.
 
@@ -1733,10 +1835,11 @@ class Visualizer:
         The frame is rendered as part of the call if needed, as for :meth:`printWindow`.
 
         Returns:
-            Tuple of ``(depth_pixels, width, height)``. ``depth_pixels`` is row-major with row 0
-            at the TOP of the image (the orientation of an image saved by :meth:`printWindow`).
-            Pixels in which no geometry is visible hold -1. ``width`` and ``height`` are the
-            framebuffer dimensions (see :meth:`getFramebufferSize`).
+            Tuple of ``(depth_pixels, width, height)``. ``depth_pixels`` is a flat NumPy array of
+            ``width * height`` float32 values, row-major with row 0 at the TOP of the image (the
+            orientation of an image saved by :meth:`printWindow`); ``depth_pixels.reshape(height,
+            width)`` gives it as an image. Pixels in which no geometry is visible hold -1. ``width``
+            and ``height`` are the framebuffer dimensions (see :meth:`getFramebufferSize`).
 
         Raises:
             VisualizerError: If the operation fails
@@ -1750,7 +1853,7 @@ class Visualizer:
 
         Example:
             >>> depth, width, height = visualizer.getDepthImage()
-            >>> center = depth[(height // 2) * width + width // 2]
+            >>> center = depth.reshape(height, width)[height // 2, width // 2]
         """
         self._check_context_alive()
         if not self.visualizer:
@@ -1763,7 +1866,7 @@ class Visualizer:
         except Exception as e:
             raise VisualizerError(f"Failed to get depth image: {e}")
 
-    def getPixelUUIDs(self) -> Tuple[List[int], int, int]:
+    def getPixelUUIDs(self) -> Tuple[np.ndarray, int, int]:
         """
         Get the Context primitive visible in each pixel of the current view.
 
@@ -1773,11 +1876,12 @@ class Visualizer:
         Context. The frame is rendered as part of the call if needed, as for :meth:`printWindow`.
 
         Returns:
-            Tuple of ``(pixel_UUIDs, width, height)``. Each element of ``pixel_UUIDs`` is the
-            **UUID of the visible primitive plus one**; 0 means no Context primitive is visible
-            (background, or geometry added directly to the Visualizer). Subtract 1 from a
-            non-zero value to get the UUID. The map is row-major with row 0 at the TOP of the
-            image, and is in the form the :mod:`pyhelios.annotation` functions accept.
+            Tuple of ``(pixel_UUIDs, width, height)``. ``pixel_UUIDs`` is a flat NumPy array of
+            ``width * height`` uint32 values, each the **UUID of the visible primitive plus one**;
+            0 means no Context primitive is visible (background, or geometry added directly to the
+            Visualizer). Subtract 1 from a non-zero value to get the UUID. The map is row-major
+            with row 0 at the TOP of the image (``pixel_UUIDs.reshape(height, width)`` gives it as
+            an image), and is in the form the :mod:`pyhelios.annotation` functions accept.
             ``width`` and ``height`` are the framebuffer dimensions.
 
         Raises:
@@ -1792,7 +1896,7 @@ class Visualizer:
 
         Example:
             >>> pixels, width, height = visualizer.getPixelUUIDs()
-            >>> visible = {p - 1 for p in pixels if p != 0}
+            >>> visible = np.unique(pixels[pixels != 0]) - 1
         """
         self._check_context_alive()
         if not self.visualizer:

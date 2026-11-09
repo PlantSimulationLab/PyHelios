@@ -110,14 +110,16 @@ class CameraProperties:
 
     This class encapsulates the properties needed to configure a radiation camera,
     providing sensible defaults and validation for camera parameters. Carries the
-    v1.3.60 ``camera_zoom`` and v1.3.85 ``exposure_target`` fields.
+    v1.3.60 ``camera_zoom``, v1.3.85 ``exposure_target`` and v1.3.96 ``color_correction`` and
+    ``tone_curve`` fields.
     """
 
     def __init__(self, camera_resolution=None, focal_plane_distance=1.0, lens_diameter=0.05,
                  HFOV=20.0, FOV_aspect_ratio=0.0, lens_focal_length=0.05,
                  sensor_width_mm=35.0, manufacturer="", model="generic", lens_make="",
                  lens_model="", lens_specification="", exposure="auto", shutter_speed=1.0/125.0,
-                 white_balance="auto", camera_zoom=1.0, exposure_target=0.18):
+                 white_balance="auto", camera_zoom=1.0, exposure_target=0.235,
+                 color_correction="auto", tone_curve="auto"):
         """
         Initialize camera properties with defaults matching C++ CameraProperties.
 
@@ -138,21 +140,46 @@ class CameraProperties:
             exposure: Exposure mode - "auto", "ISOXXX" (e.g., "ISO100"), or "manual". Default: "auto"
             shutter_speed: Camera shutter speed in seconds (e.g., 0.008 for 1/125s). Default: 0.008 (1/125s)
             white_balance: White balance mode - "auto" or "off". Default: "auto".
-                "auto" scales the camera's first three bands (red, green, blue) so that a
-                spectrally flat surface renders neutral under the light actually reaching the
-                surfaces in view, keeping the brightest band at unit gain. A scene lit by a
-                spectrally flat source is therefore left unchanged. If the camera sees no
-                light in one of those bands -- only sky, for instance -- the image is left
+                "auto" scales the camera's red, green and blue bands so that a spectrally flat
+                surface renders neutral under the light actually reaching the surfaces in view,
+                as seen through the camera's spectral responses, keeping the brightest band at
+                unit gain. Since helios-core v1.3.96 the red, green and blue bands are found from
+                the bands' spectral responses when every band has one, and otherwise from bands
+                named exactly "red", "green" and "blue" (or "R", "G", "B"), or the order of a
+                three-band camera's bands; a camera with no identifiable red, green and blue
+                bands (e.g. a colour-infrared camera) is not white balanced. If the camera sees
+                no light in one of those bands -- only sky, for instance -- the image is left
                 unbalanced and the reason is reported as a warning.
             camera_zoom: Camera optical zoom multiplier. 1.0 = no zoom, 2.0 = 2x zoom.
                         Scales effective HFOV: effective_HFOV = HFOV / camera_zoom. Default: 1.0
-            exposure_target: Target median scene luminance for ``"auto"`` exposure, as a
-                        fraction of full scale (helios-core v1.3.85+). Auto exposure scales every
-                        band so the median pixel luminance lands here. The default 0.18 is the
-                        middle-grey convention, which assumes a scene of grey-card mean
-                        reflectance; a canopy imaged from above is darker, so matching a real
-                        camera may need a lower value. Ignored for ``"manual"`` and ``"ISOXXX"``
-                        exposure. Must be > 0. Default: 0.18
+            exposure_target: Target centre-weighted mean scene luminance for ``"auto"``
+                        exposure of an RGB camera, as a fraction of full scale. Auto exposure
+                        scales the image so that its centre-weighted mean luminance (of the final
+                        linear sRGB image, after white balance and colour correction) lands here,
+                        as a camera's meter does. The default 0.235 reproduces the exposure real
+                        cameras choose; it was fitted, together with the tone curve, to the
+                        in-camera JPEGs of 413 camera models. A scene darker or brighter than
+                        typical (e.g. a canopy imaged from above) may call for a lower or higher
+                        value. Ignored for ``"manual"`` and ``"ISOXXX"`` exposure and by cameras
+                        that are not RGB cameras. Must be > 0. Default: 0.235 (helios-core v1.3.96;
+                        before it, auto exposure metered the median luminance with a target of
+                        0.18, so projects that set a value for the old rule need a new one).
+            color_correction: Colour correction mode - "auto" or "off" (helios-core v1.3.96+).
+                        Default: "auto". With "auto", a camera whose red, green and blue bands all
+                        have spectral responses converts its images from its own RGB to linear
+                        sRGB with a 3x3 matrix derived from those responses, after white balance
+                        and before exposure, as a real camera does (see
+                        :meth:`RadiationModel.getCameraColorCorrectionMatrix`). Cameras without
+                        spectral responses, and cameras that are not RGB, are not changed. Raw
+                        camera data (``writeCameraImageDataEXR``) is never colour corrected. Set
+                        "off" to keep the camera's own RGB, e.g. before applying your own matrix
+                        with :meth:`RadiationModel.applyCameraColorCorrectionMatrix`.
+            tone_curve: Tone curve mode - "auto" or "off" (helios-core v1.3.96+). Default:
+                        "auto". With "auto", :meth:`RadiationModel.writeCameraImage` passes an RGB
+                        camera's image through the typical in-camera tone curve (measured on the
+                        JPEGs of 413 camera models) before sRGB encoding, which darkens shadows
+                        and rolls off highlights. Only written images are affected; pixel data and
+                        raw data stay linear. "off" gives sRGB encoding only.
         """
         # Set camera resolution with validation
         ## @cond
@@ -210,6 +237,10 @@ class CameraProperties:
             raise ValueError("exposure must be a string")
         if not isinstance(white_balance, str):
             raise ValueError("white_balance must be a string")
+        if not isinstance(color_correction, str):
+            raise ValueError("color_correction must be a string")
+        if not isinstance(tone_curve, str):
+            raise ValueError("tone_curve must be a string")
 
         # Validate exposure mode
         if exposure not in ["auto", "manual"] and not exposure.startswith("ISO"):
@@ -218,6 +249,10 @@ class CameraProperties:
         # Validate white balance mode
         if white_balance not in ["auto", "off"]:
             raise ValueError("white_balance must be 'auto' or 'off'")
+        if color_correction not in ["auto", "off"]:
+            raise ValueError("color_correction must be 'auto' or 'off'")
+        if tone_curve not in ["auto", "off"]:
+            raise ValueError("tone_curve must be 'auto' or 'off'")
 
         self.manufacturer = str(manufacturer)
         self.model = str(model)
@@ -226,6 +261,8 @@ class CameraProperties:
         self.lens_specification = str(lens_specification)
         self.exposure = str(exposure)
         self.white_balance = str(white_balance)
+        self.color_correction = str(color_correction)
+        self.tone_curve = str(tone_curve)
 
     def to_array(self):
         """
@@ -271,7 +308,9 @@ class CameraProperties:
                 f"shutter_speed={self.shutter_speed}, "
                 f"white_balance='{self.white_balance}', "
                 f"camera_zoom={self.camera_zoom}, "
-                f"exposure_target={self.exposure_target})")
+                f"exposure_target={self.exposure_target}, "
+                f"color_correction='{self.color_correction}', "
+                f"tone_curve='{self.tone_curve}')")
 
 
 class SIFCameraProperties(CameraProperties):
@@ -375,11 +414,16 @@ class CameraMetadata:
     class ImageProcessingProperties:
         """Image processing corrections applied to the image."""
         def __init__(self, saturation_adjustment=1.0, brightness_adjustment=1.0,
-                     contrast_adjustment=1.0, color_space="linear"):
+                     contrast_adjustment=1.0, color_space="linear",
+                     color_correction_matrix=None, tone_curve="none"):
             self.saturation_adjustment = float(saturation_adjustment)
             self.brightness_adjustment = float(brightness_adjustment)
             self.contrast_adjustment = float(contrast_adjustment)
             self.color_space = str(color_space)
+            # Row-major 3x3 colour correction matrix applied after white balance; empty if none (v1.3.96+)
+            self.color_correction_matrix = list(color_correction_matrix) if color_correction_matrix else []
+            # Tone curve applied to the written image: "typical camera" or "none" (v1.3.96+)
+            self.tone_curve = str(tone_curve)
 
     class AgronomicProperties:
         """Agronomic properties derived from plant architecture data."""
@@ -2310,6 +2354,61 @@ class RadiationModel:
         self._check_context_alive()
         return radiation_wrapper.isSIFCamera(self.radiation_model, camera_label)
 
+    @require_plugin('radiation', 'apply spectral class maps')
+    def applySpectralClassMaps(self, uuids: Optional[List[int]] = None) -> None:
+        """
+        Give primitives that carry a surface class map a spectral texture whose classes scale the surface's library spectra.
+
+        A primitive whose texture has a class map, such as the bark and fruit of a
+        PlantArchitecture library model (``InternodeParameters.image_class_map_file`` and
+        ``InflorescenceParameters.fruit_class_map_file``), carries the class map's path as the
+        primitive data ``"spectral_class_map"``. The XML file of the same name beside the class
+        map defines a surface class map: the labels of the reflectivity (and optionally
+        transmissivity) spectra of the surface, from the spectral library or the Context's global
+        data, and a ``reflectance_scale`` for each class. For each class map this registers the
+        scaled spectra of its classes as global data ``"[spectrum]_[class map]_class[k]"`` (each
+        class's reflectivity and transmissivity are kept from summing to more than 1), registers
+        the palette ``"surface_[class map]"``, where ``[class map]`` is the class map's file name
+        without its extension, and assigns the spectral texture to the primitives (see
+        :meth:`pyhelios.Context.setPrimitiveSpectralTexture`).
+
+        Primitives without the data are left alone, as are those carrying a class map defined
+        relative to a leaf (a ``<leaf_class_map>``, as PlantArchitecture records on leaves), whose
+        classes :meth:`pyhelios.LeafOptics.run` derives from the leaf's properties; so a whole
+        plant can be given at once.
+
+        Call this before :meth:`updateGeometry`, as a spectral texture assigned after it is not
+        seen until the geometry is updated again.
+
+        Args:
+            uuids: Primitives to consider. If None (default), every primitive in the Context.
+
+        Raises:
+            ValueError: If uuids is not a list of non-negative integers
+            RadiationModelError: If a class map or its definitions cannot be read
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("apple")
+            >>> plant = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365)
+            >>> radiation.applySpectralClassMaps(plantarch.getAllPlantUUIDs(plant))
+        """
+        if uuids is not None:
+            if isinstance(uuids, (str, bytes)) or not hasattr(uuids, '__iter__'):
+                raise ValueError(f"uuids must be a list of UUIDs, got {type(uuids).__name__}")
+            uuids = list(uuids)
+            for i, u in enumerate(uuids):
+                if isinstance(u, bool) or not isinstance(u, (int, np.integer)) or u < 0:
+                    raise ValueError(f"uuids[{i}] must be a non-negative integer, got {u!r}")
+            uuids = [int(u) for u in uuids]
+        self._check_context_alive()
+        try:
+            radiation_wrapper.applySpectralClassMaps(self.radiation_model, uuids)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to apply spectral class maps: {e}")
+
     @require_plugin('radiation', 'enable camera flux smoothing')
     def enableCameraFluxSmoothing(self, crease_angle_degrees: float = 30.0) -> None:
         """
@@ -2735,6 +2834,57 @@ class RadiationModel:
         self._check_context_alive()
         return radiation_wrapper.getCameraPixelData(self.radiation_model, camera_label, band_label)
 
+    @require_plugin('radiation', 'get camera pixel brightness temperature')
+    def getCameraPixelBrightnessTemperature(self, camera_label: str, band_label: str) -> List[float]:
+        """
+        Get the brightness temperature (K) of each pixel of a camera in an emission band.
+
+        The brightness temperature of a pixel is the temperature of a blackbody whose radiance
+        in the band equals the pixel's radiance. Without a sensor atmosphere, the pixels of an
+        emission band hold the radiance in the band, which is inverted for T. With a sensor
+        atmosphere (:meth:`enableCameraAtmosphere`), the pixels hold the radiance above the
+        atmosphere weighted by the camera's spectral response, and the result is the brightness
+        temperature above the atmosphere, as satellite thermal products report it.
+
+        The brightness temperature of a surface is its temperature only if its emissivity is 1;
+        it also includes the radiation the surface reflects (e.g., from the sky).
+
+        The pixels must be radiances: the camera's exposure must be ``"manual"``, or ``"auto"``
+        for a thermal camera (a library camera of type "thermal", or a camera whose bands all
+        have emission enabled and wavelength bounds starting at 3000 nm or above), which
+        automatic exposure leaves unscaled. Any other camera with ``"auto"`` exposure, or one
+        with ``"ISOXXX"`` exposure, scales its images and is refused.
+
+        Args:
+            camera_label: Label of the camera
+            band_label: Label of an emission band of the camera
+
+        Returns:
+            Brightness temperature of each pixel (K), in the order of :meth:`getCameraPixelData`.
+            A pixel of zero radiance has a brightness temperature of 0 K.
+
+        Raises:
+            ValueError: If a label is not a non-empty string
+            RadiationModelError: If the band is not an emission band of the camera, or the
+                camera's pixels are not radiances
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> radiation.runBand("TIR")
+            >>> T_b = radiation.getCameraPixelBrightnessTemperature("thermal_cam", "TIR")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        validate_band_label(band_label, "band_label", "getCameraPixelBrightnessTemperature")
+        self._check_context_alive()
+        try:
+            return radiation_wrapper.getCameraPixelBrightnessTemperature(self.radiation_model, camera_label, band_label)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(
+                f"Failed to get brightness temperature of camera '{camera_label}' band '{band_label}': {e}")
+
     @require_plugin('radiation', 'set camera pixel data')
     def setCameraPixelData(self, camera_label: str, band_label: str, pixel_data: List[float]):
         """
@@ -2869,6 +3019,12 @@ class RadiationModel:
         :meth:`applyCameraImageCorrections` and :meth:`writeCameraImage`. The change to the
         stored pixel data is permanent, so applying the matrix twice applies it twice.
 
+        A camera with spectral responses already colour corrects its images by default
+        (``CameraProperties.color_correction="auto"``, helios-core v1.3.96+). Applying a second
+        matrix on top of that would correct the colours twice, so this method raises an error
+        for a camera whose current image was colour corrected automatically; create that camera
+        with ``color_correction="off"`` to apply your own matrix.
+
         Args:
             camera_label: Label of an existing camera.
             red_band_label: Band holding the red channel.
@@ -2910,6 +3066,48 @@ class RadiationModel:
         except Exception as e:
             raise RadiationModelError(
                 f"Failed to apply color correction matrix '{ccm_file_path}' to camera '{camera_label}': {e}")
+
+    @require_plugin('radiation', 'get camera colour correction matrix')
+    def getCameraColorCorrectionMatrix(self, camera_label: str) -> List[List[float]]:
+        """
+        Get the colour correction matrix a camera applies to its images.
+
+        The matrix converts the camera's white-balanced red, green and blue to linear sRGB. It
+        is derived from the camera's spectral responses: under CIE illuminant D65, it is the
+        3x3 matrix whose rows each sum to 1 (so that white stays white) that best maps what the
+        camera records from the reflectance spectra shipped with the radiation plug-in (colour
+        boards, leaves, soils, bark and fruit) to their colorimetric colour for the CIE 1931
+        standard observer, in the least-squares sense. It is applied automatically when
+        ``CameraProperties.color_correction`` is ``"auto"`` (the default) and is also recorded
+        in the camera's image metadata.
+
+        Args:
+            camera_label: Label of the camera
+
+        Returns:
+            Matrix as three rows of three; pixel ``(r, g, b)`` becomes ``matrix @ (r, g, b)``
+
+        Raises:
+            ValueError: If camera_label is not a non-empty string
+            RadiationModelError: If the matrix is undefined: when the camera's red, green and
+                blue bands do not all have spectral responses, or the responses do not
+                distinguish colours (e.g. the same response in every band, or a band that
+                responds only outside the visible range)
+            NotImplementedError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> radiation.setCameraSpectralResponseFromLibrary("cam", "iPhone12ProMAX")
+            >>> ccm = radiation.getCameraColorCorrectionMatrix("cam")
+        """
+        if not isinstance(camera_label, str) or not camera_label.strip():
+            raise ValueError("Camera label must be a non-empty string")
+        self._check_context_alive()
+        try:
+            return radiation_wrapper.getCameraColorCorrectionMatrix(self.radiation_model, camera_label)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise RadiationModelError(f"Failed to get colour correction matrix of camera '{camera_label}': {e}")
 
     # =========================================================================
     # Camera Library Functions (v1.3.58+)

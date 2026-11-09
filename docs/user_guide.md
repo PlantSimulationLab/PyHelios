@@ -515,6 +515,17 @@ Registering the same classes under an existing palette label does nothing; diffe
 | Class map file | `getPrimitiveSpectralTextureFile(uuid)` |
 | Palette | `getPrimitiveSpectralPalette(uuid)` |
 | Classes of a class map | `getSpectralTextureClassMap(class_map_file)` |
+| Fraction of a primitive's (u,v) area in each class | `Global.classMapAreaFractions(classes, resolution, uv)` |
+
+`Global.classMapAreaFractions()` (helios-core 1.3.96) gives the fraction of a polygon's (u,v) area that falls in each class of a class map, sampled as the radiation model samples it; class 0 (transparent texels) is left out:
+
+```python
+classes, resolution = context.getSpectralTextureClassMap("GrapeLeaf_classes.png")
+uv = context.getPrimitiveTextureUV(UUID)  # (u,v) of the primitive's corners
+fractions = Global.classMapAreaFractions(classes, resolution, uv)  # [(class, fraction), ...]
+```
+
+The LeafOptics plug-in can make the palette from a leaf's PROSPECT properties, for leaves whose class map PlantArchitecture records, such as those of its sorghum, maize and wheat models (see the LeafOptics documentation, "Leaves with a Class Map"). The radiation model does the same for bark and fruit class maps with `RadiationModel.applySpectralClassMaps()`.
 
 ### Compound Geometry {#Compound}
 
@@ -642,6 +653,37 @@ context.setPrimitiveDataFloat(uuid, "temperature", 25.0)  # does not change the 
 
 if context.getShapeRevision() != shape or context.getPrimitiveCount() != count:
     rebuild_geometry_cache()
+```
+
+[getMaterialRevision()](pyhelios.Context.Context.getMaterialRevision) (helios-core 1.3.96) advances whenever a material is added, deleted or renamed, or its properties or data change. Setting material data does not mark the primitives that use the material dirty, so code that caches something derived from material data checks this counter instead.
+
+To find *which* primitives changed, [getModifiedUUIDs(mark)](pyhelios.Context.Context.getModifiedUUIDs) (helios-core 1.3.96) gives each caller its own view. The dirty flags are shared and stay set until something marks the geometry clean, so code that only reads them sees every primitive ever modified. Keep one mark per caller, starting at 0, and pass back the mark the previous call returned: each call returns the primitives created or modified since then, whatever other callers do and whether or not anything marks the geometry clean in between. Hiding or showing a primitive counts as a modification; deleted primitives are not returned (see `getDeletedUUIDs()`).
+
+```python
+uuids, mark = context.getModifiedUUIDs()      # first call: every primitive
+# ... the scene changes ...
+changed, mark = context.getModifiedUUIDs(mark)  # only what changed since the previous call
+```
+
+### Closest-Point Queries {#CollisionQueries}
+
+The `pyhelios.collision` module (helios-core 1.3.96) gives the exact closest-point queries that the collision detection plug-in's capsule tests are built on, so that segment and triangle distances can be measured on plain coordinates without a Context or a BVH. Each distance function returns the **squared** distance with the two closest points. The functions are part of the PlantArchitecture build, so they require a native library built with the `plantarchitecture` plug-in (the default build).
+
+| Function | Returns |
+|----------|---------|
+| `collision.closestPointsOnSegments(p1, q1, p2, q2)` | `(squared_distance, point_on_first, point_on_second)`; a zero-length segment acts as a point |
+| `collision.closestPointOnTriangle(p, a, b, c)` | the point of triangle a-b-c nearest p |
+| `collision.closestPointsSegmentTriangle(p, q, a, b, c)` | `(squared_distance, point_on_segment, point_on_triangle)`; zero, at the crossing, if the segment pierces the triangle |
+
+```python
+import math
+from pyhelios import collision
+from pyhelios.types import vec3
+
+d2, on_stem, on_leaf = collision.closestPointsSegmentTriangle(
+    vec3(0, 0, 0), vec3(0, 0, 1),                       # stem axis
+    vec3(0.1, 0, 0.5), vec3(0.3, 0, 0.5), vec3(0.2, 0.1, 0.5))  # leaf facet
+gap = math.sqrt(d2) - 0.005                             # minus a 5 mm stem radius
 ```
 
 ## Data Structures {#Data}

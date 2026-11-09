@@ -59,7 +59,9 @@ class LeafOpticsProperties:
         carotenoidcontent: Carotenoid content in micrograms per square cm
         anthocyancontent: Anthocyanin content in micrograms per square cm
         watermass: Equivalent water thickness in grams per square cm
-        drymass: Dry matter content (leaf mass per area) in grams per square cm
+        drymass: Dry matter content (leaf mass per area) in grams per square cm. Typical
+            leaves hold 0.003-0.01; the leaves of the ANGERS and LOPEX datasets, to which
+            PROSPECT was calibrated, average about 0.005. Default 0.006.
         protein: Protein content in grams per square cm (PROSPECT-PRO mode)
         carbonconstituents: Carbon-based constituents in grams per square cm (PROSPECT-PRO mode)
         V2Z: Violaxanthin-to-zeaxanthin de-epoxidation state, [0, 1]. Used by the
@@ -82,7 +84,7 @@ class LeafOpticsProperties:
     carotenoidcontent: float = 7.0    # micrograms/cm^2
     anthocyancontent: float = 1.0     # micrograms/cm^2
     watermass: float = 0.015          # g/cm^2
-    drymass: float = 0.09             # g/cm^2
+    drymass: float = 0.006            # g/cm^2 (leaf mass per area)
     protein: float = 0.0              # g/cm^2 (PROSPECT-PRO mode)
     carbonconstituents: float = 0.0   # g/cm^2 (PROSPECT-PRO mode)
     V2Z: float = 0.0                  # SIF: violaxanthin↔zeaxanthin state, [0, 1]
@@ -159,7 +161,10 @@ class LeafOpticsProperties_Nauto:
 
     Attributes:
         f_photosynthetic: Fraction of leaf nitrogen in photosynthetic machinery [0-1]
-        N_to_Cab_coefficient: Empirical nitrogen-to-chlorophyll coefficient
+        N_to_Cab_coefficient: Chlorophyll per unit photosynthetic nitrogen (g chlorophyll per g N).
+            Only its product with f_photosynthetic matters; the default product (0.20 g/g) is a
+            model assumption with a plausible range of about 0.10 (sun leaves) to 0.30 (shade
+            leaves), so calibrate it where measurements are available.
         Car_to_Cab_ratio: Carotenoid to chlorophyll ratio
         numberlayers: Leaf structure parameter N (must be >= 1)
         anthocyancontent: Anthocyanin content in micrograms per square cm
@@ -739,9 +744,8 @@ class LeafOptics:
 
         Raises:
             ValueError: If species name is empty
-
-        Note:
-            If species is not found, default properties are used and a warning is issued.
+            LeafOpticsError: If the species is not in the library (since helios-core v1.3.96;
+                the error lists the species the library holds). Use "default" for the default leaf.
 
         Example:
             >>> props = leafoptics.getPropertiesFromLibrary("sunflower")

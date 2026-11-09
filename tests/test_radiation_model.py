@@ -3595,13 +3595,14 @@ class TestCameraFluxSmoothing:
 
 @pytest.mark.cross_platform
 class TestCameraExposureTarget:
-    """CameraProperties.exposure_target (helios-core v1.3.85): the target median scene
-    luminance for "auto" exposure, travelling as the 11th float of the camera array."""
+    """CameraProperties.exposure_target (helios-core v1.3.85): the target scene luminance for
+    "auto" exposure, travelling as the 11th float of the camera array. Since v1.3.96 it is a
+    centre-weighted mean with a default of 0.235."""
 
-    def test_default_is_middle_grey(self):
+    def test_default_matches_native(self):
         from pyhelios import CameraProperties
         props = CameraProperties()
-        assert props.exposure_target == pytest.approx(0.18)
+        assert props.exposure_target == pytest.approx(0.235)
 
     def test_is_last_entry_of_to_array(self):
         from pyhelios import CameraProperties
@@ -3626,7 +3627,7 @@ class TestCameraExposureTarget:
 
     def test_repr_includes_field(self):
         from pyhelios import CameraProperties
-        assert "exposure_target=0.18" in repr(CameraProperties())
+        assert "exposure_target=0.235" in repr(CameraProperties())
 
     def test_wrapper_rejects_legacy_ten_element_array(self):
         """A 10-float list would leave exposure_target reading past the array in C."""

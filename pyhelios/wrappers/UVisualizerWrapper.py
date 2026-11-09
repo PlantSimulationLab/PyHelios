@@ -9,6 +9,8 @@ import ctypes
 import sys
 from typing import List, Optional, Tuple
 
+import numpy as np
+
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
 
@@ -399,6 +401,20 @@ try:
     _ANNOTATION_FUNCTIONS_AVAILABLE = True
 except AttributeError:
     _ANNOTATION_FUNCTIONS_AVAILABLE = False
+
+# Camera up direction and principal point (helios-core 1.3.96). Registered separately so a library
+# built before they existed keeps the rest of the visualizer.
+_CAMERA_1396_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.visualizerSetCameraUpDirection.argtypes = [ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.c_float)]
+    helios_lib.visualizerSetCameraUpDirection.restype = None
+    helios_lib.visualizerClearCameraUpDirection.argtypes = [ctypes.POINTER(UVisualizer)]
+    helios_lib.visualizerClearCameraUpDirection.restype = None
+    helios_lib.visualizerSetCameraPrincipalPoint.argtypes = [ctypes.POINTER(UVisualizer), ctypes.c_float, ctypes.c_float]
+    helios_lib.visualizerSetCameraPrincipalPoint.restype = None
+    _CAMERA_1396_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _CAMERA_1396_FUNCTIONS_AVAILABLE = False
 
 def _check_for_helios_error():
     """Check for and raise Helios errors if error management is available."""
@@ -1591,8 +1607,8 @@ def _encode_string_array(strings: List[str]):
     return (ctypes.c_char_p * len(strings))(*[s.encode('utf-8') for s in strings])
 
 
-def get_depth_image(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[List[float], int, int]:
-    """Return (depth_pixels, width, height) of the current view, row 0 at the top, -1 where nothing is visible."""
+def get_depth_image(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[np.ndarray, int, int]:
+    """Return (depth_pixels, width, height) of the current view as a flat float32 array, row 0 at the top, -1 where nothing is visible."""
     _require_annotation(visualizer)
     width = ctypes.c_uint()
     height = ctypes.c_uint()
@@ -1601,11 +1617,12 @@ def get_depth_image(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[List[float
     _check_for_helios_error()
     if not ptr or size.value == 0:
         raise RuntimeError(f"getDepthImage() returned no data; the framebuffer reported {width.value}x{height.value}")
-    return (ptr[:size.value], width.value, height.value)
+    # Copied: the native buffer is reused by the next call.
+    return (np.ctypeslib.as_array(ptr, shape=(size.value,)).copy(), width.value, height.value)
 
 
-def get_pixel_uuids(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[List[int], int, int]:
-    """Return (pixel_UUIDs, width, height) of the current view: UUID+1 per pixel, 0 where none, row 0 at the top."""
+def get_pixel_uuids(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[np.ndarray, int, int]:
+    """Return (pixel_UUIDs, width, height) of the current view as a flat uint32 array: UUID+1 per pixel, 0 where none, row 0 at the top."""
     _require_annotation(visualizer)
     width = ctypes.c_uint()
     height = ctypes.c_uint()
@@ -1614,7 +1631,8 @@ def get_pixel_uuids(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[List[int],
     _check_for_helios_error()
     if not ptr or size.value == 0:
         raise RuntimeError(f"getPixelUUIDs() returned no data; the framebuffer reported {width.value}x{height.value}")
-    return (ptr[:size.value], width.value, height.value)
+    # Copied: the native buffer is reused by the next call.
+    return (np.ctypeslib.as_array(ptr, shape=(size.value,)).copy(), width.value, height.value)
 
 
 def write_image_bounding_boxes(visualizer: ctypes.POINTER(UVisualizer), data_labels: List[str], object_class_ids: List[int],
@@ -1666,6 +1684,39 @@ def write_norm_depth_image(visualizer: ctypes.POINTER(UVisualizer), filename: st
     """Write the depth image of the current view as a normalized grayscale JPEG."""
     _require_annotation(visualizer)
     helios_lib.visualizerWriteNormDepthImage(visualizer, filename.encode('utf-8'), float(max_depth))
+    _check_for_helios_error()
+
+
+def _require_camera_1396(visualizer) -> None:
+    """Guard shared by the 1.3.96 camera up direction and principal point wrappers."""
+    if not _CAMERA_1396_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer camera up direction and principal point are not available in the current Helios library. "
+            "Rebuild PyHelios with the visualizer plugin against helios-core 1.3.96 or later: build_scripts/build_helios --clean"
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+
+def set_camera_up_direction(visualizer: ctypes.POINTER(UVisualizer), up: List[float]) -> None:
+    """Set the world direction that appears up in the image."""
+    _require_camera_1396(visualizer)
+    arr = (ctypes.c_float * 3)(float(up[0]), float(up[1]), float(up[2]))
+    helios_lib.visualizerSetCameraUpDirection(visualizer, arr)
+    _check_for_helios_error()
+
+
+def clear_camera_up_direction(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Return to choosing the camera's up direction automatically."""
+    _require_camera_1396(visualizer)
+    helios_lib.visualizerClearCameraUpDirection(visualizer)
+    _check_for_helios_error()
+
+
+def set_camera_principal_point(visualizer: ctypes.POINTER(UVisualizer), column: float, row: float) -> None:
+    """Set the pixel where the camera's optical axis meets the image."""
+    _require_camera_1396(visualizer)
+    helios_lib.visualizerSetCameraPrincipalPoint(visualizer, float(column), float(row))
     _check_for_helios_error()
 
 

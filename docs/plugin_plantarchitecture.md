@@ -92,7 +92,7 @@ PlantArchitecture includes the following plant models (`getAvailablePlantModels(
 - `"almond_independence"` - Almond, Independence cultivar
 - `"almond_wood_colony"` - Almond, wood colony training
 - `"apple"` - Apple tree with standard varieties
-- `"apple_fruitingwall"` - Apple fruiting wall (specialized high-density training system)
+- `"apple_fruitingwall"` - Fuji apple trained as a tall-spindle fruiting wall (see Apple fruiting wall below)
 - `"easternredbud"` - Ornamental tree
 - `"olive"` - Olive tree with Mediterranean characteristics
 - `"pistachio"` - Pistachio with alternating bearing patterns
@@ -159,6 +159,34 @@ Library changes in helios-core 1.3.95 that affect code customizing these models:
   are named for their model while they are built, so materials are no longer shared between organ
   kinds that happen to have the same color.
 
+Library changes in helios-core 1.3.96 that affect code customizing these models:
+
+- `apple_fruitingwall` is now a tall-spindle fruiting wall grown from a feathered nursery tree and
+  trained each winter (see Apple fruiting wall below). It was previously a dead 2.5 m leader with
+  eight laterals steered toward trellis wires, no pruning and a maximum age of two years. Its shoot
+  types are now `"leader"`, `"branch"`, `"renewal"`, `"proleptic"` and `"spur"`, it accepts the
+  build parameters `tree_height`, `trunk_height`, `num_feathers`, `tree_spacing` and
+  `row_spacing`, it no longer sets attraction points, and its maximum age is 3650 days.
+- The fruit of `apple` and `apple_fruitingwall` now carries, as defaults for the radiation model,
+  the primitive data `"reflectivity_spectrum"` (`apple_fruit_reflectivity_0000`, a red-apple
+  stand-in added to the fruit spectral library), `"specular_roughness"` (0.15) and `"specular_n"`
+  (1.5): a red skin under a waxy surface layer. Previously the fruit had no spectrum unless one was
+  given. Override them by setting the same primitive data, or the fruit material's data, after the
+  plant is built.
+- The leaves of `apple` and `apple_fruitingwall` are tessellated with 6 subdivisions rather than 3,
+  so that their curvature renders smoothly.
+- `apple` and `apple_fruitingwall` carry class maps of their leaf and bark textures, and
+  `sorghum`, `maize` and `wheat` of their leaf texture, which give leaf tissues and bark their own
+  spectra (see Spectral class maps below). Replacing the leaf texture of these models with an image
+  of another resolution or outline, or giving them a `leaf_texture_series`, now raises an error
+  unless `leaf_class_map_file` is cleared or replaced.
+- `sorghum` plants now vary from plant to plant in lean, head angle and height (see Sorghum
+  plant-to-plant variation below), and the main-stem `gravitropic_curvature` is now 0.
+- `LeafPrototype.lateral_curvature` now bends the blade across its width without stretching it, so
+  the leaf area of species with a non-zero value changes: at the library's own values sorghum and
+  wheat blades were about 10% too small, maize about 5% too small and rice about 5% too large
+  (other library species within 4%). See Leaf droop and blade shape below.
+
 ### Build Parameters
 
 Some features of a library plant are specific to its species and have no place in the generic
@@ -186,6 +214,43 @@ not be loaded); models not listed below accept none.
 | `walnut` | `trunk_height` | 0.8 | 0.1-3 m | Trunk height |
 | | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
 | | `scaffold_angle` | 40 | 25-60° | Scaffold branch angle from vertical |
+
+**Apple fruiting wall (apple_fruitingwall)** (helios-core 1.3.96+)
+
+| Parameter | Default | Range | Meaning |
+|---|---|---|---|
+| `tree_height` | 3.1 | 2.0-4.5 m | Height at which the leader is headed (the top wire) |
+| `trunk_height` | 0.7 | 0.1-3.0 m | Height of the lowest fruiting branch; must be at least 0.5 m below `tree_height` |
+| `num_feathers` | 10 | 6-15 | Number of feathers on the nursery tree |
+| `tree_spacing` | 0.9 | 0.5-2.0 m | In-row tree spacing, to which the branches are hedged along the row |
+| `row_spacing` | 3.3 | 2.0-5.0 m | Between-row spacing, which scales the wall's width (1.5 m at the base and 0.75 m at the top for a 3.3 m row) |
+
+The apple fruiting wall is a tall spindle (Hoying, Robinson & Fargione, "The Tall Spindle Planting
+System", Cornell Cooperative Extension): a single leader tied to a trellis, with no permanent
+scaffolds, bearing pendant, spur-covered fruiting branches that are renewed as they age. The plant
+starts as a feathered nursery tree, a whip 1.5-1.8 m tall and 1.6 cm in caliper with its feathers
+tied below horizontal, and is trained year by year from the model's phytomer callback (see
+Structural Edits from Creation Functions and Callbacks below). Each winter:
+
+- the leader, once it reaches `tree_height`, is headed back to the highest fruiting branch just
+  below it, which becomes the top of the tree;
+- shoots competing with the leader at the top of last year's extension are pinched;
+- any fruiting branch thicker than half the leader at its insertion, or older than six winters, is
+  cut to a stub (two or three a winter at most) that regrows a replacement the next season;
+- each branch is kept columnar by removing its upright and oversized side shoots;
+- everything is hedged to the wall's width and to half of `tree_spacing` along the row.
+
+The tree is a mature wall after about five seasons: about 3.1 m tall with a trunk about 5.4 cm in
+diameter, 30 or so pendant fruiting branches and a leaf area index of 2-3 at the default spacing.
+Build it at an age of about 1830 days (five 366-day seasons) for a mature tree. The wall runs along
+the y-axis.
+
+```python
+plantarch.loadPlantModelFromLibrary("apple_fruitingwall")
+tree_id = plantarch.buildPlantInstanceFromLibrary(
+    vec3(0, 0, 0), 1830.0,
+    build_parameters={"tree_height": 3.5, "tree_spacing": 1.0, "row_spacing": 3.6})
+```
 
 **Grapevines (grapevine_VSP, grapevine_Wye)**
 
@@ -375,9 +440,28 @@ plant_id = plantarch.buildPlantInstanceFromLibrary(
   and all tillers emerge at the soil surface; the next two are transitional. As of helios-core
   1.3.93 this makes the main stem 0.98 m tall at maturity instead of 1.34 m.
 - **Orientation.** A tiller leans out over its subtending leaf, within the main stem's leaf plane,
-  leaving the main stem at 15-30 degrees from vertical and returning by gravitropism to 10-20
-  degrees by maturity. These angles are estimates; they are set by the `"tiller"` shoot type and
+  leaving the main stem at 15-30 degrees and returning by gravitropism to 10-20 degrees from
+  vertical by maturity; the lean of the plant (see Sorghum plant-to-plant variation below) adds to
+  or takes from this. These angles are estimates; they are set by the `"tiller"` shoot type and
   can be changed with `getCurrentShootParameters("tiller")` / `defineShootType("tiller", ...)`.
+
+### Sorghum plant-to-plant variation
+
+As of helios-core 1.3.96, plants of a library sorghum plot do not stand identically, so their heads
+are no longer all directly above their bases at the same height:
+
+- **Lean.** Each plant is tipped 1-6 degrees from vertical at its base, toward a random direction.
+  Its culm above is straight (the `"mainstem"` shoot type's `gravitropic_curvature` is now 0), and
+  its tillers grow off the leaning crown and lean with it. The two leaf ranks stay opposite.
+- **Head.** The peduncle is tipped 0-6 degrees off the culm in a random direction (peduncle pitch
+  and yaw) and nods by up to 12 degrees over its length (a curvature of 0 to -40 degrees per
+  meter). The panicle follows the tip of the peduncle.
+- **Height.** The main-stem `internode_length_max` is drawn for each plant within +/-10% of
+  0.075 m. It scales only the elongated internodes, so plant height varies by about +/-4%.
+
+These are estimates from field plots, since no measurements were found for field sorghum. They are
+set by the `"mainstem"` shoot type and its phytomer parameters, except the lean, which is set when
+the plant is built.
 
 ### Rice panicle
 
@@ -623,6 +707,69 @@ peduncle continues the culm, the color at the top of the peduncle: as of helios-
 color is blended along the peduncle from the internode color at its base, so it meets the culm
 without a step. A lateral peduncle, or one on a woody stem, is this color throughout.
 
+#### Spectral class maps
+
+A class map is an image, matched to an organ's texture, that divides the texture into classes
+(such as the midrib and lamina of a leaf, or the lighter and darker parts of bark), each of which
+the radiation model can give its own spectrum. Three parameters (helios-core 1.3.96+) attach a
+class map to an organ's texture. PlantArchitecture records the class map's path on each primitive
+that covers a class, as the primitive data `"spectral_class_map"`:
+
+| Parameter | Type | Used by |
+|---|---|---|
+| `LeafPrototype.leaf_class_map_file` | `dict` keyed by compound-leaf index, like `leaf_texture_file` | `LeafOptics.run()` / `LeafOptics.runFromObjectData()`, which give each class the leaf's PROSPECT properties scaled by that class's factors |
+| `InternodeParameters.image_class_map_file` | `str` | `RadiationModel.applySpectralClassMaps()`, which scales the bark spectrum by each class's brightness |
+| `InflorescenceParameters.fruit_class_map_file` | `str` | `RadiationModel.applySpectralClassMaps()`, for the fruit's texture; cannot be combined with a specular surface layer on the fruit |
+
+The library models set the following:
+
+- `sorghum`, `maize` and `wheat`: `leaf_class_map_file` = `SorghumLeaf_classes.png`, which picks out
+  the pale midrib of their leaf photograph.
+- `apple` and `apple_fruitingwall`: `leaf_class_map_file` = `AppleLeaf_classes.png` (16 classes) and
+  `image_class_map_file` = `AppleBark_classes.png` (8 classes, relative to `bark_reflectivity_0000`).
+  A fruit class map (`AppleFruit_classes.png`) is shipped but not set, because the apple fruit
+  carries a specular surface layer instead.
+
+Leaves are given their class spectra by LeafOptics (see the [LeafOptics documentation](plugin_leafoptics.md));
+bark and fruit by one call to `RadiationModel.applySpectralClassMaps()` after the plants are built,
+which leaves leaf primitives alone, so a whole plant can be passed (see
+[Spectral Textures](plugin_radiation.md#RadSurfaceClassMap) in the radiation documentation):
+
+```python
+from pyhelios import Context, PlantArchitecture, RadiationModel, LeafOptics
+from pyhelios.types import vec3
+
+with Context() as context, PlantArchitecture(context) as plantarch:
+    plantarch.loadPlantModelFromLibrary("apple")
+    plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 1200)
+    plant_uuids = plantarch.getAllPlantUUIDs(plant_id)
+
+    with LeafOptics(context) as leafoptics:
+        leafoptics.run(plant_uuids, leafoptics.getPropertiesFromLibrary("default"), "apple_leaf")  # class-mapped leaves get a spectral texture
+
+    with RadiationModel(context) as radiation:
+        radiation.applySpectralClassMaps(plant_uuids)   # bark
+        radiation.updateGeometry()
+```
+
+A class map must match its texture. Replacing the leaf texture of a model that sets
+`leaf_class_map_file` with an image of another resolution or outline, or giving it a
+`leaf_texture_series` (which cannot be combined with a leaf class map), raises an error unless
+`leaf_class_map_file` is cleared or replaced with a class map for the new texture. Likewise clear
+`image_class_map_file` if a model's bark texture is replaced:
+
+```python
+plantarch.loadPlantModelFromLibrary("sorghum")
+sp = plantarch.getCurrentShootParameters("mainstem", return_typed=True)
+proto = sp.phytomer_parameters.leaf.prototype
+proto.leaf_texture_file = {0: "MyLeaf.png"}
+proto.leaf_class_map_file = {}           # the library class map no longer matches the texture
+plantarch.defineShootType("mainstem", sp)
+```
+
+Class maps for other textures can be made with the scripts in `utilities/leaf_class_maps` in
+helios-core (`fit_classes --surface` for anything that is not a leaf).
+
 #### Leaf texture series and aging
 
 A plant whose leaves all use one image can look artificially uniform. As of helios-core 1.3.95,
@@ -762,6 +909,101 @@ leaf.flexibility = RandomParameterFloat.uniform(1.2, 1.8)
 leaf.flexibility_taper = RandomParameterFloat.constant(40.0)
 plant.defineShootType("trunk_droopy", sp)
 ```
+
+The blade shape terms are composed in a fixed order. The midrib fold (`midrib_fold_fraction`), the
+lateral curvature (`lateral_curvature`) and the roll (`roll_fraction`, see Leaf rolling below)
+together give the shape of each cross-section, which is laid out along its arc length from the
+midrib so that it never stretches. That cross-section is then bent along the blade by the
+longitudinal curvature, given its waves, and finally deflected under the blade's own weight.
+
+> **Note:** As of helios-core 1.3.96, `lateral_curvature` bends the blade across its width without
+> stretching it, so the blade keeps its area. It was previously applied as a vertical displacement
+> with the width unchanged, which changed blade area (a value of -1 on wheat nearly doubled it).
+> Leaf area of species with a non-zero `lateral_curvature` changes accordingly; the blade shape at
+> small values is nearly unchanged.
+
+### Leaf rolling
+
+Grasses such as wheat, maize, rice and sorghum roll their leaves under water stress, curling each
+blade about its midrib toward its upper surface, and unroll them as the stress eases, over a day
+as well as over a drought. A rolled canopy intercepts less light and exposes more soil than an
+unrolled one of the same leaf area. Narrowing the blades with `leaf_aspect_ratio` is no
+substitute, because it removes leaf area a rolled leaf still has.
+
+`LeafPrototype.roll_fraction` (helios-core 1.3.96+, default 0) wraps each cross-section of the blade
+onto a circular arc about the midrib with half-angle `roll_fraction` × π: 0 leaves the blade flat
+and 1 brings its two edges together in a closed tube. Wrapping a strip onto a cylinder does not
+stretch it, so the blade keeps its area and its texture (including the transparency that gives its
+outline), while the area it presents on the plane facing its mean normal falls: to sin(θ)/θ of
+the flat area for a strip of uniform width with half-angle θ, which is 2/π = 0.64 at a roll
+fraction of 0.5. A blade that narrows toward its ends loses a little less.
+
+```python
+from pyhelios.plant_architecture_params import RandomParameterFloat
+
+sp = plantarch.getCurrentShootParameters("mainstem", return_typed=True)
+sp.phytomer_parameters.leaf.prototype.roll_fraction = RandomParameterFloat.constant(0.3)
+plantarch.defineShootType("mainstem", sp)
+```
+
+To roll the leaves of a plant that already exists, the usual case since rolling responds to the
+plant's water status as it grows, use `setPetioleLeafRoll()` for one petiole or
+`setPlantLeafRoll()` for a whole plant:
+
+```python
+# Roll every leaf of the plant halfway toward a closed tube at midday...
+plantarch.setPlantLeafRoll(plant_id, 0.5)
+# ...and unroll them again in the evening.
+plantarch.setPlantLeafRoll(plant_id, 0.0)
+
+# One petiole only
+plantarch.setPetioleLeafRoll(plant_id, shoot_id=0, node_index=3, petiole_index=0, roll_fraction=0.4)
+```
+
+| Method | Effect |
+|---|---|
+| `setPetioleLeafRoll(plant_id, shoot_id, node_index, petiole_index, roll_fraction)` | Roll the leaves of one petiole; the phytomer's own copy of the leaf prototype takes the value, so leaves it builds later are rolled too |
+| `setPlantLeafRoll(plant_id, roll_fraction)` | Roll every leaf of a plant |
+
+The leaves are reshaped in place: each keeps its object ID and object data (for example the
+nitrogen model's `"leaf_nitrogen_gN_m2"`, `"age"` and `"leaf_texture_stage"`), its size,
+orientation and position, and the rest of its shape. A drooping leaf is deflected again from its
+rolled rest shape, and stays rolled as it continues to grow. A blade needs enough cells across its
+width to form the arc, and many grass blades are built with only two; such a blade is re-meshed
+finer the first time it is rolled. The leaf keeps its object and object data, but its blade
+primitives are replaced, each new one taking the primitive data of the old facet whose part of
+the texture it covers; later changes to the roll move the existing vertices only. The roll is
+saved by `writePlantStructureXML()` and restored by `readPlantStructureXML()`. Only leaves built
+by the procedural leaf prototype can be rolled; an OBJ-loaded leaf, or one built by a custom
+prototype function, raises `PlantArchitectureError`.
+
+### Per-leaf blade shape
+
+`getLeafShape()` returns the blade shape one existing leaf currently has, as a
+`LeafShapeValues` (from `pyhelios.plant_architecture_params`), and `reshapeLeaf()` rebuilds that
+leaf's blade to a new shape inside its existing object (helios-core 1.3.96+). `LeafShapeValues`
+holds the values the `LeafPrototype` parameters took for that leaf: `aspect_ratio`,
+`midrib_fold_fraction`, `longitudinal_curvature`, `longitudinal_curvature_exponent`,
+`lateral_curvature`, `petiole_roll`, `wave_period`, `wave_amplitude` and `roll_fraction`, plus the
+lattice fields `subdivisions_x`, `subdivisions_y` and `lattice_offset`.
+
+```python
+shape = plantarch.getLeafShape(plant_id, shoot_id=0, node_index=3, petiole_index=0, leaf_index=0)
+shape.roll_fraction = 0.3
+shape.lateral_curvature = -0.2
+plantarch.reshapeLeaf(plant_id, 0, 3, 0, 0, shape)
+```
+
+Start from `getLeafShape()` and change only the fields you want: `subdivisions_y` is the least
+number of cells wanted across the blade, while `subdivisions_x` and `lattice_offset` must be the
+leaf's own. As with rolling, the leaf keeps its object ID, object data, size, orientation and
+position; when the blade already has enough cells across it only its vertices move, and otherwise
+it is re-meshed finer. Both methods raise `PlantArchitectureError` for a leaf whose shape was not
+recorded (one not built by the procedural leaf prototype).
+
+`setPetioleLeafShape()` (see Reconstruction from Measured Geometry below) also reshapes leaves in
+place as of helios-core 1.3.96, and the shape a leaf was given by any of these methods is saved to
+and restored from the plant structure XML.
 
 ### Petiole droop
 
@@ -966,6 +1208,33 @@ the C++ default-constructed template (a flat `dict`, or a typed object with
 API has no per-plant getter for these, so the get methods return the default
 template rather than the values currently in effect on a specific plant.
 `getPlantAvailableNitrogen(plant_id)` reports the nitrogen (g N) in a plant's available pool.
+
+As of helios-core 1.3.96 the nitrogen a plant gives its fruit, from the available pool or
+remobilized from its leaves, is tracked: `getPlantFruitNitrogen(plant_id)` returns it (g N, since
+the plant's nitrogen pools were initialized, including fruit since removed), and
+`getPlantRootNitrogen(plant_id)` returns the nitrogen allocated to the roots
+(`NitrogenParameters.root_allocation_fraction` of what was given to the plant). Together with the
+available pool and the nitrogen of the leaves (`"leaf_nitrogen_gN_m2"` object data times leaf
+area), these account for all the nitrogen given to the plant, less what left with shed leaves.
+Previously fruit nitrogen left the plant's budget untracked. Fruit demand that neither the pool
+nor the leaves can meet goes unmet: the fruit simply receives less.
+
+```python
+fruit_N = plantarch.getPlantFruitNitrogen(plant_id)       # g N
+root_N = plantarch.getPlantRootNitrogen(plant_id)         # g N
+pool_N = plantarch.getPlantAvailableNitrogen(plant_id)    # g N
+```
+
+These getters read the pools of the native nitrogen model. The functions that drive it
+(`enableNitrogenModel()`, `addPlantNitrogen()` and `initializeNitrogenPools()`) are C++-only and
+not wrapped in PyHelios.
+
+Fruit nitrogen demand follows the growth of the fruit's mesh surface area, which has two
+consequences. For a compound fruit such as a wheat ear, the mesh area is several times its
+silhouette, so `fruit_N_area` is a calibration constant per unit mesh area rather than a
+measurable nitrogen content. And demand arises only while the fruit grows in size, so a fruit that
+reaches full size early and then fills, such as a cereal ear, demands its nitrogen while it expands
+and none during grain fill.
 
 The carbohydrate defaults are `carbon_conductance_down` 0.95, `carbon_conductance_up` 0.475 and
 `carbohydrate_pruning_threshold` 0.025 g C/g DW (the native documentation gave 0.9, 0.18 and 0.01
@@ -1404,10 +1673,10 @@ segmented point cloud.
 | `setPetioleLeafGeometry(plant_id, shoot_id, node_index, petiole_index, leaf_bases, leaf_rotations, leaf_sizes)` | Prescribe the base position, orientation and size of every leaf on a petiole |
 | `setPetioleLeafCount(plant_id, shoot_id, node_index, petiole_index, leaf_count)` | Change the number of leaves (leaflets) on one petiole, rebuilding them procedurally |
 | `setPetioleShape(plant_id, shoot_id, node_index, petiole_index, outward_direction, pitch_degrees, curvature, length)` | Regenerate one petiole from its own pitch, curvature (degrees per meter) and length, leaning toward `outward_direction`, and rebuild its leaves on it (1.3.95+) |
-| `setPetioleLeaflets(plant_id, shoot_id, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale)` | Rebuild one petiole's leaflets with their own count, spacing, size ratio and terminal size; a spacing too large for the count is refused (1.3.95+) |
+| `setPetioleLeaflets(plant_id, shoot_id, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale, intercalary_leaflet_scale=-1.0)` | Rebuild one petiole's leaflets with their own count, spacing, size ratio and terminal size; a spacing too large for the count is refused (1.3.95+). `intercalary_leaflet_scale` (1.3.96+) gives the leaf intercalary leaflets of its own size, or none with 0; the default of -1 inherits the shoot type's |
 | `setPetioleLeafletAngles(plant_id, shoot_id, node_index, petiole_index, pitch_degrees, yaw_degrees, roll_degrees)` | Rebuild one petiole's leaflets turned by their own pitch, yaw and roll (1.3.95+) |
 | `setPetioleLeafletAngleOffsets(plant_id, shoot_id, node_index, petiole_index, pitch_offsets_degrees, yaw_offsets_degrees, roll_offsets_degrees)` | Turn each leaflet of one petiole by its own offset, so the members of a pair need not mirror each other (1.3.95+) |
-| `setPetioleLeafShape(plant_id, shoot_id, node_index, petiole_index, aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction)` | Rebuild one petiole's leaflets with their own blade aspect ratio, curvatures and midrib fold (1.3.95+) |
+| `setPetioleLeafShape(plant_id, shoot_id, node_index, petiole_index, aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction)` | Reshape one petiole's leaflets in place with their own blade aspect ratio, curvatures and midrib fold (1.3.95+) |
 | `setShootInternodeLengthMax(plant_id, shoot_id, internode_length_max)` | Target length of internodes grown at the apex of an existing shoot |
 | `isShootGeometryPrescribed(plant_id, shoot_id)` | Whether a shoot was built from prescribed node positions |
 
@@ -1465,6 +1734,32 @@ plantarch.advanceTime(10.0, plant_id=plant_id)
 `leaf.leaves_per_petiole` for every phytomer, so a measured compound leaf with a different number
 of leaflets could not be prescribed. Call it **before** `setPetioleLeafGeometry()` for the same
 petiole, whose `leaf_count` must match the number of leaves on the petiole.
+
+**Expanding leaves keep growing (helios-core 1.3.96).** The per-phytomer leaflet setters
+(`setPetioleLeaflets()`, `setPetioleLeafCount()`, `setPetioleLeafletAngles()`,
+`setPetioleLeafShape()` and `setPetioleLeafletAngleOffsets()`) now leave a leaf that is still
+expanding, and was not prescribed, to keep growing: its leaflets are rebuilt at their mature size
+times how far it has expanded, and its petiole keeps elongating. Previously they pinned every leaf
+as a prescribed one is pinned, so a phytomer creation function that gave each new leaf its own
+leaflets froze the leaf at full size on the day it appeared and its petiole at its length then.
+Prescribed and fully expanded leaves are pinned as before.
+
+**Intercalary leaflets.** A leaf rebuilt by `setPetioleLeaflets()` otherwise inherits its shoot
+type's intercalary leaflets, which fill the gaps between its primary pairs. Pass
+`intercalary_leaflet_scale=0.0` for a measured leaf that has none, or a positive value for
+intercalary leaflets of its own size:
+
+```python
+plantarch.setPetioleLeaflets(plant_id, shoot_id, node_index=2, petiole_index=0,
+                             leaf_count=5, leaflet_offset=0.3, leaflet_scale=0.8,
+                             prototype_scale=0.06, intercalary_leaflet_scale=0.0)
+```
+
+**`setPetioleLeafShape()` reshapes in place (helios-core 1.3.96).** The petiole's existing leaves
+keep their object IDs, object data (e.g. the nitrogen model's `"leaf_nitrogen_gN_m2"`), pose, and
+any other shape term such as their roll, and the shape is saved to and restored from the plant
+structure XML. Previously the leaves were replaced by new objects, which changed their IDs and
+discarded their object data and pose, and the shape was lost on reload.
 
 `setShootInternodeLengthMax()` governs how a shoot grows *after* its prescribed portion: a shoot
 built by `addShootFromNodePositions()` otherwise grows toward the mean of its prescribed internode
@@ -1682,8 +1977,9 @@ plantarch.setPhytomerCallbackFunction("my_branch", head_back)
 ```
 
 Several library models rely on their own callback: `pistachio` trains its scaffolds and their
-secondaries from it, `grapevine_VSP` and `grapevine_Wye` pull their fruit-zone leaves, and `almond`
-grows its spurs. Installing a Python function on one of their shoot types replaces that behaviour
+secondaries from it, `grapevine_VSP` and `grapevine_Wye` pull their fruit-zone leaves, `almond`
+grows its spurs, and `apple_fruitingwall` (helios-core 1.3.96+) heads, renews and hedges its tall
+spindle each winter. Installing a Python function on one of their shoot types replaces that behaviour
 for shoots created afterwards.
 
 ### Per-Phytomer Growth Targets, Phyllotaxy and Readouts
@@ -1775,7 +2071,7 @@ shifting about from one timestep to the next.
 | Method | Effect |
 |---|---|
 | `enableLeafAngleDistributionTracking(plant_ids, beta_mu, beta_nu, eccentricity, ellipse_rotation_degrees, lambda_degrees)` | Steer both inclination and azimuth; accepts one plant ID or a sequence |
-| `enableLeafElevationAngleDistributionTracking(plant_id, beta_mu, beta_nu, lambda_degrees)` | Steer inclination only, leaving azimuth to the model |
+| `enableLeafElevationAngleDistributionTracking(plant_id, beta_mu, beta_nu, lambda_degrees)` | Steer inclination only, leaving azimuth to the model; accepts one plant ID or, as of helios-core 1.3.96, a list |
 | `enableLeafAzimuthAngleDistributionTracking(plant_id, eccentricity, ellipse_rotation_degrees, lambda_degrees)` | Steer azimuth only, leaving inclination to the model |
 | `disableLeafAngleDistributionTracking(plant_id)` | Stop steering |
 | `isLeafAngleDistributionTrackingEnabled(plant_id)` | Whether a plant is being steered |
@@ -1807,15 +2103,24 @@ plantarch.enableLeafElevationAngleDistributionTracking(
 plantarch.advanceTime(15.0, plant_id=plant_id)
 ```
 
-Passing a list realizes the distribution over the canopy as a whole, so an individual plant
-within it need not follow the distribution on its own:
+Several plants can be given in one call:
 
 ```python
 plantarch.enableLeafAngleDistributionTracking(
     plant_ids, 2.0, 1.5, 0.5, 0.0, 180.0)
+plantarch.enableLeafElevationAngleDistributionTracking(
+    plant_ids, beta_mu_inclination=1.0, beta_nu_inclination=5.0, lambda_degrees=180.0)
 ```
 
-\note Tracking follows the distribution through growth, where `setPlantLeafAngleDistribution()`
+**The distribution is realized within each plant.** Every tracking mode steers each plant's leaves
+toward the distribution using that plant's own leaves, including when several plants are given in
+one call. A plant with few leaves can only approximate it: on a wheat culm of 7-14 blades each
+blade fills a large share of the distribution, neighbouring blades can be steered to very
+different angles, and the mean angle stays between the target and the angles the model gave the
+leaves. To realize a distribution over a canopy as a whole, apply `setLeafAngleDistribution()` to
+the list of plants once they have grown; it pools the leaves of all of them.
+
+\note Tracking follows the distribution through growth, where `setLeafAngleDistribution()`
 re-aims every leaf of a finished plant in one shot. Enabling tracking on a plant already being
 tracked **replaces** the target, so the target may be varied over the plant's life. Disabling it
 leaves already-steered leaves at the orientation they reached; leaves emerging afterward are left
@@ -2045,6 +2350,64 @@ plantarch.enableSolidObstacleAvoidance(
     enable_obstacle_pruning=False    # Don't remove intersecting organs
 )
 ```
+
+### Fruit-Branch Collision Avoidance
+
+Nothing in the growth model otherwise keeps a fruit out of the branches of its own plant: an
+apple hanging from a 2.5 cm pedicel is wider than the pedicel is long and swings back into the spur
+it grows from, and a grape cluster reaches the cordon or a neighbouring shoot.
+`enableFruitBranchCollisionAvoidance()` (helios-core 1.3.96+) switches on a check that runs on every
+time step of `advanceTime()` for every fruiting floral bud. It is off by default, independent of
+the soft and hard collision avoidance above, and does not build a collision BVH.
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.types import vec3
+
+with Context() as context, PlantArchitecture(context) as plantarch:
+    plantarch.loadPlantModelFromLibrary("grapevine_VSP")
+    plantarch.enableFruitBranchCollisionAvoidance()
+    # Optional; these are the defaults
+    plantarch.setFruitBranchCollisionParameters(max_swing_deg=90.0, candidate_refresh_days=10.0,
+                                                clearance=0.0, settle_rate_deg_per_day=10.0)
+    plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 300.0)
+    plantarch.advanceTime(120.0)
+```
+
+**What it does.** A fruit found inside an internode is moved out at one of two hinges: the
+peduncle swings rigidly about the node it grows from, with everything it carries, or the fruit
+tilts about its own attachment point on the peduncle, the way a pedicel bends and a fruit leans
+when it comes to rest against a limb. At each step the hinge that moves the deepest contact out
+with the smaller rotation is used (a grape cluster on an 8 cm peduncle mostly swings; an apple on a
+2.5 cm pedicel resting against its shoot mostly tilts). Rotations accumulate as the fruit grows, so
+a fruit that is already clear is not moved again. A fruit that cannot be cleared within the allowed
+rotation at either hinge, for example one wedged between spurs, is left at the least-penetrating
+pose reached and is not retried until it has grown.
+
+**Settling back.** On every time step, a swung peduncle or tilted fruit that is clear of every
+branch is turned back toward its grown, hanging pose by up to `settle_rate_deg_per_day`, and only
+as far as it stays clear. A fruit resting against a limb therefore stays resting against it, while
+one whose branch has grown away swings back over a few days. Only the internodes of the fruit's
+own plant are considered; leaves, petioles, flowers, other plants and user obstacles are not (the
+latter are handled by the hard obstacle fruit adjustment above).
+
+**How fruit are tested.** Fruit meshes are never used as collision primitives. Each fruit is given
+an analytic proxy built from its mesh (an enclosing sphere, a chain of spheres along its axis and,
+for meshes of at most 1000 primitives, the triangles themselves), tested against capsules of the
+plant's internode skeleton. Each bud keeps a list of the internode segments within reach of its
+node, rebuilt every `candidate_refresh_days` or when the plant gains or loses shoots, so a shoot
+that appears between refreshes is only seen at the next one. The per-step cost is a small fraction
+of a growth step.
+
+| Method | Effect |
+|---|---|
+| `enableFruitBranchCollisionAvoidance()` | Start testing fruit against the internodes of their own plant on every time step |
+| `disableFruitBranchCollisionAvoidance()` | Stop testing; peduncles and fruit already moved keep their pose |
+| `setFruitBranchCollisionParameters(max_swing_deg=90, candidate_refresh_days=10, clearance=0, settle_rate_deg_per_day=10)` | Largest swing or tilt (degrees, at most 180), days between rebuilds of each bud's candidate list, gap to leave between fruit and branch surface (m), and settling rate (degrees/day, 0 disables settling) |
+
+The swing of each peduncle and the tilt of each fruit are saved by `writePlantStructureXML()` and
+reapplied by `readPlantStructureXML()`. A bud whose peduncle is rebuilt (a new flowering, a
+harvest) starts unswung again.
 
 ### Performance Optimization
 

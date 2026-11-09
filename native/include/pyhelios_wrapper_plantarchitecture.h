@@ -445,7 +445,8 @@ PYHELIOS_API float* getPlantBuildParameters(PlantArchitecture* plantarch, unsign
 // meter), length (m) and the world direction it leans toward (3 floats), and rebuild its leaves on it. 0 on success, -1 on error.
 PYHELIOS_API int setPetioleShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* outward_direction, float pitch_degrees, float curvature, float length);
 // Rebuild one petiole's leaflets with their own count, leaflet_offset, leaflet_scale and prototype_scale. 0 on success, -1 on error.
-PYHELIOS_API int setPetioleLeaflets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count, float leaflet_offset, float leaflet_scale, float prototype_scale);
+// intercalary_leaflet_scale (helios-core 1.3.96): negative keeps the phytomer's current value; zero for a leaf with none
+PYHELIOS_API int setPetioleLeaflets(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_count, float leaflet_offset, float leaflet_scale, float prototype_scale, float intercalary_leaflet_scale);
 // Rebuild one petiole's leaflets turned by their own pitch, yaw and roll (degrees). 0 on success, -1 on error.
 PYHELIOS_API int setPetioleLeafletAngles(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float pitch_degrees, float yaw_degrees, float roll_degrees);
 // Rebuild one petiole's leaflets with their own aspect ratio, longitudinal and lateral curvature and midrib fold. 0 on success, -1 on error.
@@ -491,6 +492,48 @@ PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void 
 // Cancellation flag — set before a build/canopy/advanceTime call so a non-zero
 // flag (written from another thread) stops the build between plants/timesteps.
 PYHELIOS_API void plantarch_setCancelFlag(PlantArchitecture* pa_ptr, volatile int* flag);
+
+//=============================================================================
+// helios-core 1.3.96: leaf roll, leaf shape, fruit-branch collision avoidance, nitrogen pools
+//=============================================================================
+
+PYHELIOS_API int setPetioleLeafRoll(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, float roll_fraction);
+PYHELIOS_API int setPlantLeafRoll(PlantArchitecture* plantarch, unsigned int plantID, float roll_fraction);
+
+/**
+ * @brief Get the blade shape a leaf currently has (Phytomer::getLeafShape)
+ * @param values Output: 12 floats {aspect_ratio, midrib_fold_fraction, longitudinal_curvature, longitudinal_curvature_exponent,
+ *        lateral_curvature, petiole_roll, wave_period, wave_amplitude, roll_fraction, lattice_offset.x, lattice_offset.y, lattice_offset.z}
+ * @param subdivisions Output: 2 uints {subdivisions_x, subdivisions_y}
+ */
+PYHELIOS_API int getLeafShape(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index, float* values, unsigned int* subdivisions);
+
+/** @brief Rebuild one leaf's blade to a new shape in its existing object (Phytomer::reshapeLeaf); same layout as getLeafShape */
+PYHELIOS_API int reshapeLeaf(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index, const float* values, const unsigned int* subdivisions);
+
+PYHELIOS_API int enableFruitBranchCollisionAvoidance(PlantArchitecture* plantarch);
+PYHELIOS_API int disableFruitBranchCollisionAvoidance(PlantArchitecture* plantarch);
+PYHELIOS_API int setFruitBranchCollisionParameters(PlantArchitecture* plantarch, float max_swing_deg, float candidate_refresh_days, float clearance, float settle_rate_deg_per_day);
+
+PYHELIOS_API int enablePlantLeafElevationAngleDistributionTrackingMultiple(PlantArchitecture* plantarch, const unsigned int* plantIDs, unsigned int count, float Beta_mu_inclination, float Beta_nu_inclination, float lambda_degrees);
+
+PYHELIOS_API float getPlantFruitNitrogen(PlantArchitecture* plantarch, unsigned int plantID);
+PYHELIOS_API float getPlantRootNitrogen(PlantArchitecture* plantarch, unsigned int plantID);
+
+//=============================================================================
+// helios::collision closest-point queries (collisiondetection CollisionGeometry.h, helios-core 1.3.96).
+// Compiled here because the plantarchitecture plug-in always links collisiondetection.
+// Points are passed as float[3].
+//=============================================================================
+
+/** @brief Closest points between segments p1-q1 and p2-q2; returns the squared distance between them */
+PYHELIOS_API float collisionClosestPointsOnSegments(const float* p1, const float* q1, const float* p2, const float* q2, float* closest1, float* closest2);
+
+/** @brief Closest point of triangle a-b-c to point p, written to out */
+PYHELIOS_API void collisionClosestPointOnTriangle(const float* p, const float* a, const float* b, const float* c, float* out);
+
+/** @brief Closest points between segment p-q and triangle a-b-c; returns the squared distance between them */
+PYHELIOS_API float collisionClosestPointsSegmentTriangle(const float* p, const float* q, const float* a, const float* b, const float* c, float* on_segment, float* on_triangle);
 
 #ifdef __cplusplus
 }

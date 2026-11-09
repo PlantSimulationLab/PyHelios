@@ -6,7 +6,7 @@ the native Helios PlantHydraulicsModel plugin via the C++ wrapper layer.
 """
 
 import ctypes
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
@@ -151,6 +151,21 @@ try:
 except AttributeError:
     # PlantHydraulicsModel functions not available in current native library
     _PLANTHYDRAULICS_FUNCTIONS_AVAILABLE = False
+
+
+# getPrimitivesByPlantIDs (helios-core 1.3.96), registered separately so an older library keeps
+# the rest of the PlantHydraulics API.
+_PRIMITIVES_BY_PLANT_IDS_AVAILABLE = False
+try:
+    helios_lib.getPlantHydraulicsPrimitivesByPlantIDs.argtypes = [
+        ctypes.POINTER(UPlantHydraulicsModel), ctypes.POINTER(ctypes.c_int), ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.getPlantHydraulicsPrimitivesByPlantIDs.restype = ctypes.POINTER(ctypes.c_uint)
+    helios_lib.getPlantHydraulicsPrimitivesByPlantIDs.errcheck = _check_error
+    _PRIMITIVES_BY_PLANT_IDS_AVAILABLE = True
+except AttributeError:
+    _PRIMITIVES_BY_PLANT_IDS_AVAILABLE = False
 
 
 # Python wrapper functions with validation
@@ -321,6 +336,31 @@ def getPrimitivesByPlantID(model, plant_id: int) -> List[int]:
     count = ctypes.c_uint(0)
     ptr = helios_lib.getPlantHydraulicsPrimitivesByPlantID(model, ctypes.c_int(plant_id), ctypes.byref(count))
     return list(ptr[:count.value]) if ptr and count.value > 0 else []
+
+
+def getPrimitivesByPlantIDs(model, plant_ids: Sequence[int]) -> Dict[int, List[int]]:
+    """Get the primitives of each of several plants, found in one pass over the Context"""
+    _require_model(model)
+    if not _PRIMITIVES_BY_PLANT_IDS_AVAILABLE:
+        raise NotImplementedError(
+            "PlantHydraulicsModel.getPrimitivesByPlantIDs() is not available in the loaded native library. "
+            "It requires helios-core v1.3.96 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+    ids = [int(p) for p in plant_ids]
+    n = len(ids)
+    id_array = (ctypes.c_int * max(n, 1))(*ids)
+    counts = (ctypes.c_uint * max(n, 1))()
+    total = ctypes.c_uint(0)
+    ptr = helios_lib.getPlantHydraulicsPrimitivesByPlantIDs(model, id_array, ctypes.c_uint(n), counts,
+                                                            ctypes.byref(total))
+    flat = list(ptr[:total.value]) if ptr and total.value > 0 else []
+    result: Dict[int, List[int]] = {}
+    offset = 0
+    for i, pid in enumerate(ids):
+        c = int(counts[i])
+        result[pid] = flat[offset:offset + c]
+        offset += c
+    return result
 
 
 def getPrimitivesWithoutPlantID(model, uuids: Sequence[int]) -> List[int]:

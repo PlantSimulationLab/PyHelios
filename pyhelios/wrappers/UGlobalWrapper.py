@@ -304,3 +304,46 @@ def writePNGSingleChannel(filename: str, width: int, height: int, pixel_values, 
     helios_lib.writePNGSingleChannel(filename.encode('utf-8'), ctypes.c_uint(width), ctypes.c_uint(height),
                                      arr.ctypes.data_as(ctypes.POINTER(ctypes.c_ushort)), ctypes.c_uint(arr.size),
                                      ctypes.c_uint(bit_depth))
+
+
+# Class map area fractions from core/global.h (helios-core v1.3.96+), probed
+# separately for the same reason as the blocks above.
+_CLASS_MAP_AREA_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.classMapAreaFractions.argtypes = [
+        ctypes.POINTER(ctypes.c_ushort), ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_ushort)), ctypes.POINTER(ctypes.POINTER(ctypes.c_float)),
+    ]
+    helios_lib.classMapAreaFractions.restype = ctypes.c_uint
+    helios_lib.classMapAreaFractions.errcheck = _check_error
+
+    _CLASS_MAP_AREA_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _CLASS_MAP_AREA_FUNCTIONS_AVAILABLE = False
+
+
+def classMapAreaFractions(classes, width: int, height: int, uv) -> List[tuple]:
+    """Area fraction of a (u,v) polygon in each class of a class map.
+
+    ``classes`` is a flat uint16 ndarray of ``width * height`` values; ``uv`` a float32 ndarray of
+    shape ``(N, 2)``. Returns ``[(class, fraction), ...]`` in increasing order of class.
+    """
+    import numpy as np
+    if not _CLASS_MAP_AREA_FUNCTIONS_AVAILABLE:
+        raise RuntimeError(
+            "classMapAreaFractions is not available in the current native library. It requires "
+            "helios-core v1.3.96 or newer; rebuild with 'build_scripts/build_helios --clean'."
+        )
+    cls = np.ascontiguousarray(classes, dtype=np.uint16).ravel()
+    uv_arr = np.ascontiguousarray(uv, dtype=np.float32).reshape(-1, 2)
+    out_classes = ctypes.POINTER(ctypes.c_ushort)()
+    out_fractions = ctypes.POINTER(ctypes.c_float)()
+    n = helios_lib.classMapAreaFractions(
+        cls.ctypes.data_as(ctypes.POINTER(ctypes.c_ushort)), ctypes.c_uint(cls.size),
+        ctypes.c_int(width), ctypes.c_int(height),
+        uv_arr.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), ctypes.c_uint(uv_arr.shape[0]),
+        ctypes.byref(out_classes), ctypes.byref(out_fractions))
+    if n == 0 or not out_classes or not out_fractions:
+        return []
+    return [(int(out_classes[i]), float(out_fractions[i])) for i in range(n)]

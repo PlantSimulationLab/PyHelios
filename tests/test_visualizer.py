@@ -1886,6 +1886,61 @@ class TestVisualizerV1391Native:
         assert jpeg_file.stat().st_size > 0
 
 
+@pytest.mark.native_only
+@pytest.mark.skipif(is_headless_environment(), reason="Skipping visualizer tests in headless environment")
+class TestVisualizerReadbackArrays:
+    """getPixelUUIDs() and getDepthImage() return flat NumPy arrays, copied out of the native buffer."""
+
+    @staticmethod
+    def _render(context):
+        vis = Visualizer(64, 48, antialiasing_samples=1, headless=True)
+        vis.buildContextGeometry(context)
+        vis.setCameraPosition(vec3(0.2, -0.3, 2.5), vec3(0, 0, 0))
+        return vis
+
+    def test_pixel_uuids_are_a_flat_uint32_array(self):
+        import numpy as np
+        with Context() as context:
+            patch = context.addPatch(center=vec3(0, 0, 0), size=vec2(0.5, 0.5))
+            with self._render(context) as vis:
+                pixels, width, height = vis.getPixelUUIDs()
+                assert isinstance(pixels, np.ndarray)
+                assert pixels.dtype == np.uint32
+                assert pixels.shape == (width * height,)
+                assert set(np.unique(pixels).tolist()) == {0, patch + 1}
+
+    def test_depth_image_is_a_flat_float32_array(self):
+        import numpy as np
+        with Context() as context:
+            patch = context.addPatch(center=vec3(0, 0, 0), size=vec2(0.5, 0.5))
+            with self._render(context) as vis:
+                depth, width, height = vis.getDepthImage()
+                assert isinstance(depth, np.ndarray)
+                assert depth.dtype == np.float32
+                assert depth.shape == (width * height,)
+                covered = vis.getPixelUUIDs()[0] == patch + 1
+                assert covered.any() and (~covered).any()
+                assert np.all(depth[~covered] == -1)
+                assert np.all(depth[covered] > 0)
+
+    def test_a_result_is_not_changed_by_a_later_call(self):
+        # The native side returns the same buffer on every call, so an array that viewed it would change under the caller.
+        import numpy as np
+        with Context() as context:
+            patch = context.addPatch(center=vec3(0, 0, 0), size=vec2(0.5, 0.5))
+            with self._render(context) as vis:
+                pixels, _, _ = vis.getPixelUUIDs()
+                depth, _, _ = vis.getDepthImage()
+                pixels_then, depth_then = pixels.copy(), depth.copy()
+                context.translatePrimitive(patch, vec3(0.4, 0, 0.3))
+                pixels_now, _, _ = vis.getPixelUUIDs()
+                depth_now, _, _ = vis.getDepthImage()
+                assert not np.array_equal(pixels_now, pixels_then)
+                assert not np.array_equal(depth_now, depth_then)
+                assert np.array_equal(pixels, pixels_then)
+                assert np.array_equal(depth, depth_then)
+
+
 if __name__ == "__main__":
     # Run tests when executed directly
     pytest.main([__file__, "-v"])

@@ -6071,7 +6071,9 @@ class TestPlantArchitecture1395Validation:
         with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1395_AVAILABLE', False):
             with pytest.raises(RuntimeError, match="1.3.95"):
                 plantarch_wrapper.setPetioleShape(None, 0, 0, 0, 0, [1, 0, 0], 45.0, 0.0, 0.1)
-            with pytest.raises(RuntimeError, match="1.3.95"):
+        # setPetioleLeaflets gained intercalary_leaflet_scale in 1.3.96, so its guard is the 1.3.96 flag.
+        with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1396_AVAILABLE', False):
+            with pytest.raises(NotImplementedError, match="1.3.96"):
                 plantarch_wrapper.setPetioleLeaflets(None, 0, 0, 0, 0, 5, 0.2, 0.5, 0.04)
 
 

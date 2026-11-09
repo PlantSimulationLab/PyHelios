@@ -454,8 +454,8 @@ jobs:
                     # Test Linux testable plugins including headless visualizer
                     # Only GPU-accelerated plugins require special hardware not available in CI
                     available_plugins = info.get('available_plugins', [])
-                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture']
-                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'energybalance', 'radiation', 'plantarchitecture']
+                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'soiltransport', 'plantarchitecture']
+                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'soiltransport', 'energybalance', 'radiation', 'plantarchitecture']
             
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
@@ -552,7 +552,7 @@ jobs:
             
                     # Test macOS expected plugins (8 plugins including Vulkan-based radiation)
                     available_plugins = info.get('available_plugins', [])
-                    expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture', 'radiation', 'energybalance']
+                    expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'soiltransport', 'plantarchitecture', 'radiation', 'energybalance']
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')
             
@@ -643,8 +643,8 @@ jobs:
                     # Test Windows testable plugins (CI containers don't have GPU for radiation/energybalance testing)
                     # We build GPU plugins but can't test them in CI environment
                     available_plugins = info.get('available_plugins', [])
-                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture']
-                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'energybalance', 'radiation', 'plantarchitecture']
+                    testable_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'soiltransport', 'plantarchitecture']
+                    built_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'soiltransport', 'energybalance', 'radiation', 'plantarchitecture']
 
                     print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                     print(f'[INFO] Built plugins (expected): {sorted(built_plugins)}')
@@ -1428,7 +1428,7 @@ jobs:
                   # Test GPU plugin availability (critical for GPU wheels)
                   available_plugins = info.get('available_plugins', [])
                   gpu_plugins = ['energybalance', 'radiation']
-                  expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'plantarchitecture', 'energybalance', 'radiation']
+                  expected_plugins = ['weberpenntree', 'visualizer', 'photosynthesis', 'solarposition', 'stomatalconductance', 'planthydraulics', 'soiltransport', 'plantarchitecture', 'energybalance', 'radiation']
 
                   print(f'[INFO] Available plugins: {sorted(available_plugins)}')
                   print(f'[INFO] Expected plugins: {sorted(expected_plugins)}')

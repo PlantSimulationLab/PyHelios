@@ -1094,10 +1094,11 @@ try:
     helios_lib.setPetioleShape.restype = ctypes.c_int
     helios_lib.setPetioleShape.errcheck = _check_error
 
-    # plantID, shootID, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale
+    # plantID, shootID, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale,
+    # intercalary_leaflet_scale (helios-core 1.3.96; negative keeps the phytomer's current value)
     helios_lib.setPetioleLeaflets.argtypes = [
         ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
-        ctypes.c_uint, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+        ctypes.c_uint, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float]
     helios_lib.setPetioleLeaflets.restype = ctypes.c_int
     helios_lib.setPetioleLeaflets.errcheck = _check_error
 
@@ -3920,12 +3921,13 @@ def setPetioleShape(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int
 
 def setPetioleLeaflets(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
                        leaf_count: int, leaflet_offset: float, leaflet_scale: float,
-                       prototype_scale: float) -> None:
+                       prototype_scale: float, intercalary_leaflet_scale: float = -1.0) -> None:
     """Rebuild one petiole's leaflets with their own count, spacing and sizes."""
-    _require_plantarch_1395()
+    _require_plantarch_1396()
     helios_lib.setPetioleLeaflets(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
                                   ctypes.c_uint(leaf_count), ctypes.c_float(leaflet_offset),
-                                  ctypes.c_float(leaflet_scale), ctypes.c_float(prototype_scale))
+                                  ctypes.c_float(leaflet_scale), ctypes.c_float(prototype_scale),
+                                  ctypes.c_float(intercalary_leaflet_scale))
 
 
 def setPetioleLeafletAngles(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int,
@@ -4158,3 +4160,133 @@ def getPlantLeafAzimuthAngleDistribution(plantarch_ptr, plant_ids: List[int], n_
     """Leaf-area-weighted azimuth histogram, bins evenly spaced over 0-360 degrees."""
     return _plantAngleDistribution("getPlantLeafAzimuthAngleDistribution", plantarch_ptr, plant_ids,
                                    n_bins, normalize)
+
+
+
+# helios-core 1.3.96: leaf roll, per-leaf blade shape, fruit-branch collision avoidance, multi-plant
+# elevation tracking and the fruit/root nitrogen pools.
+# NOTE: every wrapper function below must guard with _require_plantarch_1396().
+_PLANTARCHITECTURE_1396_AVAILABLE = False
+try:
+    _PA96 = ctypes.POINTER(UPlantArchitecture)
+    _PHY96 = [ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]  # plantID, shootID, node_index
+
+    def _register96(name, argtypes, restype):
+        f = getattr(helios_lib, name)
+        f.argtypes = [_PA96] + argtypes
+        f.restype = restype
+        f.errcheck = _check_error
+
+    _register96("setPetioleLeafRoll", _PHY96 + [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    _register96("setPlantLeafRoll", [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    _register96("getLeafShape", _PHY96 + [ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_float),
+                                          ctypes.POINTER(ctypes.c_uint)], ctypes.c_int)
+    _register96("reshapeLeaf", _PHY96 + [ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_float),
+                                         ctypes.POINTER(ctypes.c_uint)], ctypes.c_int)
+    _register96("enableFruitBranchCollisionAvoidance", [], ctypes.c_int)
+    _register96("disableFruitBranchCollisionAvoidance", [], ctypes.c_int)
+    _register96("setFruitBranchCollisionParameters",
+                [ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float], ctypes.c_int)
+    _register96("enablePlantLeafElevationAngleDistributionTrackingMultiple",
+                [ctypes.POINTER(ctypes.c_uint), ctypes.c_uint, ctypes.c_float, ctypes.c_float, ctypes.c_float],
+                ctypes.c_int)
+    _register96("getPlantFruitNitrogen", [ctypes.c_uint], ctypes.c_float)
+    _register96("getPlantRootNitrogen", [ctypes.c_uint], ctypes.c_float)
+
+    _PLANTARCHITECTURE_1396_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1396_AVAILABLE = False
+
+
+def _require_plantarch_1396() -> None:
+    """Raise if the native library predates the helios-core 1.3.96 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1396_AVAILABLE:
+        raise NotImplementedError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.96 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def setPetioleLeafRoll(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                       roll_fraction: float) -> None:
+    """Roll the leaves of one petiole about their midribs."""
+    _require_plantarch_1396()
+    helios_lib.setPetioleLeafRoll(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
+                                  ctypes.c_float(roll_fraction))
+
+
+def setPlantLeafRoll(plantarch_ptr, plant_id: int, roll_fraction: float) -> None:
+    """Roll every leaf of a plant about its midrib."""
+    _require_plantarch_1396()
+    helios_lib.setPlantLeafRoll(plantarch_ptr, plant_id, ctypes.c_float(roll_fraction))
+
+
+def getLeafShape(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                 leaf_index: int):
+    """Return (values[12], subdivisions[2]) in the LeafShapeValues flat layout of the C wrapper."""
+    _require_plantarch_1396()
+    values = (ctypes.c_float * 12)()
+    subdivisions = (ctypes.c_uint * 2)()
+    helios_lib.getLeafShape(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, leaf_index,
+                            values, subdivisions)
+    return [float(v) for v in values], [int(v) for v in subdivisions]
+
+
+def reshapeLeaf(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                leaf_index: int, values: List[float], subdivisions: List[int]) -> None:
+    """Rebuild one leaf's blade to a new shape inside its existing object."""
+    _require_plantarch_1396()
+    if len(values) != 12 or len(subdivisions) != 2:
+        raise ValueError("reshapeLeaf needs 12 shape values and 2 subdivision counts")
+    v = (ctypes.c_float * 12)(*(float(x) for x in values))
+    sd = (ctypes.c_uint * 2)(*(int(x) for x in subdivisions))
+    helios_lib.reshapeLeaf(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, leaf_index, v, sd)
+
+
+def enableFruitBranchCollisionAvoidance(plantarch_ptr) -> None:
+    _require_plantarch_1396()
+    helios_lib.enableFruitBranchCollisionAvoidance(plantarch_ptr)
+
+
+def disableFruitBranchCollisionAvoidance(plantarch_ptr) -> None:
+    _require_plantarch_1396()
+    helios_lib.disableFruitBranchCollisionAvoidance(plantarch_ptr)
+
+
+def setFruitBranchCollisionParameters(plantarch_ptr, max_swing_deg: float, candidate_refresh_days: float,
+                                      clearance: float, settle_rate_deg_per_day: float) -> None:
+    _require_plantarch_1396()
+    helios_lib.setFruitBranchCollisionParameters(plantarch_ptr, ctypes.c_float(max_swing_deg),
+                                                 ctypes.c_float(candidate_refresh_days),
+                                                 ctypes.c_float(clearance),
+                                                 ctypes.c_float(settle_rate_deg_per_day))
+
+
+def enablePlantLeafElevationAngleDistributionTrackingMultiple(plantarch_ptr, plant_ids: List[int],
+                                                              beta_mu_inclination: float,
+                                                              beta_nu_inclination: float,
+                                                              lambda_degrees: float) -> None:
+    """Steer the inclination of several plants, each toward the distribution on its own."""
+    _require_plantarch_1396()
+    ids = [int(i) for i in plant_ids]
+    if any(i < 0 for i in ids):
+        raise ValueError("Plant IDs must be non-negative")
+    arr = (ctypes.c_uint * max(len(ids), 1))(*ids)
+    helios_lib.enablePlantLeafElevationAngleDistributionTrackingMultiple(
+        plantarch_ptr, arr, len(ids), ctypes.c_float(beta_mu_inclination),
+        ctypes.c_float(beta_nu_inclination), ctypes.c_float(lambda_degrees))
+
+
+def getPlantFruitNitrogen(plantarch_ptr, plant_id: int) -> float:
+    _require_plantarch_1396()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    return float(helios_lib.getPlantFruitNitrogen(plantarch_ptr, plant_id))
+
+
+def getPlantRootNitrogen(plantarch_ptr, plant_id: int) -> float:
+    _require_plantarch_1396()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    return float(helios_lib.getPlantRootNitrogen(plantarch_ptr, plant_id))

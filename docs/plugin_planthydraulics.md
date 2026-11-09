@@ -124,6 +124,15 @@ To control the grouping yourself, set "plantID" as object data or primitive data
 plantID = hydraulics.groupPrimitivesIntoPlantObject(leaves)
 ```
 
+`getPrimitivesByPlantID(plantID)` returns the primitives of one plant. For many plants, `getPrimitivesByPlantIDs(plantIDs)` (helios-core 1.3.96) finds the primitives of all of them in a single pass over the Context and returns a dictionary from plantID to its sorted UUIDs, with an entry (possibly empty) for every plant asked for. `run()` itself now gathers its plants this way, which makes it several times faster for scenes with many plants.
+
+```python
+by_plant = hydraulics.getPrimitivesByPlantIDs([1, 2, 3])
+leaves_of_plant_2 = by_plant[2]
+```
+
+`getPlantID()` with an empty list raises an error (it previously reported plant 0 natively).
+
 When the geometry comes from the Plant Architecture plugin, call `optionalOutputObjectData("plantID")` before building plants so that the leaves carry the ID of their plant (see the examples below), and pass the leaf UUIDs to `run()`. Not every organ of the plant receives a plantID, so calling `run()` with no UUIDs on such a Context can fail as described above.
 
 ## Governing Equations

@@ -318,9 +318,27 @@ radiation.setMinScatterEnergy("PAR", 0.01)
 
 The energy still waiting to be scattered after the last iteration is not dropped: the remaining
 iterations are summed as a geometric series. A scattering depth of 3 to 5 is therefore usually
-enough for absorbed fluxes, even in strongly scattering bands such as near-infrared. Radiation
-camera images are not extrapolated this way, so images of strongly scattering bands need a
-higher depth.
+enough, even in strongly scattering bands such as near-infrared. Since helios-core 1.3.96 the
+same series is applied to radiation camera images, so they converge at the same depths as the
+absorbed flux. (Before, an image saw only the iterations that were traced: a near-infrared image
+of a canopy was about 11% too dark at the default depth of 3 and 4% at a depth of 5.)
+
+Between a layer of leaves (or a cover) and the ground below it, the fraction scattered again
+alternates from one iteration to the next. Since helios-core 1.3.96 the series is summed over
+pairs of iterations when that happens, which makes such layered scenes accurate from a depth of 3.
+Earlier versions extrapolated from the last iteration alone, so the absorbed flux of a leaf over
+soil in a strongly scattering band was overestimated after an even depth and underestimated after
+an odd one (by up to +400% at a depth of 2 and -15% at the default depth of 3). Results for
+canopies, where the alternation is weak, are essentially unchanged. The same release fixed
+`runBand()` stopping with "The energy to be scattered ... did not decrease" in scenes with a large
+primitive under a few small reflective ones, such as a ground patch below young leaves.
+
+A band with a scattering depth of 0 has no scattering: its primitives absorb all the radiation
+they intercept. Radiation cameras image such a band too (helios-core 1.3.96+; previously, when no
+band in a `runBand()` call had a depth of at least 1, cameras were not rendered and recorded 0).
+As in the radiation solution, surfaces in such a band are black: the camera sees their blackbody
+emission and the sky and sources behind them, but no reflected or transmitted radiation. This
+suits, for example, a thermal camera imaging surfaces at known temperatures.
 
 Later scattering iterations launch fewer diffuse rays per primitive, in proportion to the energy
 left to scatter (minimum 16). This makes strongly scattering bands faster, at the cost of somewhat
@@ -336,18 +354,26 @@ iteration, and `enableScatteringRayReduction()` to restore the default.
 
 The diffuse (ambient) sky set by `setDiffuseRadiationFlux()` fills only the upper hemisphere.
 Rays that leave all geometry heading below the horizon -- past the edge of a finite ground, or
-from the underside of an isolated object -- receive no diffuse radiation, and camera pixels
-looking below the horizon show no sky.
+from the underside of an isolated object -- receive no diffuse radiation.
 
 ```python
 # Remove domain edge effects (recommended)
 radiation.enforcePeriodicBoundary("xy")
 
 # Or fill the full sphere with sky radiation, so rays leaving below the horizon
-# receive the same diffuse radiation as rays leaving upward (all bands and cameras)
+# receive the same diffuse radiation as rays leaving upward (all bands)
 radiation.enableBelowHorizonDiffuseRadiation()
 radiation.disableBelowHorizonDiffuseRadiation()   # back to the default
 ```
+
+Radiation cameras always show sky below the horizon (helios-core 1.3.96+). A camera ray that
+leaves all geometry below the horizon, for example past the far edge of a finite ground, sees the
+sky radiance at the horizon in the same azimuth, so a finite domain no longer renders a black strip
+between its edge and the horizon and the sky is continuous across it. This applies to camera rays
+only: the diffuse radiation that lights the scene still comes from the upper hemisphere, so the
+sky seen through such a gap did not illuminate the scene. With
+`enableBelowHorizonDiffuseRadiation()` the camera instead sees the sky's full-sphere angular
+pattern below the horizon, as the diffuse rays do.
 
 > **Note:** Before helios-core 1.3.92 the sky filled the full sphere, so an isolated two-sided
 > horizontal patch absorbed twice the diffuse flux. Diffuse fluxes near the edges of finite
@@ -392,7 +418,9 @@ an error.
 - Each class must conserve energy on its own: reflectivity plus transmissivity above 1 in any class
   the primitive covers raises an error, even if the mean does not. A class spectrum that does not
   overlap a band with wavelength bounds raises an error when the band is run; in a band without
-  bounds every class takes the default reflectivity and transmissivity of 0.
+  bounds a class's spectra are weighted by the spectral responses of the cameras that image the
+  band, as a primitive's are (see [Spectral Surface Properties](#RadSpectralSurfaceProperties)),
+  or take the default reflectivity and transmissivity of 0 if no camera with a response images it.
 - In a band with thermal emission a primitive has one emissivity, so rays use the primitive's own
   values there. Its classes must then agree in that band, or the primitive can be given constant
   `reflectivity_<band>` / `transmissivity_<band>` data for it, which override the palette in such a
@@ -405,6 +433,67 @@ The following raise an error when combined with a spectral texture:
 - Translucent covers and specular surface layers.
 - Classes whose reflectivity or transmissivity differ in a band with thermal emission, unless the
   primitive has constant values for that band.
+
+#### Surfaces with a Class Map {#RadSurfaceClassMap}
+
+A class map of a surface that is not a leaf, such as bark or a fruit skin, is defined by an XML
+file of the same name beside it, which names the surface's spectra and scales them for each class:
+
+```xml
+<helios>
+  <surface_class_map reflectivity_spectrum="bark_reflectivity_0000" transmissivity_spectrum=""
+                     provenance="AppleBark.jpg via utilities/leaf_class_maps/fit_classes --surface">
+    <class id="1" reflectance_scale="0.11"/>
+    <class id="2" reflectance_scale="0.46"/>
+    ...
+  </surface_class_map>
+</helios>
+```
+
+The spectra are taken from the spectral library or from the Context's global data, and each
+class's spectra are the surface's spectra times its `reflectance_scale` (held to at most 1, and to
+at most 1 together). \ref pyhelios.RadiationModel.RadiationModel.applySpectralClassMaps
+"applySpectralClassMaps(uuids=None)" (helios-core 1.3.96+) builds the palette
+`surface_<class map>` from such definitions for every primitive given to it that carries the
+primitive data `spectral_class_map` (the class map's path), and assigns the spectral texture. With
+no argument it considers every primitive in the Context.
+
+PlantArchitecture records the class map on the bark and fruit of library models that have one,
+such as `apple` and `apple_fruitingwall` (see `InternodeParameters.image_class_map_file` and
+`InflorescenceParameters.fruit_class_map_file` in the
+[PlantArchitecture documentation](plugin_plantarchitecture.md)), so one call after building the
+plants is all that is needed. Call it before `updateGeometry()`, as a spectral texture assigned
+afterwards is not seen until the geometry is updated again:
+
+```python
+from pyhelios import Context, PlantArchitecture, RadiationModel
+from pyhelios.types import vec3
+
+with Context() as context, PlantArchitecture(context) as plantarch:
+    plantarch.loadPlantModelFromLibrary("apple")
+    plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 1200)
+
+    with RadiationModel(context) as radiation:
+        radiation.applySpectralClassMaps()   # bark (and any class-mapped fruit); leaves are left to LeafOptics
+        radiation.updateGeometry()
+```
+
+Primitives carrying a class map defined relative to a leaf, as PlantArchitecture records on
+leaves through `LeafPrototype.leaf_class_map_file`, are left alone: their classes are derived from
+the leaf's properties by \ref pyhelios.LeafOptics.LeafOptics.run "LeafOptics.run()" (see the
+[LeafOptics documentation](plugin_leafoptics.md)). A whole plant can therefore be passed at once.
+
+The fruit of the `apple` models instead carries, as primitive data set by its prototype, a
+red-apple skin spectrum (`apple_fruit_reflectivity_0000`) and a waxy specular surface layer
+(`specular_roughness` 0.15, `specular_n` 1.5), since a surface layer cannot yet be combined with
+a spectral texture. Override them by setting the same primitive data after the plant is built.
+
+Class maps and their definitions can be made from a texture with
+`utilities/leaf_class_maps/fit_classes` in helios-core (its `--surface` mode, for anything that is
+not a leaf). A class scales the whole spectrum, so its colour in linear light is the spectrum's;
+the fitter holds every class below a visible reflectance of 0.6 by default, because the brightest
+parts of a photograph of a natural surface are gloss and lit curvature rather than reflectance,
+and a class scaled past that renders washed out.
 
 ### Reproducibility
 
@@ -424,7 +513,7 @@ radiation.disableEmission("PAR")  # PAR typically doesn't emit
 Each primitive emits with emissivity `emissivity_<band>` (default 1) at its `temperature` primitive data (default 300 K). How much it emits depends on whether the band has wavelength bounds:
 
 - A band added without bounds, such as `addRadiationBand("LW")`, is treated as broadband longwave and emits the full εσT⁴. This is the usual setup for the longwave band of an energy balance.
-- A band added with bounds, such as `addRadiationBand("thermal", 8000, 14000)`, emits only the part of the Planck spectrum inside them, εσT⁴ times the blackbody band fraction. A thermal camera band with bounds therefore records in-band radiance: at 300 K the 8-14 µm band holds about 38% of σT⁴.
+- A band added with bounds, such as `addRadiationBand("thermal", 8000, 14000)`, emits only the part of the Planck spectrum inside them, εσT⁴ times the blackbody band fraction. A thermal camera band with bounds therefore records in-band radiance: at 300 K the 8-14 µm band holds about 38% of σT⁴. \ref pyhelios.RadiationModel.RadiationModel.getCameraPixelBrightnessTemperature "getCameraPixelBrightnessTemperature()" converts a thermal camera's pixels back to brightness temperatures by inverting this relation for each pixel (see [Thermal Cameras](#RadThermalCamera)).
 
 The band fraction and the Planck spectral radiance are available as `Global.blackbodyBandFraction(wavelength_min_nm, wavelength_max_nm, temperature_K)` and `Global.blackbodySpectralRadiance(wavelength_nm, temperature_K)` (from `pyhelios import Global`), for example to convert an in-band flux back to a temperature or to check the emission of a surface.
 
@@ -687,9 +776,14 @@ radiation.setSourceSpectrum(sun_source, sunlight_spectrum)
 led_sources = [led1, led2, led3]
 radiation.setSourceSpectrum(led_sources, led_spectrum)
 
-# Use predefined spectrum from global data
-radiation.setSourceSpectrum(source_id, "D65_illuminant")
+# Use predefined spectrum from global data or the spectral library
+radiation.setSourceSpectrum(source_id, "CIE_D65")
 ```
+
+The spectral library includes the CIE 1931 2-degree colour-matching functions (`CIE1931_2deg_xbar`,
+`CIE1931_2deg_ybar`, `CIE1931_2deg_zbar`) and CIE standard illuminant D65 (`CIE_D65`), from
+`spectral_data/cie_colorimetry.xml` (helios-core 1.3.96+), so `"CIE_D65"` can be used directly as a
+source spectrum.
 
 ### Spectrum Integration and Analysis
 
@@ -746,6 +840,7 @@ context.setPrimitiveDataString(leaf_uuids, "transmissivity_spectrum", "leaf_tran
 
 - **A band value overrides the spectrum.** If `reflectivity_<band>` or `transmissivity_<band>` is also set on the primitive, that value is used in that band instead of the spectrum, including a value of 0. Before helios-core 1.3.90 a value of 0 was ignored and the spectrum used, so a scene that carries a band value of 0 alongside a spectrum (for example, one loaded from XML) now uses 0.
 - **Spectra are zero outside their tabulated range.** This holds for source spectra and for reflectivity and transmissivity spectra alike. A reflectivity or transmissivity spectrum that does not overlap a band at all has no defined value in it, and `runBand()` raises when that band is run; set a constant `reflectivity_<band>` or `transmissivity_<band>` for that band instead.
+- **Bands without wavelength bounds use the camera responses.** A band added without bounds has no range to integrate over, so a spectrum there is weighted by the spectral response of the cameras that image the band instead: the band reflectivity and transmissivity are the camera-weighted values divided by the camera-weighted value of a white surface, averaged over the cameras with a response in the band. This is how satellite or multispectral bands defined only by a camera's spectral response are set up. Without such a camera a spectrum has no value in a band without bounds, and the default of 0 is used. (Before helios-core 1.3.96 the transmissivity stayed 0 in such a band, so leaves were opaque there and camera images of canopies over soil were too dark.)
 - **A source needs energy where it has flux.** If a source has a flux in a band (for example from `setSourceFlux()`) but its spectrum has no energy in that band, or a diffuse flux has a diffuse spectrum with no energy in the band, `runBand()` raises when the band is run with surfaces that have spectral properties. Earlier versions silently used a reflectivity and transmissivity of 0, so surfaces absorbed all of that radiation.
 - **Several sources.** Radiation coming directly from a source uses properties weighted by that source's spectrum. Diffuse, scattered and emitted radiation use properties weighted by the band's combined incident spectrum: each source's spectrum and the diffuse spectrum, in proportion to their band fluxes. Before helios-core 1.3.90 they were weighted by the spectrum of source 0 alone, so results with several differently coloured sources in one band depended on the order the sources were added.
 
@@ -977,6 +1072,8 @@ radiation.setCameraSpectralResponseFromLibrary("cam3", "CanonEOS5D")
 # Available camera models: iPhone13, NikonD850, CanonEOS5D, and more
 ```
 
+When every band of a camera has a spectral response, the model identifies the camera's red, green and blue bands from those responses (see [Camera Red, Green and Blue Bands](#RadCameraRGBBands)), and an RGB camera is colour corrected from them automatically (see [Camera Colour Correction](#RadCameraColorCorrection)). helios-core 1.3.96 also fixed the library's `SpectralDevicesMSC_spectral_response` red, green and NIR980 responses, whose out-of-order wavelengths made any camera using them fail to load.
+
 ### Programmatic Pixel Access
 
 ```python
@@ -1138,6 +1235,17 @@ produced. Three ordering rules follow from this:
    band exists.
 3. **Re-run `runBand()` after moving a camera or changing the scene.** Pixel data
    reflects the scene as of the last render.
+
+White balance, colour correction and exposure act on a camera's whole image, so
+`runBand()` applies them once every band of the camera has been rendered since the
+image was last processed (helios-core 1.3.96+). A camera rendered one band per
+`runBand()` call is processed when its last band is rendered, and a camera whose bands
+are not rendered in a call is left as it is. If only some of the bands of an already
+processed image are rendered again, the image is incomplete until the rest are rendered
+too: reading it in the meantime (e.g. `getCameraPixelData()` or `writeCameraImage()`)
+raises an error, since it would mix processed and unprocessed bands. (Earlier versions
+re-applied exposure to every camera on every `runBand()` call, so an `"ISOXXX"`-exposed
+camera's gain compounded with each call.)
 
 ```python
 # Correct order
@@ -1610,8 +1718,8 @@ radiation.writeImageSegmentationMasksBySpectralClass(
 
 Only the classes listed in `class_names` are annotated. It raises if the camera does not exist, if
 `class_names` is empty or contains class 0, if the image file does not exist, or if the classes
-were not recorded (the camera has not been rendered by `runBand()` -- which needs a scattering depth
-above 0 in some band -- or no primitive in the model's geometry has a spectral texture).
+were not recorded (the camera has not been rendered by `runBand()`, or no primitive in the model's
+geometry has a spectral texture).
 
 ### Per-Pixel Data Label Maps
 
@@ -1709,7 +1817,7 @@ The atmosphere spectra are read when `runBand()` is called, so these requirement
 - A reflective band must have wavelength bounds or a camera spectral response, and must lie within the wavelength range of the atmosphere spectra (300-2600 nm at the default 1 nm resolution).
 - A thermal band must have wavelength bounds within 5502-15326 nm, its spectral response must not be zero over the band, and each pixel's brightness temperature must lie within 150-400 K.
 
-Emission (thermal) bands are converted with the thermal atmosphere computed by \ref pyhelios.SolarPosition.SolarPosition.calculateSensorThermalAtmosphere "SolarPosition.calculateSensorThermalAtmosphere()" under the same label. Because a bounded emission band emits only the in-band part of the Planck spectrum, the pixels are in-band radiances. Each pixel's radiance is converted to a brightness temperature; the Planck spectrum at that temperature is multiplied by the atmospheric transmittance wavelength by wavelength and integrated over the band with the camera's spectral response, and the upwelling atmospheric radiance is added. Any band within 5.5-15.3 µm can be used (for example GOES ABI bands 8-16, MODIS bands 27-36, Landsat 8/9 TIRS bands 10 and 11, and 7.5-13.5 µm microbolometer cameras), but not the 3.5-5 µm bands, where reflected sunlight is significant.
+Emission (thermal) bands are converted with the thermal atmosphere computed by \ref pyhelios.SolarPosition.SolarPosition.calculateSensorThermalAtmosphere "SolarPosition.calculateSensorThermalAtmosphere()" under the same label. Because a bounded emission band emits only the in-band part of the Planck spectrum, the pixels are in-band radiances. Each pixel's radiance is converted to a brightness temperature (as `getCameraPixelBrightnessTemperature()` does for a camera without an atmosphere); the Planck spectrum at that temperature is multiplied by the atmospheric transmittance wavelength by wavelength and integrated over the band with the camera's spectral response, and the upwelling atmospheric radiance is added. Any band within 5.5-15.3 µm can be used (for example GOES ABI bands 8-16, MODIS bands 27-36, Landsat 8/9 TIRS bands 10 and 11, and 7.5-13.5 µm microbolometer cameras), but not the 3.5-5 µm bands, where reflected sunlight is significant.
 
 ```python
 solar.calculateSensorThermalAtmosphere("satellite_atmosphere", vec3(0, 0, 1))
@@ -1721,7 +1829,7 @@ context.setPrimitiveDataFloat(ground_uuids, "emissivity_TIR", 0.96)
 
 The emissivity of many surfaces varies with wavelength in the thermal infrared, so each thermal band needs its own `emissivity_<band>`. The sky radiance the scene reflects is whatever diffuse flux the band is given, which must be the in-band value.
 
-Any exposure other than `"manual"` and any white balance other than `"off"` rescales the images after the atmosphere is applied, so use `exposure="manual"` and `white_balance="off"` when radiance values are needed.
+Any exposure other than `"manual"` and any white balance other than `"off"` rescales the images after the atmosphere is applied, so use `exposure="manual"` and `white_balance="off"` when radiance values are needed. (A thermal camera with `"auto"` exposure is the exception: its pixels stay radiances, see [Thermal Cameras](#RadThermalCamera).) For a thermal band, `getCameraPixelBrightnessTemperature(camera_label, band_label)` then gives the brightness temperature above the atmosphere of each pixel, weighted by the camera's spectral response, as satellite thermal products report it.
 
 | Method | Description |
 |---|---|
@@ -1730,13 +1838,20 @@ Any exposure other than `"manual"` and any white balance other than `"off"` resc
 
 ### Camera Flux Smoothing
 
-By default each pixel reports the outgoing flux of the primitive behind it, so a coarsely tessellated curved surface renders as a set of flat panels. `enableCameraFluxSmoothing()` averages each primitive's outgoing flux onto the mesh vertices it shares with its neighbours and interpolates it back across the facet, so the tessellated curve reads as a curve.
+By default each pixel reports the outgoing flux of the primitive behind it, so a coarsely tessellated curved surface renders as a set of flat panels. `enableCameraFluxSmoothing()` reconstructs the image as the radiation leaving the smooth surface that the tessellation stands for, in two parts:
 
-This applies to `Tube`, `Sphere`, `Cone`, `Polymesh`, `Tile` and `AdaptiveTile` objects. A `Box` or `Disk` object, and any primitive belonging to no object, is left alone: its faces are genuinely flat, so the per-facet value is already correct everywhere on them. A polymesh must carry the face table that `loadOBJ()` and `loadPLY()` retain; one assembled from loose primitives by `addPolymeshObject()` has no topology and is left alone.
+- **The direct radiation of the sources** is evaluated per facet with a *shading normal* interpolated across the facet from normals at the vertices it shares with its neighbours (the area-weighted mean of the facet normals meeting there). The facet's cosine to the source is replaced by that of the shading normal, so the brightness follows the curvature of the surface while a shadow cast by another object stays on the facets where it falls. Near the terminator, where a face turned away from the source has a shading normal that still faces it, the light fades smoothly rather than stopping at a facet edge.
+- **The rest of the outgoing radiation** (sky light, light scattered by other surfaces, and emission) is averaged onto the shared vertices, weighted by facet area, and interpolated back across each facet. The top and bottom faces are averaged separately, so a thin leaf does not render as the average of its lit and shaded sides.
 
-> **Smoothing changes what the camera reports.** A pixel no longer carries the outgoing flux of the primitive behind it, but a blend of that primitive's value with those of its neighbours, so pixel values no longer correspond exactly to the `radiation_flux_*` primitive data. Nothing else is affected: the radiation solve, the `radiation_flux_*` values themselves, and the pixel-label and depth images are all unchanged. Smoothing is off by default for this reason and should be enabled deliberately.
+Primitives with a specular surface layer (`specular_roughness`) are smoothed too: their highlight of the direct radiation and the split between the body's and the layer's components with viewing angle are evaluated with the shading normal, and the layer's own outgoing component is interpolated from the vertices. The transmittance of a translucent cover that a camera looks through is still taken from the cover's facet normal. No stored vertex normals are needed: the normals are computed from the facets, so a mesh without authored normals is smoothed just as one with them is.
 
-The crease angle is the angle between adjacent facet normals above which a shared edge is treated as a hard crease, so flux is not averaged across it. It applies to polymesh objects only, whose facets may meet at a genuine edge the tessellation resolved; the curved object types are smooth by construction and are never creased. It must be between 0 and 180 degrees.
+> **Note:** Changed in helios-core 1.3.96. Previously all of the outgoing flux was averaged onto the vertices, so smoothed images of coarsely tessellated sunlit surfaces were darker than the surface they represent by about cos(π/N) for N divisions (about 13% for six), spheres kept a visible step at each latitude ring, a cast shadow was spread onto neighbouring facets, and glossy primitives still showed a step at every facet edge.
+
+This applies to `Tube`, `Sphere`, `Cone`, `Polymesh`, `Tile` and `AdaptiveTile` objects. Tubes and cones are smoothed around the circumference and along their length, across the rings where consecutive segments meet; spheres around the azimuth and across the rings bounding each zenith band. A tile is flat, so its direct radiation is that of each sub-patch, and smoothing blurs real per-sub-patch variation in the rest of the radiation, which is worth weighing against the reduction in Monte-Carlo noise. A `Box` or `Disk` object, and any primitive belonging to no object, is left alone: its faces are genuinely flat, so the per-facet value is already correct everywhere on them. A polymesh must carry the face table that `loadOBJ()` and `loadPLY()` retain; one assembled from loose primitives by `addPolymeshObject()` has no topology and is left alone.
+
+> **Smoothing changes what the camera reports.** A pixel no longer carries the outgoing flux of the primitive behind it, but a reconstruction from that primitive's value, its neighbours' and the shading normal, so pixel values no longer correspond exactly to the `radiation_flux_*` primitive data. Nothing else is affected: the radiation solve, the `radiation_flux_*` values themselves, and the pixel-label and depth images are all unchanged. Smoothing is off by default for this reason and should be enabled deliberately.
+
+The crease angle is the angle between adjacent facet normals above which a shared edge is treated as a hard crease, so neither the flux nor the shading normal is averaged across it. It applies to polymesh objects only, whose facets may meet at a genuine edge the tessellation resolved; the curved object types are smooth by construction and are never creased. It must be between 0 and 180 degrees.
 
 ```python
 with RadiationModel(context) as radiation:
@@ -1760,9 +1875,66 @@ Toggling smoothing after geometry has been built re-uploads the geometry and reb
 | [isCameraFluxSmoothingEnabled()](pyhelios.RadiationModel.RadiationModel.isCameraFluxSmoothingEnabled) | Whether smoothing is enabled |
 | [getCameraFluxSmoothingCreaseAngle()](pyhelios.RadiationModel.RadiationModel.getCameraFluxSmoothingCreaseAngle) | Crease angle in degrees |
 
+### Camera Image Processing Pipeline {#RadCameraPipeline}
+
+After `runBand()` renders every band of a camera, an RGB camera's image passes through these steps, each controlled by a `CameraProperties` field:
+
+| Step | Applied by | `CameraProperties` field | Default |
+|---|---|---|---|
+| White balance | `runBand()` | `white_balance` (`"auto"`/`"off"`) | `"auto"` |
+| Colour correction to linear sRGB | `runBand()` | `color_correction` (`"auto"`/`"off"`) | `"auto"` |
+| Exposure | `runBand()` | `exposure` (`"auto"`/`"manual"`/`"ISOXXX"`), `exposure_target` | `"auto"`, 0.235 |
+| Tone curve | `writeCameraImage()` | `tone_curve` (`"auto"`/`"off"`) | `"auto"` |
+| sRGB encoding | `writeCameraImage()` | - | always, for RGB images |
+
+The camera's pixel data (`getCameraPixelData()`) is the linear image after the first three steps; the tone curve and sRGB encoding are applied only to written images. The raw camera data written by `writeCameraImageDataEXR()` is left as rendered by all of them.
+
+> **Note:** helios-core 1.3.96 changed the defaults of this pipeline: RGB cameras with spectral responses (including every RGB camera in the camera library) are now colour corrected, written images get a tone curve, and auto exposure meters a centre-weighted mean with a target of 0.235. Rendered RGB images therefore look different from earlier versions. To reproduce the earlier appearance as closely as possible, set `color_correction="off"` and `tone_curve="off"`.
+
+### Camera Red, Green and Blue Bands {#RadCameraRGBBands}
+
+White balance, colour correction, auto exposure and the tone curve act on a camera's red, green and blue bands, so the model has to know which of the camera's bands those are. A thermal or multispectral camera from the camera library, and a camera with fewer than three bands, has none. For any other camera they are identified as follows (helios-core 1.3.96+):
+
+- If **every band has a spectral response** (`setCameraSpectralResponse()`, or a camera from the camera library), each band's colour is taken from its response, whatever the band is called and in whatever order the bands are listed. The response-weighted mean wavelength decides: below 400 nm is ultraviolet, 400-505 nm blue, 505-570 nm green, 570-700 nm red, and above 700 nm near-infrared. If two bands have the same colour, such as the two green bands of some multispectral cameras, the one named for that colour is taken.
+- **Otherwise**, the bands named `"red"`, `"green"` and `"blue"` (or `"R"`, `"G"` and `"B"`, in any case) are taken, and failing that, the bands of a three-band camera in the order they were listed.
+
+So a multispectral camera with bands `["blue", "green", "red", "red_edge", "nir"]` has its RGB bands found and its red-edge and near-infrared bands left untouched; a camera listed `["B", "G", "R"]` is still an RGB camera; and a colour-infrared camera with bands `["nir", "red", "green"]` is not one, because none of its bands is blue. A camera that looks like an RGB camera but is not one (it has exactly three bands, bands named red, green and blue, or is an RGB camera from the library) prints a warning listing the mean wavelength and colour of each band; its images are not white balanced or colour corrected, and are exposed band by band as a multispectral camera's are. Setting `color_correction="off"` silences the warning. If the bands named red, green and blue have red, green and blue responses but in the wrong bands (for example with the red and blue responses swapped), an error is raised.
+
+> **Note:** Before helios-core 1.3.96, white balance always took the first three bands, and auto exposure took any band whose name contained "red", "green" or "blue", so a `"red_edge"` or `"infrared"` band could be metered as red.
+
+### Camera Colour Correction {#RadCameraColorCorrection}
+
+A camera's own red, green and blue are not the red, green and blue of a display. Its three spectral responses overlap, so each channel also records light the eye would attribute to the others, and an image shown as recorded looks washed out and greyish. Real cameras convert their RGB to a display colour space with a 3x3 colour correction matrix, and since helios-core 1.3.96 radiation cameras do the same: with `CameraProperties.color_correction="auto"` (the default), a camera whose red, green and blue bands all have spectral responses converts its images to linear sRGB after white balance and before exposure.
+
+The matrix is derived from the camera's spectral responses, so it needs no calibration images and applies equally to a user-defined camera. It is the matrix, with rows summing to 1 so that white stays white, that best maps what the camera records from the reflectance spectra shipped with the radiation plug-in (the colour boards and the leaf, soil, bark and fruit libraries), lit by CIE illuminant D65, to their colorimetric colour for the CIE 1931 standard observer. For the cameras of the camera library, corrected colours lie within about 1-2 CIEDE2000 units (median) of their colorimetric values, against about 5-6 units without the correction. The correction assumes daylight-like illumination; under strongly coloured artificial light (e.g. tungsten) the colour error roughly doubles.
+
+\ref pyhelios.RadiationModel.RadiationModel.getCameraColorCorrectionMatrix "getCameraColorCorrectionMatrix(camera_label)" returns the matrix as three rows of three; it is also recorded in the camera's image metadata (`color_correction_matrix`, see `enableCameraMetadata()`).
+
+```python
+from pyhelios import RadiationModel, CameraProperties
+from pyhelios.types import vec3
+
+radiation.addRadiationCameraFromLibrary("cam", "Nikon_D700", position=vec3(0, -5, 1), lookat=vec3(0, 0, 0.5))
+radiation.runBand(["red", "green", "blue"])
+
+ccm = radiation.getCameraColorCorrectionMatrix("cam")   # [[r0, r1, r2], [g0, g1, g2], [b0, b1, b2]]
+```
+
+The correction changes only the camera's images (`getCameraPixelData()` and written JPEG images); the raw data written by `writeCameraImageDataEXR()` is left as rendered. Cameras without spectral responses and cameras that are not RGB (e.g. thermal or multispectral) are never corrected. A camera whose responses do not distinguish colours, such as one with the same response in every band, has no matrix: its images are left uncorrected with a warning, and `getCameraColorCorrectionMatrix()` raises `RadiationModelError`.
+
+Set `color_correction="off"` to keep a camera's own RGB, for example to apply a matrix of your own with `applyCameraColorCorrectionMatrix()`, which since helios-core 1.3.96 raises an error for a camera whose current image was already colour corrected automatically, rather than correcting the colours twice:
+
+```python
+props = CameraProperties(color_correction="off")
+radiation.addRadiationCamera("cam_own_ccm", ["red", "green", "blue"], position, lookat, props)
+radiation.setCameraSpectralResponseFromLibrary("cam_own_ccm", "NikonD700")
+radiation.runBand(["red", "green", "blue"])
+radiation.applyCameraColorCorrectionMatrix("cam_own_ccm", "red", "green", "blue", "my_ccm.xml")
+```
+
 ### Camera Exposure
 
-`CameraProperties` carries an `exposure` field that is passed through to the native camera by `addRadiationCamera()` and `updateCameraParameters()`. Supported modes are `"auto"` (automatic exposure, the default), `"manual"` (no automatic exposure scaling), and `"ISOXXX"` (ISO-based, e.g. `"ISO100"`, calibrated against auto-exposure at reference settings). Use `"manual"` when you need radiometrically comparable pixel values across frames or cameras.
+`CameraProperties` carries an `exposure` field that is passed through to the native camera by `addRadiationCamera()` and `updateCameraParameters()`. Supported modes are `"auto"` (automatic exposure, the default), `"manual"` (no automatic exposure scaling, pixel values stay in radiance units), and `"ISOXXX"` (ISO-based, e.g. `"ISO100"`, scaled by the ISO, shutter speed and aperture). Use `"manual"` when you need radiometrically comparable pixel values across frames or cameras.
 
 ```python
 from pyhelios import RadiationModel, CameraProperties
@@ -1772,30 +1944,67 @@ props.exposure = "manual"   # disable per-frame auto-exposure scaling
 radiation.addRadiationCamera("fixed_exposure_cam", ["red", "green", "blue"], position, lookat, props)
 ```
 
-`CameraProperties.exposure_target` (helios-core 1.3.85) is the target median scene luminance that `"auto"` exposure scales every band toward, as a fraction of full scale. The default of 0.18 is the middle-grey convention, which assumes a scene whose average reflectance is that of a grey card. A canopy imaged from above is darker than that, so matching a real camera's output may need a lower value; conversely a bright scene may need a higher one. It is ignored for `"manual"` and `"ISOXXX"` exposure, and a non-positive value is rejected.
+With `"auto"` exposure, an RGB camera meters its image the way a camera's meter does: after white balance and colour correction, it scales the image so that its **centre-weighted mean luminance** equals `CameraProperties.exposure_target`, as a fraction of full scale (default **0.235**). Each pixel's luminance is weighted by exp(-(dx² + dy²)), where dx and dy are the pixel's offsets from the image centre in units of 0.35 of the image width and height, so the middle of the image counts most. The rule and target were calibrated against the in-camera JPEGs of 413 camera models: a centre-weighted mean predicted the cameras' exposure with a spread of 0.57 stops, against 0.83 for the median. The target was fitted together with the [tone curve](#RadCameraToneCurve), so the two belong together. A scene darker or brighter than a typical photograph, such as a canopy viewed from above, may still call for a different target. `exposure_target` is ignored for `"manual"` and `"ISOXXX"` exposure and by cameras that are not RGB cameras, and a non-positive value is rejected. Note that sky pixels are metered too, so the sky affects the exposure of the rest of the image.
 
 ```python
-props = CameraProperties(exposure="auto", exposure_target=0.10)   # darker target for a nadir canopy view
+props = CameraProperties(exposure="auto", exposure_target=0.15)   # darker target for a nadir canopy view
 radiation.addRadiationCamera("nadir_cam", ["red", "green", "blue"], position, lookat, props)
+```
+
+> **Note:** `exposure_target` was added in helios-core 1.3.85. Until 1.3.96, auto exposure metered the **median** luminance with a default target of **0.18**, and was applied before white balance. Auto-exposed images change brightness with 1.3.96, and projects that set `exposure_target` for the old median rule need a new value.
+
+Cameras that are not RGB cameras (e.g. multispectral or colour-infrared) normalize each band so that its 95th percentile of signal pixels is 0.7. [Thermal cameras](#RadThermalCamera) are not exposed.
+
+### Camera Tone Curve {#RadCameraToneCurve}
+
+Real cameras do not encode their images with the sRGB curve alone: before encoding, they apply a tone curve that darkens shadows and rolls off highlights, which gives their JPEGs their contrast. Without it, rendered images look flat and hazy. Since helios-core 1.3.96, with `CameraProperties.tone_curve="auto"` (the default), `writeCameraImage()` applies the typical in-camera tone curve to each channel of an RGB camera's image before sRGB encoding.
+
+The curve was measured from the JPEGs of 413 camera models; the curves of Canon, Sony, Nikon, Panasonic, Fujifilm, Olympus and Pentax cameras agree within 2-5 levels out of 255, so one curve serves all of them. Compared with sRGB encoding alone, it gives shadows at a quarter of mid-grey 39 rather than 60 out of 255, leaves mid-grey almost unchanged (114 rather than 118), and compresses highlights instead of clipping them. Phone cameras were not included: they apply local tone mapping, which a single curve does not reproduce.
+
+Only written images are tone mapped. The camera's pixel data (`getCameraPixelData()`) and the raw data written by `writeCameraImageDataEXR()` stay linear, and grayscale images and cameras that are not RGB cameras are never tone mapped. The camera's image metadata records the curve applied as `tone_curve` (`"typical camera"` or `"none"`). Set `tone_curve="off"` to encode images with the sRGB curve alone:
+
+```python
+props = CameraProperties(tone_curve="off")   # sRGB encoding only
+```
+
+### Thermal Cameras {#RadThermalCamera}
+
+A thermal camera is a library camera of type "thermal", or (since helios-core 1.3.96) a camera added with `addRadiationCamera()` whose bands all have emission enabled and wavelength bounds starting at 3000 nm or above (e.g. 8000-14000 nm). With the default `"auto"` exposure its pixel data stay radiances, and it is not white balanced, colour corrected, tone mapped or sRGB encoded as an RGB camera is. (Previously such a camera's pixels were rescaled so that their 95th percentile was 0.7, so they no longer held radiances.) Emission is enabled by default and often left enabled in visible bands, so bands without wavelength bounds do not count: a camera imaging a band without bounds such as `"LW"`, or an emission band alongside other bands, is normalized like any other non-RGB camera unless its exposure is `"manual"`.
+
+\ref pyhelios.RadiationModel.RadiationModel.getCameraPixelBrightnessTemperature "getCameraPixelBrightnessTemperature(camera_label, band_label)" (helios-core 1.3.96+) converts a thermal camera's pixels in an emission band to brightness temperatures (K), in the order of `getCameraPixelData()`: the temperature of a blackbody whose in-band radiance equals the pixel's. It is the surface temperature only for a surface of emissivity 1, and it includes the radiation the surface reflects (e.g. from the sky). A pixel of zero radiance gives 0 K. With a sensor atmosphere (`enableCameraAtmosphere()`, see [Simulating Satellite Imagery](#RadCameraAtmosphere)) the result is the brightness temperature above the atmosphere, weighted by the camera's spectral response. The pixels must be radiances: the camera's exposure must be `"manual"`, or `"auto"` for a thermal camera; any other camera with `"auto"` exposure, or one with `"ISOXXX"` exposure, is refused with `RadiationModelError`.
+
+```python
+from pyhelios import RadiationModel
+from pyhelios.types import vec3
+
+with RadiationModel(context) as radiation:
+    radiation.addRadiationBand("TIR", 8000, 14000)
+    radiation.setScatteringDepth("TIR", 0)       # surfaces at known temperatures; cameras image depth 0 too
+    radiation.setDiffuseRadiationFlux("TIR", 0.0)
+    radiation.addRadiationCamera("thermal_cam", ["TIR"], vec3(0, 0, 5), vec3(0, 0, 0))   # thermal: stays radiance
+    radiation.runBand("TIR")
+
+    T_b = radiation.getCameraPixelBrightnessTemperature("thermal_cam", "TIR")   # K, one per pixel
 ```
 
 ### Camera Image Corrections
 
 Two methods post-process a rendered RGB camera image before it is written. Both change the camera's stored pixel data in place, so applying one twice applies it twice, and neither clamps values.
 
-- `applyCameraColorCorrectionMatrix(camera_label, red, green, blue, ccm_file_path)` multiplies each pixel's `(r, g, b)` by a 3x3 matrix, or by a 3x3 matrix plus an offset column (`matrix_type="4x3"`), read from an XML file such as the one `autoCalibrateCameraImage(..., ccm_export_file_path=...)` exports. A missing file raises `FileNotFoundError`.
+- `applyCameraColorCorrectionMatrix(camera_label, red, green, blue, ccm_file_path)` multiplies each pixel's `(r, g, b)` by a 3x3 matrix, or by a 3x3 matrix plus an offset column (`matrix_type="4x3"`), read from an XML file such as the one `autoCalibrateCameraImage(..., ccm_export_file_path=...)` exports. A missing file raises `FileNotFoundError`. Since helios-core 1.3.96 it raises an error for a camera whose current image was already colour corrected automatically; create such a camera with `CameraProperties(color_correction="off")` (see [Camera Colour Correction](#RadCameraColorCorrection)).
 - `applyCameraImageCorrections(camera_label, red, green, blue, saturation_adjustment=1.0, brightness_adjustment=1.0, contrast_adjustment=1.0)` applies lens flare (if enabled for the camera), then brightness and contrast in linear space (`0.5 + (v * brightness - 0.5) * contrast`), then saturation about each pixel's luminance (0 gives grayscale). A factor of 1.0 skips its step. The factors are recorded in camera metadata when `enableCameraMetadata()` is on.
 
-Auto exposure and white balance are not part of these calls: they are applied during `runBand()` according to the camera's `exposure` and `white_balance` `CameraProperties`. sRGB gamma compression is applied by `writeCameraImage()` when it writes a 3-band image. The full order is therefore:
+White balance, automatic colour correction and exposure are not part of these calls: they are applied during `runBand()` according to the camera's `white_balance`, `color_correction` and `exposure` `CameraProperties`. The tone curve and sRGB encoding are applied by `writeCameraImage()` when it writes a 3-band image (see [Camera Image Processing Pipeline](#RadCameraPipeline)). The full order is therefore:
 
 ```python
-radiation.runBand(["red", "green", "blue"])          # render; exposure and white balance applied here
+# "cam" was created with CameraProperties(color_correction="off") so that it can take its own matrix
+radiation.runBand(["red", "green", "blue"])          # render; white balance and exposure applied here
 radiation.applyCameraColorCorrectionMatrix("cam", "red", "green", "blue", "cam_ccm.xml")   # optional
 radiation.applyCameraImageCorrections("cam", "red", "green", "blue",
                                       saturation_adjustment=1.5,
                                       brightness_adjustment=1.2,
                                       contrast_adjustment=1.1)
-radiation.writeCameraImage("cam", ["red", "green", "blue"], "corrected")   # sRGB gamma applied here
+radiation.writeCameraImage("cam", ["red", "green", "blue"], "corrected")   # tone curve and sRGB encoding applied here
 ```
 
 A CCM file has one `<row>` per line:
@@ -1837,6 +2046,10 @@ filename = radiation.autoCalibrateCameraImage(
 )
 print(f"Calibrated image saved to: {filename}")
 ```
+
+`autoCalibrateCameraImage()` fits a colour correction matrix from the colour board patches in the camera's view: the matrix that best maps, in the weighted least-squares sense, the camera's mean linear RGB over each patch to the patch's reference colour, the colorimetric linear sRGB (CIE illuminant D65, CIE 1931 2-degree observer) of the reflectance spectrum the patch was rendered with. Neutral patches count double, and patches seen by 10 pixels or fewer are left out. The corrected image is written sRGB encoded (without the tone curve of `writeCameraImage()`), and the exported matrix maps linear camera RGB to linear sRGB, as `applyCameraColorCorrectionMatrix()` expects. If the camera's image was colour corrected automatically (`color_correction="auto"`), that correction is undone on a copy of the data before fitting, so the result is the same as for the same camera with `color_correction="off"`. With `"MATRIX_3X3_AUTO"`, a diagonal correction is fitted instead, with a warning, if the patches in view do not determine a stable 3x3 matrix. It raises an error if no patch is in view, or with `"MATRIX_3X3_FORCE"` if fewer than 6 patches of distinct colours are.
+
+> **Note:** helios-core 1.3.96 fixed `autoCalibrateCameraImage()`, whose matrices were previously unusable: the third column of every fitted 3x3 matrix had the wrong signs (so `"MATRIX_3X3_AUTO"` always fell back to a diagonal correction), the fit mapped linear camera RGB onto gamma-encoded reference colours, the corrected image was written without sRGB encoding, and the Calibrite and SpyderCHECKR reference colours were assigned to the wrong patches. It also raised no error when no usable patches were in view, silently returning an identity or clamped matrix. Matrices exported by earlier versions should be regenerated.
 
 ### Color Correction Algorithms
 

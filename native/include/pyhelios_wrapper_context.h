@@ -3077,6 +3077,38 @@ PYHELIOS_API int getPrimitiveSpectralPalette(helios::Context* context, unsigned 
  */
 PYHELIOS_API const unsigned short* getSpectralTextureClassMap(helios::Context* context, const char* class_map_file, int* width, int* height, unsigned int* size);
 
+//=============================================================================
+// helios-core 1.3.96: material revision, per-caller modification tracking, polymesh re-meshing
+//=============================================================================
+
+/**
+ * @brief Get a counter that advances whenever a material is added, deleted or renamed, or its properties or data change
+ * @param context Pointer to the Context
+ * @return Current material revision
+ */
+PYHELIOS_API uint64_t getMaterialRevision(helios::Context* context);
+
+/**
+ * @brief Get the primitives created or modified since the call that set the caller's mark, and advance the mark
+ * @param context Pointer to the Context
+ * @param mark In/out: the caller's mark (0 on the first call)
+ * @param count Output: number of UUIDs returned
+ * @return UUIDs; valid until the next call on this thread
+ */
+PYHELIOS_API unsigned int* getModifiedUUIDs(helios::Context* context, uint64_t* mark, unsigned int* count);
+
+/**
+ * @brief Replace some primitives of a polymesh object with new ones, keeping the object's ID, data and transform
+ * @param context Pointer to the Context
+ * @param objID Polymesh object ID
+ * @param old_UUIDs Primitives of the object to remove and delete
+ * @param old_count Number of old_UUIDs
+ * @param new_UUIDs Existing primitives, not yet in any object, to add to the object
+ * @param new_count Number of new_UUIDs (and of data_source_UUIDs)
+ * @param data_source_UUIDs Parallel to new_UUIDs: primitive whose primitive data each new primitive receives
+ */
+PYHELIOS_API void replacePolymeshObjectPrimitives(helios::Context* context, unsigned int objID, const unsigned int* old_UUIDs, unsigned int old_count, const unsigned int* new_UUIDs, unsigned int new_count, const unsigned int* data_source_UUIDs);
+
 #ifdef __cplusplus
 }
 #endif

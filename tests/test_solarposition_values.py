@@ -609,15 +609,18 @@ class TestSilentlyAcceptedBadInput:
         time the model was tuned; comparing against the model's own correct
         answer is stable.
 
-        Measured: 425 W/m2 correct, 541 W/m2 with hPa — about 27% too high.
-        The threshold below is 1.2x, comfortably under 1.27 so ordinary model
-        tuning will not trip it, but far above any rounding noise.
+        Measured on the direct beam: 426 W/m2 correct, 561 W/m2 with hPa —
+        about 32% too high. The threshold below is 1.2x, comfortably under that
+        so ordinary model tuning will not trip it, but far above any rounding
+        noise. The direct beam is used because since helios-core 1.3.96
+        getSolarFluxPAR() includes the diffuse flux, which partly offsets the
+        error (the thinner atmosphere also scatters less into the sky).
         """
         solar.setAtmosphericConditions(*LONGWAVE_CONDITIONS)
-        correct_par = solar.getSolarFluxPAR()
+        correct_par = solar.getDirectSolarFluxPAR()
 
         solar.setAtmosphericConditions(1013.0, 290.0, 0.5, 0.02)
-        wrong_par = solar.getSolarFluxPAR()
+        wrong_par = solar.getDirectSolarFluxPAR()
 
         assert wrong_par > correct_par * 1.2, (
             "hPa/Pa confusion no longer inflates PAR — recheck the GUI's "
@@ -635,14 +638,16 @@ class TestSilentlyAcceptedBadInput:
         The numbers overlap in neither range nor meaning, but both are "small
         positive floats", so the `turbidity >= 0` check cannot tell them apart.
 
-        Measured: 425 W/m2 with beta=0.02, and 0.86 W/m2 with 3.0. The sun
-        effectively goes out — yet the run completes and reports success.
+        Measured on the direct beam: 426 W/m2 with beta=0.02, and 0.09 W/m2
+        with 3.0. The sun effectively goes out — yet the run completes and
+        reports success. (Since helios-core 1.3.96 getSolarFluxPAR() includes
+        the diffuse flux, which the haze raises, so the direct beam is measured.)
         """
         solar.setAtmosphericConditions(*LONGWAVE_CONDITIONS)
-        correct_par = solar.getSolarFluxPAR()
+        correct_par = solar.getDirectSolarFluxPAR()
 
         solar.setAtmosphericConditions(101325.0, 290.0, 0.5, 3.0)
-        wrong_par = solar.getSolarFluxPAR()
+        wrong_par = solar.getDirectSolarFluxPAR()
 
         assert wrong_par < correct_par * 0.01, (
             "Linke turbidity no longer collapses PAR — recheck the GUI's "

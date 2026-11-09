@@ -369,3 +369,76 @@ class Global:
         if arr.size > 0 and (arr.min() < 0 or arr.max() > 0xFFFF):
             raise ValueError("pixel_values must be in [0, 65535]")
         global_wrapper.writePNGSingleChannel(os.fspath(filename), int(width), int(height), arr, int(bit_depth))
+
+    # =========================================================================
+    # Class map area fractions (helios-core v1.3.96+)
+    # =========================================================================
+
+    @staticmethod
+    def classMapAreaFractions(classes, resolution, uv):
+        """Fraction of a primitive's (u,v) polygon in each class of a class map, leaving out class 0.
+
+        Class 0 marks transparent texels, so it is not reported. The texel convention is that of
+        the radiation model and of texture masks: texture coordinate ``(u, v)`` falls in column
+        ``floor((W-1) u)`` and row ``floor((H-1) (1-v))`` from the top, clamped to the image, so
+        column ``i`` covers ``i/(W-1) <= u < (i+1)/(W-1)`` and the last column only ``u >= 1``
+        (likewise for rows). Each texel's cell is clipped against the polygon, so a texel
+        touching the polygon only along an edge or at a corner covers none of it.
+
+        Args:
+            classes: Class of each texel, as returned by :meth:`readPNGSingleChannel` or
+                :meth:`pyhelios.Context.getSpectralTextureClassMap`: an integer array of shape
+                ``(height, width)`` with row 0 at the top of the image, or a flat sequence of
+                ``width * height`` integers in the same order. Values must be in ``[0, 65535]``.
+            resolution: Width and height of the class map, as an ``int2``
+            uv: ``(u, v)`` coordinates of the polygon's corners, in order, as a list of ``vec2``
+                (three for a triangle, four for a patch)
+
+        Returns:
+            List of ``(class, fraction)`` tuples, one for each class with a nonzero area, in
+            increasing order of class; empty if the polygon covers no texel of a class above 0.
+
+        Raises:
+            ValueError: If an argument has the wrong type, or ``classes`` does not hold
+                ``width * height`` integers in ``[0, 65535]``
+            HeliosError: If the native function rejects the arguments
+            RuntimeError: If the native library predates helios-core v1.3.96
+
+        Example:
+            >>> import numpy as np
+            >>> from pyhelios import Global
+            >>> from pyhelios.types import int2, vec2
+            >>> classes = np.ones((3, 3), dtype=np.uint16)
+            >>> classes[:, 1:] = 2
+            >>> Global.classMapAreaFractions(classes, int2(3, 3),
+            ...     [vec2(0, 0), vec2(1, 0), vec2(1, 1), vec2(0, 1)])
+            [(1, 0.5), (2, 0.5)]
+        """
+        import numpy as np
+        from .wrappers.DataTypes import int2, vec2
+        if not isinstance(resolution, int2):
+            raise ValueError(f"resolution must be an int2, got {type(resolution).__name__}")
+        width, height = int(resolution.x), int(resolution.y)
+        if width <= 0 or height <= 0:
+            raise ValueError(f"resolution must be positive in both dimensions, got ({width}, {height})")
+        if isinstance(uv, (str, bytes)) or not hasattr(uv, "__iter__"):
+            raise ValueError(f"uv must be a list of vec2, got {type(uv).__name__}")
+        uv = list(uv)
+        for i, corner in enumerate(uv):
+            if not isinstance(corner, vec2):
+                raise ValueError(f"uv[{i}] must be a vec2, got {type(corner).__name__}")
+        if isinstance(classes, (str, bytes)):
+            raise ValueError("classes must be a sequence or array of integers")
+        arr = np.asarray(classes)
+        if arr.size > 0 and arr.dtype.kind not in "iu":
+            raise ValueError(f"classes must hold integers, got dtype {arr.dtype}")
+        if arr.ndim == 2 and arr.shape != (height, width):
+            raise ValueError(f"classes has shape {arr.shape}, but resolution ({width}, {height}) needs "
+                             f"shape ({height}, {width})")
+        if arr.size != width * height:
+            raise ValueError(f"classes has {arr.size} values, but a {width} x {height} class map needs "
+                             f"{width * height}")
+        if arr.size > 0 and (arr.min() < 0 or arr.max() > 0xFFFF):
+            raise ValueError("classes must be in [0, 65535]")
+        uv_arr = np.array([[c.x, c.y] for c in uv], dtype=np.float32).reshape(-1, 2)
+        return global_wrapper.classMapAreaFractions(arr, width, height, uv_arr)

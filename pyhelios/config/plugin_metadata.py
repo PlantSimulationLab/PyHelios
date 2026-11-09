@@ -134,6 +134,17 @@ PLUGIN_METADATA: Dict[str, PluginMetadata] = {
         optional=True,
         test_symbols=["createPlantHydraulicsModel", "runPlantHydraulicsModel"]
     ),
+
+    "soiltransport": PluginMetadata(
+        name="soiltransport",
+        description="Variably saturated soil water transport (Richards equation) with root water uptake and optional GPU acceleration",
+        system_dependencies=[],  # CUDA is optional - the full 3D solver falls back to OpenMP on the CPU
+        plugin_dependencies=[],
+        platforms=["windows", "linux", "macos"],
+        gpu_required=False,
+        optional=True,
+        test_symbols=["createSoilTransportModel", "runSoilTransportModel"]
+    ),
     
     "plantarchitecture": PluginMetadata(
         name="plantarchitecture",

@@ -117,14 +117,16 @@ with Context() as context:
 
 ### C4 Coefficient Layout {#C4CoefficientLayout}
 
-The 43-float coefficient array returned by `getC4CoefficientsFromLibrary()` / `getC4ModelCoefficients()` (and consumed by `setC4ModelCoefficients()`) is laid out as follows:
+The 42-float coefficient array returned by `getC4CoefficientsFromLibrary()` / `getC4ModelCoefficients()` (and consumed by `setC4ModelCoefficients()`) is laid out as follows:
 
 | Group | Slots | Fields |
 |---|---|---|
 | Temperature-responsive rates (4 floats each: `value_at_25C`, `dHa`, `Topt_C`, `dHd`) | 0–19 | Vpmax, Vcmax, Jmax, Rd, gm |
 | Rubisco + PEPC kinetic constants at 25 °C | 20–24 | Kc, Ko, Kp, γ\*, Om |
 | Activation energies (kJ/mol) | 25–29 | dH_Kc, dH_Ko, dH_Kp, dH_γ\*, dH_Om |
-| User-tunable scalars | 30–42 | α_psII_fraction, x_etr_partition, Vpr, Rm_frac, fcyc, gbs, ao, absorptance, f_spectral, θ_etr, h_protons, H_J, H_Jcyc |
+| User-tunable scalars | 30–41 | α_psII_fraction, x_etr_partition, Vpr, Rm_frac, fcyc, gbs, ao, f_spectral, θ_etr, h_protons, H_J, H_Jcyc |
+
+\note helios-core 1.3.96 removed the C4 `absorptance` coefficient (slot 37 of the earlier 43-float layout). The C4 model reads the primitive data "radiation_flux_PAR" as the PAR absorbed by the leaf, the same quantity the C3 model uses, so the leaf-absorptance factor of von Caemmerer (2021) Eq. 35 is no longer applied a second time. A 43-element array is rejected with an error; delete element 37 to convert it, and supply absorbed rather than incident PAR.
 
 Each temperature-responsive rate uses the same `-1` sentinel convention as `setFarquharMesophyllConductance` — a negative `dHa` means "no temperature response", a negative `Topt_C` means "monotonic Arrhenius", a negative `dHd` means "default deactivation energy".
 
@@ -154,20 +156,20 @@ Each temperature-responsive rate uses the same `-1` sentinel convention as `setF
 | H_Jcyc | H<sub>J,cyc</sub> | H⁺/e⁻ | 3.4 | Protons per electron, cyclic ETR (NDH-dominated). |
 | gbs | g<sub>bs</sub> | mol/m²/s/bar | 0.003 | Bundle-sheath conductance to CO₂. |
 | ao | a<sub>o</sub> | unitless | 0.047 | O₂/CO₂ solubility-diffusivity ratio. |
-| absorptance | — | unitless | 0.85 | Leaf PAR absorptance. |
 | f_spectral | f | unitless | 0.15 | Spectral-quality correction to absorbed PAR. |
 | theta_etr | θ | unitless | 0.7 | Curvature of the J ~ I₂ non-rectangular hyperbola. |
 | h_protons | — | H⁺/ATP | 4 | Protons required per ATP synthesized. |
 
 ### C4 Species Library {#C4Library}
 
-PyHelios ships three published C4 parameter sets accessible via `setC4CoefficientsFromLibrary()` and `getC4CoefficientsFromLibrary()`. Each entry specifies **every** parameter the model reads — including the "complementary" kinetic constants (K<sub>c</sub>, K<sub>o</sub>, K<sub>p</sub>) and scalar structural parameters that the source paper held fixed while fitting the headline rate constants. **Mixing the headline values from one entry with the fixed-parameter assumptions of another will produce biased predictions**, so treat each entry as atomic. Unknown species keys raise `RuntimeError`; key matching is case-insensitive.
+PyHelios ships four C4 parameter sets accessible via `setC4CoefficientsFromLibrary()` and `getC4CoefficientsFromLibrary()`. Each entry specifies **every** parameter the model reads — including the "complementary" kinetic constants (K<sub>c</sub>, K<sub>o</sub>, K<sub>p</sub>) and scalar structural parameters that the source paper held fixed while fitting the headline rate constants. **Mixing the headline values from one entry with the fixed-parameter assumptions of another will produce biased predictions**, so treat each entry as atomic. Unknown species keys raise `RuntimeError`; key matching is case-insensitive.
 
 | Species key | Subtype | Vcmax(25) | Vpmax(25) | Jmax(25) | Rd(25) | gm(25) | T-response | Source |
 |---|---|---|---|---|---|---|---|---|
 | `SetariaViridis_vC2021` | NADP-ME | 40 | 200 | 247.69 | 0.4 | 1.0 | Arrhenius (Jmax peaked) | von Caemmerer (2021) Table 1; kinetics Boyd et al. (2015); gm Ubierna et al. (2017); fcyc / H_Jcyc per Woodford et al. (2025). |
 | `GenericC4_vC2000` | NADP-ME | 60 | 120 | 400 | 1.0 | ∞ (10⁴) | Q10≈2.3 → Arrhenius Ea≈61.6 | von Caemmerer (2000) *Biochemical Models of Leaf Photosynthesis*; plantecophys AciC4 defaults. |
 | `Maize_Massad2007` | NADP-ME | 60 | 120 | 400 | 0.6 | ∞ (10⁴) | Peaked Arrhenius | Massad et al. (2007) *Plant Cell Environ.* 30:1191; plantecophys defaults at 25 °C. |
+| `Sorghum_GEMINI2026` (or `Sorghum`) | NADP-ME | 40.26 | 71.87 | 209.1 | 3.24 | 1.0 | Arrhenius (Jmax peaked, T<sub>opt</sub> 38.3 °C) | Fitted to GEMINI 2026 field measurements (Davis, CA); see caveats. |
 
 Units: μmol CO₂ / m² / s for all rate constants; mol CO₂ / m² / s / bar for gm.
 
@@ -175,6 +177,7 @@ Units: μmol CO₂ / m² / s for all rate constants; mol CO₂ / m² / s / bar f
 
 - **`SetariaViridis_vC2021`** — the C4 struct's default constructor also carries this parameterization, except R<sub>d</sub>: the library entry uses R<sub>d</sub> = 0.01 · V<sub>cmax</sub> = 0.4 μmol/m²/s per the original paper's convention, while the struct constructor sets R<sub>d</sub> = 1.0 for historical compatibility.
 - **`GenericC4_vC2000`** — the original parameterization uses Q10 temperature responses. Helios approximates these with Arrhenius (E<sub>a</sub> = R · T<sub>ref</sub>² · ln(Q₁₀)/10 with T<sub>ref</sub> = 298.15 K), matching Q10 behaviour within ~1 % over 15–40 °C. `fcyc=0` recovers the linear-electron-flow ATP stoichiometry of the original vC2000 model.
+- **`Sorghum_GEMINI2026`** — *Sorghum bicolor* from well-watered plots of the GEMINI breeding trials at Davis, CA. Fitted with the Helios model equations to same-leaf A/C<sub>i</sub> curves at about 30, 34, and 38 °C plus light curves (39 leaves, 2026), with capacities scaled so that the model reproduces the median of the 2026 survey measurements of light- and CO<sub>2</sub>-saturated photosynthesis; R<sub>d</sub> is the median of steady-state dark measurements. The kinetic constants, the g<sub>m</sub> temperature response, and the structural scalars are the struct defaults, which the fit assumed. V<sub>pmax</sub> and V<sub>cmax</sub> had no optimum below 40 °C and use the monotonic Arrhenius form. The fitted J curvature is low (`theta_etr` = 0.03) because the photosynthesis of these leaves was still increasing at 2000 μmol/m²/s.
 - **`Maize_Massad2007`** — Massad fitted the headline rate constants against Bernacchi (2001) C3-derived K<sub>c</sub>/K<sub>o</sub> (much smaller than the Boyd 2015 C4 values used for Setaria). **Do not substitute Setaria's K<sub>c</sub>/K<sub>o</sub> into this entry** — the V<sub>cmax</sub> value is only internally consistent with the Bernacchi values. The paper assumed infinite mesophyll conductance, so the entry sets g<sub>m</sub> = 10⁴ mol/m²/s/bar as effectively infinite. The K<sub>p</sub> temperature response is from Boyd (2015) rather than Massad's own Q10=2.1 (Massad's value overestimates K<sub>p</sub> temperature sensitivity). The 0.6 μmol/m²/s default for R<sub>d</sub> is a library convention (0.01 · V<sub>cmax</sub>) — Massad themselves used R<sub>d</sub> = 0 and reported results as insensitive to the R<sub>d</sub> choice.
 
 > **Implementation notes (vs. the paper's supplementary spreadsheet):**
@@ -375,6 +378,10 @@ The table below gives example model parameters obtained for several different sp
 | Cherry             | 75.65        | 129.06      | --         | 2.12      | 0.404    | 0        | 65.33                | --               | --                   | 48.49               | --              | --                  | --                 | --             | --                 |
 | Pear               | 107.69       | 176.71      | --         | 1.51      | 0.274    | 0        | 65.33                | --               | --                   | 46.04               | --              | --                  | --                 | --             | --                 |
 | Prune              | 75.88        | 129.41      | --         | 1.65      | 0.402    | 0        | 65.33                | --               | --                   | 48.58               | --              | --                  | --                 | --             | --                 |
+| Cowpea             | 117.6        | 379.9       | 14.28      | 3.90      | 0.337    | 0        | 68.57                | --               | --                   | 49.32               | 309.56          | 303.3               | 26.12              | 311.31         | 307.8              |
+| Common bean        | 104.7        | 259.4       | 12.96      | 3.13      | 0.321    | 0.46     | 90.45                | --               | --                   | 80.33               | 304.32          | 148.7               | 48.27              | --             | --                 |
+
+ The cowpea (key `"Cowpea"`) and common bean (key `"CommonBean"`, or `"Bean"`) parameters were calibrated from well-watered plots of the GEMINI breeding trials at Davis, CA, by fitting the Helios model equations directly (pooled fit with shared temperature and light parameters and per-leaf capacities; the median capacity across leaves is reported). Cowpea uses same-leaf A/C<sub>i</sub> curves at about 30, 34, and 38 °C plus light curves measured in 2026 (50 leaves of five genotypes), with capacities scaled so that the model reproduces the median of the 2026 survey measurements of light- and CO<sub>2</sub>-saturated photosynthesis. Common bean uses A/C<sub>i</sub> curves at two to four temperatures per plot and day plus stepped light curves measured in 2022-2023 (53 plot-days); no survey data exist, so its capacities are not scaled. For both crops R<sub>d25</sub> is the median of steady-state dark measurements. The temperature optimum of V<sub>cmax</sub> (and of TPU for common bean) was not reached below the warmest measured leaf temperatures (39-40 °C), so those parameters use the monotonic Arrhenius form; do not extrapolate them far above 40 °C. The light-response parameters are for absorbed PPFD.
 
 All \f$T_{opt}\f$ values in the table are in Kelvin, matching the \f$T_{opt}\f$ convention of the temperature response equations above. Note that the PyHelios and C++ setter functions take \f$T_{opt}\f$ in **degrees Celsius**, so a table entry of 315.3 K is passed to `setVcmax()` as `42.15`. A `--` in a \f$T_{opt}\f$ or \f$\Delta H_d\f$ column means that species uses the unpeaked Arrhenius form for that rate; a `--` in the \f$TPU_{25}\f$ column means TPU limitation is disabled for that species.
 

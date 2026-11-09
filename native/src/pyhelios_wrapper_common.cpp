@@ -240,4 +240,42 @@ extern "C" {
         }
     }
 
+    static thread_local std::vector<unsigned short> s_class_area_classes;
+    static thread_local std::vector<float> s_class_area_fractions;
+
+    PYHELIOS_API unsigned int classMapAreaFractions(const unsigned short* classes, unsigned int class_count, int width, int height, const float* uv, unsigned int uv_count, const unsigned short** out_classes, const float** out_fractions) {
+        clearError();
+        try {
+            if (!out_classes || !out_fractions) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (classMapAreaFractions): Output pointer is null"); return 0; }
+            *out_classes = nullptr;
+            *out_fractions = nullptr;
+            if (class_count > 0 && !classes) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (classMapAreaFractions): Class pointer is null"); return 0; }
+            if (uv_count > 0 && !uv) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (classMapAreaFractions): (u,v) pointer is null"); return 0; }
+            std::vector<uint16_t> classes_vec(classes, classes + class_count);
+            std::vector<helios::vec2> uv_vec;
+            uv_vec.reserve(uv_count);
+            for (unsigned int i = 0; i < uv_count; ++i) {
+                uv_vec.push_back(helios::make_vec2(uv[2 * i], uv[2 * i + 1]));
+            }
+            std::vector<std::pair<uint16_t, float>> result = helios::classMapAreaFractions(classes_vec, helios::make_int2(width, height), uv_vec);
+            s_class_area_classes.clear();
+            s_class_area_fractions.clear();
+            s_class_area_classes.reserve(result.size());
+            s_class_area_fractions.reserve(result.size());
+            for (const auto& entry : result) {
+                s_class_area_classes.push_back(entry.first);
+                s_class_area_fractions.push_back(entry.second);
+            }
+            *out_classes = s_class_area_classes.empty() ? nullptr : s_class_area_classes.data();
+            *out_fractions = s_class_area_fractions.empty() ? nullptr : s_class_area_fractions.data();
+            return static_cast<unsigned int>(result.size());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (classMapAreaFractions): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (classMapAreaFractions): Unknown error.");
+            return 0;
+        }
+    }
+
 } //extern "C"

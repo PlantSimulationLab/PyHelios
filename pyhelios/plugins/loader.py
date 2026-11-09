@@ -561,6 +561,7 @@ def detect_available_plugins() -> List[str]:
             'stomatalconductance': ['createStomatalConductanceModel'],
             'boundarylayerconductance': ['createBoundaryLayerConductanceModel'],
             'planthydraulics': ['createPlantHydraulicsModel'],
+            'soiltransport': ['createSoilTransportModel'],
             'lidar': ['createLiDARcloud', 'addLiDARScan'],
             'aeriallidar': ['createAerialLiDARmodel'],
             'plantarchitecture': ['createPlantArchitecture'],

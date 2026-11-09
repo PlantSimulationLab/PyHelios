@@ -47,6 +47,7 @@ __all__ = [
     "RandomParameterInt",
     "RandomParameter",
     "LeafPrototype",
+    "LeafShapeValues",
     "InternodeParameters",
     "PetioleParameters",
     "LeafParameters",
@@ -213,6 +214,11 @@ class LeafPrototype:
     longitudinal_curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     lateral_curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     petiole_roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: How far the blade is rolled about its midrib toward its upper (adaxial) side, as a fraction
+    #: of a closed tube: 0 is flat, 1 a closed tube (helios-core 1.3.96+). Each cross-section is
+    #: wrapped onto a circular arc without changing blade area, so the projected area falls (to
+    #: 2/pi of flat at 0.5 for a uniform strip). See also :meth:`PlantArchitecture.setPlantLeafRoll`.
+    roll_fraction: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     wave_period: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     wave_amplitude: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     longitudinal_curvature_exponent: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(4.0))
@@ -244,6 +250,15 @@ class LeafPrototype:
     petiolule_length: Dict[int, float] = field(default_factory=lambda: {0: 0.05})
     OBJ_model_file: str = ""
     leaf_texture_file: Dict[int, str] = field(default_factory=dict)
+    #: Class map of the leaf texture, keyed by compound-leaf index like :attr:`leaf_texture_file`
+    #: (helios-core 1.3.96+). PlantArchitecture records it on each leaf triangle covering a class as
+    #: the primitive data ``"spectral_class_map"``, for :meth:`pyhelios.LeafOptics.run` to give the
+    #: leaf's tissues (such as a pale midrib) their own spectra. The "sorghum", "maize" and "wheat"
+    #: library models set it to SorghumLeaf_classes.png, and "apple" and "apple_fruitingwall" to
+    #: AppleLeaf_classes.png. A class map must match its texture, so replacing the leaf texture of
+    #: those models with an image of another resolution or outline, or giving them a
+    #: :attr:`leaf_texture_series`, raises an error unless this is cleared or replaced.
+    leaf_class_map_file: Dict[int, str] = field(default_factory=dict)
     #: Sets of leaf texture images the unique prototypes draw from, so that leaves vary across a
     #: plant and can change as they age (helios-core 1.3.95+). Keyed by compound-leaf index like
     #: :attr:`leaf_texture_file` (a single entry applies to every leaflet). Each value is a list of
@@ -290,6 +305,7 @@ class LeafPrototype:
             "longitudinal_curvature": self.longitudinal_curvature.to_dict(),
             "lateral_curvature": self.lateral_curvature.to_dict(),
             "petiole_roll": self.petiole_roll.to_dict(),
+            "roll_fraction": self.roll_fraction.to_dict(),
             "wave_period": self.wave_period.to_dict(),
             "wave_amplitude": self.wave_amplitude.to_dict(),
             "longitudinal_curvature_exponent": self.longitudinal_curvature_exponent.to_dict(),
@@ -306,6 +322,7 @@ class LeafPrototype:
             "petiolule_length": {str(int(k)): float(v) for k, v in self.petiolule_length.items()},
             "OBJ_model_file": self.OBJ_model_file,
             "leaf_texture_file": {str(k): v for k, v in self.leaf_texture_file.items()},
+            "leaf_class_map_file": {str(int(k)): str(v) for k, v in self.leaf_class_map_file.items()},
             "leaf_texture_series": {str(int(k)): [[str(f) for f in variant] for variant in variants]
                                     for k, variants in self.leaf_texture_series.items()},
             "leaf_texture_stage_ages": [float(a) for a in self.leaf_texture_stage_ages],
@@ -322,6 +339,7 @@ class LeafPrototype:
             longitudinal_curvature=_rpf(d, "longitudinal_curvature", base.longitudinal_curvature),
             lateral_curvature=_rpf(d, "lateral_curvature", base.lateral_curvature),
             petiole_roll=_rpf(d, "petiole_roll", base.petiole_roll),
+            roll_fraction=_rpf(d, "roll_fraction", base.roll_fraction),
             wave_period=_rpf(d, "wave_period", base.wave_period),
             wave_amplitude=_rpf(d, "wave_amplitude", base.wave_amplitude),
             longitudinal_curvature_exponent=_rpf(d, "longitudinal_curvature_exponent", base.longitudinal_curvature_exponent),
@@ -339,6 +357,7 @@ class LeafPrototype:
                               if "petiolule_length" in d else base.petiolule_length),
             OBJ_model_file=str(d.get("OBJ_model_file", base.OBJ_model_file)),
             leaf_texture_file={int(k): str(v) for k, v in tex.items()},
+            leaf_class_map_file={int(k): str(v) for k, v in d.get("leaf_class_map_file", {}).items()},
             leaf_texture_series={int(k): [[str(f) for f in variant] for variant in variants]
                                  for k, variants in d.get("leaf_texture_series", {}).items()},
             leaf_texture_stage_ages=[float(a) for a in d.get("leaf_texture_stage_ages", [])],
@@ -350,6 +369,58 @@ class LeafPrototype:
 # Phytomer sub-structures
 # --------------------------------------------------------------------------- #
 @dataclass
+class LeafShapeValues:
+    """The sampled shape of one generic leaf blade: everything needed to rebuild its lattice exactly.
+
+    Returned by :meth:`pyhelios.PlantArchitecture.getLeafShape` and taken by
+    :meth:`pyhelios.PlantArchitecture.reshapeLeaf` (helios-core 1.3.96+). The fields are the
+    values a :class:`LeafPrototype` parameter took for this leaf.
+    """
+    #: Ratio of blade width to length (:attr:`LeafPrototype.leaf_aspect_ratio`)
+    aspect_ratio: float = 1.0
+    #: :attr:`LeafPrototype.midrib_fold_fraction`
+    midrib_fold_fraction: float = 0.0
+    #: :attr:`LeafPrototype.longitudinal_curvature`
+    longitudinal_curvature: float = 0.0
+    #: :attr:`LeafPrototype.longitudinal_curvature_exponent`
+    longitudinal_curvature_exponent: float = 4.0
+    #: :attr:`LeafPrototype.lateral_curvature`
+    lateral_curvature: float = 0.0
+    #: :attr:`LeafPrototype.petiole_roll`
+    petiole_roll: float = 0.0
+    #: :attr:`LeafPrototype.wave_period`
+    wave_period: float = 0.0
+    #: :attr:`LeafPrototype.wave_amplitude`
+    wave_amplitude: float = 0.0
+    #: :attr:`LeafPrototype.roll_fraction`
+    roll_fraction: float = 0.0
+    #: Number of lattice subdivisions along the blade
+    subdivisions_x: int = 1
+    #: Number of lattice subdivisions across the blade (even)
+    subdivisions_y: int = 2
+    #: Translation of the lattice in the prototype frame: :attr:`LeafPrototype.leaf_offset`, plus
+    #: the petiolule's length when the blade sits beyond one
+    lattice_offset: Vec3 = (0.0, 0.0, 0.0)
+
+    _FLOAT_FIELDS = ("aspect_ratio", "midrib_fold_fraction", "longitudinal_curvature",
+                     "longitudinal_curvature_exponent", "lateral_curvature", "petiole_roll",
+                     "wave_period", "wave_amplitude", "roll_fraction")
+
+    def to_flat(self) -> Tuple[List[float], List[int]]:
+        """Return ``(values[12], subdivisions[2])`` in the layout of the native wrapper."""
+        values = [float(getattr(self, name)) for name in self._FLOAT_FIELDS]
+        values += [float(self.lattice_offset[0]), float(self.lattice_offset[1]), float(self.lattice_offset[2])]
+        return values, [int(self.subdivisions_x), int(self.subdivisions_y)]
+
+    @classmethod
+    def from_flat(cls, values: List[float], subdivisions: List[int]) -> "LeafShapeValues":
+        """Build from ``(values[12], subdivisions[2])`` in the layout of the native wrapper."""
+        kwargs = {name: float(values[i]) for i, name in enumerate(cls._FLOAT_FIELDS)}
+        return cls(subdivisions_x=int(subdivisions[0]), subdivisions_y=int(subdivisions[1]),
+                   lattice_offset=(float(values[9]), float(values[10]), float(values[11])), **kwargs)
+
+
+@dataclass
 class InternodeParameters:
     pitch: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(20.0))
     phyllotactic_angle: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(137.5))
@@ -358,6 +429,11 @@ class InternodeParameters:
     max_floral_buds_per_petiole: RandomParameterInt = field(default_factory=lambda: RandomParameterInt.constant(0))
     color: Color = (0.0, 0.0, 0.0)
     image_texture: str = ""
+    #: Class map of the internode (bark) texture, from which
+    #: :meth:`pyhelios.RadiationModel.applySpectralClassMaps` gives the bark's lighter and darker
+    #: parts their own spectra; recorded on the internode primitives as the primitive data
+    #: ``"spectral_class_map"`` (helios-core 1.3.96+).
+    image_class_map_file: str = ""
     length_segments: int = 1
     radial_subdivisions: int = 7
 
@@ -370,6 +446,7 @@ class InternodeParameters:
             "max_floral_buds_per_petiole": self.max_floral_buds_per_petiole.to_dict(),
             "color": _color_to_dict(self.color),
             "image_texture": self.image_texture,
+            "image_class_map_file": self.image_class_map_file,
             "length_segments": int(self.length_segments),
             "radial_subdivisions": int(self.radial_subdivisions),
         }
@@ -385,6 +462,7 @@ class InternodeParameters:
             max_floral_buds_per_petiole=_rpi(d, "max_floral_buds_per_petiole", base.max_floral_buds_per_petiole),
             color=_color_from_dict(d["color"], base.color) if "color" in d else base.color,
             image_texture=str(d.get("image_texture", base.image_texture)),
+            image_class_map_file=str(d.get("image_class_map_file", base.image_class_map_file)),
             length_segments=int(d.get("length_segments", base.length_segments)),
             radial_subdivisions=int(d.get("radial_subdivisions", base.radial_subdivisions)),
         )
@@ -564,6 +642,11 @@ class InflorescenceParameters:
     #: ``setPlantPhenologicalThresholds()``. Set it where the inflorescence finishes
     #: elongating on a different schedule from the fruit, as a maize tassel does (6 days).
     inflorescence_maturity_period: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(-1.0))
+    #: Class map of the fruit prototype's texture, from which
+    #: :meth:`pyhelios.RadiationModel.applySpectralClassMaps` gives the fruit's lighter and darker
+    #: parts their own spectra; recorded on the fruit primitives as the primitive data
+    #: ``"spectral_class_map"`` (helios-core 1.3.96+).
+    fruit_class_map_file: str = ""
     flower_prototype_function: Optional[str] = None
     fruit_prototype_function: Optional[str] = None
 
@@ -578,6 +661,7 @@ class InflorescenceParameters:
             "fruit_gravity_factor_fraction": self.fruit_gravity_factor_fraction.to_dict(),
             "unique_prototypes": int(self.unique_prototypes),
             "inflorescence_maturity_period": self.inflorescence_maturity_period.to_dict(),
+            "fruit_class_map_file": self.fruit_class_map_file,
             "flower_prototype_function": self.flower_prototype_function or "",
             "fruit_prototype_function": self.fruit_prototype_function or "",
         }
@@ -595,6 +679,7 @@ class InflorescenceParameters:
             fruit_gravity_factor_fraction=_rpf(d, "fruit_gravity_factor_fraction", base.fruit_gravity_factor_fraction),
             unique_prototypes=int(d.get("unique_prototypes", base.unique_prototypes)),
             inflorescence_maturity_period=_rpf(d, "inflorescence_maturity_period", base.inflorescence_maturity_period),
+            fruit_class_map_file=str(d.get("fruit_class_map_file", base.fruit_class_map_file)),
             flower_prototype_function=(d.get("flower_prototype_function") or None),
             fruit_prototype_function=(d.get("fruit_prototype_function") or None),
         )

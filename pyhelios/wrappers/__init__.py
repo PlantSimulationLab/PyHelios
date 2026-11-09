@@ -22,3 +22,5 @@ from . import ULeafOpticsWrapper
 from . import ULiDARWrapper
 from . import UParameterOptimizationWrapper
 from . import UPlantHydraulicsWrapper
+from . import USoilTransportWrapper
+
