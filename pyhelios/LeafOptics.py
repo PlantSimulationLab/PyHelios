@@ -7,7 +7,6 @@ for computing spectral reflectance and transmittance of plant leaves.
 
 import logging
 import numbers
-import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +17,7 @@ from .wrappers import ULeafOpticsWrapper as leafoptics_wrapper
 from .Context import Context, check_context_alive
 from .exceptions import HeliosError
 from .assets import get_asset_manager
+from .assets.working_directory import build_working_directory
 
 logger = logging.getLogger(__name__)
 
@@ -276,15 +276,8 @@ def _leafoptics_working_directory():
             f"Run: build_scripts/build_helios --clean --plugins leafoptics"
         )
 
-    # Change to the build directory temporarily
-    original_dir = os.getcwd()
-    try:
-        os.chdir(working_dir)
-        logger.debug(f"Changed working directory to {working_dir} for LeafOptics asset access")
+    with build_working_directory(working_dir):
         yield working_dir
-    finally:
-        os.chdir(original_dir)
-        logger.debug(f"Restored working directory to {original_dir}")
 
 
 class LeafOptics:

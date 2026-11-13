@@ -198,8 +198,8 @@ class TestArrayBasedImport:
     
     def test_add_triangles_from_arrays_basic(self):
         """Test basic triangle import from arrays."""
-        with patch('pyhelios.wrappers.UContextWrapper.addTriangle') as mock_add:
-            mock_add.side_effect = [100, 101, 102]  # Return different UUIDs for each triangle
+        with patch('pyhelios.wrappers.UContextWrapper.addTrianglesFromArrays') as mock_add:
+            mock_add.return_value = [100, 101, 102]
             
             context = Context()
             
@@ -221,12 +221,13 @@ class TestArrayBasedImport:
             
             assert len(uuids) == 3
             assert uuids == [100, 101, 102]
-            assert mock_add.call_count == 3
+            assert mock_add.call_count == 1  # one native call for the whole mesh
+            assert mock_add.call_args.args[3] is None  # no colors
     
     def test_add_triangles_from_arrays_with_colors(self):
         """Test triangle import with per-vertex colors."""
-        with patch('pyhelios.wrappers.UContextWrapper.addTriangleWithColor') as mock_add:
-            mock_add.side_effect = [200, 201]
+        with patch('pyhelios.wrappers.UContextWrapper.addTrianglesFromArrays') as mock_add:
+            mock_add.return_value = [200, 201]
             
             context = Context()
             
@@ -254,12 +255,14 @@ class TestArrayBasedImport:
             
             assert len(uuids) == 2
             assert uuids == [200, 201]
-            assert mock_add.call_count == 2
+            assert mock_add.call_count == 1
+            # Per-vertex colors are averaged over each face's corners
+            np.testing.assert_allclose(mock_add.call_args.args[3], colors[faces].mean(axis=1), atol=1e-6)
     
     def test_add_triangles_from_arrays_per_triangle_colors(self):
         """Test triangle import with per-triangle colors."""
-        with patch('pyhelios.wrappers.UContextWrapper.addTriangleWithColor') as mock_add:
-            mock_add.side_effect = [300, 301]
+        with patch('pyhelios.wrappers.UContextWrapper.addTrianglesFromArrays') as mock_add:
+            mock_add.return_value = [300, 301]
             
             context = Context()
             
@@ -284,7 +287,8 @@ class TestArrayBasedImport:
             uuids = context.addTrianglesFromArrays(vertices, faces, colors)
             
             assert len(uuids) == 2
-            assert mock_add.call_count == 2
+            assert mock_add.call_count == 1
+            np.testing.assert_allclose(mock_add.call_args.args[3], colors)
     
     def test_add_triangles_textured(self):
         """Test textured triangle import."""

@@ -13,7 +13,7 @@ Requirements:
 Plant Library Models:
 - Trees: almond, apple, olive, walnut, easternredbud
 - Crops: bean, cowpea, maize, rice, soybean, wheat, sorghum
-- Vegetables: tomato, cherrytomato, capsicum, strawberry
+- Vegetables: tomato, cherrytomato, capsicum, cucumber, strawberry
 - Others: grapevine_VSP, pistachio, bindweed, puncturevine
 
 Features Demonstrated:
@@ -104,7 +104,7 @@ def discover_plant_models(plantarch):
         # Group models by category for better display
         trees = [m for m in models if m in ['almond', 'apple', 'olive', 'walnut', 'easternredbud', 'pistachio']]
         crops = [m for m in models if m in ['bean', 'cowpea', 'maize', 'rice', 'soybean', 'wheat', 'sorghum']]
-        vegetables = [m for m in models if m in ['tomato', 'cherrytomato', 'capsicum', 'strawberry', 'sugarbeet']]
+        vegetables = [m for m in models if m in ['tomato', 'cherrytomato', 'capsicum', 'cucumber', 'strawberry', 'sugarbeet']]
         others = [m for m in models if m not in trees + crops + vegetables]
 
         if trees:

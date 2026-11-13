@@ -5284,7 +5284,8 @@ class TestTextureTransparency:
 
     def test_textured_with_alpha_returns_ndarray(self, basic_context):
         # GrapeLeaf.png has a transparent background.
-        texture = "/Users/bnbailey/Dropbox/PyHelios/helios-core/plugins/plantarchitecture/assets/textures/GrapeLeaf.png"
+        texture = os.path.join(REPO_ROOT_CTX, "helios-core", "plugins", "plantarchitecture",
+                               "assets", "textures", "GrapeLeaf.png")
         if not os.path.exists(texture):
             pytest.skip("Test texture not available")
         u = basic_context.addPatchTextured(

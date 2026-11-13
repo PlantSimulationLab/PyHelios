@@ -416,6 +416,48 @@ try:
 except AttributeError:
     _CAMERA_1396_FUNCTIONS_AVAILABLE = False
 
+# Rectangle and combined annotation read-back (helios-core 1.3.97). Registered separately so a
+# library built before they existed keeps the rest of the visualizer.
+_ANNOTATION_1397_FUNCTIONS_AVAILABLE = False
+try:
+    helios_lib.visualizerGetPixelUUIDsRegion.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.visualizerGetPixelUUIDsRegion.restype = ctypes.POINTER(ctypes.c_uint)
+
+    helios_lib.visualizerGetDepthImageRegion.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.visualizerGetDepthImageRegion.restype = ctypes.POINTER(ctypes.c_float)
+
+    helios_lib.visualizerGetPixelUUIDsAndDepth.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)), ctypes.POINTER(ctypes.POINTER(ctypes.c_float)),
+        ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.visualizerGetPixelUUIDsAndDepth.restype = None
+
+    helios_lib.visualizerGetPixelUUIDsAndDepthRegion.argtypes = [
+        ctypes.POINTER(UVisualizer), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.POINTER(ctypes.POINTER(ctypes.c_uint)), ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), ctypes.POINTER(ctypes.c_uint),
+    ]
+    helios_lib.visualizerGetPixelUUIDsAndDepthRegion.restype = None
+    _ANNOTATION_1397_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _ANNOTATION_1397_FUNCTIONS_AVAILABLE = False
+
+# Normal and bump map shading (helios-core 1.3.97). Registered separately so a library built
+# before they existed keeps the rest of the visualizer.
+_NORMAL_MAP_FUNCTIONS_AVAILABLE = False
+try:
+    for _fn in ("visualizerEnableNormalMaps", "visualizerDisableNormalMaps"):
+        getattr(helios_lib, _fn).argtypes = [ctypes.POINTER(UVisualizer)]
+        getattr(helios_lib, _fn).restype = None
+    helios_lib.visualizerAreNormalMapsEnabled.argtypes = [ctypes.POINTER(UVisualizer)]
+    helios_lib.visualizerAreNormalMapsEnabled.restype = ctypes.c_bool
+    _NORMAL_MAP_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _NORMAL_MAP_FUNCTIONS_AVAILABLE = False
+
 def _check_for_helios_error():
     """Check for and raise Helios errors if error management is available."""
     if _ERROR_MANAGEMENT_AVAILABLE:
@@ -1718,6 +1760,106 @@ def set_camera_principal_point(visualizer: ctypes.POINTER(UVisualizer), column: 
     _require_camera_1396(visualizer)
     helios_lib.visualizerSetCameraPrincipalPoint(visualizer, float(column), float(row))
     _check_for_helios_error()
+
+
+def _require_annotation_1397(visualizer) -> None:
+    """Guard shared by the 1.3.97 rectangle and combined annotation read-back wrappers."""
+    if not _ANNOTATION_1397_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer rectangle read-back and getPixelUUIDsAndDepth() are not available in the current Helios library. "
+            "Rebuild PyHelios with the visualizer plugin against helios-core v1.3.97 or later: build_scripts/build_helios --clean"
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+
+def get_pixel_uuids_region(visualizer: ctypes.POINTER(UVisualizer), x0: int, y0: int, width: int, height: int) -> np.ndarray:
+    """Return the flat uint32 pixel-to-primitive map (UUID+1, 0 where none) of a rectangle, row 0 at its top."""
+    _require_annotation_1397(visualizer)
+    size = ctypes.c_uint()
+    ptr = helios_lib.visualizerGetPixelUUIDsRegion(visualizer, x0, y0, width, height, ctypes.byref(size))
+    _check_for_helios_error()
+    if not ptr or size.value != width * height:
+        raise RuntimeError(f"getPixelUUIDs() returned {size.value} values for a {width}x{height} rectangle")
+    # Copied: the native buffer is reused by the next call.
+    return np.ctypeslib.as_array(ptr, shape=(size.value,)).copy()
+
+
+def get_depth_image_region(visualizer: ctypes.POINTER(UVisualizer), x0: int, y0: int, width: int, height: int) -> np.ndarray:
+    """Return the flat float32 depth image (-1 where nothing is visible) of a rectangle, row 0 at its top."""
+    _require_annotation_1397(visualizer)
+    size = ctypes.c_uint()
+    ptr = helios_lib.visualizerGetDepthImageRegion(visualizer, x0, y0, width, height, ctypes.byref(size))
+    _check_for_helios_error()
+    if not ptr or size.value != width * height:
+        raise RuntimeError(f"getDepthImage() returned {size.value} values for a {width}x{height} rectangle")
+    return np.ctypeslib.as_array(ptr, shape=(size.value,)).copy()
+
+
+def get_pixel_uuids_and_depth(visualizer: ctypes.POINTER(UVisualizer)) -> Tuple[np.ndarray, np.ndarray, int, int]:
+    """Return (pixel_UUIDs, depth_pixels, width, height) of the current view from a single render."""
+    _require_annotation_1397(visualizer)
+    uuid_ptr = ctypes.POINTER(ctypes.c_uint)()
+    depth_ptr = ctypes.POINTER(ctypes.c_float)()
+    width = ctypes.c_uint()
+    height = ctypes.c_uint()
+    size = ctypes.c_uint()
+    helios_lib.visualizerGetPixelUUIDsAndDepth(visualizer, ctypes.byref(uuid_ptr), ctypes.byref(depth_ptr),
+                                               ctypes.byref(width), ctypes.byref(height), ctypes.byref(size))
+    _check_for_helios_error()
+    if not uuid_ptr or not depth_ptr or size.value == 0:
+        raise RuntimeError(f"getPixelUUIDsAndDepth() returned no data; the framebuffer reported {width.value}x{height.value}")
+    return (np.ctypeslib.as_array(uuid_ptr, shape=(size.value,)).copy(),
+            np.ctypeslib.as_array(depth_ptr, shape=(size.value,)).copy(),
+            width.value, height.value)
+
+
+def get_pixel_uuids_and_depth_region(visualizer: ctypes.POINTER(UVisualizer), x0: int, y0: int, width: int, height: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Return (pixel_UUIDs, depth_pixels) of a rectangle of the current view from a single render."""
+    _require_annotation_1397(visualizer)
+    uuid_ptr = ctypes.POINTER(ctypes.c_uint)()
+    depth_ptr = ctypes.POINTER(ctypes.c_float)()
+    size = ctypes.c_uint()
+    helios_lib.visualizerGetPixelUUIDsAndDepthRegion(visualizer, x0, y0, width, height,
+                                                     ctypes.byref(uuid_ptr), ctypes.byref(depth_ptr), ctypes.byref(size))
+    _check_for_helios_error()
+    if not uuid_ptr or not depth_ptr or size.value != width * height:
+        raise RuntimeError(f"getPixelUUIDsAndDepth() returned {size.value} values for a {width}x{height} rectangle")
+    return (np.ctypeslib.as_array(uuid_ptr, shape=(size.value,)).copy(),
+            np.ctypeslib.as_array(depth_ptr, shape=(size.value,)).copy())
+
+
+def _require_normal_maps(visualizer) -> None:
+    """Guard shared by the 1.3.97 normal-map shading wrappers."""
+    if not _NORMAL_MAP_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "Visualizer normal-map shading controls are not available in the current Helios library. "
+            "Rebuild PyHelios with the visualizer plugin against helios-core v1.3.97 or later: build_scripts/build_helios --clean"
+        )
+    if not visualizer:
+        raise ValueError("Visualizer pointer is null")
+
+
+def enable_normal_maps(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Shade surfaces with the normal and bump maps of their materials (the default)."""
+    _require_normal_maps(visualizer)
+    helios_lib.visualizerEnableNormalMaps(visualizer)
+    _check_for_helios_error()
+
+
+def disable_normal_maps(visualizer: ctypes.POINTER(UVisualizer)) -> None:
+    """Ignore normal and bump maps; the maps stay on the GPU."""
+    _require_normal_maps(visualizer)
+    helios_lib.visualizerDisableNormalMaps(visualizer)
+    _check_for_helios_error()
+
+
+def are_normal_maps_enabled(visualizer: ctypes.POINTER(UVisualizer)) -> bool:
+    """Return whether surfaces are shaded with their normal and bump maps."""
+    _require_normal_maps(visualizer)
+    result = helios_lib.visualizerAreNormalMapsEnabled(visualizer)
+    _check_for_helios_error()
+    return bool(result)
 
 
 # Mock implementations when visualizer is not available

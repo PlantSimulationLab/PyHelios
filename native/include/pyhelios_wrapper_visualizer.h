@@ -416,6 +416,63 @@ PYHELIOS_API void visualizerWriteDepthImageDataEXR(Visualizer* visualizer, const
 PYHELIOS_API void visualizerWriteNormDepthImage(Visualizer* visualizer, const char* filename, float max_depth);
 
 //=============================================================================
+// Rectangle and combined annotation read-back (helios-core 1.3.97)
+//=============================================================================
+
+/**
+ * @brief Get the Context primitive visible in each pixel of a rectangle of the current view (Visualizer::getPixelUUIDs rectangle overload)
+ * @param visualizer Pointer to the Visualizer
+ * @param x0 Column of the rectangle's left edge, in pixels from the left of the image
+ * @param y0 Row of the rectangle's top edge, in pixels from the top of the image
+ * @param width Width of the rectangle in pixels
+ * @param height Height of the rectangle in pixels
+ * @param size Output: number of elements in the returned buffer (width*height)
+ * @return Thread-local buffer of UUID+1 per pixel (0 = none), row 0 at the top of the rectangle. Valid until the next call on this thread.
+ * @note The rectangle must be non-empty and lie within the framebuffer, or an error is set.
+ */
+PYHELIOS_API unsigned int* visualizerGetPixelUUIDsRegion(Visualizer* visualizer, unsigned int x0, unsigned int y0, unsigned int width, unsigned int height, unsigned int* size);
+
+/**
+ * @brief Get the depth of each pixel of a rectangle of the current view (Visualizer::getDepthImage rectangle overload)
+ * @param visualizer Pointer to the Visualizer
+ * @param x0 Column of the rectangle's left edge, in pixels from the left of the image
+ * @param y0 Row of the rectangle's top edge, in pixels from the top of the image
+ * @param width Width of the rectangle in pixels
+ * @param height Height of the rectangle in pixels
+ * @param size Output: number of elements in the returned buffer (width*height)
+ * @return Thread-local buffer, row 0 at the top of the rectangle; -1 where no geometry is visible. Valid until the next call on this thread.
+ * @note The rectangle must be non-empty and lie within the framebuffer, or an error is set.
+ */
+PYHELIOS_API float* visualizerGetDepthImageRegion(Visualizer* visualizer, unsigned int x0, unsigned int y0, unsigned int width, unsigned int height, unsigned int* size);
+
+/**
+ * @brief Get both the pixel-to-primitive map and the depth image of the current view from one render (Visualizer::getPixelUUIDsAndDepth)
+ * @param visualizer Pointer to the Visualizer
+ * @param pixel_UUIDs Output: thread-local buffer of UUID+1 per pixel (0 = none), row 0 at the top. Valid until the next call on this thread.
+ * @param depth_pixels Output: thread-local buffer of depths, same layout; -1 where no geometry is visible. Valid until the next call on this thread.
+ * @param width_pixels Output: framebuffer width
+ * @param height_pixels Output: framebuffer height
+ * @param size Output: number of elements in each returned buffer
+ */
+PYHELIOS_API void visualizerGetPixelUUIDsAndDepth(Visualizer* visualizer, unsigned int** pixel_UUIDs, float** depth_pixels, unsigned int* width_pixels, unsigned int* height_pixels,
+                                                  unsigned int* size);
+
+/**
+ * @brief Get both maps for a rectangle of the current view from one render (Visualizer::getPixelUUIDsAndDepth rectangle overload)
+ * @param visualizer Pointer to the Visualizer
+ * @param x0 Column of the rectangle's left edge, in pixels from the left of the image
+ * @param y0 Row of the rectangle's top edge, in pixels from the top of the image
+ * @param width Width of the rectangle in pixels
+ * @param height Height of the rectangle in pixels
+ * @param pixel_UUIDs Output: thread-local buffer of UUID+1 per pixel (0 = none), row 0 at the top of the rectangle
+ * @param depth_pixels Output: thread-local buffer of depths, same layout; -1 where no geometry is visible
+ * @param size Output: number of elements in each returned buffer (width*height)
+ * @note The rectangle must be non-empty and lie within the framebuffer, or an error is set.
+ */
+PYHELIOS_API void visualizerGetPixelUUIDsAndDepthRegion(Visualizer* visualizer, unsigned int x0, unsigned int y0, unsigned int width, unsigned int height,
+                                                        unsigned int** pixel_UUIDs, float** depth_pixels, unsigned int* size);
+
+//=============================================================================
 // Geometry Management Functions
 //=============================================================================
 
@@ -883,6 +940,25 @@ PYHELIOS_API bool isSmoothShadingEnabled(const Visualizer* visualizer);
  *       rasterize into them, so this can report true while the image is not anti-aliased.
  */
 PYHELIOS_API bool isHeadlessMultisamplingActive(const Visualizer* visualizer);
+
+/**
+ * @brief Shade surfaces with the normal and bump maps of their Context materials, the default (helios-core 1.3.97)
+ * @param visualizer Pointer to the Visualizer
+ */
+PYHELIOS_API void visualizerEnableNormalMaps(Visualizer* visualizer);
+
+/**
+ * @brief Ignore normal and bump maps; the maps stay on the GPU (helios-core 1.3.97)
+ * @param visualizer Pointer to the Visualizer
+ */
+PYHELIOS_API void visualizerDisableNormalMaps(Visualizer* visualizer);
+
+/**
+ * @brief Query whether surfaces are shaded with their normal and bump maps (helios-core 1.3.97)
+ * @param visualizer Pointer to the Visualizer
+ * @return True if normal maps are enabled
+ */
+PYHELIOS_API bool visualizerAreNormalMapsEnabled(const Visualizer* visualizer);
 
 #ifdef __cplusplus
 }

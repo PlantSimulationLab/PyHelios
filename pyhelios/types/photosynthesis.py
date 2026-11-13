@@ -51,7 +51,7 @@ SPECIES_ALIASES = {
     "easternredbud": "EasternRedbudSunlit",  # Default to sunlit
     "pistachio": "PistachioFemale",  # Default to female
     "cabernet": "Grape",
-    "cabernetSauvignon": "Grape",
+    "cabernetsauvignon": "Grape",
     "grapevine": "Grape",
     "common_bean": "CommonBean",
     "bean": "CommonBean",

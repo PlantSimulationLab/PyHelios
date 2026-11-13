@@ -78,12 +78,12 @@ with Context() as context:
 PlantArchitecture includes the following plant models (`getAvailablePlantModels()` returns the same list at runtime):
 
 **Field Crops:**
-- `"bean"` - Common bean with climbing growth habit
+- `"bean"` - Determinate bush bean: a main stem of 4-7 trifoliate nodes and a few branches, 0.35-0.5 m tall
 - `"cowpea"` - Cowpea with determinate growth pattern
 - `"maize"` - Corn with C4 photosynthetic characteristics
 - `"rice"` - Semi-dwarf irrigated rice: a hill of tillered culms with procedural panicles
 - `"sorghum"` - Sorghum grain crop
-- `"soybean"` - Soybean with determinate/indeterminate varieties
+- `"soybean"` - Indeterminate field soybean: a main stem of 16-19 nodes with one to four short branches (shoot type `"branch"`), 0.85-1.0 m tall
 - `"wheat"` - Wheat with tiller development
 
 **Trees:**
@@ -103,6 +103,7 @@ PlantArchitecture includes the following plant models (`getAvailablePlantModels(
 - `"butterlettuce"` - Lettuce with rosette growth form
 - `"capsicum"` - Bell pepper with bush growth habit
 - `"cherrytomato"` - Cherry tomato variant
+- `"cucumber"` - Long greenhouse cucumber trained on a string in the high-wire system (see Cucumber below)
 - `"strawberry"` - Strawberry with runner propagation
 - `"sugarbeet"` - Sugar beet root crop
 - `"tomato"` - Tomato with determinate/indeterminate growth
@@ -187,6 +188,37 @@ Library changes in helios-core 1.3.96 that affect code customizing these models:
   wheat blades were about 10% too small, maize about 5% too small and rice about 5% too large
   (other library species within 4%). See Leaf droop and blade shape below.
 
+Library changes in helios-core 1.3.97 that affect code customizing these models:
+
+- New `cucumber` model (see Cucumber below).
+- The dormancy cycle no longer runs one day longer than `time_to_dormancy_break +
+  time_to_dormancy`. The library trees, whose cycle is 365 days, previously re-entered dormancy
+  every 366 days. Phenology in multi-year runs now falls one day earlier per year than before, a
+  tree built with `buildPlantInstanceFromLibrary()` at an age of 365 days is now dormant and
+  leafless (build at 364 days or less for a tree at the end of its first season in leaf), and a
+  mature apple fruiting wall is built at about 1825 days instead of 1830.
+- `bean` was recalibrated to a determinate bush bean: 4-7 main-stem trifoliate nodes, about 15-30
+  trifoliates, 0.35-0.5 m tall and about 10 pods per plant. It previously grew a 25-node main
+  stem, 70-120 trifoliates and 0.7-0.9 m, and about 35 pods.
+- `soybean` was recalibrated to an indeterminate field soybean: a 16-19 node main stem that keeps
+  growing after flowering, one to four short branches of the new `"branch"` shoot type from the
+  lowest nodes, about 20-40 trifoliates and 0.85-1.0 m tall (previously a 25-node main stem with
+  branches as long as the main stem and up to 180 trifoliates).
+- `capsicum` no longer grows without limit: its side shoots branch far less, so the plant stops
+  growing within the season at about 0.5-1 m^2 of leaves (previously about 2.6 m^2 at 270 days
+  and 6.3 m^2 at its 365-day maximum age).
+- `olive` accepts a `trunk_height` build parameter (default 0.6 m). Its trunk was previously fixed
+  at 0.19 m, so default olive trees now carry their scaffolds about 0.4 m higher.
+- `apple`, `pistachio` and `walnut` now build over the whole 0.1-3 m `trunk_height` range; above
+  0.8 m (apple, walnut) or 1.0 m (pistachio) the build previously failed with an internal
+  node-count error. `almond`, `almond_independence`, `apple` and `walnut` raise an error naming
+  `trunk_height` and `num_scaffolds` when the trunk is too short to carry every scaffold.
+- The `trunk_height` range of `apple_fruitingwall` is now 0.1-1.0 m (was 0.1-3.0 m); larger
+  values could fail inside the build depending on the leader height drawn.
+- The fruit of `apple` and `apple_fruitingwall` now carries its class map
+  (`AppleFruit_classes.png`), whose classes scale the body under the fruit's waxy surface layer,
+  and the layer's `"specular_n"` is now 1.45 instead of 1.5.
+
 ### Build Parameters
 
 Some features of a library plant are specific to its species and have no place in the generic
@@ -198,7 +230,7 @@ of a sorghum or rice plant, or the form and color of a sorghum or rice panicle o
 `getPlantModelBuildParameterNames(plant_model)` lists the names a model accepts (the model need
 not be loaded); models not listed below accept none.
 
-**Tree species (almond, apple, walnut, pistachio)**
+**Tree species (almond, apple, walnut, pistachio, olive)**
 
 | Model | Parameter | Default | Range | Meaning |
 |---|---|---|---|---|
@@ -214,13 +246,18 @@ not be loaded); models not listed below accept none.
 | `walnut` | `trunk_height` | 0.8 | 0.1-3 m | Trunk height |
 | | `num_scaffolds` | 4 | 2-8 | Number of scaffold branches |
 | | `scaffold_angle` | 40 | 25-60° | Scaffold branch angle from vertical |
+| `olive` | `trunk_height` | 0.6 | 0.2-1.5 m | Trunk height, built from 3 cm internodes; 0.5-0.6 m is typical of super-high-density hedgerows and 0.8-1.2 m of traditional orchards (helios-core 1.3.97+). Olive always carries four scaffolds |
+
+Each scaffold of almond, apple and walnut is attached to its own trunk node, so a short trunk
+must have at least `num_scaffolds` nodes: at 4 cm internodes a 0.1 m trunk carries at most 3
+scaffolds, and more raises `PlantArchitectureError` naming `trunk_height` and `num_scaffolds`.
 
 **Apple fruiting wall (apple_fruitingwall)** (helios-core 1.3.96+)
 
 | Parameter | Default | Range | Meaning |
 |---|---|---|---|
 | `tree_height` | 3.1 | 2.0-4.5 m | Height at which the leader is headed (the top wire) |
-| `trunk_height` | 0.7 | 0.1-3.0 m | Height of the lowest fruiting branch; must be at least 0.5 m below `tree_height` |
+| `trunk_height` | 0.7 | 0.1-1.0 m | Height of the lowest feather on the nursery leader; the upper limit keeps it below the dormant buds at the top of the shortest (1.5 m) nursery leader (0.1-3.0 m before helios-core 1.3.97) |
 | `num_feathers` | 10 | 6-15 | Number of feathers on the nursery tree |
 | `tree_spacing` | 0.9 | 0.5-2.0 m | In-row tree spacing, to which the branches are hedged along the row |
 | `row_spacing` | 3.3 | 2.0-5.0 m | Between-row spacing, which scales the wall's width (1.5 m at the base and 0.75 m at the top for a 3.3 m row) |
@@ -242,14 +279,40 @@ Structural Edits from Creation Functions and Callbacks below). Each winter:
 
 The tree is a mature wall after about five seasons: about 3.1 m tall with a trunk about 5.4 cm in
 diameter, 30 or so pendant fruiting branches and a leaf area index of 2-3 at the default spacing.
-Build it at an age of about 1830 days (five 366-day seasons) for a mature tree. The wall runs along
+Build it at an age of about 1825 days (five 365-day seasons) for a mature tree. The wall runs along
 the y-axis.
 
 ```python
 plantarch.loadPlantModelFromLibrary("apple_fruitingwall")
 tree_id = plantarch.buildPlantInstanceFromLibrary(
-    vec3(0, 0, 0), 1830.0,
+    vec3(0, 0, 0), 1825.0,
     build_parameters={"tree_height": 3.5, "tree_spacing": 1.0, "row_spacing": 3.6})
+```
+
+**Cucumber (cucumber)** (helios-core 1.3.97+)
+
+The `cucumber` model is a long greenhouse cucumber: a single unbranched stem (shoot type
+`"main"`) trained up a vertical string in the high-wire system. It takes no build parameters.
+Once its head reaches the wire, 3.8 m above the plant base, the stem is lowered and leaned as
+growers do: the older stem is laid along the row (+y) 0.3 m above the floor, and the head stays at
+the wire while the stem as a whole keeps growing, to about 8 m by 120 days. The string moves along
+the row with the head. Fruit are picked as they reach full size, so a plant carries only the few
+still growing near its head. The crop is grown for about 165 days, as high-wire crops are replanted
+about twice a year: the stem stops at 125 nodes, after which its remaining leaves age and fall.
+
+The plant structure XML stores neither the string, which is a set of attraction points, nor the
+lowered shape of the stem, so a cucumber read back with `readPlantStructureXML()` stands straight
+up, and advancing it raises an error until its string is re-attached with
+`enableAttractionPoints()`. The string is a column of points every 0.05 m from 0.05 m to 4.4 m
+above the plant base:
+
+```python
+plant_id = plantarch.readPlantStructureXML("cucumber.xml")[0]
+base = plantarch.getPlantBasePosition(plant_id)
+string = [vec3(base.x, base.y, base.z + 0.05 * i) for i in range(1, 89)]
+plantarch.enableAttractionPoints(string, plant_id=plant_id, view_half_angle_deg=80.0,
+                                 look_ahead_distance=0.15, attraction_weight=0.8)
+plantarch.advanceTime(1.0, plant_id=plant_id)  # the stem is lowered again on its first time steps
 ```
 
 **Grapevines (grapevine_VSP, grapevine_Wye)**
@@ -916,6 +979,10 @@ together give the shape of each cross-section, which is laid out along its arc l
 midrib so that it never stretches. That cross-section is then bent along the blade by the
 longitudinal curvature, given its waves, and finally deflected under the blade's own weight.
 
+`midrib_fold_fraction` is 0 for a flat blade and 1 for one folded shut along its midrib with its
+halves raised. As of helios-core 1.3.97 a negative value folds the halves down by as much (-1:
+folded shut downward), both in `LeafPrototype` and in `setPetioleLeafShape()`.
+
 > **Note:** As of helios-core 1.3.96, `lateral_curvature` bends the blade across its width without
 > stretching it, so the blade keeps its area. It was previously applied as a vertical displacement
 > with the width unchanged, which changed blade area (a value of -1 on wheat nearly doubled it).
@@ -1000,6 +1067,24 @@ leaf's own. As with rolling, the leaf keeps its object ID, object data, size, or
 position; when the blade already has enough cells across it only its vertices move, and otherwise
 it is re-meshed finer. Both methods raise `PlantArchitectureError` for a leaf whose shape was not
 recorded (one not built by the procedural leaf prototype).
+
+`canReshapeLeafInPlace(plant_id, shoot_id, node_index, petiole_index, leaf_index, shape)`
+(helios-core 1.3.97+) tells beforehand whether `reshapeLeaf()` would keep the leaf's primitives
+(`True`) or re-mesh its blade and change their UUIDs (`False`), for a caller that tracks the
+primitives. It raises `PlantArchitectureError` for a shape `reshapeLeaf()` would refuse.
+
+```python
+shape = plantarch.getLeafShape(plant_id, 0, 3, 0, 0)
+shape.roll_fraction = 0.4
+if plantarch.canReshapeLeafInPlace(plant_id, 0, 3, 0, 0, shape):
+    plantarch.reshapeLeaf(plant_id, 0, 3, 0, 0, shape)
+```
+
+Before helios-core 1.3.97 a leaf was displaced the first time it was reshaped, by
+`reshapeLeaf()`, `setPetioleLeafShape()`, `setPetioleLeafRoll()` or `setPlantLeafRoll()` (by
+about a tenth of its length on library maize and a third on bean, even when reshaped to its own
+shape), and leaves reloaded from XML with a recorded shape were placed with the same error. A leaf
+reshaped to its own shape now stays where it is.
 
 `setPetioleLeafShape()` (see Reconstruction from Measured Geometry below) also reshapes leaves in
 place as of helios-core 1.3.96, and the shape a leaf was given by any of these methods is saved to
@@ -1261,6 +1346,33 @@ plant.setPlantCarbohydrateParameters(plant_id, carb)
 
 See `docs/examples/plantarch_phytomer_parameters_sample.py` for a complete,
 runnable example.
+
+### Running the nitrogen model
+
+The nitrogen model is off until `enableNitrogenModel()`; it then runs inside every
+`advanceTime()`. Start each plant's leaves at a nitrogen content per unit leaf area with
+`initializeNitrogenPools(initial_leaf_N_area)` (all plants) or
+`initializePlantNitrogenPools(plant_id, initial_leaf_N_area)`, in g N/m², and apply
+fertilizer with `addPlantNitrogen(plant_id, amount_gN)`, which also takes a list of plant
+IDs and adds the amount to each. Applied nitrogen is split between the plant's root pool
+(`root_allocation_fraction`) and its available pool, from which expanding leaves and fruit
+draw it.
+
+The model's state is written as object data each time step: `leaf_nitrogen_gN_m2` on every
+leaf object and `nitrogen_stress_factor` (0-1, area-weighted leaf N over its target) on each
+of the plant's objects. No plugin reads the stress factor; scale growth or photosynthesis
+with it yourself if wanted.
+
+```python
+plantarch.enableNitrogenModel()
+plantarch.initializeNitrogenPools(1.5)          # g N/m2 in every existing leaf
+plantarch.addPlantNitrogen(plant_ids, 0.2)      # g N to each plant
+plantarch.advanceTime(10.0)
+
+leaf = plantarch.getPlantLeafObjectIDs(plant_ids[0])[0]
+leaf_N = context.getObjectDataFloat(leaf, "leaf_nitrogen_gN_m2")
+stress = context.getObjectDataFloat(leaf, "nitrogen_stress_factor")
+```
 
 ## Examples
 
@@ -1670,13 +1782,14 @@ segmented point cloud.
 |---|---|
 | `addShootFromNodePositions(plant_id, parent_shoot_id, parent_node_index, node_positions, node_radii, shoot_type_label, growth_shoot_type_label=None, petiole_index=0)` | Build one continuous shoot through the supplied internode node positions; `parent_shoot_id=-1` starts a base stem |
 | `setPetioleNodePositions(plant_id, shoot_id, node_index, petiole_index, node_positions, node_radii)` | Prescribe the centerline of one petiole on an existing phytomer |
-| `setPetioleLeafGeometry(plant_id, shoot_id, node_index, petiole_index, leaf_bases, leaf_rotations, leaf_sizes)` | Prescribe the base position, orientation and size of every leaf on a petiole |
+| `appendShootFromNodePositions(plant_id, parent_shoot_id, node_positions, node_radii, shoot_type_label, growth_shoot_type_label=None)` | Build a measured shoot that continues the axis of its parent shoot from the tip of its last node (1.3.97+) |
+| `setPetioleLeafGeometry(plant_id, shoot_id, node_index, petiole_index, leaf_bases, leaf_rotations, leaf_sizes, leaf_stalk_lengths=None, leaf_stalk_bases=None)` | Prescribe the base position, orientation and size of every leaf on a petiole, and optionally each leaflet's stalk length and where its stalk leaves the petiole (1.3.97+) |
 | `setPetioleLeafCount(plant_id, shoot_id, node_index, petiole_index, leaf_count)` | Change the number of leaves (leaflets) on one petiole, rebuilding them procedurally |
 | `setPetioleShape(plant_id, shoot_id, node_index, petiole_index, outward_direction, pitch_degrees, curvature, length)` | Regenerate one petiole from its own pitch, curvature (degrees per meter) and length, leaning toward `outward_direction`, and rebuild its leaves on it (1.3.95+) |
 | `setPetioleLeaflets(plant_id, shoot_id, node_index, petiole_index, leaf_count, leaflet_offset, leaflet_scale, prototype_scale, intercalary_leaflet_scale=-1.0)` | Rebuild one petiole's leaflets with their own count, spacing, size ratio and terminal size; a spacing too large for the count is refused (1.3.95+). `intercalary_leaflet_scale` (1.3.96+) gives the leaf intercalary leaflets of its own size, or none with 0; the default of -1 inherits the shoot type's |
 | `setPetioleLeafletAngles(plant_id, shoot_id, node_index, petiole_index, pitch_degrees, yaw_degrees, roll_degrees)` | Rebuild one petiole's leaflets turned by their own pitch, yaw and roll (1.3.95+) |
-| `setPetioleLeafletAngleOffsets(plant_id, shoot_id, node_index, petiole_index, pitch_offsets_degrees, yaw_offsets_degrees, roll_offsets_degrees)` | Turn each leaflet of one petiole by its own offset, so the members of a pair need not mirror each other (1.3.95+) |
-| `setPetioleLeafShape(plant_id, shoot_id, node_index, petiole_index, aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction)` | Reshape one petiole's leaflets in place with their own blade aspect ratio, curvatures and midrib fold (1.3.95+) |
+| `setPetioleLeafletAngleOffsets(plant_id, shoot_id, node_index, petiole_index, pitch_offsets_degrees, yaw_offsets_degrees, roll_offsets_degrees)` | Turn each leaflet of one petiole by its own offset, so the members of a pair need not mirror each other (1.3.95+); the terminal leaflet's yaw offset is honored and the offsets are saved to the plant structure XML as of 1.3.97 |
+| `setPetioleLeafShape(plant_id, shoot_id, node_index, petiole_index, aspect_ratio, longitudinal_curvature, lateral_curvature, midrib_fold_fraction)` | Reshape one petiole's leaflets in place with their own blade aspect ratio, curvatures and midrib fold (1.3.95+); `midrib_fold_fraction` runs from -1 (halves folded down) to 1 (halves folded up), negative values as of 1.3.97 |
 | `setShootInternodeLengthMax(plant_id, shoot_id, internode_length_max)` | Target length of internodes grown at the apex of an existing shoot |
 | `isShootGeometryPrescribed(plant_id, shoot_id)` | Whether a shoot was built from prescribed node positions |
 
@@ -1760,6 +1873,35 @@ keep their object IDs, object data (e.g. the nitrogen model's `"leaf_nitrogen_gN
 any other shape term such as their roll, and the shape is saved to and restored from the plant
 structure XML. Previously the leaves were replaced by new objects, which changed their IDs and
 discarded their object data and pose, and the shape was lost on reload.
+
+**Continuing an axis (helios-core 1.3.97).** `appendShootFromNodePositions()` is to
+`appendShoot()` what `addShootFromNodePositions()` is to `addChildShoot()`: the new shoot is
+seated on the tip of the parent's last node, on its axis, and the parent stops producing phytomers
+at its apex. Use it where one axis is built as two shoots of different types, such as a hypocotyl
+and the stem above its cotyledons; built with `addShootFromNodePositions()` the upper shoot is a
+lateral standing nearly a parent radius beside the axis. The path is translated so its first
+position lies on the parent's tip, and a first position too far from that tip raises an error.
+
+```python
+hypocotyl = plantarch.addShootFromNodePositions(
+    plant_id, -1, 0, [vec3(0, 0, 0), vec3(0, 0, 0.05)], [0.003, 0.003], "unifoliate")
+stem = plantarch.appendShootFromNodePositions(
+    plant_id, hypocotyl, [vec3(0, 0, 0.05), vec3(0, 0, 0.12), vec3(0.01, 0, 0.2)],
+    [0.003, 0.0025, 0.002], "trifoliate")
+```
+
+**Measured leaflet stalks (helios-core 1.3.97).** For a leaf prototype that builds a stalk
+(petiolule), `setPetioleLeafGeometry()` accepts `leaf_stalk_lengths`, one stalk length per leaf
+in meters (the distance from the leaf's base to where its blade begins), and `leaf_stalk_bases`,
+one `vec3` per leaf giving where its stalk leaves the petiole. A stalk is otherwise built back
+along its blade's own line, which a measured stalk seldom follows; with a stalk base it runs
+straight from that point to the start of the blade, and the blade stays where its base, angles and
+size put it. A placed leaflet's stalk is as thick as the petiole where it leaves it. A stalk
+longer than its blade, or one reaching the blade from ahead of its base, raises
+`PlantArchitectureError` (and leaves no stray blade behind). Stalk bases are saved to and restored
+from the plant structure XML. Before 1.3.97 a placed leaflet's stalk was scaled from the shoot
+type's own leaflet at that position, so a large leaflet placed where the type has a small one had
+a stalk several times the petiole's thickness.
 
 `setShootInternodeLengthMax()` governs how a shoot grows *after* its prescribed portion: a shoot
 built by `addShootFromNodePositions()` otherwise grows toward the mean of its prescribed internode
@@ -1939,6 +2081,43 @@ plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), age=20)
 - `None`, exceptions, and which shoots are affected behave as for creation functions above.
 - Cost: for a growing plant this is a small fraction of `advanceTime()`; for a dormant tree,
   whose own per-step work is small, it can be several times the run time.
+
+### Python Fruit and Flower Prototype Functions
+
+A shoot type's fruit and flowers are built by its *prototype functions*, C++ functions that add an
+organ's geometry to the Context once and let the plugin copy, scale and place it.
+`setFruitPrototypeFunction()` and `setFlowerPrototypeFunction()` let a Python function build them
+from Context geometry instead, so a new organ can be modelled procedurally without a C++ build:
+
+```python
+def pod(context, subdivisions, build_parameters):
+    """A tapered tube along +x, unit length: the shape of a library fruit prototype."""
+    nodes = [vec3(x, 0, 0) for x in (0.0, 0.1, 0.5, 0.9, 1.0)]
+    radii = [0.02, 0.08, 0.1, 0.06, 0.01]
+    return context.addTube(nodes, radii, ndivs=12)
+
+plantarch.setFruitPrototypeFunction("mainstem", pod)
+plantarch.setFlowerPrototypeFunction("mainstem",
+                                     lambda context, subdivisions, is_open, params: ...)
+```
+
+- The function adds the organ's primitives to `context` and returns their UUIDs; the plugin
+  gathers them into one object, scales it by `fruit_prototype_scale` (`flower_prototype_scale`)
+  and places it on the peduncle. Like a library prototype, it has unit size, its base at the
+  origin and its axis along +x. The primitives must not already belong to an object.
+- `build_parameters` is a dict of the plant's sampled organ build parameters (empty for a plant
+  built by hand). A flower function also receives `is_open`, and is called for closed and open
+  prototypes separately.
+- The plugin calls the function once for each of the type's `unique_prototypes` and copies the
+  results (or for every organ when `unique_prototypes` is 0), so draw any organ-to-organ variation
+  inside the function.
+- An exception propagates out of the call that was building the plant, as for creation functions.
+- Each call that installs a function binds it to one of 32 native slots, kept until the
+  PlantArchitecture is destroyed, so shoots created earlier and prototypes already built keep the
+  function they were made with. `getCurrentShootParameters()` names it
+  `"PythonFruitPrototype_<slot>"` (`"PythonFlowerPrototype_<slot>"`), and a **new** shoot type
+  defined from those parameters shares it; redefining an existing type keeps its own function.
+  `None` restores the function the type had before a Python function was installed.
 
 ### Structural Edits from Creation Functions and Callbacks
 
@@ -2893,6 +3072,11 @@ The exported file contains tab-separated values with the following information f
 ### Export USD Articulated Rigid Body (IsaacSim Physics)
 
 Export the plant structure as a PhysX articulation in USDA (ASCII USD) format for NVIDIA IsaacSim physics simulation. Each tube segment becomes a capsule-shaped rigid link connected to its parent by a joint whose local frames encode the rest-pose orientation. Every joint locks translation, limits bending to ±60 degrees and carries a spring on each rotation axis, with stiffness derived from beam bending stiffness (`K = E*I/L`) and damping proportional to it (`damping_time_constant`). Leaves, fruits, and flowers are represented as mass bodies attached by spring links.
+
+As of helios-core 1.3.97 a material's normal or bump map is written as a tangent-space normal map
+connected to the `UsdPreviewSurface` normal input, named organ materials keep the normal map of
+the material they are made from, and a patch without (u,v) coordinates is written with the
+coordinates of the whole image.
 
 **Basic Usage:**
 

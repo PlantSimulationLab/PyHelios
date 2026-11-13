@@ -31,6 +31,21 @@ class PhotosynthesisModelError(Exception):
     pass
 
 
+def _canonical_farquhar_species(species: str) -> str:
+    """Map a Farquhar library species name or alias to the spelling the native library accepts.
+
+    The native lookup matches only a few exact spellings, so e.g. "APPLE" must become "Apple".
+    A name PyHelios does not know is passed through unchanged so that the native library, which
+    is authoritative, raises its own error listing the species it holds.
+    """
+    if not isinstance(species, str):
+        raise ValueError(f"Species must be a string, got {type(species).__name__}")
+    try:
+        return validate_species_name(species)
+    except ValueError:
+        return species
+
+
 #: Species available in the helios-core C4 photosynthesis library (von Caemmerer 2021).
 #: Lookups via :meth:`PhotosynthesisModel.setC4CoefficientsFromLibrary` are case-insensitive
 #: but otherwise exact — unknown species raise ``helios_runtime_error`` from the C++ side.
@@ -349,16 +364,14 @@ class PhotosynthesisModel:
             species: Species name from the built-in library
             uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
             
+        Raises:
+            ValueError: If the species is not in the library.
+
         Example:
             >>> model.setSpeciesCoefficients("APPLE")
-            >>> model.setSpeciesCoefficients("SOYBEAN", [uuid1, uuid2])
+            >>> model.setSpeciesCoefficients("bean", [uuid1, uuid2])
         """
-        if uuids is None:
-            self._check_context_alive()
-            photosynthesis_wrapper.setFarquharCoefficientsFromLibrary(self._native_ptr, species)
-        else:
-            self._check_context_alive()
-            photosynthesis_wrapper.setFarquharCoefficientsFromLibraryForUUIDs(self._native_ptr, species, uuids)
+        self.setFarquharCoefficientsFromLibrary(species, uuids)
 
     def setFarquharCoefficientsFromLibrary(self, species: str, uuids: Optional[List[int]] = None):
         """
@@ -367,13 +380,19 @@ class PhotosynthesisModel:
         This method matches the C++ API naming: setFarquharCoefficientsFromLibrary()
         
         Args:
-            species: Species name from the built-in library
+            species: Species name from the built-in library (case-insensitive; aliases such as
+                ``"pistachio"`` and ``"bean"`` are accepted, see :meth:`get_species_aliases`).
             uuids: Optional list of primitive UUIDs. If None, applies to all primitives.
-            
+
+        Raises:
+            HeliosRuntimeError: If the species is not in the library (helios-core v1.3.97+; earlier
+                versions silently gave it the Almond coefficients).
+
         Example:
             >>> model.setFarquharCoefficientsFromLibrary("APPLE")
-            >>> model.setFarquharCoefficientsFromLibrary("SOYBEAN", [uuid1, uuid2])
+            >>> model.setFarquharCoefficientsFromLibrary("bean", [uuid1, uuid2])
         """
+        species = _canonical_farquhar_species(species)
         if uuids is None:
             self._check_context_alive()
             photosynthesis_wrapper.setFarquharCoefficientsFromLibrary(self._native_ptr, species)

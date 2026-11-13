@@ -865,3 +865,36 @@ class TestCanopyAirspaceNative:
                 eb.enableCanopyAirspaceModel(
                     canopy_UUIDs=leaves, canopy_height_m=1.0, reference_height_m=2.0,
                     leaf_area_index=1.5, num_layers=1, ground_UUIDs=ground)
+
+
+@pytest.mark.native_only
+class TestMoistureConductanceValidation1397:
+    """helios-core 1.3.97: run() raises for a negative or non-finite moisture_conductance."""
+
+    @pytest.mark.parametrize("value", [-0.1, float("nan"), float("inf")])
+    def test_invalid_moisture_conductance_raises(self, value):
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
+            setup_radiation_for_energy_balance(context, "SW")
+            context.setPrimitiveDataFloat(uuid, "moisture_conductance", value)
+            with EnergyBalanceModel(context) as energy_balance:
+                energy_balance.disableMessages()
+                energy_balance.addRadiationBand("SW")
+                with pytest.raises(EnergyBalanceModelError, match="moisture conductance"):
+                    energy_balance.run()
+
+    def test_zero_and_positive_moisture_conductance_run(self):
+        with Context() as context:
+            dry = context.addPatch(center=vec3(0, 0, 1), size=vec2(1, 1))
+            wet = context.addPatch(center=vec3(2, 0, 1), size=vec2(1, 1))
+            setup_radiation_for_energy_balance(context, "SW")
+            context.setPrimitiveDataFloat(dry, "moisture_conductance", 0.0)
+            context.setPrimitiveDataFloat(wet, "moisture_conductance", 0.2)
+            with EnergyBalanceModel(context) as energy_balance:
+                energy_balance.disableMessages()
+                energy_balance.addRadiationBand("SW")
+                energy_balance.run()
+            # The sign depends on whether the surface evaporates or condenses under these conditions;
+            # a conducting surface exchanges latent heat, a dry one does not.
+            assert abs(context.getPrimitiveDataFloat(wet, "latent_flux")) > 1.0
+            assert context.getPrimitiveDataFloat(dry, "latent_flux") == pytest.approx(0.0, abs=1e-6)

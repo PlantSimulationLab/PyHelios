@@ -7,19 +7,20 @@
   <img src="https://raw.githubusercontent.com/PlantSimulationLab/PyHelios/master/docs/images/PyHelios_logo_whiteborder.png"  alt="" width="300" />
 </div>
 
-# Getting Started {#GettingStarted}
+# Getting Started
 
-Cross-platform Python bindings for [Helios](https://github.com/PlantSimulationLab/Helios) 3D plant simulation library.
+PyHelios is the Python API for [Helios](https://github.com/PlantSimulationLab/Helios), an open-source framework for building virtual plants, canopies, and landscapes, then simulating the physics and physiology around them. Grow plants with a procedural plant model, then compute how they intercept light, photosynthesize, transpire, exchange heat, and appear to sensors, from a single leaf to a whole field.
 
-PyHelios provides a Python interface to the powerful Helios C++ library for 3D physical simulation of plant and environmental systems. It enables plant modeling, geometry manipulation, and biophysical simulations including GPU-accelerated radiation transfer, photosynthesis, and plant architecture modeling.
+- **Plant architecture**: functional-structural plant modeling (FSPM) with 20+ dynamic crop and tree models that grow over time, plus Weber-Penn trees
+- **Radiation**: ray-traced radiation transfer on any GPU through Vulkan (NVIDIA, AMD, Intel, Apple) or on NVIDIA GPUs through OptiX
+- **Physiology and physics**: photosynthesis, stomatal conductance, leaf optics, boundary-layer conductance, energy balance and evapotranspiration, plant hydraulics, and soil transport
+- **Synthetic sensing**: simulated LiDAR point clouds and camera imagery with automatic annotation, for remote sensing, phenotyping, and machine-learning training data
+- **Analysis and visualization**: parameter optimization, solar position, and OpenGL rendering, including headless rendering on compute nodes
+- **Cross-platform**: `pip install pyhelios3d` provides pre-built wheels for Windows, Linux, and Apple Silicon macOS
 
-📖 **[Complete Documentation](https://plantsimulationlab.github.io/PyHelios/)**
+📖 **[Complete Documentation](https://plantsimulationlab.github.io/PyHelios/)** · [Helios C++ documentation](https://plantsimulationlab.github.io/Helios/)
 
-⚠️Note that this is a work in progress. Not all Helios functionality has been implemented in PyHelios ⚠️
-
-⚠️Help make PyHelios better by reporting issues: https://github.com/PlantSimulationLab/PyHelios/issues ⚠️
-
-See the Helios C++ documentation for a more in-depth description of Helios: https://baileylab.ucdavis.edu/software/helios
+PyHelios is under active development, and not all Helios functionality is available from Python yet. Please report problems or missing features in the [issue tracker](https://github.com/PlantSimulationLab/PyHelios/issues).
 
 ## Quick Start
 
@@ -57,13 +58,14 @@ PyHelios automatically selects the best execution mode:
 - **Plugins with CPU/GPU modes** (energybalance): Work on all platforms, GPU acceleration optional
 - **CPU-only plugins**: Work on all platforms without special hardware
 
-> **Note for Intel Mac Users**: Due to GitHub Actions infrastructure limitations, pre-built wheels are only available for Apple Silicon Macs. Intel Mac users must build PyHelios from source following the [macOS build instructions](#macos) below.
+> **Note for Intel Mac Users**: Due to GitHub Actions infrastructure limitations, pre-built wheels are only available for Apple Silicon Macs. Intel Mac users must build PyHelios from source following the [macOS build instructions](#building-on-macos) below.
 
-### Build from Source {#build-from-source}
+<a name="build-from-source"></a>
+### Build from Source
 
 If you need to customize plugins or build from source:
 
-#### Windows {#windows}
+#### Building on Windows
 
 **Prerequisites:**
 - Visual Studio 2019+ or Build Tools for Visual Studio
@@ -81,7 +83,8 @@ cd PyHelios/
 pip install -e .
 ```
 
-#### macOS {#macos}
+<a name="building-on-macos"></a>
+#### Building on macOS
 
 **Prerequisites:**
 - Xcode command line tools
@@ -103,7 +106,7 @@ source helios-core/utilities/dependencies.sh
 pip install -e .
 ```
 
-#### Linux (Ubuntu/Debian) {#linux}
+#### Building on Linux (Ubuntu/Debian)
 
 **Prerequisites:**
 - Build essentials
@@ -199,13 +202,6 @@ print(f"Created patch: {patch_uuid}")
 | **[Cross-Platform](https://plantsimulationlab.github.io/PyHelios/CrossPlatform.html)**   | Platform-specific usage and deployment |
 | **[Plugin System](https://plantsimulationlab.github.io/PyHelios/PluginSystem.html)**     | Available plugins and configuration |
 
-## Key Features
-
-- **Cross-platform**: Windows, macOS, and Linux support
-- **Plant modeling**: 20+ plant species models in the plant architecture plug-in
-- **GPU acceleration**: Radiation simulation via Vulkan or OptiX backends
-- **3D visualization**: OpenGL-based real-time rendering
-
 ## Updating PyHelios
 
 ### PyPI Installation
@@ -254,7 +250,7 @@ python -m pyhelios.plugins status
 
 - **Documentation**: https://plantsimulationlab.github.io/PyHelios/
 - **Issues**: [GitHub Issues](https://github.com/PlantSimulationLab/PyHelios/issues)
-- **Helios C++ Docs**: https://baileylab.ucdavis.edu/software/helios
+- **Helios C++ Docs**: https://plantsimulationlab.github.io/Helios/
 
 ---
 

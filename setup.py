@@ -250,6 +250,9 @@ package_data = {
         # Prague sky model dataset lives at plugins/solarposition/lib/prague_sky_model/,
         # one level deeper than the patterns above reach.
         'assets/build/plugins/*/*/*/*',
+        # PlantArchitecture organ models in per-species subdirectories
+        # (plugins/plantarchitecture/assets/obj/Cucumber/, helios-core 1.3.97).
+        'assets/build/plugins/*/*/*/*/*',
     ]
 }
 

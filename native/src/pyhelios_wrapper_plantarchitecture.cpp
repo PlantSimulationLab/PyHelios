@@ -11,6 +11,8 @@
 #include <cstring>
 #include <cmath>
 #include <stdexcept>
+#include <array>
+#include <utility>
 
 #ifdef PLANTARCHITECTURE_PLUGIN_AVAILABLE
 #include "../include/pyhelios_wrapper_plantarchitecture.h"
@@ -160,6 +162,7 @@ const std::map<std::string, FlowerPrototypeFn>& flowerPrototypeRegistry() {
         {"BindweedFlowerPrototype", &BindweedFlowerPrototype},
         {"BougainvilleaFlowerPrototype", &BougainvilleaFlowerPrototype},
         {"CowpeaFlowerPrototype", &CowpeaFlowerPrototype},
+        {"CucumberFlowerPrototype", &CucumberFlowerPrototype},
         {"OliveFlowerPrototype", &OliveFlowerPrototype},
         {"PistachioFlowerPrototype", &PistachioFlowerPrototype},
         {"PuncturevineFlowerPrototype", &PuncturevineFlowerPrototype},
@@ -181,6 +184,7 @@ const std::map<std::string, FruitPrototypeFn>& fruitPrototypeRegistry() {
         {"BeanFruitPrototype", &BeanFruitPrototype},
         {"CapsicumFruitPrototype", &CapsicumFruitPrototype},
         {"CowpeaFruitPrototype", &CowpeaFruitPrototype},
+        {"CucumberFruitPrototype", &CucumberFruitPrototype},
         {"GrapevineFruitPrototype", &GrapevineFruitPrototype},
         {"MaizeTasselPrototype", &MaizeTasselPrototype},
         {"MaizeEarPrototype", &MaizeEarPrototype},
@@ -220,6 +224,222 @@ void resolvePrototypeFunction(const FnMap& reg, const nlohmann::json& j, const c
         throw std::runtime_error(std::string("Unknown ") + kind + " prototype function name: '" + name + "'");
     }
     out = it->second;
+}
+
+// ---- Python fruit and flower prototype functions ----
+// A fruit or flower prototype function is a plain function pointer called with nothing but the Context, so a Python
+// function cannot be recovered from the call the way the phytomer trampolines recover theirs from the phytomer. There
+// is instead a fixed set of slots, each a static function with an address of its own. Installing a Python function on
+// a shoot type binds it to a free slot and gives the type that slot's address. The plugin caches prototypes by that
+// address, so each Python function has a cache entry of its own, and a slot is never rebound while its
+// PlantArchitecture lives: replacing a shoot type's Python function binds a new slot, so shoots created earlier and
+// prototypes already cached keep the function they were made with. Destroying the PlantArchitecture frees its slots.
+constexpr size_t kPythonPrototypeSlotCount = 32;
+const char* const kPythonFruitPrototypePrefix = "PythonFruitPrototype_";
+const char* const kPythonFlowerPrototypePrefix = "PythonFlowerPrototype_";
+
+template<typename Callback>
+struct PythonPrototypeSlot {
+    const PlantArchitecture* owner = nullptr;
+    const helios::Context* context = nullptr;
+    std::string shoot_type_label;
+    Callback callback = nullptr;
+};
+using FruitPrototypeSlot = PythonPrototypeSlot<PyheliosFruitPrototypeCallback>;
+using FlowerPrototypeSlot = PythonPrototypeSlot<PyheliosFlowerPrototypeCallback>;
+
+std::array<FruitPrototypeSlot, kPythonPrototypeSlotCount>& fruitPrototypeSlots() {
+    static std::array<FruitPrototypeSlot, kPythonPrototypeSlotCount> slots;
+    return slots;
+}
+
+std::array<FlowerPrototypeSlot, kPythonPrototypeSlotCount>& flowerPrototypeSlots() {
+    static std::array<FlowerPrototypeSlot, kPythonPrototypeSlotCount> slots;
+    return slots;
+}
+
+//! The function a shoot type had before a Python prototype function was first installed on it, restored by clearing.
+std::map<const PlantArchitecture*, std::map<std::string, FruitPrototypeFn>>& originalFruitPrototypeFunctions() {
+    static std::map<const PlantArchitecture*, std::map<std::string, FruitPrototypeFn>> originals;
+    return originals;
+}
+
+std::map<const PlantArchitecture*, std::map<std::string, FlowerPrototypeFn>>& originalFlowerPrototypeFunctions() {
+    static std::map<const PlantArchitecture*, std::map<std::string, FlowerPrototypeFn>> originals;
+    return originals;
+}
+
+void marshalBuildParameters(const std::map<std::string, float>& build_parameters, std::vector<const char*>& names, std::vector<float>& values) {
+    names.clear();
+    values.clear();
+    names.reserve(build_parameters.size());
+    values.reserve(build_parameters.size());
+    for (const auto& [name, value] : build_parameters) {
+        names.push_back(name.c_str());
+        values.push_back(value);
+    }
+}
+
+template<typename Slot>
+void checkPythonPrototypeSlot(const Slot& slot, size_t index, const helios::Context* context_ptr, const std::string& kind, const std::string& setter) {
+    if (slot.callback == nullptr) {
+        throw std::runtime_error("Python " + kind + " prototype slot " + std::to_string(index) +
+                                 " was called but is bound to no function; the PlantArchitecture it was installed on has been destroyed.");
+    }
+    if (slot.context != context_ptr) {
+        throw std::runtime_error("The Python " + kind + " prototype function of shoot type '" + slot.shoot_type_label +
+                                 "' was asked to build geometry in a different Context from the one it was installed with. Its shoot parameters were carried to a PlantArchitecture on "
+                                 "another Context; install the function there with " + setter + " instead.");
+    }
+}
+
+uint finishPythonPrototype(helios::Context* context_ptr, int status, uint objID, const std::string& kind, const std::string& shoot_type_label) {
+    if (status != 0) {
+        throw std::runtime_error("The Python " + kind + " prototype function of shoot type '" + shoot_type_label + "' raised an exception.");
+    }
+    if (!context_ptr->doesObjectExist(objID)) {
+        throw std::runtime_error("The Python " + kind + " prototype function of shoot type '" + shoot_type_label + "' returned object ID " + std::to_string(objID) +
+                                 ", which does not exist in the Context.");
+    }
+    return objID;
+}
+
+uint callFruitPrototypeSlot(size_t index, helios::Context* context_ptr, uint subdivisions, const std::map<std::string, float>& build_parameters) {
+    const FruitPrototypeSlot slot = fruitPrototypeSlots().at(index);  // a copy: the callback may bind other slots
+    checkPythonPrototypeSlot(slot, index, context_ptr, "fruit", "setFruitPrototypeFunction");
+    std::vector<const char*> names;
+    std::vector<float> values;
+    marshalBuildParameters(build_parameters, names, values);
+    uint objID = 0;
+    const int status = slot.callback(subdivisions, names.data(), values.data(), static_cast<unsigned int>(names.size()), &objID);
+    return finishPythonPrototype(context_ptr, status, objID, "fruit", slot.shoot_type_label);
+}
+
+uint callFlowerPrototypeSlot(size_t index, helios::Context* context_ptr, uint subdivisions, bool flower_is_open, const std::map<std::string, float>& build_parameters) {
+    const FlowerPrototypeSlot slot = flowerPrototypeSlots().at(index);  // a copy: the callback may bind other slots
+    checkPythonPrototypeSlot(slot, index, context_ptr, "flower", "setFlowerPrototypeFunction");
+    std::vector<const char*> names;
+    std::vector<float> values;
+    marshalBuildParameters(build_parameters, names, values);
+    uint objID = 0;
+    const int status = slot.callback(subdivisions, flower_is_open ? 1 : 0, names.data(), values.data(), static_cast<unsigned int>(names.size()), &objID);
+    return finishPythonPrototype(context_ptr, status, objID, "flower", slot.shoot_type_label);
+}
+
+template<size_t N>
+uint fruitPrototypeSlotFunction(helios::Context* context_ptr, uint subdivisions, const std::map<std::string, float>& build_parameters) {
+    return callFruitPrototypeSlot(N, context_ptr, subdivisions, build_parameters);
+}
+
+template<size_t N>
+uint flowerPrototypeSlotFunction(helios::Context* context_ptr, uint subdivisions, bool flower_is_open, const std::map<std::string, float>& build_parameters) {
+    return callFlowerPrototypeSlot(N, context_ptr, subdivisions, flower_is_open, build_parameters);
+}
+
+template<size_t... I>
+std::array<FruitPrototypeFn, sizeof...(I)> makeFruitSlotFunctions(std::index_sequence<I...>) {
+    return {{&fruitPrototypeSlotFunction<I>...}};
+}
+
+template<size_t... I>
+std::array<FlowerPrototypeFn, sizeof...(I)> makeFlowerSlotFunctions(std::index_sequence<I...>) {
+    return {{&flowerPrototypeSlotFunction<I>...}};
+}
+
+const std::array<FruitPrototypeFn, kPythonPrototypeSlotCount>& fruitSlotFunctions() {
+    static const auto functions = makeFruitSlotFunctions(std::make_index_sequence<kPythonPrototypeSlotCount>{});
+    return functions;
+}
+
+const std::array<FlowerPrototypeFn, kPythonPrototypeSlotCount>& flowerSlotFunctions() {
+    static const auto functions = makeFlowerSlotFunctions(std::make_index_sequence<kPythonPrototypeSlotCount>{});
+    return functions;
+}
+
+template<typename Fn>
+int slotIndexOf(const std::array<Fn, kPythonPrototypeSlotCount>& functions, Fn fn) {
+    for (size_t i = 0; i < functions.size(); i++) {
+        if (functions[i] == fn) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+//! A prototype function's name: a library function's own name, or "<prefix><slot>" for a Python function.
+template<typename FnMap, typename Fn>
+std::string prototypeFunctionName(const FnMap& reg, const std::array<Fn, kPythonPrototypeSlotCount>& slot_functions, const char* slot_prefix, Fn fn) {
+    std::string name = prototypeFunctionName(reg, fn);
+    if (!name.empty() || fn == nullptr) return name;
+    const int slot = slotIndexOf(slot_functions, fn);
+    return slot < 0 ? std::string() : std::string(slot_prefix) + std::to_string(slot);
+}
+
+//! Resolve a prototype function name, accepting the name of a Python function's slot while that slot is bound.
+template<typename FnMap, typename Fn, typename Slots>
+void resolvePrototypeFunction(const FnMap& reg, const std::array<Fn, kPythonPrototypeSlotCount>& slot_functions, const Slots& slots, const char* slot_prefix, const nlohmann::json& j,
+                              const char* key, Fn& out, const char* kind) {
+    if (!j.contains(key)) return;
+    const std::string name = j[key].get<std::string>();
+    const std::string prefix(slot_prefix);
+    if (name.compare(0, prefix.size(), prefix) != 0) {
+        resolvePrototypeFunction(reg, j, key, out, kind);
+        return;
+    }
+    const std::string digits = name.substr(prefix.size());
+    if (digits.empty() || digits.size() > 3 || digits.find_first_not_of("0123456789") != std::string::npos || std::stoul(digits) >= kPythonPrototypeSlotCount) {
+        throw std::runtime_error(std::string("Unknown ") + kind + " prototype function name: '" + name + "'");
+    }
+    const size_t slot = std::stoul(digits);
+    if (slots[slot].callback == nullptr) {
+        throw std::runtime_error(std::string("The ") + kind + " prototype function '" + name +
+                                 "' names a Python function that is no longer installed; the PlantArchitecture it was installed on has been destroyed.");
+    }
+    out = slot_functions[slot];
+}
+
+//! Bind callback to a free slot and give the shoot type that slot's function, or with no callback restore the function the type had before.
+template<typename Callback, typename Fn, typename Access>
+void installPythonPrototypeFunction(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, Callback callback,
+                                    std::array<PythonPrototypeSlot<Callback>, kPythonPrototypeSlotCount>& slots, const std::array<Fn, kPythonPrototypeSlotCount>& slot_functions,
+                                    std::map<const PlantArchitecture*, std::map<std::string, Fn>>& originals, const std::string& kind, Access access) {
+    if (!shoot_type_label) {
+        throw std::invalid_argument("Shoot type label is null");
+    }
+    if (callback != nullptr && context == nullptr) {
+        throw std::invalid_argument("Context pointer is null");
+    }
+    const std::string label(shoot_type_label);
+    ShootParameters params = plantarch->getCurrentShootParameters(label);
+    Fn& function = access(params);
+    auto& type_originals = originals[plantarch];
+    // Anything but a slot is the type's own function (a library one, or none), which clearing restores.
+    if (slotIndexOf(slot_functions, function) < 0) {
+        type_originals[label] = function;
+    }
+    if (callback == nullptr) {
+        const auto original = type_originals.find(label);
+        function = original == type_originals.end() ? nullptr : original->second;
+        plantarch->defineShootType(label, params);
+        return;
+    }
+    size_t free_slot = slots.size();
+    for (size_t i = 0; i < slots.size(); i++) {
+        if (slots[i].owner == nullptr) {
+            free_slot = i;
+            break;
+        }
+    }
+    if (free_slot == slots.size()) {
+        throw std::runtime_error("All " + std::to_string(kPythonPrototypeSlotCount) + " Python " + kind +
+                                 " prototype slots are in use. Each call that installs a function binds a new slot, which is freed only when its PlantArchitecture is destroyed.");
+    }
+    slots[free_slot] = PythonPrototypeSlot<Callback>{plantarch, context, label, callback};
+    function = slot_functions[free_slot];
+    try {
+        plantarch->defineShootType(label, params);
+    } catch (...) {
+        slots[free_slot] = PythonPrototypeSlot<Callback>();
+        throw;
+    }
 }
 
 // ---- LeafPrototype <-> JSON ----
@@ -389,8 +609,8 @@ nlohmann::json phytomerParametersToJSON(const PhytomerParameters& pp) {
     inf["unique_prototypes"] = pp.inflorescence.unique_prototypes;
     inf["fruit_class_map_file"] = pp.inflorescence.fruit_class_map_file;
     inf["inflorescence_maturity_period"] = randomParameterFloatToJSON(pp.inflorescence.inflorescence_maturity_period);
-    inf["flower_prototype_function"] = prototypeFunctionName(flowerPrototypeRegistry(), pp.inflorescence.flower_prototype_function);
-    inf["fruit_prototype_function"] = prototypeFunctionName(fruitPrototypeRegistry(), pp.inflorescence.fruit_prototype_function);
+    inf["flower_prototype_function"] = prototypeFunctionName(flowerPrototypeRegistry(), flowerSlotFunctions(), kPythonFlowerPrototypePrefix, pp.inflorescence.flower_prototype_function);
+    inf["fruit_prototype_function"] = prototypeFunctionName(fruitPrototypeRegistry(), fruitSlotFunctions(), kPythonFruitPrototypePrefix, pp.inflorescence.fruit_prototype_function);
     j["inflorescence"] = inf;
 
     return j;
@@ -460,8 +680,8 @@ void jsonToPhytomerParameters(PhytomerParameters& pp, const nlohmann::json& j, s
         if (inf.contains("unique_prototypes")) pp.inflorescence.unique_prototypes = inf["unique_prototypes"];
         if (inf.contains("fruit_class_map_file")) pp.inflorescence.fruit_class_map_file = inf["fruit_class_map_file"].get<std::string>();
         if (inf.contains("inflorescence_maturity_period")) pp.inflorescence.inflorescence_maturity_period = jsonToRandomParameterFloat(inf["inflorescence_maturity_period"], generator);
-        resolvePrototypeFunction(flowerPrototypeRegistry(), inf, "flower_prototype_function", pp.inflorescence.flower_prototype_function, "flower");
-        resolvePrototypeFunction(fruitPrototypeRegistry(), inf, "fruit_prototype_function", pp.inflorescence.fruit_prototype_function, "fruit");
+        resolvePrototypeFunction(flowerPrototypeRegistry(), flowerSlotFunctions(), flowerPrototypeSlots(), kPythonFlowerPrototypePrefix, inf, "flower_prototype_function", pp.inflorescence.flower_prototype_function, "flower");
+        resolvePrototypeFunction(fruitPrototypeRegistry(), fruitSlotFunctions(), fruitPrototypeSlots(), kPythonFruitPrototypePrefix, inf, "fruit_prototype_function", pp.inflorescence.fruit_prototype_function, "fruit");
     }
 }
 
@@ -727,6 +947,24 @@ R guardedPhytomerCall(PlantArchitecture* plantarch, const char* function_name, R
     return error_value;
 }
 
+//! Unpack the flat LeafShapeValues layout of getLeafShape() (12 floats, 2 uints).
+static LeafShapeValues unpackLeafShape(const float* values, const unsigned int* subdivisions) {
+    LeafShapeValues shape;
+    shape.aspect_ratio = values[0];
+    shape.midrib_fold_fraction = values[1];
+    shape.longitudinal_curvature = values[2];
+    shape.longitudinal_curvature_exponent = values[3];
+    shape.lateral_curvature = values[4];
+    shape.petiole_roll = values[5];
+    shape.wave_period = values[6];
+    shape.wave_amplitude = values[7];
+    shape.roll_fraction = values[8];
+    shape.lattice_offset = helios::make_vec3(values[9], values[10], values[11]);
+    shape.subdivisions_x = subdivisions[0];
+    shape.subdivisions_y = subdivisions[1];
+    return shape;
+}
+
 float* flattenVec3(const std::vector<helios::vec3>& points, int* count) {
     // Flattened as x,y,z triples; *count is the number of vec3 values, not floats.
     static thread_local std::vector<float> static_result;
@@ -861,15 +1099,17 @@ void phytomerCallbackTrampoline(std::shared_ptr<Phytomer> phytomer) {
 // ---- Library phytomer function registries (name <-> function declared in Assets.h) ----
 // The library models' creation and per-timestep callback functions are referenced by name for the same reason as the
 // prototype functions above.
-// StrawberryPhytomerCreationFunction is declared in Assets.h but defined nowhere, so it cannot be listed.
+// StrawberryPhytomerCreationFunction and GrapevineFlowerPrototype are declared in Assets.h but defined nowhere, so they cannot be listed.
 const std::map<std::string, PhytomerCreationFn>& libraryPhytomerCreationRegistry() {
     static const std::map<std::string, PhytomerCreationFn> reg = {
         {"AlmondPhytomerCreationFunction", &AlmondPhytomerCreationFunction},
         {"ApplePhytomerCreationFunction", &ApplePhytomerCreationFunction},
+        {"AppleFruitingWallPhytomerCreationFunction", &AppleFruitingWallPhytomerCreationFunction},
         {"AsparagusPhytomerCreationFunction", &AsparagusPhytomerCreationFunction},
         {"BeanPhytomerCreationFunction", &BeanPhytomerCreationFunction},
         {"CapsicumPhytomerCreationFunction", &CapsicumPhytomerCreationFunction},
         {"CowpeaPhytomerCreationFunction", &CowpeaPhytomerCreationFunction},
+        {"CucumberMainPhytomerCreationFunction", &CucumberMainPhytomerCreationFunction},
         {"GrapevinePhytomerCreationFunction", &GrapevinePhytomerCreationFunction},
         {"MaizePhytomerCreationFunction", &MaizePhytomerCreationFunction},
         {"OlivePhytomerCreationFunction", &OlivePhytomerCreationFunction},
@@ -892,6 +1132,8 @@ const std::map<std::string, PhytomerCallbackFn>& libraryPhytomerCallbackRegistry
         {"AlmondPhytomerCallbackFunction", &AlmondPhytomerCallbackFunction},
         {"AlmondSpurPhytomerCallbackFunction", &AlmondSpurPhytomerCallbackFunction},
         {"ApplePhytomerCallbackFunction", &ApplePhytomerCallbackFunction},
+        {"AppleFruitingWallPhytomerCallbackFunction", &AppleFruitingWallPhytomerCallbackFunction},
+        {"CucumberMainPhytomerCallbackFunction", &CucumberMainPhytomerCallbackFunction},
         {"GrapevinePhytomerCallbackFunction", &GrapevinePhytomerCallbackFunction},
         {"OlivePhytomerCallbackFunction", &OlivePhytomerCallbackFunction},
         {"PistachioPhytomerCallbackFunction", &PistachioPhytomerCallbackFunction},
@@ -950,6 +1192,14 @@ extern "C" {
     PYHELIOS_API void destroyPlantArchitecture(PlantArchitecture* plantarch) {
         phytomerCreationCallbacks().erase(plantarch);
         phytomerCallbacks().erase(plantarch);
+        for (FruitPrototypeSlot& slot : fruitPrototypeSlots()) {
+            if (slot.owner == plantarch) slot = FruitPrototypeSlot();
+        }
+        for (FlowerPrototypeSlot& slot : flowerPrototypeSlots()) {
+            if (slot.owner == plantarch) slot = FlowerPrototypeSlot();
+        }
+        originalFruitPrototypeFunctions().erase(plantarch);
+        originalFlowerPrototypeFunctions().erase(plantarch);
         delete plantarch;
     }
 
@@ -3647,7 +3897,7 @@ extern "C" {
         }
     }
 
-    PYHELIOS_API int setPetioleLeafGeometry(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* leaf_bases, const float* leaf_rotations, const float* leaf_sizes, int leaf_count) {
+    PYHELIOS_API int setPetioleLeafGeometry(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* leaf_bases, const float* leaf_rotations, const float* leaf_sizes, int leaf_count, const float* leaf_stalk_lengths, const float* leaf_stalk_bases) {
         try {
             clearError();
             if (!plantarch) {
@@ -3672,7 +3922,19 @@ extern "C" {
                 rotations.emplace_back(leaf_rotations[3 * i], leaf_rotations[3 * i + 1], leaf_rotations[3 * i + 2]);
             }
             std::vector<float> sizes(leaf_sizes, leaf_sizes + leaf_count);
-            plantarch->setPetioleLeafGeometry(plantID, shootID, node_index, petiole_index, bases, rotations, sizes);
+            // Optional stalk arrays (helios-core 1.3.97): NULL means not given, passed on as an empty vector.
+            std::vector<float> stalk_lengths;
+            if (leaf_stalk_lengths) {
+                stalk_lengths.assign(leaf_stalk_lengths, leaf_stalk_lengths + leaf_count);
+            }
+            std::vector<helios::vec3> stalk_bases;
+            if (leaf_stalk_bases) {
+                stalk_bases.reserve(leaf_count);
+                for (int i = 0; i < leaf_count; ++i) {
+                    stalk_bases.push_back(helios::make_vec3(leaf_stalk_bases[3 * i], leaf_stalk_bases[3 * i + 1], leaf_stalk_bases[3 * i + 2]));
+                }
+            }
+            plantarch->setPetioleLeafGeometry(plantID, shootID, node_index, petiole_index, bases, rotations, sizes, stalk_lengths, stalk_bases);
             return 0;
         } catch (const std::exception& e) {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::setPetioleLeafGeometry): ") + e.what());
@@ -4467,6 +4729,22 @@ extern "C" {
         });
     }
 
+    PYHELIOS_API int setFruitPrototypeFunction(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, PyheliosFruitPrototypeCallback callback) {
+        return guardedPhytomerCall(plantarch, "setFruitPrototypeFunction", -1, [&]() {
+            installPythonPrototypeFunction(plantarch, context, shoot_type_label, callback, fruitPrototypeSlots(), fruitSlotFunctions(), originalFruitPrototypeFunctions(), "fruit",
+                                           [](ShootParameters& params) -> FruitPrototypeFn& { return params.phytomer_parameters.inflorescence.fruit_prototype_function; });
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setFlowerPrototypeFunction(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, PyheliosFlowerPrototypeCallback callback) {
+        return guardedPhytomerCall(plantarch, "setFlowerPrototypeFunction", -1, [&]() {
+            installPythonPrototypeFunction(plantarch, context, shoot_type_label, callback, flowerPrototypeSlots(), flowerSlotFunctions(), originalFlowerPrototypeFunctions(), "flower",
+                                           [](ShootParameters& params) -> FlowerPrototypeFn& { return params.phytomer_parameters.inflorescence.flower_prototype_function; });
+            return 0;
+        });
+    }
+
     PYHELIOS_API int setInternodeMaxLength(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, float length) {
         return guardedPhytomerCall(plantarch, "setInternodeMaxLength", -1, [&]() {
             if (!(length > 0.f) || !std::isfinite(length)) {
@@ -5092,20 +5370,7 @@ extern "C" {
             const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
             checkPetioleIndex(phytomer->leaf_objIDs.size(), petiole_index, node_index);
             checkLeafIndex(phytomer->leaf_objIDs.at(petiole_index).size(), leaf_index, petiole_index);
-            LeafShapeValues shape;
-            shape.aspect_ratio = values[0];
-            shape.midrib_fold_fraction = values[1];
-            shape.longitudinal_curvature = values[2];
-            shape.longitudinal_curvature_exponent = values[3];
-            shape.lateral_curvature = values[4];
-            shape.petiole_roll = values[5];
-            shape.wave_period = values[6];
-            shape.wave_amplitude = values[7];
-            shape.roll_fraction = values[8];
-            shape.lattice_offset = helios::make_vec3(values[9], values[10], values[11]);
-            shape.subdivisions_x = subdivisions[0];
-            shape.subdivisions_y = subdivisions[1];
-            phytomer->reshapeLeaf(petiole_index, leaf_index, shape);
+            phytomer->reshapeLeaf(petiole_index, leaf_index, unpackLeafShape(values, subdivisions));
             return 0;
         });
     }
@@ -5149,6 +5414,51 @@ extern "C" {
 
     PYHELIOS_API float getPlantRootNitrogen(PlantArchitecture* plantarch, unsigned int plantID) {
         return guardedPhytomerCall(plantarch, "getPlantRootNitrogen", -1.f, [&]() { return plantarch->getPlantRootNitrogen(plantID); });
+    }
+
+    // ---- helios-core 1.3.97: appended measured shoots and in-place reshape query ---- //
+
+    PYHELIOS_API unsigned int appendShootFromNodePositions(PlantArchitecture* plantarch, unsigned int plantID, int parent_shoot_ID, const float* node_positions, const float* node_radii, int node_count, const char* shoot_type_label, const char* growth_shoot_type_label) {
+        try {
+            clearError();
+            if (!plantarch) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantArchitecture pointer is null");
+                return 0;
+            }
+            if (!shoot_type_label || std::strlen(shoot_type_label) == 0) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Shoot type label cannot be empty");
+                return 0;
+            }
+            std::vector<helios::vec3> positions;
+            std::vector<float> radii;
+            if (!unpackNodesAndRadii(node_positions, node_radii, node_count, "appendShootFromNodePositions", positions, radii)) {
+                return 0;
+            }
+            if (growth_shoot_type_label && std::strlen(growth_shoot_type_label) > 0) {
+                return plantarch->appendShootFromNodePositions(plantID, parent_shoot_ID, positions, radii, std::string(shoot_type_label), std::string(growth_shoot_type_label));
+            }
+            return plantarch->appendShootFromNodePositions(plantID, parent_shoot_ID, positions, radii, std::string(shoot_type_label));
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::appendShootFromNodePositions): ") + e.what());
+            return 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::appendShootFromNodePositions): Unknown error.");
+            return 0;
+        }
+    }
+
+    PYHELIOS_API int canReshapeLeafInPlace(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index, const float* values,
+                                           const unsigned int* subdivisions, int* result) {
+        return guardedPhytomerCall(plantarch, "canReshapeLeafInPlace", -1, [&]() {
+            if (!values || !subdivisions || !result) {
+                throw std::invalid_argument("Input or output pointer is null");
+            }
+            const auto phytomer = resolvePhytomerIndexed(plantarch, plantID, shootID, node_index);
+            checkPetioleIndex(phytomer->leaf_objIDs.size(), petiole_index, node_index);
+            checkLeafIndex(phytomer->leaf_objIDs.at(petiole_index).size(), leaf_index, petiole_index);
+            *result = phytomer->canReshapeLeafInPlace(petiole_index, leaf_index, unpackLeafShape(values, subdivisions)) ? 1 : 0;
+            return 0;
+        });
     }
 
     // ---- helios::collision closest-point queries (helios-core 1.3.96) ---- //
@@ -5198,6 +5508,58 @@ extern "C" {
         }
     }
 
+
+    // Nitrogen model controls
+
+    PYHELIOS_API int enableNitrogenModel(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "enableNitrogenModel", -1, [&]() {
+            plantarch->enableNitrogenModel();
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int disableNitrogenModel(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "disableNitrogenModel", -1, [&]() {
+            plantarch->disableNitrogenModel();
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int isNitrogenModelEnabled(PlantArchitecture* plantarch) {
+        return guardedPhytomerCall(plantarch, "isNitrogenModelEnabled", -1, [&]() { return plantarch->isNitrogenModelEnabled() ? 1 : 0; });
+    }
+
+    PYHELIOS_API int initializeNitrogenPools(PlantArchitecture* plantarch, float initial_leaf_N_area) {
+        return guardedPhytomerCall(plantarch, "initializeNitrogenPools", -1, [&]() {
+            plantarch->initializeNitrogenPools(initial_leaf_N_area);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int initializePlantNitrogenPools(PlantArchitecture* plantarch, unsigned int plantID, float initial_leaf_N_area) {
+        return guardedPhytomerCall(plantarch, "initializePlantNitrogenPools", -1, [&]() {
+            plantarch->initializePlantNitrogenPools(plantID, initial_leaf_N_area);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int addPlantNitrogen(PlantArchitecture* plantarch, unsigned int plantID, float amount_gN) {
+        return guardedPhytomerCall(plantarch, "addPlantNitrogen", -1, [&]() {
+            plantarch->addPlantNitrogen(plantID, amount_gN);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int addPlantsNitrogen(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, float amount_gN) {
+        return guardedPhytomerCall(plantarch, "addPlantNitrogen", -1, [&]() {
+            if (plant_count < 0 || (plant_count > 0 && !plantIDs)) {
+                throw std::invalid_argument("Plant ID array is null or its count is negative");
+            }
+            std::vector<uint> ids(plantIDs, plantIDs + plant_count);
+            plantarch->addPlantNitrogen(ids, amount_gN);
+            return 0;
+        });
+    }
 } // extern "C"
 
 #endif // PLANTARCHITECTURE_PLUGIN_AVAILABLE

@@ -7,7 +7,6 @@
 
 import ctypes
 import math
-import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field, fields as dataclass_fields
 from enum import Enum
@@ -21,6 +20,7 @@ from .validation.plugins import validate_wpt_parameters
 from .validation.datatypes import validate_vec3
 from .validation.core import validate_positive_value
 from .assets import get_asset_manager
+from .assets.working_directory import build_working_directory
 from .validation.plugin_decorators import (
     validate_tree_uuid_params, validate_recursion_params, validate_trunk_segment_params,
     validate_branch_segment_params, validate_leaf_subdivisions_params, validate_xml_file_params
@@ -106,13 +106,8 @@ def _weberpenntree_working_directory():
             f"Run: python build_scripts/build_helios.py --clean --plugins weberpenntree"
         )
     
-    # Change to build directory where assets are located
-    original_cwd = Path.cwd()
-    try:
-        os.chdir(working_dir)
+    with build_working_directory(working_dir):
         yield
-    finally:
-        os.chdir(original_cwd)
 
 class WPTType(Enum):
     ALMOND = 'Almond'
@@ -328,14 +323,10 @@ class WeberPennTree:
         
         # Use the same build_dir for working directory as we use for C++ interface
         # This ensures consistency between Python working directory and C++ asset paths
-        original_cwd = Path.cwd()
-        try:
-            os.chdir(build_dir)
+        with build_working_directory(build_dir):
             self.wpt = wpt_wrapper.createWeberPennTreeWithBuildPluginRootDirectory(
                 context.getNativePtr(), str(build_dir)
             )
-        finally:
-            os.chdir(original_cwd)
     
     def _check_context_alive(self):
         """Raise if the owning Context has been destroyed (see Context.check_context_alive)."""

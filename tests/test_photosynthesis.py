@@ -956,3 +956,77 @@ class TestLightResponseCurvatureIsApplied:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+@pytest.mark.cross_platform
+class TestFarquharSpeciesNameResolution:
+    """Library species names are mapped to a spelling the native lookup accepts."""
+
+    @pytest.mark.parametrize("given, expected", [
+        ("APPLE", "Apple"),
+        ("apple", "Apple"),
+        ("BigLeafMaple", "Big_Leaf_Maple"),
+        ("cabernetSauvignon", "Grape"),
+        ("Pistachio", "PistachioFemale"),
+    ])
+    def test_known_names_are_canonicalized(self, given, expected):
+        from pyhelios.PhotosynthesisModel import _canonical_farquhar_species
+        assert _canonical_farquhar_species(given) == expected
+
+    def test_unknown_name_passes_through_for_native_error(self):
+        from pyhelios.PhotosynthesisModel import _canonical_farquhar_species
+        assert _canonical_farquhar_species("NotASpecies") == "NotASpecies"
+
+    def test_non_string_species_raises(self):
+        from pyhelios.PhotosynthesisModel import _canonical_farquhar_species
+        with pytest.raises(ValueError, match="Species must be a string"):
+            _canonical_farquhar_species(42)
+
+
+@pytest.mark.native_only
+class TestFarquharLibraryUnknownSpecies1397:
+    """helios-core 1.3.97: an unknown Farquhar library species raises instead of becoming Almond."""
+
+    def test_set_unknown_species_raises(self):
+        from pyhelios.exceptions import HeliosError
+        with Context() as context:
+            with PhotosynthesisModel(context) as photo:
+                with pytest.raises(HeliosError, match="not in the Farquhar"):
+                    photo.setFarquharCoefficientsFromLibrary("NotASpecies")
+
+    def test_set_unknown_species_for_uuids_raises(self):
+        from pyhelios.exceptions import HeliosError
+        from pyhelios.types import vec3, vec2
+        with Context() as context:
+            uuid = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            with PhotosynthesisModel(context) as photo:
+                with pytest.raises(HeliosError, match="not in the Farquhar"):
+                    photo.setFarquharCoefficientsFromLibrary("NotASpecies", uuids=[uuid])
+
+    def test_get_unknown_species_raises(self):
+        from pyhelios.exceptions import HeliosError
+        from pyhelios.wrappers import UPhotosynthesisWrapper as photosynthesis_wrapper
+        with Context() as context:
+            with PhotosynthesisModel(context) as photo:
+                with pytest.raises(HeliosError, match="not in the Farquhar"):
+                    photosynthesis_wrapper.getFarquharCoefficientsFromLibrary(photo.get_native_ptr(), "NotASpecies")
+
+    @pytest.mark.parametrize("alias, canonical", [("APPLE", "Apple"), ("BigLeafMaple", "Big_Leaf_Maple")])
+    def test_alias_sets_that_species_not_almond(self, alias, canonical):
+        """Aliases the native lookup does not spell must still set the named species.
+
+        Before PyHelios canonicalized the name, "APPLE" reached the native library verbatim and
+        was silently given the Almond coefficients (raising instead since helios-core 1.3.97).
+        """
+        from pyhelios.types import vec3, vec2
+        with Context() as context:
+            via_alias = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 1))
+            via_canonical = context.addPatch(center=vec3(2, 0, 0), size=vec2(1, 1))
+            almond = context.addPatch(center=vec3(4, 0, 0), size=vec2(1, 1))
+            with PhotosynthesisModel(context) as photo:
+                photo.setModelTypeFarquhar()
+                photo.setFarquharCoefficientsFromLibrary(alias, uuids=[via_alias])
+                photo.setFarquharCoefficientsFromLibrary(canonical, uuids=[via_canonical])
+                photo.setFarquharCoefficientsFromLibrary("Almond", uuids=[almond])
+                got = photo.getFarquharModelCoefficients(via_alias)
+                assert got == pytest.approx(photo.getFarquharModelCoefficients(via_canonical))
+                assert got != pytest.approx(photo.getFarquharModelCoefficients(almond))
