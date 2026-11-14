@@ -864,6 +864,132 @@ extern "C" {
         return nullptr;
     }
 
+    // Rectangle and combined annotation read-back (helios-core 1.3.97)
+    PYHELIOS_API unsigned int* visualizerGetPixelUUIDsRegion(Visualizer* visualizer, unsigned int x0, unsigned int y0, unsigned int width, unsigned int height, unsigned int* size) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Size output pointer cannot be null");
+                return nullptr;
+            }
+
+            static thread_local std::vector<uint> buf;
+            visualizer->getPixelUUIDs(buf, x0, y0, width, height);
+            *size = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::getPixelUUIDs): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::getPixelUUIDs): Unknown error");
+        }
+        if (size) *size = 0;
+        return nullptr;
+    }
+
+    PYHELIOS_API float* visualizerGetDepthImageRegion(Visualizer* visualizer, unsigned int x0, unsigned int y0, unsigned int width, unsigned int height, unsigned int* size) {
+        try {
+            clearError();
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                if (size) *size = 0;
+                return nullptr;
+            }
+            if (!size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Size output pointer cannot be null");
+                return nullptr;
+            }
+
+            static thread_local std::vector<float> buf;
+            visualizer->getDepthImage(buf, x0, y0, width, height);
+            *size = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::getDepthImage): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::getDepthImage): Unknown error");
+        }
+        if (size) *size = 0;
+        return nullptr;
+    }
+
+    PYHELIOS_API void visualizerGetPixelUUIDsAndDepth(Visualizer* visualizer, unsigned int** pixel_UUIDs, float** depth_pixels, unsigned int* width_pixels, unsigned int* height_pixels,
+                                                      unsigned int* size) {
+        try {
+            clearError();
+            if (size) *size = 0;
+            if (pixel_UUIDs) *pixel_UUIDs = nullptr;
+            if (depth_pixels) *depth_pixels = nullptr;
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!pixel_UUIDs || !depth_pixels || !width_pixels || !height_pixels || !size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointers cannot be null");
+                return;
+            }
+
+            static thread_local std::vector<uint> uuid_buf;
+            static thread_local std::vector<float> depth_buf;
+            uint w = 0, h = 0;
+            visualizer->getPixelUUIDsAndDepth(uuid_buf, depth_buf, w, h);
+            if (uuid_buf.size() != depth_buf.size()) {
+                setError(PYHELIOS_ERROR_RUNTIME, "ERROR (Visualizer::getPixelUUIDsAndDepth): pixel UUID and depth buffers have different sizes");
+                return;
+            }
+            *width_pixels = w;
+            *height_pixels = h;
+            *size = static_cast<unsigned int>(uuid_buf.size());
+            *pixel_UUIDs = uuid_buf.empty() ? nullptr : uuid_buf.data();
+            *depth_pixels = depth_buf.empty() ? nullptr : depth_buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::getPixelUUIDsAndDepth): ") + e.what());
+            if (size) *size = 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::getPixelUUIDsAndDepth): Unknown error");
+            if (size) *size = 0;
+        }
+    }
+
+    PYHELIOS_API void visualizerGetPixelUUIDsAndDepthRegion(Visualizer* visualizer, unsigned int x0, unsigned int y0, unsigned int width, unsigned int height,
+                                                            unsigned int** pixel_UUIDs, float** depth_pixels, unsigned int* size) {
+        try {
+            clearError();
+            if (size) *size = 0;
+            if (pixel_UUIDs) *pixel_UUIDs = nullptr;
+            if (depth_pixels) *depth_pixels = nullptr;
+            if (!visualizer) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null");
+                return;
+            }
+            if (!pixel_UUIDs || !depth_pixels || !size) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Output pointers cannot be null");
+                return;
+            }
+
+            static thread_local std::vector<uint> uuid_buf;
+            static thread_local std::vector<float> depth_buf;
+            visualizer->getPixelUUIDsAndDepth(uuid_buf, depth_buf, x0, y0, width, height);
+            if (uuid_buf.size() != depth_buf.size()) {
+                setError(PYHELIOS_ERROR_RUNTIME, "ERROR (Visualizer::getPixelUUIDsAndDepth): pixel UUID and depth buffers have different sizes");
+                return;
+            }
+            *size = static_cast<unsigned int>(uuid_buf.size());
+            *pixel_UUIDs = uuid_buf.empty() ? nullptr : uuid_buf.data();
+            *depth_pixels = depth_buf.empty() ? nullptr : depth_buf.data();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::getPixelUUIDsAndDepth): ") + e.what());
+            if (size) *size = 0;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::getPixelUUIDsAndDepth): Unknown error");
+            if (size) *size = 0;
+        }
+    }
+
     PYHELIOS_API void visualizerWriteImageBoundingBoxes(Visualizer* visualizer, const char** data_labels, size_t label_count, const unsigned int* object_class_ids,
                                                         const char* image_file, const char* classes_txt_file, const char* image_path, bool use_object_data) {
         try {
@@ -2110,6 +2236,46 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (isHeadlessMultisamplingActive): ") + e.what()); return false;
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (isHeadlessMultisamplingActive): Unknown error"); return false;
+        }
+    }
+
+    //=============================================================================
+    // Normal and bump map shading (helios-core 1.3.97)
+    //=============================================================================
+
+    PYHELIOS_API void visualizerEnableNormalMaps(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->enableNormalMaps();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::enableNormalMaps): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::enableNormalMaps): Unknown error");
+        }
+    }
+
+    PYHELIOS_API void visualizerDisableNormalMaps(Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return; }
+            visualizer->disableNormalMaps();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::disableNormalMaps): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::disableNormalMaps): Unknown error");
+        }
+    }
+
+    PYHELIOS_API bool visualizerAreNormalMapsEnabled(const Visualizer* visualizer) {
+        try {
+            clearError();
+            if (!visualizer) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Visualizer pointer is null"); return false; }
+            return visualizer->areNormalMapsEnabled();
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Visualizer::areNormalMapsEnabled): ") + e.what()); return false;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Visualizer::areNormalMapsEnabled): Unknown error"); return false;
         }
     }
 

@@ -7,7 +7,6 @@ time-dependent solar functions for atmospheric physics and plant modeling.
 """
 
 import logging
-import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Tuple, Optional, Union
@@ -16,6 +15,7 @@ from .Context import Context, check_context_alive
 from .plugins.registry import get_plugin_registry
 from .exceptions import HeliosError
 from .assets import get_asset_manager
+from .assets.working_directory import build_working_directory
 from .wrappers.DataTypes import Time, Date, vec3, SphericalCoord
 
 logger = logging.getLogger(__name__)
@@ -97,14 +97,8 @@ def _solarposition_working_directory(required_assets: Tuple[str, ...] = (_PRAGUE
                 f"Rebuild with: build_scripts/build_helios --clean"
             )
 
-    original_dir = os.getcwd()
-    try:
-        os.chdir(working_dir)
-        logger.debug(f"Changed working directory to {working_dir} for SolarPosition asset access")
+    with build_working_directory(working_dir):
         yield working_dir
-    finally:
-        os.chdir(original_dir)
-        logger.debug(f"Restored working directory to {original_dir}")
 
 
 def _validate_sensor_arguments(label, direction_to_sensor) -> None:

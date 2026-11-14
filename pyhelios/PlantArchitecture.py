@@ -49,6 +49,7 @@ except ImportError:
         raise ValueError(f"{name} must be int2 or 2-element list/tuple")
 from .validation.core import validate_positive_value
 from .assets import get_asset_manager
+from .assets.working_directory import build_working_directory
 from .plant_architecture_params import (
     BudState,
     LeafShapeValues,
@@ -209,15 +210,8 @@ def _plantarchitecture_working_directory():
             f"build_scripts/build_helios --clean --plugins plantarchitecture"
         )
 
-    # Change to the build directory temporarily
-    original_dir = os.getcwd()
-    try:
-        os.chdir(working_dir)
-        logger.debug(f"Changed working directory to {working_dir} for PlantArchitecture asset access")
+    with build_working_directory(working_dir):
         yield working_dir
-    finally:
-        os.chdir(original_dir)
-        logger.debug(f"Restored working directory to {original_dir}")
 
 
 class PlantArchitectureError(Exception):
@@ -274,7 +268,7 @@ class PlantArchitecture:
 
     PlantArchitecture provides access to the comprehensive plant library with 25+ plant models
     including trees (almond, apple, olive, walnut), crops (bean, cowpea, maize, rice, soybean),
-    and other plants. This class enables procedural plant generation, time-based growth
+    greenhouse vegetables (tomato, capsicum, cucumber) and other plants. This class enables procedural plant generation, time-based growth
     simulation, and plant community modeling.
 
     This class requires the native Helios library built with PlantArchitecture support.
@@ -367,7 +361,7 @@ class PlantArchitecture:
         Args:
             plant_label: Plant model identifier from library. Available models include:
                        "almond", "apple", "bean", "bindweed", "butterlettuce", "capsicum",
-                       "cheeseweed", "cowpea", "easternredbud", "grapevine_VSP", "maize",
+                       "cheeseweed", "cowpea", "cucumber", "easternredbud", "grapevine_VSP", "maize",
                        "olive", "pistachio", "puncturevine", "rice", "sorghum", "soybean",
                        "strawberry", "sugarbeet", "tomato", "cherrytomato", "walnut", "wheat"
 
@@ -417,6 +411,9 @@ class PlantArchitecture:
                             accept them, and a key the model does not accept raises ValueError:
                             - almond, almond_independence, apple, pistachio, walnut:
                               trunk_height, num_scaffolds, scaffold_angle
+                            - olive (helios-core 1.3.97+): trunk_height (0.2-1.5 m)
+                            - apple_fruitingwall: tree_height, trunk_height (0.1-1.0 m),
+                              num_feathers, tree_spacing, row_spacing
                             - grapevine_VSP: vine_spacing, trunk_height, berry_diameter,
                               cluster_berry_count
                             - grapevine_Wye: trunk_height, cordon_spacing, vine_spacing,
@@ -1053,6 +1050,135 @@ class PlantArchitecture:
                 plantarch_wrapper.setPlantNitrogenParameters(self._plantarch_ptr, plant_id, parameters)
         except Exception as e:
             raise PlantArchitectureError(f"Failed to set nitrogen parameters for plant {plant_id}: {e}")
+
+    @staticmethod
+    def _validateNitrogenAmount(value, name: str) -> float:
+        """Reject a non-number, a non-finite value or a negative one."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{name} must be a number, got {type(value).__name__}")
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} must be a finite number >= 0, got {value}")
+        return float(value)
+
+    def enableNitrogenModel(self) -> None:
+        """
+        Enable the nitrogen model, which then runs inside every advanceTime().
+
+        While it is enabled, advanceTime() allocates each plant's available nitrogen to its
+        expanding leaves, remobilizes it from mature leaves under limitation, senesces leaves,
+        and writes the object data ``leaf_nitrogen_gN_m2`` (g N/m², on each leaf object) and
+        ``nitrogen_stress_factor`` (0-1, on each of the plant's objects). Read them with
+        :meth:`Context.getObjectData`. No plugin reads the stress factor; scale growth or
+        photosynthesis with it yourself if wanted.
+
+        Raises:
+            PlantArchitectureError: If the operation fails
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.enableNitrogenModel(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to enable the nitrogen model: {e}")
+
+    def disableNitrogenModel(self) -> None:
+        """
+        Disable the nitrogen model; advanceTime() stops updating plant nitrogen.
+
+        Raises:
+            PlantArchitectureError: If the operation fails
+        """
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.disableNitrogenModel(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to disable the nitrogen model: {e}")
+
+    def isNitrogenModelEnabled(self) -> bool:
+        """
+        Whether the nitrogen model is enabled.
+
+        Raises:
+            PlantArchitectureError: If the query fails
+        """
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.isNitrogenModelEnabled(self._plantarch_ptr)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to query the nitrogen model: {e}")
+
+    def initializeNitrogenPools(self, initial_leaf_N_area: float) -> None:
+        """
+        Start every plant's nitrogen pools: each existing leaf at ``initial_leaf_N_area``, the
+        plant's root and available pools empty.
+
+        Args:
+            initial_leaf_N_area: Leaf nitrogen content per unit leaf area (g N/m²) that every
+                existing leaf starts at.
+
+        Raises:
+            ValueError: If initial_leaf_N_area is not a finite number >= 0
+            PlantArchitectureError: If the operation fails
+        """
+        value = self._validateNitrogenAmount(initial_leaf_N_area, "initial_leaf_N_area")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.initializeNitrogenPools(self._plantarch_ptr, value)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to initialize nitrogen pools: {e}")
+
+    def initializePlantNitrogenPools(self, plant_id: int, initial_leaf_N_area: float) -> None:
+        """
+        Start one plant's nitrogen pools; see :meth:`initializeNitrogenPools`.
+
+        Args:
+            plant_id: Plant instance ID
+            initial_leaf_N_area: Leaf nitrogen content per unit leaf area (g N/m²)
+
+        Raises:
+            ValueError: If plant_id is not a non-negative int or initial_leaf_N_area is not a
+                finite number >= 0
+            PlantArchitectureError: If the plant does not exist or the operation fails
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        value = self._validateNitrogenAmount(initial_leaf_N_area, "initial_leaf_N_area")
+        self._check_context_alive()
+        try:
+            plantarch_wrapper.initializePlantNitrogenPools(self._plantarch_ptr, plant_id, value)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to initialize nitrogen pools of plant {plant_id}: {e}")
+
+    def addPlantNitrogen(self, plant_id: Union[int, List[int]], amount_gN: float) -> None:
+        """
+        Apply nitrogen to a plant, or the same amount to each of several plants.
+
+        The amount is split between the plant's root pool (``root_allocation_fraction`` of
+        :class:`NitrogenParameters`) and its available pool, from which leaves and fruit draw it
+        during advanceTime().
+
+        Args:
+            plant_id: A plant instance ID, or a list of them
+            amount_gN: Nitrogen added to each plant (g N)
+
+        Raises:
+            ValueError: If an ID is not a non-negative int, the list is empty, or amount_gN is
+                not a finite number >= 0
+            PlantArchitectureError: If a plant does not exist or the operation fails
+        """
+        amount = self._validateNitrogenAmount(amount_gN, "amount_gN")
+        if isinstance(plant_id, int) and not isinstance(plant_id, bool):
+            ids = [self._validatePlantIdentifier(plant_id)]
+            single = True
+        else:
+            ids = self._validatePlantIdList(plant_id)
+            single = False
+        self._check_context_alive()
+        try:
+            if single:
+                plantarch_wrapper.addPlantNitrogen(self._plantarch_ptr, ids[0], amount)
+            else:
+                plantarch_wrapper.addPlantsNitrogen(self._plantarch_ptr, ids, amount)
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to add nitrogen to plant(s) {ids}: {e}")
 
     def getAvailablePlantModels(self) -> List[str]:
         """
@@ -2447,9 +2573,12 @@ class PlantArchitecture:
         through :meth:`setPlantPhenologicalThresholds`: this forces the state now, rather than
         waiting for a degree-day threshold to be crossed.
 
-        Dormancy strips the plant's leaves and marks its non-dormant buds dormant, so a
-        custom-built plant can be put into the same over-winter state that a library-built
-        perennial reaches through phenology.
+        Every shoot is made dormant as at the end of a season: every vegetative and floral bud
+        that is not already dormant is set dead, leaves are removed unless the plant is
+        evergreen, and the time since dormancy is reset to zero. Buds that are active but have
+        not yet broken are killed too. These include the buds of any shoot whose type has
+        ``growth_requires_dormancy`` false, which are sampled as their phytomers are created, so
+        a manually built shoot of such a type keeps no live buds through this call.
 
         Args:
             plant_id: Identifier of the plant to make dormant
@@ -4351,6 +4480,10 @@ class PlantArchitecture:
         Note:
             Like every other manually added shoot, the new shoot is created dormant.
             Call :meth:`breakPlantDormancy` before :meth:`advanceTime` if it is to grow.
+            Its axillary vegetative buds are created as by :meth:`addChildShoot`: if the
+            shoot type has ``growth_requires_dormancy`` false they are sampled at once,
+            those that do not break are set dead, and a later :meth:`makePlantDormant`
+            kills the rest.
 
         Example:
             >>> plantarch.loadPlantModelFromLibrary("bean")
@@ -4392,6 +4525,96 @@ class PlantArchitecture:
                     f"  plantarch.loadPlantModelFromLibrary('bean')  # or defineShootType(...)\n"
                     f"Original error: {e}")
             raise PlantArchitectureError(f"Failed to add shoot from node positions: {e}")
+
+    @_surfaces_phytomer_callback_errors
+    def appendShootFromNodePositions(self,
+                                     plant_id: int,
+                                     parent_shoot_id: int,
+                                     node_positions: List[vec3],
+                                     node_radii: List[float],
+                                     shoot_type_label: str,
+                                     growth_shoot_type_label: Optional[str] = None) -> int:
+        """
+        Append a shoot whose internode geometry is prescribed by measured node positions,
+        continuing the axis of its parent shoot.
+
+        The measured-geometry counterpart of :meth:`appendShoot`, as
+        :meth:`addShootFromNodePositions` is of :meth:`addChildShoot`. The new shoot carries
+        on from the tip of the parent shoot's last node along the same botanical axis: its
+        base is seated on that tip, on the parent's axis, rather than on the parent's
+        surface as a lateral is, and the parent stops producing phytomers at its apex. Use
+        it where one axis is built as two shoots because its parts are of different shoot
+        types, for example a hypocotyl and the stem above its cotyledons. Built with
+        :meth:`addShootFromNodePositions` instead, the upper shoot is a lateral and stands
+        nearly a parent radius beside the axis it continues.
+
+        The whole path is translated so that its first position lies on the parent's tip,
+        so all relative geometry is preserved exactly, and an error is raised if the first
+        position is further from that tip than a shoot connected to it could be. Everything
+        else, including the meaning of ``growth_shoot_type_label``, is as for
+        :meth:`addShootFromNodePositions`.
+
+        Requires helios-core v1.3.97 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            parent_shoot_id: ID of the shoot whose axis the new shoot continues
+            node_positions: Internode node positions in world coordinates, ordered from the
+                base of the shoot (at the parent's tip) to its tip. At least two are
+                required, and no two consecutive positions may be coincident
+            node_radii: Radius of the shoot at each node, one per position. All must be > 0
+            shoot_type_label: Shoot type whose parameters build the measured geometry. Must
+                already be defined
+            growth_shoot_type_label: Optional shoot type whose parameters govern the shoot's
+                future growth. ``None`` grows the shoot with ``shoot_type_label``
+
+        Returns:
+            ID of the newly created shoot
+
+        Raises:
+            ValueError: If an ID is negative, a position is not a vec3, a radius is not
+                positive, fewer than two nodes are given, or the counts differ
+            PlantArchitectureError: If the native build fails (undefined shoot type,
+                coincident consecutive nodes, base too far from the parent's tip, a call
+                from inside a phytomer callback, ...)
+            NotImplementedError: If the native library predates helios-core v1.3.97
+
+        Note:
+            Like every other manually added shoot, the new shoot is created dormant, and
+            if its type has ``growth_requires_dormancy`` false its axillary buds are sampled
+            at once and a later :meth:`makePlantDormant` kills those that did not break.
+
+        Example:
+            >>> plantarch.loadPlantModelFromLibrary("bean")
+            >>> plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 10.0)
+            >>> hypocotyl = plantarch.addShootFromNodePositions(
+            ...     plant_id, -1, 0, [vec3(0, 0, 0), vec3(0, 0, 0.05)], [0.003, 0.003], "unifoliate")
+            >>> stem = plantarch.appendShootFromNodePositions(
+            ...     plant_id, hypocotyl, [vec3(0, 0, 0.05), vec3(0, 0, 0.12), vec3(0.01, 0, 0.2)],
+            ...     [0.003, 0.0025, 0.002], "trifoliate")
+        """
+        if isinstance(plant_id, bool) or not isinstance(plant_id, int) or plant_id < 0:
+            raise ValueError(f"Plant ID must be a non-negative integer, got {plant_id!r}")
+        if isinstance(parent_shoot_id, bool) or not isinstance(parent_shoot_id, int) or parent_shoot_id < 0:
+            raise ValueError(f"Parent shoot ID must be a non-negative integer, got {parent_shoot_id!r}")
+        if not isinstance(shoot_type_label, str) or not shoot_type_label.strip():
+            raise ValueError("Shoot type label cannot be empty")
+        if growth_shoot_type_label is not None:
+            if not isinstance(growth_shoot_type_label, str) or not growth_shoot_type_label.strip():
+                raise ValueError("Growth shoot type label cannot be empty when given")
+            growth_shoot_type_label = growth_shoot_type_label.strip()
+        positions, radii = self._validateNodesAndRadii(node_positions, node_radii, "node_positions", "node_radii")
+
+        self._check_context_alive()
+        try:
+            with _plantarchitecture_working_directory():
+                return plantarch_wrapper.appendShootFromNodePositions(
+                    self._plantarch_ptr, plant_id, parent_shoot_id, positions, radii,
+                    shoot_type_label.strip(), growth_shoot_type_label)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to append shoot from node positions: {e}")
 
     def setPetioleNodePositions(self,
                                 plant_id: int,
@@ -4464,7 +4687,9 @@ class PlantArchitecture:
                                petiole_index: int,
                                leaf_bases: List[vec3],
                                leaf_rotations: List[AxisRotation],
-                               leaf_sizes: List[float]) -> None:
+                               leaf_sizes: List[float],
+                               leaf_stalk_lengths: Optional[List[float]] = None,
+                               leaf_stalk_bases: Optional[List[vec3]] = None) -> None:
         """
         Prescribe the base position, orientation and size of every leaf on a petiole.
 
@@ -4489,7 +4714,19 @@ class PlantArchitecture:
         data should iterate by forward evaluation, reading the resulting geometry back
         from the Context.
 
-        Requires helios-core v1.3.85 or newer.
+        **Leaf stalks** (helios-core 1.3.97+). For a leaf prototype that builds a stalk
+        (petiolule), ``leaf_stalk_lengths`` gives each leaf's stalk a measured length,
+        the distance from the leaf's base to where its blade begins; without it each
+        stalk is the species' share of its blade's length. ``leaf_stalk_bases`` gives
+        where each stalk leaves the petiole, in world coordinates: the stalk then runs
+        straight from that point to where the blade begins, instead of back along the
+        blade's own line, and the blade stays where its base, angles and size put it.
+        Either way a stalk is as thick as the petiole where it leaves it. A stalk longer
+        than its blade, or reaching the blade from ahead of its base, raises an error,
+        and stalk bases need a leaf prototype that builds a stalk. Stalk bases are saved
+        to and restored from the plant structure XML.
+
+        Requires helios-core v1.3.85 or newer (v1.3.97 for the stalk arguments).
 
         Args:
             plant_id: ID of the plant instance
@@ -4500,13 +4737,21 @@ class PlantArchitecture:
                 the petiole, in the petiole's existing leaf order
             leaf_rotations: ``AxisRotation(pitch, yaw, roll)`` of each leaf in **radians**
             leaf_sizes: Fully elongated size of each leaf in meters. All must be > 0
+            leaf_stalk_lengths: Optional stalk (petiolule) length of each leaf in meters,
+                one per leaf, all > 0. ``None`` or an empty list keeps the species' stalks
+            leaf_stalk_bases: Optional vec3 per leaf: where its stalk leaves the petiole,
+                in world coordinates. ``None`` or an empty list builds each stalk along its
+                blade's line
 
         Raises:
             ValueError: If any index is negative, a base is not a vec3, a rotation is not
-                an AxisRotation, a size is not positive, or the three lists differ in length
+                an AxisRotation, a size or stalk length is not positive, a stalk base is not
+                a vec3, or the lists differ in length
             PlantArchitectureError: If the number of leaves does not match the petiole
-                (the count is fixed when the phytomer is created), the native call
-                fails, or the library predates v1.3.85
+                (the count is fixed when the phytomer is created), a stalk is refused, the
+                native call fails, or the library predates v1.3.85
+            NotImplementedError: If stalk arguments are given and the native library
+                predates helios-core v1.3.97
 
         Note:
             Rebuilding each leaf discards primitive data a caller has attached to it.
@@ -4543,13 +4788,39 @@ class PlantArchitecture:
             if sz <= 0:
                 raise ValueError(f"leaf_sizes[{i}] must be positive, got {sz}")
             sizes.append(float(sz))
+        stalk_lengths = []
+        if leaf_stalk_lengths is not None:
+            if not isinstance(leaf_stalk_lengths, (list, tuple)):
+                raise ValueError(f"leaf_stalk_lengths must be a list, got {type(leaf_stalk_lengths).__name__}")
+            if leaf_stalk_lengths and len(leaf_stalk_lengths) != n:
+                raise ValueError(
+                    f"leaf_stalk_lengths must have one entry per leaf: got {len(leaf_stalk_lengths)} for {n} leaves")
+            for i, ln in enumerate(leaf_stalk_lengths):
+                if isinstance(ln, bool) or not isinstance(ln, (int, float)):
+                    raise ValueError(f"leaf_stalk_lengths[{i}] must be a number, got {type(ln).__name__}")
+                if not (math.isfinite(ln) and ln > 0):
+                    raise ValueError(f"leaf_stalk_lengths[{i}] must be positive and finite, got {ln}")
+                stalk_lengths.append(float(ln))
+        stalk_bases = []
+        if leaf_stalk_bases is not None:
+            if not isinstance(leaf_stalk_bases, (list, tuple)):
+                raise ValueError(f"leaf_stalk_bases must be a list, got {type(leaf_stalk_bases).__name__}")
+            if leaf_stalk_bases and len(leaf_stalk_bases) != n:
+                raise ValueError(
+                    f"leaf_stalk_bases must have one entry per leaf: got {len(leaf_stalk_bases)} for {n} leaves")
+            for i, sb in enumerate(leaf_stalk_bases):
+                if not isinstance(sb, vec3):
+                    raise ValueError(f"leaf_stalk_bases[{i}] must be a vec3, got {type(sb).__name__}")
+                stalk_bases.append([sb.x, sb.y, sb.z])
 
         self._check_context_alive()
         try:
             with _plantarchitecture_working_directory():
                 plantarch_wrapper.setPetioleLeafGeometry(
                     self._plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
-                    bases, rotations, sizes)
+                    bases, rotations, sizes, stalk_lengths, stalk_bases)
+        except NotImplementedError:
+            raise
         except Exception as e:
             raise PlantArchitectureError(
                 f"Failed to set petiole leaf geometry (plant {plant_id}, shoot {shoot_id}, "
@@ -4652,7 +4923,8 @@ class PlantArchitecture:
 
     def setPetioleLeaflets(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
                            leaf_count: int, leaflet_offset: float, leaflet_scale: float,
-                           prototype_scale: float, intercalary_leaflet_scale: float = -1.0) -> None:
+                           prototype_scale: float,
+                           intercalary_leaflet_scale: Optional[float] = None) -> None:
         """
         Rebuild the leaflets of one petiole with their own count, spacing and sizes.
 
@@ -4679,9 +4951,9 @@ class PlantArchitecture:
             leaflet_scale: Size of each lateral pair relative to the pair nearer the tip; > 0
             prototype_scale: Fully-elongated size of the terminal leaflet in meters; > 0
             intercalary_leaflet_scale: Size of the intercalary leaflets relative to the primary
-                pair nearer the tip; 0 for a leaf with none. Negative (the default) keeps the
-                phytomer's current value, which a leaf measured with no intercalary leaflets
-                would otherwise inherit from its shoot type.
+                pair nearer the tip; 0 for a leaf with none. ``None`` (the default) or a
+                negative value keeps the phytomer's current value, which a leaf measured with no
+                intercalary leaflets would otherwise inherit from its shoot type.
 
         Raises:
             ValueError: If an index is negative or a value is out of range
@@ -4691,6 +4963,8 @@ class PlantArchitecture:
         _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id),
                           ("Node index", node_index), ("Petiole index", petiole_index)))
         _check_uint_args((("Leaf count", leaf_count),))
+        if intercalary_leaflet_scale is None:
+            intercalary_leaflet_scale = -1.0
         _check_finite_args((("Leaflet offset", leaflet_offset), ("Leaflet scale", leaflet_scale),
                             ("Prototype scale", prototype_scale),
                             ("Intercalary leaflet scale", intercalary_leaflet_scale)))
@@ -4769,7 +5043,12 @@ class PlantArchitecture:
         ``leaf.roll``, mirrored across the petiole, so a pair's two members are mirror images.
         The offsets are added to those angles, one per leaflet in the petiole's leaf order. Yaw is
         in the leaf's mirrored sense: a positive offset swings a lateral further toward the tip on
-        either side. They are kept through later rebuilds with the same number of leaflets.
+        either side. A compound leaf's terminal leaflet, which has no yaw of its own, is turned by
+        its yaw offset to one side of its petiole's tip (counter-clockwise seen from above for a
+        positive offset), and by its roll offset about its own midrib, since it takes no roll from
+        ``leaf.roll``; before helios-core v1.3.97 the terminal's yaw offset was dropped. The offsets
+        are kept through later rebuilds with the same number of leaflets, cleared by one with a
+        different number, and (since v1.3.97) saved to and restored from the plant structure XML.
 
         Requires helios-core v1.3.95 or newer.
 
@@ -4833,7 +5112,9 @@ class PlantArchitecture:
             aspect_ratio: Ratio of blade width to length; > 0
             longitudinal_curvature: Curvature along the blade (+ up, - down)
             lateral_curvature: Curvature across the blade (+ up, - down)
-            midrib_fold_fraction: Fold along the midrib, from 0 (flat) to 1 (folded shut)
+            midrib_fold_fraction: Fold along the midrib, from -1 (halves folded down shut)
+                through 0 (flat) to 1 (halves folded up shut). Negative values need
+                helios-core v1.3.97 or newer
 
         Raises:
             ValueError: If an index is negative or a value is out of range
@@ -4845,8 +5126,8 @@ class PlantArchitecture:
                             ("Lateral curvature", lateral_curvature), ("Midrib fold fraction", midrib_fold_fraction)))
         if not aspect_ratio > 0:
             raise ValueError(f"Aspect ratio must be greater than zero, got {aspect_ratio}")
-        if not 0 <= midrib_fold_fraction <= 1:
-            raise ValueError(f"Midrib fold fraction must be between 0 and 1, got {midrib_fold_fraction}")
+        if not -1 <= midrib_fold_fraction <= 1:
+            raise ValueError(f"Midrib fold fraction must be between -1 and 1, got {midrib_fold_fraction}")
         if not (math.isfinite(longitudinal_curvature) and math.isfinite(lateral_curvature)):
             raise ValueError("Curvatures must be finite")
 
@@ -5037,6 +5318,63 @@ class PlantArchitecture:
         except Exception as e:
             raise PlantArchitectureError(
                 f"Failed to reshape leaf (plant {plant_id}, shoot {shoot_id}, node {node_index}, "
+                f"petiole {petiole_index}, leaf {leaf_index}): {e}")
+
+    def canReshapeLeafInPlace(self, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                              leaf_index: int, shape: LeafShapeValues) -> bool:
+        """
+        Whether :meth:`reshapeLeaf` would keep a leaf's primitives for a new shape.
+
+        :meth:`reshapeLeaf` moves the vertices of the existing blade lattice when it has as
+        many cells across the blade as the new shape needs, and otherwise replaces the blade
+        primitives with a finer lattice, which changes their UUIDs. A caller that must keep
+        the UUIDs (for example one that tracks primitives elsewhere) can ask first. The leaf
+        is addressed as for :meth:`getLeafShape` and :meth:`reshapeLeaf`.
+
+        Requires helios-core v1.3.97 or newer.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot carrying the phytomer
+            node_index: Index of the phytomer within the shoot, counted from the base
+            petiole_index: Index of the petiole within the phytomer
+            leaf_index: Index of the leaf on the petiole
+            shape: New blade shape, with the same requirements as for :meth:`reshapeLeaf`
+
+        Returns:
+            True if :meth:`reshapeLeaf` would keep every primitive of the leaf; False if it
+            would re-mesh the blade
+
+        Raises:
+            ValueError: If an index is negative, ``shape`` is not a LeafShapeValues, or a value
+                is not finite
+            PlantArchitectureError: If an index is out of range, or the shape is one
+                :meth:`reshapeLeaf` would refuse
+            NotImplementedError: If the native library predates helios-core v1.3.97
+
+        Example:
+            >>> shape = plantarch.getLeafShape(plant_id, 0, 3, 0, 0)
+            >>> shape.roll_fraction = 0.4
+            >>> if plantarch.canReshapeLeafInPlace(plant_id, 0, 3, 0, 0, shape):
+            ...     plantarch.reshapeLeaf(plant_id, 0, 3, 0, 0, shape)
+        """
+        _check_uint_args((("Plant ID", plant_id), ("Shoot ID", shoot_id), ("Node index", node_index),
+                          ("Petiole index", petiole_index), ("Leaf index", leaf_index)))
+        if not isinstance(shape, LeafShapeValues):
+            raise ValueError(f"shape must be a LeafShapeValues, got {type(shape).__name__}")
+        values, subdivisions = shape.to_flat()
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError("Leaf shape values must be finite")
+        _check_uint_args((("subdivisions_x", subdivisions[0]), ("subdivisions_y", subdivisions[1])))
+        self._check_context_alive()
+        try:
+            return plantarch_wrapper.canReshapeLeafInPlace(self._plantarch_ptr, plant_id, shoot_id, node_index,
+                                                           petiole_index, leaf_index, values, subdivisions)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to check leaf reshape (plant {plant_id}, shoot {shoot_id}, node {node_index}, "
                 f"petiole {petiole_index}, leaf {leaf_index}): {e}")
 
     def setShootInternodeLengthMax(self, plant_id: int, shoot_id: int,
@@ -6083,6 +6421,136 @@ class PlantArchitecture:
             callbacks.pop(shoot_type_label, None)
         else:
             callbacks[shoot_type_label] = native_callback
+
+    def setFruitPrototypeFunction(self, shoot_type_label: str,
+                                  function: Optional[Callable[[Context, int, Dict[str, float]], List[int]]]) -> None:
+        """
+        Install a Python function that builds the fruit prototype of a shoot type.
+
+        This is the Python counterpart of assigning ``inflorescence.fruit_prototype_function`` in
+        C++, for a fruit built procedurally from Context geometry rather than one of the library's
+        fruit functions. The function is called as::
+
+            function(context, subdivisions, build_parameters) -> list of primitive UUIDs
+
+        where ``context`` is this PlantArchitecture's :class:`Context`, ``subdivisions`` the
+        plugin's subdivision argument and ``build_parameters`` a dict of the plant's sampled organ
+        build parameters (empty for a plant without declared organ parameters). It adds the fruit's
+        primitives to ``context`` and returns their UUIDs; the plugin gathers them into one object.
+        The primitives must not already belong to an object. As for the library fruit, the prototype
+        has unit size with its base at the origin and its axis along +x, and the plugin scales it by
+        ``fruit_prototype_scale`` and places it on the peduncle.
+
+        The plugin calls the function once for each of the shoot type's ``unique_prototypes`` (or
+        for every fruit when that is 0) and copies the result, so draw any per-fruit variation inside
+        the function and set ``unique_prototypes`` to the number of distinct fruits wanted. A
+        function that raises makes the call that was building the plant raise the same exception,
+        as for :meth:`setPhytomerCreationFunction`.
+
+        Which shoots are affected:
+
+        - Each call with a function binds it to a new native slot that lasts as long as this
+          PlantArchitecture, so shoots created earlier, and prototypes the plugin has already built,
+          keep the function they were created with. At most 32 functions can be installed over the
+          life of one PlantArchitecture.
+        - :meth:`getCurrentShootParameters` names an installed function
+          ``"PythonFruitPrototype_<slot>"``; a NEW shoot type defined from parameters carrying that
+          name shares the function. Redefining an existing type with :meth:`defineShootType` keeps
+          the function it already has, as it does for every prototype function.
+        - ``None`` restores the function the shoot type had before a Python function was first
+          installed on it, usually a library one.
+
+        Args:
+            shoot_type_label: An existing shoot type label
+            function: A callable as above, or ``None``
+
+        Raises:
+            ValueError: If the label is not a non-empty str or the function is neither callable nor None
+            PlantArchitectureError: If the shoot type does not exist or all slots are in use
+            RuntimeError: If the native library predates Python prototype functions
+        """
+        self._setPythonPrototypeFunction(shoot_type_label, function, flower=False)
+
+    def setFlowerPrototypeFunction(self, shoot_type_label: str,
+                                   function: Optional[Callable[[Context, int, bool, Dict[str, float]], List[int]]]) -> None:
+        """
+        Install a Python function that builds the flower prototypes of a shoot type.
+
+        The flower counterpart of :meth:`setFruitPrototypeFunction`, with the same rules. The
+        function is called as::
+
+            function(context, subdivisions, flower_is_open, build_parameters) -> list of primitive UUIDs
+
+        once for each closed and each open prototype, and :meth:`getCurrentShootParameters` names it
+        ``"PythonFlowerPrototype_<slot>"``.
+
+        Args:
+            shoot_type_label: An existing shoot type label
+            function: A callable as above, or ``None``
+
+        Raises:
+            ValueError: If the label is not a non-empty str or the function is neither callable nor None
+            PlantArchitectureError: If the shoot type does not exist or all slots are in use
+            RuntimeError: If the native library predates Python prototype functions
+        """
+        self._setPythonPrototypeFunction(shoot_type_label, function, flower=True)
+
+    def _setPythonPrototypeFunction(self, shoot_type_label: str, function, flower: bool) -> None:
+        kind = "flower" if flower else "fruit"
+        if not isinstance(shoot_type_label, str) or not shoot_type_label:
+            raise ValueError(
+                f"Shoot type label must be a non-empty str, got {type(shoot_type_label).__name__}")
+        if function is not None and not callable(function):
+            raise ValueError(
+                f"The {kind} prototype function must be callable or None, got {type(function).__name__}")
+        native_callback = None if function is None else self._makePrototypeTrampoline(function, flower)
+        self._check_context_alive()
+        install = plantarch_wrapper.setFlowerPrototypeFunction if flower else plantarch_wrapper.setFruitPrototypeFunction
+        try:
+            install(self._plantarch_ptr, self.context.getNativePtr(), shoot_type_label, native_callback)
+        except Exception as e:
+            raise PlantArchitectureError(
+                f"Failed to set the {kind} prototype function of shoot type '{shoot_type_label}': {e}")
+        # A slot is never rebound while this object lives and shoots built earlier may still call an old one, so every
+        # callback installed is kept alive until the PlantArchitecture is destroyed.
+        if native_callback is not None:
+            self.__dict__.setdefault('_prototype_callbacks', []).append(native_callback)
+
+    def _makePrototypeTrampoline(self, function, flower: bool):
+        """Wrap a prototype function: build its geometry, gather it into an object, and store any exception."""
+        owner = weakref.ref(self)
+        kind = "flower" if flower else "fruit"
+
+        def build(subdivisions, names, values, count, objID_out, *open_flag):
+            plantarch = owner()
+            if plantarch is None or getattr(plantarch, '_pending_callback_error', None) is not None:
+                return 1
+            plantarch._phytomer_callback_depth = getattr(plantarch, '_phytomer_callback_depth', 0) + 1
+            try:
+                parameters = {names[i].decode('utf-8'): float(values[i]) for i in range(count)}
+                arguments = (plantarch.context, int(subdivisions)) + tuple(bool(f) for f in open_flag) + (parameters,)
+                uuids = function(*arguments)
+                if (not isinstance(uuids, (list, tuple)) or not uuids
+                        or not all(isinstance(u, int) and not isinstance(u, bool) for u in uuids)):
+                    raise TypeError(
+                        f"A {kind} prototype function must return a non-empty list of primitive UUIDs (int), "
+                        f"got {uuids!r:.80}")
+                objID_out[0] = plantarch.context.addPolymeshObject(list(uuids))
+            except BaseException as e:
+                plantarch._pending_callback_error = e
+                return 1
+            finally:
+                plantarch._phytomer_callback_depth -= 1
+            return 0
+
+        if flower:
+            def trampoline(subdivisions, flower_is_open, names, values, count, objID_out):
+                return build(subdivisions, names, values, count, objID_out, flower_is_open)
+            return plantarch_wrapper.FLOWER_PROTOTYPE_CALLBACK(trampoline)
+
+        def trampoline(subdivisions, names, values, count, objID_out):
+            return build(subdivisions, names, values, count, objID_out)
+        return plantarch_wrapper.FRUIT_PROTOTYPE_CALLBACK(trampoline)
 
     def _setLibraryPhytomerFunction(self, shoot_type_label: str, function_name: str, creation: bool) -> None:
         kind = "creation" if creation else "callback"

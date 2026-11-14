@@ -393,7 +393,9 @@ All \f$T_{opt}\f$ values in the table are in Kelvin, matching the \f$T_{opt}\f$ 
 
 The model coefficients can be set manually or by using the library of coefficients provided in the table above.
 
-To load the FvCB parameters from the library, call the function \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharCoefficientsFromLibrary "setFarquharCoefficientsFromLibrary()" with the species name as an argument. This will automatically set the parameters for all primitives. Alternatively, a list of UUIDs can be passed to this function to set the parameters for a subset of primitives.
+To load the FvCB parameters from the library, call the function \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharCoefficientsFromLibrary "setFarquharCoefficientsFromLibrary()" with the species name as an argument. This will automatically set the parameters for all primitives. Alternatively, a list of UUIDs can be passed to this function to set the parameters for a subset of primitives. Species names are case-insensitive and accept the aliases in `PhotosynthesisModel.get_species_aliases()` (e.g. `"pistachio"`, `"bean"`). A species that is not in the library (e.g., a misspelled one) raises a `HeliosRuntimeError` listing the species that are. The library covers tree crops, bean and cowpea; it has no C3 grass such as wheat or rice, whose parameters must be set directly.
+
+\note Changed in helios-core 1.3.97: an unknown species previously received the Almond coefficients with a warning that `disableMessages()` silenced.
 
 To set the parameters manually, first create an instance of the \ref pyhelios.types.photosynthesis.FarquharModelCoefficients "FarquharModelCoefficients" class, and then set the parameters using the setter methods. Finally, call the \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel::setFarquharModelCoefficients "setFarquharModelCoefficients()" method with the coefficients object as an argument.
 

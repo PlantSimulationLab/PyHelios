@@ -594,6 +594,58 @@ except AttributeError:
 # Mark triangle functions as available if we found any basic functions
 _TRIANGLE_FUNCTIONS_AVAILABLE = len(_AVAILABLE_TRIANGLE_FUNCTIONS) > 0
 
+# Bulk triangle functions: one native call adds or modifies many triangles
+_TRIANGLE_BULK_FUNCTIONS_AVAILABLE = True
+_NOT_AVAILABLE_TRIANGLE_BULK_MSG = (
+    "Bulk triangle functions (addTrianglesFromArrays, addTriangleSoup, setTriangleVerticesBatch) "
+    "are not available in the current Helios library. "
+    "Rebuild PyHelios with updated C++ wrapper: build_scripts/build_helios"
+)
+try:
+    helios_lib.addTrianglesFromArrays.argtypes = [
+        ctypes.POINTER(UContext),
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,   # vertices, vertex_count
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,    # faces, face_count
+        ctypes.POINTER(ctypes.c_float),                  # face_colors (nullable)
+        ctypes.POINTER(ctypes.c_uint),                   # out_uuids
+    ]
+    helios_lib.addTrianglesFromArrays.restype = None
+    helios_lib.addTrianglesFromArrays.errcheck = _check_error
+
+    helios_lib.addTriangleSoup.argtypes = [
+        ctypes.POINTER(UContext),
+        ctypes.POINTER(ctypes.c_float), ctypes.c_uint,   # vertices, triangle_count
+        ctypes.POINTER(ctypes.c_float),                  # uv (nullable)
+        ctypes.POINTER(ctypes.c_int),                    # texture_index (nullable)
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_uint,  # texture_files, texture_count
+        ctypes.POINTER(ctypes.c_uint),                   # out_uuids
+    ]
+    helios_lib.addTriangleSoup.restype = None
+    helios_lib.addTriangleSoup.errcheck = _check_error
+
+    helios_lib.setTriangleVerticesBatch.argtypes = [
+        ctypes.POINTER(UContext),
+        ctypes.POINTER(ctypes.c_uint), ctypes.c_uint,    # uuids, triangle_count
+        ctypes.POINTER(ctypes.c_float),                  # vertices
+    ]
+    helios_lib.setTriangleVerticesBatch.restype = None
+    helios_lib.setTriangleVerticesBatch.errcheck = _check_error
+except AttributeError:
+    _TRIANGLE_BULK_FUNCTIONS_AVAILABLE = False
+
+
+def _require_triangle_bulk():
+    if not _TRIANGLE_BULK_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(_NOT_AVAILABLE_TRIANGLE_BULK_MSG)
+
+
+def _float_ptr(array):
+    return array.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+
+def _uint_ptr(array):
+    return array.ctypes.data_as(ctypes.POINTER(ctypes.c_uint))
+
 # Compound geometry function prototypes - return arrays of UUIDs
 try:
     # addTile functions
@@ -1439,11 +1491,14 @@ def addTrianglesFromArraysMultiTextured(context, vertices, faces,
         material_ids: NumPy array of shape (M,) containing material ID for each face
         
     Returns:
-        List of UUIDs for the added textured triangles
+        List of UUIDs for the added textured triangles, in face order
     """
-    if not _TRIANGLE_FUNCTIONS_AVAILABLE:
-        raise NotImplementedError("Triangle functions not available in current Helios library. These require updated C++ wrapper implementation.")
-    
+    if 'addTrianglesFromArraysMultiTextured' not in _AVAILABLE_TRIANGLE_FUNCTIONS:
+        raise NotImplementedError(
+            "addTrianglesFromArraysMultiTextured function not available in current Helios library. "
+            "Rebuild PyHelios with updated C++ wrapper: build_scripts/build_helios"
+        )
+
     # Import numpy here to avoid circular imports
     import numpy as np
     
@@ -1466,41 +1521,107 @@ def addTrianglesFromArraysMultiTextured(context, vertices, faces,
     if max_material_id >= len(texture_files):
         raise ValueError(f"Material ID {max_material_id} exceeds texture count {len(texture_files)}")
     
-    # Convert arrays to appropriate data types and flatten for C interface
-    vertices_flat = vertices.astype(np.float32).flatten()
-    faces_flat = faces.astype(np.uint32).flatten()
-    uv_coords_flat = uv_coords.astype(np.float32).flatten()
-    material_ids_array = material_ids.astype(np.uint32)
-    
-    vertex_count = vertices.shape[0]
-    face_count = faces.shape[0]
-    texture_count = len(texture_files)
-    
-    # Convert Python arrays to ctypes arrays
-    vertices_ptr = (ctypes.c_float * len(vertices_flat))(*vertices_flat)
-    faces_ptr = (ctypes.c_uint * len(faces_flat))(*faces_flat)
-    uv_coords_ptr = (ctypes.c_float * len(uv_coords_flat))(*uv_coords_flat)
-    material_ids_ptr = (ctypes.c_uint * len(material_ids_array))(*material_ids_array)
-    
-    # Encode texture file strings
+    vertices_c = np.ascontiguousarray(vertices, dtype=np.float32)
+    faces_c = np.ascontiguousarray(faces, dtype=np.uint32)
+    uv_coords_c = np.ascontiguousarray(uv_coords, dtype=np.float32)
+    material_ids_c = np.ascontiguousarray(material_ids, dtype=np.uint32)
+
     texture_files_encoded = [f.encode('utf-8') for f in texture_files]
     texture_files_ptr = (ctypes.c_char_p * len(texture_files_encoded))(*texture_files_encoded)
-    
-    # Result count parameter
+
     result_count = ctypes.c_uint()
-    
-    # Call C++ function
     uuids_ptr = helios_lib.addTrianglesFromArraysMultiTextured(
-        context, vertices_ptr, vertex_count, faces_ptr, face_count,
-        uv_coords_ptr, texture_files_ptr, texture_count, material_ids_ptr,
+        context, _float_ptr(vertices_c), vertices.shape[0], _uint_ptr(faces_c), faces.shape[0],
+        _float_ptr(uv_coords_c), texture_files_ptr, len(texture_files), _uint_ptr(material_ids_c),
         ctypes.byref(result_count)
     )
-    
-    # Convert result to Python list
-    if uuids_ptr and result_count.value > 0:
-        return list(uuids_ptr[:result_count.value])
-    else:
+
+    if not uuids_ptr or result_count.value != faces.shape[0]:
+        raise RuntimeError(
+            f"addTrianglesFromArraysMultiTextured returned {result_count.value} UUIDs for {faces.shape[0]} faces")
+    return np.ctypeslib.as_array(uuids_ptr, shape=(result_count.value,)).tolist()
+
+
+def addTrianglesFromArrays(context, vertices, faces, face_colors=None) -> List[int]:
+    """Add indexed untextured triangles in one native call.
+
+    Args:
+        context: Helios context
+        vertices: (N, 3) float array
+        faces: (M, 3) integer array of vertex indices
+        face_colors: Optional (M, 3) float array, one RGB color per face
+
+    Returns:
+        List of M UUIDs in face order
+    """
+    _require_triangle_bulk()
+    import numpy as np
+    vertices_c = np.ascontiguousarray(vertices, dtype=np.float32)
+    faces_c = np.ascontiguousarray(faces, dtype=np.uint32)
+    face_count = faces_c.shape[0]
+    out = np.empty(face_count, dtype=np.uint32)
+    if face_count == 0:
         return []
+    colors_ptr = None
+    if face_colors is not None:
+        colors_c = np.ascontiguousarray(face_colors, dtype=np.float32)
+        colors_ptr = _float_ptr(colors_c)
+    helios_lib.addTrianglesFromArrays(context, _float_ptr(vertices_c), vertices_c.shape[0],
+                                      _uint_ptr(faces_c), face_count, colors_ptr, _uint_ptr(out))
+    return out.tolist()
+
+
+def addTriangleSoup(context, vertices, uv=None, texture_index=None, texture_files=None) -> List[int]:
+    """Add a triangle soup in one native call.
+
+    Args:
+        context: Helios context
+        vertices: (N, 3, 3) float array
+        uv: Optional (N, 3, 2) float array; required when any texture index is >= 0
+        texture_index: Optional (N,) integer array into texture_files; -1 = untextured
+        texture_files: List of texture file paths
+
+    Returns:
+        List of N UUIDs in triangle order
+    """
+    _require_triangle_bulk()
+    import numpy as np
+    vertices_c = np.ascontiguousarray(vertices, dtype=np.float32)
+    n = vertices_c.shape[0]
+    if n == 0:
+        return []
+    out = np.empty(n, dtype=np.uint32)
+    uv_ptr = None
+    if uv is not None:
+        uv_c = np.ascontiguousarray(uv, dtype=np.float32)
+        uv_ptr = _float_ptr(uv_c)
+    index_ptr = None
+    if texture_index is not None:
+        index_c = np.ascontiguousarray(texture_index, dtype=np.int32)
+        index_ptr = index_c.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+    files = list(texture_files or [])
+    files_encoded = [f.encode('utf-8') for f in files]
+    files_ptr = (ctypes.c_char_p * len(files_encoded))(*files_encoded) if files_encoded else None
+    helios_lib.addTriangleSoup(context, _float_ptr(vertices_c), n, uv_ptr, index_ptr,
+                               files_ptr, len(files_encoded), _uint_ptr(out))
+    return out.tolist()
+
+
+def setTriangleVerticesBatch(context, uuids, vertices) -> None:
+    """Set the vertices of N existing triangles in one native call.
+
+    Args:
+        context: Helios context
+        uuids: (N,) array-like of triangle UUIDs
+        vertices: (N, 3, 3) float array
+    """
+    _require_triangle_bulk()
+    import numpy as np
+    uuids_c = np.ascontiguousarray(uuids, dtype=np.uint32)
+    vertices_c = np.ascontiguousarray(vertices, dtype=np.float32)
+    if uuids_c.shape[0] == 0:
+        return
+    helios_lib.setTriangleVerticesBatch(context, _uint_ptr(uuids_c), uuids_c.shape[0], _float_ptr(vertices_c))
 
 # Python wrappers for compound geometry functions
 def addTile(context, center: List[float], size: List[float], rotation: List[float], subdiv: List[int]) -> List[int]:
@@ -9352,3 +9473,262 @@ def replacePolymeshObjectPrimitivesWrapper(context, objID: int, old_uuids: List[
     src_arr = (ctypes.c_uint * max(len(data_source_uuids), 1))(*data_source_uuids)
     helios_lib.replacePolymeshObjectPrimitives(context, ctypes.c_uint(objID), old_arr, len(old_uuids),
                                                new_arr, len(new_uuids), src_arr)
+
+
+# helios-core 1.3.97: per-caller deletion tracking, normal and bump maps (materials, primitives,
+# decoded NormalMapTexels handles and the normal-map free functions of core/global.h).
+# NOTE: every wrapper function below must guard with _require_ctx_1397().
+_CONTEXT_1397_AVAILABLE = False
+try:
+    _P_CTX = ctypes.POINTER(UContext)
+    _P_F = ctypes.POINTER(ctypes.c_float)
+    _P_I = ctypes.POINTER(ctypes.c_int)
+    _P_U = ctypes.POINTER(ctypes.c_uint)
+
+    def _bind_1397(name, argtypes, restype):
+        fn = getattr(helios_lib, name)
+        fn.argtypes = argtypes
+        fn.restype = restype
+        fn.errcheck = _check_error
+
+    _bind_1397('getDeletedUUIDsSinceMark', [_P_CTX, ctypes.c_uint64, _P_U], _P_U)
+
+    _bind_1397('setMaterialNormalMap', [_P_CTX, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_int], None)
+    _bind_1397('setMaterialBumpMap', [_P_CTX, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float], None)
+    _bind_1397('setMaterialNormalMapStrength', [_P_CTX, ctypes.c_char_p, ctypes.c_float], None)
+    _bind_1397('clearMaterialNormalMap', [_P_CTX, ctypes.c_char_p], None)
+    _bind_1397('getMaterialNormalMapFile', [_P_CTX, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int], ctypes.c_int)
+    _bind_1397('getMaterialNormalMapKind', [_P_CTX, ctypes.c_char_p], ctypes.c_int)
+    _bind_1397('getMaterialNormalMapStrength', [_P_CTX, ctypes.c_char_p], ctypes.c_float)
+    _bind_1397('isMaterialNormalMapGreenFlipped', [_P_CTX, ctypes.c_char_p], ctypes.c_int)
+
+    _bind_1397('setPrimitiveNormalMap', [_P_CTX, _P_U, ctypes.c_uint, ctypes.c_char_p, ctypes.c_float, ctypes.c_int], None)
+    _bind_1397('setPrimitiveBumpMap', [_P_CTX, _P_U, ctypes.c_uint, ctypes.c_char_p, ctypes.c_float], None)
+    _bind_1397('clearPrimitiveNormalMap', [_P_CTX, _P_U, ctypes.c_uint], None)
+    _bind_1397('getPrimitiveNormalMapFile', [_P_CTX, ctypes.c_uint, ctypes.c_char_p, ctypes.c_int], ctypes.c_int)
+    _bind_1397('getPrimitiveNormalMapKind', [_P_CTX, ctypes.c_uint], ctypes.c_int)
+    _bind_1397('getPrimitiveNormalMapStrength', [_P_CTX, ctypes.c_uint], ctypes.c_float)
+    _bind_1397('getPrimitiveNormalMapUV', [_P_CTX, ctypes.c_uint, _P_U], _P_F)
+
+    _bind_1397('getMaterialNormalMapTexels', [_P_CTX, ctypes.c_uint], ctypes.c_void_p)
+    _bind_1397('getNormalMapTexels', [_P_CTX, ctypes.c_char_p, ctypes.c_int, ctypes.c_float, ctypes.c_int], ctypes.c_void_p)
+    _bind_1397('clearNormalMapCache', [_P_CTX], None)
+
+    _bind_1397('decodeNormalMapImage', [ctypes.c_char_p, ctypes.c_int, ctypes.c_float, ctypes.c_int], ctypes.c_void_p)
+    _bind_1397('classifyBumpImage', [ctypes.c_char_p], ctypes.c_int)
+    _bind_1397('computeTangentFrame', [_P_F, _P_F, _P_F, _P_F, _P_F, _P_F, _P_F, _P_F], ctypes.c_int)
+    _bind_1397('applyTangentSpaceNormal', [_P_F, _P_F, _P_F, _P_F, _P_F], None)
+
+    # destroyNormalMapTexels runs from __del__, possibly during interpreter shutdown: no errcheck.
+    helios_lib.destroyNormalMapTexels.argtypes = [ctypes.c_void_p]
+    helios_lib.destroyNormalMapTexels.restype = None
+    _bind_1397('getNormalMapTexelsFile', [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int], ctypes.c_int)
+    _bind_1397('getNormalMapTexelsInfo', [ctypes.c_void_p, _P_I, _P_F, _P_I, _P_I, _P_I], None)
+    _bind_1397('getNormalMapTexelsXY', [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulonglong)], ctypes.POINTER(ctypes.c_int16))
+    _bind_1397('getNormalMapTexelsMemoryBytes', [ctypes.c_void_p], ctypes.c_ulonglong)
+    _bind_1397('getNormalMapTexelsNormal', [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, _P_F], None)
+    _bind_1397('sampleNormalMapTexels', [ctypes.c_void_p, _P_F, ctypes.c_uint, ctypes.c_int, _P_F], None)
+
+    _CONTEXT_1397_AVAILABLE = True
+except AttributeError:
+    _CONTEXT_1397_AVAILABLE = False
+
+
+def _require_ctx_1397():
+    if not _CONTEXT_1397_AVAILABLE:
+        raise NotImplementedError(
+            "getDeletedUUIDs(mark) and the normal/bump map functions are not available in the loaded native "
+            "library. They require helios-core v1.3.97 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+
+
+def _float_array(values):
+    return (ctypes.c_float * len(values))(*[float(v) for v in values])
+
+
+def getDeletedUUIDsSinceMarkWrapper(context, mark: int) -> List[int]:
+    _require_ctx_1397()
+    count = ctypes.c_uint()
+    ptr = helios_lib.getDeletedUUIDsSinceMark(context, ctypes.c_uint64(mark), ctypes.byref(count))
+    return [] if count.value == 0 or not ptr else [int(ptr[i]) for i in range(count.value)]
+
+
+def setMaterialNormalMapWrapper(context, material_label: str, normal_map_file: str, strength: float, flip_green: bool) -> None:
+    _require_ctx_1397()
+    helios_lib.setMaterialNormalMap(context, material_label.encode('utf-8'), normal_map_file.encode('utf-8'),
+                                    float(strength), 1 if flip_green else 0)
+
+
+def setMaterialBumpMapWrapper(context, material_label: str, bump_map_file: str, strength: float) -> None:
+    _require_ctx_1397()
+    helios_lib.setMaterialBumpMap(context, material_label.encode('utf-8'), bump_map_file.encode('utf-8'), float(strength))
+
+
+def setMaterialNormalMapStrengthWrapper(context, material_label: str, strength: float) -> None:
+    _require_ctx_1397()
+    helios_lib.setMaterialNormalMapStrength(context, material_label.encode('utf-8'), float(strength))
+
+
+def clearMaterialNormalMapWrapper(context, material_label: str) -> None:
+    _require_ctx_1397()
+    helios_lib.clearMaterialNormalMap(context, material_label.encode('utf-8'))
+
+
+def getMaterialNormalMapFileWrapper(context, material_label: str) -> str:
+    _require_ctx_1397()
+    return _read_string_buffer(helios_lib.getMaterialNormalMapFile, context, material_label.encode('utf-8'))
+
+
+def getMaterialNormalMapKindWrapper(context, material_label: str) -> int:
+    _require_ctx_1397()
+    return int(helios_lib.getMaterialNormalMapKind(context, material_label.encode('utf-8')))
+
+
+def getMaterialNormalMapStrengthWrapper(context, material_label: str) -> float:
+    _require_ctx_1397()
+    return float(helios_lib.getMaterialNormalMapStrength(context, material_label.encode('utf-8')))
+
+
+def isMaterialNormalMapGreenFlippedWrapper(context, material_label: str) -> bool:
+    _require_ctx_1397()
+    return bool(helios_lib.isMaterialNormalMapGreenFlipped(context, material_label.encode('utf-8')))
+
+
+def setPrimitiveNormalMapWrapper(context, uuids: List[int], normal_map_file: str, strength: float, flip_green: bool) -> None:
+    _require_ctx_1397()
+    helios_lib.setPrimitiveNormalMap(context, _uuid_array(uuids), len(uuids), normal_map_file.encode('utf-8'),
+                                     float(strength), 1 if flip_green else 0)
+
+
+def setPrimitiveBumpMapWrapper(context, uuids: List[int], bump_map_file: str, strength: float) -> None:
+    _require_ctx_1397()
+    helios_lib.setPrimitiveBumpMap(context, _uuid_array(uuids), len(uuids), bump_map_file.encode('utf-8'), float(strength))
+
+
+def clearPrimitiveNormalMapWrapper(context, uuids: List[int]) -> None:
+    _require_ctx_1397()
+    helios_lib.clearPrimitiveNormalMap(context, _uuid_array(uuids), len(uuids))
+
+
+def getPrimitiveNormalMapFileWrapper(context, uuid: int) -> str:
+    _require_ctx_1397()
+    return _read_string_buffer(helios_lib.getPrimitiveNormalMapFile, context, int(uuid))
+
+
+def getPrimitiveNormalMapKindWrapper(context, uuid: int) -> int:
+    _require_ctx_1397()
+    return int(helios_lib.getPrimitiveNormalMapKind(context, int(uuid)))
+
+
+def getPrimitiveNormalMapStrengthWrapper(context, uuid: int) -> float:
+    _require_ctx_1397()
+    return float(helios_lib.getPrimitiveNormalMapStrength(context, int(uuid)))
+
+
+def getPrimitiveNormalMapUVWrapper(context, uuid: int) -> List[List[float]]:
+    _require_ctx_1397()
+    size = ctypes.c_uint()
+    ptr = helios_lib.getPrimitiveNormalMapUV(context, int(uuid), ctypes.byref(size))
+    if size.value == 0 or not ptr:
+        return []
+    return [[float(ptr[i]), float(ptr[i + 1])] for i in range(0, size.value, 2)]
+
+
+def getMaterialNormalMapTexelsWrapper(context, material_id: int):
+    """Return a NormalMapTexels handle (int) or None if the material has no map."""
+    _require_ctx_1397()
+    handle = helios_lib.getMaterialNormalMapTexels(context, int(material_id))
+    return handle or None
+
+
+def getNormalMapTexelsWrapper(context, file: str, kind: int, strength: float, flip_green: bool):
+    _require_ctx_1397()
+    return helios_lib.getNormalMapTexels(context, file.encode('utf-8'), int(kind), float(strength), 1 if flip_green else 0)
+
+
+def clearNormalMapCacheWrapper(context) -> None:
+    _require_ctx_1397()
+    helios_lib.clearNormalMapCache(context)
+
+
+def decodeNormalMapImageWrapper(file: str, kind: int, strength: float, flip_green: bool):
+    _require_ctx_1397()
+    return helios_lib.decodeNormalMapImage(file.encode('utf-8'), int(kind), float(strength), 1 if flip_green else 0)
+
+
+def classifyBumpImageWrapper(file: str) -> int:
+    _require_ctx_1397()
+    return int(helios_lib.classifyBumpImage(file.encode('utf-8')))
+
+
+def computeTangentFrameWrapper(p0, p1, p2, uv0, uv1, uv2):
+    """Return (dPdu, dPdv) as 3-lists, or None when the (u,v) coordinates are degenerate."""
+    _require_ctx_1397()
+    dPdu = (ctypes.c_float * 3)()
+    dPdv = (ctypes.c_float * 3)()
+    ok = helios_lib.computeTangentFrame(_float_array(p0), _float_array(p1), _float_array(p2),
+                                        _float_array(uv0), _float_array(uv1), _float_array(uv2), dPdu, dPdv)
+    if not ok:
+        return None
+    return list(dPdu), list(dPdv)
+
+
+def applyTangentSpaceNormalWrapper(tangent_normal, dPdu, dPdv, normal) -> List[float]:
+    _require_ctx_1397()
+    out = (ctypes.c_float * 3)()
+    helios_lib.applyTangentSpaceNormal(_float_array(tangent_normal), _float_array(dPdu), _float_array(dPdv),
+                                       _float_array(normal), out)
+    return list(out)
+
+
+def destroyNormalMapTexelsWrapper(handle) -> None:
+    if _CONTEXT_1397_AVAILABLE and handle:
+        helios_lib.destroyNormalMapTexels(handle)
+
+
+def getNormalMapTexelsFileWrapper(handle) -> str:
+    _require_ctx_1397()
+    return _read_string_buffer(helios_lib.getNormalMapTexelsFile, handle)
+
+
+def getNormalMapTexelsInfoWrapper(handle):
+    """Return (kind, strength, flip_green, width, height)."""
+    _require_ctx_1397()
+    kind, flip, width, height = ctypes.c_int(), ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    strength = ctypes.c_float()
+    helios_lib.getNormalMapTexelsInfo(handle, ctypes.byref(kind), ctypes.byref(strength), ctypes.byref(flip),
+                                      ctypes.byref(width), ctypes.byref(height))
+    return int(kind.value), float(strength.value), bool(flip.value), int(width.value), int(height.value)
+
+
+def getNormalMapTexelsXYWrapper(handle):
+    """Return a copy of the texel data as a flat numpy int16 array."""
+    import numpy as np
+    _require_ctx_1397()
+    size = ctypes.c_ulonglong()
+    ptr = helios_lib.getNormalMapTexelsXY(handle, ctypes.byref(size))
+    if size.value == 0 or not ptr:
+        return np.zeros(0, dtype=np.int16)
+    return np.ctypeslib.as_array(ptr, shape=(size.value,)).copy()
+
+
+def getNormalMapTexelsMemoryBytesWrapper(handle) -> int:
+    _require_ctx_1397()
+    return int(helios_lib.getNormalMapTexelsMemoryBytes(handle))
+
+
+def getNormalMapTexelsNormalWrapper(handle, column: int, row_from_top: int) -> List[float]:
+    _require_ctx_1397()
+    out = (ctypes.c_float * 3)()
+    helios_lib.getNormalMapTexelsNormal(handle, int(column), int(row_from_top), out)
+    return list(out)
+
+
+def sampleNormalMapTexelsWrapper(handle, uv_flat, count: int, bilinear: bool):
+    """uv_flat: contiguous float32 numpy array of 2*count values. Returns a (count, 3) float32 array."""
+    import numpy as np
+    _require_ctx_1397()
+    out = np.empty((count, 3), dtype=np.float32)
+    helios_lib.sampleNormalMapTexels(handle, uv_flat.ctypes.data_as(_P_F), int(count), 1 if bilinear else 0,
+                                     out.ctypes.data_as(_P_F))
+    return out

@@ -44,6 +44,9 @@ endif()
 #-------- HELIOS INTEGRATION ---------#
 # Include Helios core build system
 # This will create the executable target ${EXECUTABLE_NAME} automatically
+# helios-core 1.3.97+ writes AGENTS.md/CLAUDE.md for C++ Helios projects into the project directory on
+# every configure. pyhelios_build is not such a project, and the files hold absolute local paths.
+set( HELIOS_GENERATE_AGENT_FILES OFF CACHE BOOL "Do not write Helios AI agent files into pyhelios_build" FORCE )
 include( "${BASE_DIRECTORY}/core/CMake_project.cmake" )
 
 #-------- EXCLUDE UNNECESSARY THIRD-PARTY TARGETS ---------#

@@ -7,7 +7,7 @@ from enum import Enum
 import numpy as np
 
 from .wrappers import UContextWrapper as context_wrapper
-from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location, AdaptiveTileRefinement, VertexNormalSource, VertexWeldMode
+from .wrappers.DataTypes import vec2, vec3, vec4, int2, int3, int4, SphericalCoord, RGBcolor, RGBAcolor, PrimitiveType, Date, Time, Location, AdaptiveTileRefinement, VertexNormalSource, VertexWeldMode, NormalMapKind
 from .exceptions import HeliosError
 from .plugins.loader import LibraryLoadError, validate_library, get_library_info
 from .plugins.registry import get_plugin_registry
@@ -2460,6 +2460,12 @@ class Context:
             
         Returns:
             List of UUIDs for the loaded primitives
+
+        Note:
+            The normal or bump map of each material is read from its "norm", "map_Bump" or
+            "bump" line (helios-core 1.3.97+). A material whose bump image is missing, is not a
+            PNG or JPEG, cannot be classified as a height or normal map, or has no "map_Kd"
+            texture to give its triangles (u,v) coordinates raises an error naming the material.
         """
         self._check_context_available()
 
@@ -2718,45 +2724,23 @@ class Context:
             else:
                 raise ValueError(f"Colors array shape {colors.shape} doesn't match vertices ({vertices.shape[0]},) or faces ({faces.shape[0]},)")
         
-        # Convert arrays to appropriate data types
-        vertices_float = vertices.astype(np.float32)
-        faces_int = faces.astype(np.int32)
-        if colors is not None:
-            colors_float = colors.astype(np.float32)
+        if faces.shape[0] > 0 and np.min(faces) < 0:
+            raise ValueError(f"Face indices must be non-negative, got {np.min(faces)}")
 
-        # Gather each face's three corners up front. Indexing the whole face table at once
-        # avoids re-slicing per triangle, and .tolist() on the gathered block converts to
-        # Python floats in one pass rather than one call per vertex.
-        corner0 = vertices_float[faces_int[:, 0]].tolist()
-        corner1 = vertices_float[faces_int[:, 1]].tolist()
-        corner2 = vertices_float[faces_int[:, 2]].tolist()
+        faces_int = faces.astype(np.int64)
 
-        # Resolve the per-triangle colour for the whole mesh in one array operation. The
-        # per-vertex case averages the three corner colours; doing that with a np.mean() call
-        # per face dominated the runtime of the trimesh/Open3D import path.
+        # Resolve one color per triangle; per-vertex colors are averaged over each face's corners.
         if colors is None:
             face_colors = None
         elif per_triangle_colors:
-            face_colors = colors_float.tolist()
+            face_colors = colors.astype(np.float32)
         else:  # per_vertex_colors
-            averaged = (colors_float[faces_int[:, 0]]
-                        + colors_float[faces_int[:, 1]]
-                        + colors_float[faces_int[:, 2]]) / 3.0
-            face_colors = averaged.tolist()
+            colors_float = colors.astype(np.float32)
+            face_colors = (colors_float[faces_int[:, 0]]
+                           + colors_float[faces_int[:, 1]]
+                           + colors_float[faces_int[:, 2]]) / 3.0
 
-        # Add triangles
-        triangle_uuids = []
-        if face_colors is None:
-            for vertex0, vertex1, vertex2 in zip(corner0, corner1, corner2):
-                triangle_uuids.append(
-                    context_wrapper.addTriangle(self.context, vertex0, vertex1, vertex2))
-        else:
-            for vertex0, vertex1, vertex2, color in zip(corner0, corner1, corner2, face_colors):
-                triangle_uuids.append(
-                    context_wrapper.addTriangleWithColor(
-                        self.context, vertex0, vertex1, vertex2, color))
-
-        return triangle_uuids
+        return context_wrapper.addTrianglesFromArrays(self.context, vertices, faces, face_colors)
 
     def addTrianglesFromArraysTextured(self, vertices: np.ndarray, faces: np.ndarray,
                                       uv_coords: np.ndarray, texture_files: Union[str, List[str]], 
@@ -2847,43 +2831,115 @@ class Context:
             except (FileNotFoundError, ValueError) as e:
                 raise ValueError(f"Texture file {i} ({texture_file}): {e}")
         
-        # Use efficient multi-texture C++ implementation if available, otherwise triangle-by-triangle
-        if 'addTrianglesFromArraysMultiTextured' in context_wrapper._AVAILABLE_TRIANGLE_FUNCTIONS:
-            return context_wrapper.addTrianglesFromArraysMultiTextured(
-                self.context, vertices, faces, uv_coords, texture_file_list, material_ids
-            )
-        else:
-            # Use triangle-by-triangle approach with addTriangleTextured
-            from .wrappers.DataTypes import vec3, vec2
-            
-            vertices_float = vertices.astype(np.float32)
-            faces_int = faces.astype(np.int32)
-            uv_coords_float = uv_coords.astype(np.float32)
-            
-            triangle_uuids = []
-            for i in range(faces.shape[0]):
-                # Get vertex indices for this triangle
-                v0_idx, v1_idx, v2_idx = faces_int[i]
-                
-                # Get vertex coordinates as vec3 objects
-                vertex0 = vec3(vertices_float[v0_idx][0], vertices_float[v0_idx][1], vertices_float[v0_idx][2])
-                vertex1 = vec3(vertices_float[v1_idx][0], vertices_float[v1_idx][1], vertices_float[v1_idx][2])
-                vertex2 = vec3(vertices_float[v2_idx][0], vertices_float[v2_idx][1], vertices_float[v2_idx][2])
-                
-                # Get UV coordinates as vec2 objects
-                uv0 = vec2(uv_coords_float[v0_idx][0], uv_coords_float[v0_idx][1])
-                uv1 = vec2(uv_coords_float[v1_idx][0], uv_coords_float[v1_idx][1])
-                uv2 = vec2(uv_coords_float[v2_idx][0], uv_coords_float[v2_idx][1])
-                
-                # Use texture file based on material ID for this triangle
-                material_id = material_ids[i]
-                texture_file = texture_file_list[material_id]
-                
-                # Add textured triangle using the new addTriangleTextured method
-                uuid = self.addTriangleTextured(vertex0, vertex1, vertex2, texture_file, uv0, uv1, uv2)
-                triangle_uuids.append(uuid)
-            
-            return triangle_uuids
+        return context_wrapper.addTrianglesFromArraysMultiTextured(
+            self.context, vertices, faces, uv_coords, texture_file_list, material_ids
+        )
+
+    def addTriangleSoup(self, vertices: np.ndarray, uv: Optional[np.ndarray] = None,
+                        texture_index: Optional[np.ndarray] = None,
+                        texture_files: Optional[List[str]] = None) -> List[int]:
+        """
+        Add N independent triangles in one native call.
+
+        Each triangle is added exactly as a separate :meth:`addTriangle` (texture index -1 or no
+        ``texture_index``) or :meth:`addTriangleTextured` call would add it, in order, so the
+        vertices, texture, UVs, solid fraction and material all match. All arguments are checked
+        before anything is added; if adding fails partway, the triangles already added are
+        deleted again.
+
+        Args:
+            vertices: Float array of shape (N, 3, 3): three (x, y, z) corners per triangle
+            uv: Optional float array of shape (N, 3, 2): UV coordinates for each corner.
+                Required when any triangle is textured; ignored for untextured triangles.
+            texture_index: Optional integer array of shape (N,) indexing ``texture_files``,
+                with -1 for an untextured triangle. If omitted, every triangle is untextured.
+            texture_files: List of texture image paths referenced by ``texture_index``
+
+        Returns:
+            List of N UUIDs, one per triangle, in input order
+
+        Raises:
+            ValueError: If an array has the wrong type, shape or dtype, a texture index is out
+                of range, or textured triangles are missing ``uv`` or ``texture_files``
+            FileNotFoundError: If a referenced texture file does not exist
+
+        Example:
+            >>> verts = np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+            ...                   [[0, 0, 1], [1, 0, 1], [0, 1, 1]]], dtype=np.float32)
+            >>> uv = np.array([[[0, 0], [1, 0], [0, 1]]] * 2, dtype=np.float32)
+            >>> uuids = context.addTriangleSoup(verts, uv=uv, texture_index=np.array([0, -1]),
+            ...                                 texture_files=["leaf.png"])
+        """
+        self._check_context_available()
+
+        vertices = self._check_float_array("vertices", vertices, (None, 3, 3), "(N, 3, 3)")
+        n = vertices.shape[0]
+
+        textured = False
+        texture_file_list = []
+        if texture_index is not None:
+            if not isinstance(texture_index, np.ndarray):
+                raise ValueError(f"texture_index must be a NumPy ndarray, got {type(texture_index).__name__}")
+            if not np.issubdtype(texture_index.dtype, np.integer):
+                raise ValueError(f"texture_index must have an integer dtype, got {texture_index.dtype}")
+            if texture_index.shape != (n,):
+                raise ValueError(f"texture_index must have shape (N,) = ({n},), got {texture_index.shape}")
+
+            if texture_files is None:
+                texture_file_list = []
+            elif isinstance(texture_files, (list, tuple)) and all(isinstance(f, str) for f in texture_files):
+                texture_file_list = list(texture_files)
+            else:
+                raise ValueError("texture_files must be a list of str")
+
+            if n > 0:
+                lo, hi = int(texture_index.min()), int(texture_index.max())
+                if lo < -1 or hi >= len(texture_file_list):
+                    bad = lo if lo < -1 else hi
+                    if not texture_file_list and hi >= 0:
+                        raise ValueError("texture_files is required when any texture_index is >= 0")
+                    raise ValueError(f"texture_index {bad} is out of range: must be -1 or in "
+                                     f"[0, {len(texture_file_list)})")
+                textured = hi >= 0
+        elif texture_files is not None and not (isinstance(texture_files, (list, tuple))
+                                                and all(isinstance(f, str) for f in texture_files)):
+            raise ValueError("texture_files must be a list of str")
+
+        if textured:
+            if uv is None:
+                raise ValueError("uv is required when any texture_index is >= 0")
+        if uv is not None:
+            uv = self._check_float_array("uv", uv, (n, 3, 2), "(N, 3, 2)")
+
+        # Resolve every referenced texture file before adding anything. Paths are made absolute
+        # just as addTriangleTextured does, so the stored texture file matches a per-triangle add.
+        if textured:
+            used = set(int(t) for t in np.unique(texture_index) if t >= 0)
+            for i in range(len(texture_file_list)):
+                if i in used:
+                    texture_file_list[i] = self._validate_file_path(
+                        texture_file_list[i], ['.png', '.jpg', '.jpeg', '.tga', '.bmp'])
+
+        if n == 0:
+            return []
+
+        return context_wrapper.addTriangleSoup(
+            self.context, vertices,
+            uv if textured else None,
+            texture_index if textured else None,
+            texture_file_list if textured else None)
+
+    @staticmethod
+    def _check_float_array(name, array, shape, shape_text):
+        """Check that ``array`` is a floating-point ndarray of the given shape (None = any length)."""
+        if not isinstance(array, np.ndarray):
+            raise ValueError(f"{name} must be a NumPy ndarray, got {type(array).__name__}")
+        if not np.issubdtype(array.dtype, np.floating):
+            raise ValueError(f"{name} must have a floating dtype, got {array.dtype}")
+        if array.ndim != len(shape) or any(want is not None and got != want
+                                           for got, want in zip(array.shape, shape)):
+            raise ValueError(f"{name} must have shape {shape_text}, got {array.shape}")
+        return array
 
     # ==================== PRIMITIVE DATA METHODS ====================
     # Primitive data is a flexible key-value store where users can associate 
@@ -4530,6 +4586,299 @@ class Context:
         if is_list:
             raise ValueError("getPrimitiveColorTextureFile: uuid must be a single int")
         return context_wrapper.getPrimitiveColorTextureFileWrapper(self.context, value)
+
+    # =========================================================================
+    # Normal and bump maps (helios-core v1.3.97+)
+    # =========================================================================
+
+    @staticmethod
+    def _normal_map_strength_arg(strength, func_name: str) -> float:
+        if isinstance(strength, (bool, np.bool_)) or not isinstance(strength, (int, float, np.integer, np.floating)):
+            raise ValueError(f"{func_name}: strength must be a number, got {type(strength).__name__}")
+        return float(strength)
+
+    @staticmethod
+    def _normal_map_bool_arg(value, name: str, func_name: str) -> bool:
+        if not isinstance(value, (bool, np.bool_)):
+            raise ValueError(f"{func_name}: {name} must be a bool, got {type(value).__name__}")
+        return bool(value)
+
+    def setMaterialNormalMap(self, material_label: str, normal_map_file: str, strength: float = 1.0,
+                             flip_green: bool = False) -> None:
+        """Give a material a tangent-space normal map.
+
+        A normal map tilts the shading normal across a primitive's surface without changing its
+        geometry, so that relief such as leaf veins or bark furrows shades as it would on the
+        real surface. The visualizer and the radiation model both apply it. The map is sampled
+        with the primitive's texture (u,v) coordinates, in the tangent space of OpenGL, glTF and
+        Blender: red is the tilt toward increasing u (right in the image), green toward
+        increasing v (up in the image), and blue the component along the primitive's normal.
+        Every primitive using the material needs a (u,v) frame: a patch, or a triangle with
+        texture coordinates. The image is decoded when this is called, so an unreadable image,
+        or a grayscale one (a height map, for :meth:`setMaterialBumpMap`), raises here.
+
+        A material holds either a normal map or a bump map; setting one while the other is set
+        raises, so call :meth:`clearMaterialNormalMap` first. Helios's own automatic materials
+        (labels beginning with ``"__"``) cannot be edited here; use :meth:`setPrimitiveNormalMap`.
+
+        Args:
+            material_label: Label of the material
+            normal_map_file: Path to the normal map (PNG or JPEG)
+            strength: Factor on the tilt of the normals; 1 keeps the map as authored. Must be > 0.
+            flip_green: True for a map made in the DirectX convention (green pointing down the image)
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If the material does not exist, the image cannot be used, or a primitive
+                using the material has no (u,v) frame
+            NotImplementedError: If the native library predates helios-core v1.3.97
+
+        Example:
+            >>> context.addMaterial("leaf")
+            >>> context.setMaterialNormalMap("leaf", "leaf_normal.png", strength=0.8)
+        """
+        self._check_context_available()
+        func_name = "setMaterialNormalMap"
+        label = self._texture_str_arg(material_label, "material_label", func_name)
+        path = self._texture_str_arg(normal_map_file, "normal_map_file", func_name)
+        context_wrapper.setMaterialNormalMapWrapper(self.context, label, path,
+                                                    self._normal_map_strength_arg(strength, func_name),
+                                                    self._normal_map_bool_arg(flip_green, "flip_green", func_name))
+
+    def setMaterialBumpMap(self, material_label: str, bump_map_file: str, strength: float) -> None:
+        """Give a material a bump (height) map.
+
+        The heights are converted to tangent-space normals once (see
+        :meth:`Global.decodeNormalMapImage`) and from then on behave exactly as a normal map
+        would (see :meth:`setMaterialNormalMap`).
+
+        Args:
+            material_label: Label of the material
+            bump_map_file: Path to the bump map: an 8- or 16-bit grayscale PNG (read at full
+                precision), or an RGB PNG or JPEG (read as luminance)
+            strength: Displacement, in texels of the image, of the full height range from 0
+                (black) to 1 (white). Must be > 0.
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If the material does not exist, already has a normal map, or the image
+                cannot be used
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        self._check_context_available()
+        func_name = "setMaterialBumpMap"
+        label = self._texture_str_arg(material_label, "material_label", func_name)
+        path = self._texture_str_arg(bump_map_file, "bump_map_file", func_name)
+        context_wrapper.setMaterialBumpMapWrapper(self.context, label, path, self._normal_map_strength_arg(strength, func_name))
+
+    def setMaterialNormalMapStrength(self, material_label: str, strength: float) -> None:
+        """Change the strength of a material's normal or bump map.
+
+        Args:
+            material_label: Label of the material, which must have a normal or bump map
+            strength: New strength (see :meth:`setMaterialNormalMap` and :meth:`setMaterialBumpMap`). Must be > 0.
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If the material does not exist or has no map, or the strength is not > 0
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        self._check_context_available()
+        func_name = "setMaterialNormalMapStrength"
+        label = self._texture_str_arg(material_label, "material_label", func_name)
+        context_wrapper.setMaterialNormalMapStrengthWrapper(self.context, label, self._normal_map_strength_arg(strength, func_name))
+
+    def clearMaterialNormalMap(self, material_label: str) -> None:
+        """Remove a material's normal or bump map. Nothing happens if it has none.
+
+        Raises:
+            ValueError: If ``material_label`` is not a non-empty string
+            HeliosError: If the material does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        self._check_context_available()
+        label = self._texture_str_arg(material_label, "material_label", "clearMaterialNormalMap")
+        context_wrapper.clearMaterialNormalMapWrapper(self.context, label)
+
+    def getMaterialNormalMapFile(self, material_label: str) -> str:
+        """Get the normal or bump map file of a material, as it was given, or ``""`` if it has none."""
+        self._check_context_available()
+        label = self._texture_str_arg(material_label, "material_label", "getMaterialNormalMapFile")
+        return context_wrapper.getMaterialNormalMapFileWrapper(self.context, label)
+
+    def getMaterialNormalMapKind(self, material_label: str) -> NormalMapKind:
+        """Get the kind of map a material holds: ``NORMAL_MAP_TANGENT_SPACE``, ``NORMAL_MAP_BUMP`` or ``NORMAL_MAP_NONE``."""
+        self._check_context_available()
+        label = self._texture_str_arg(material_label, "material_label", "getMaterialNormalMapKind")
+        return NormalMapKind(context_wrapper.getMaterialNormalMapKindWrapper(self.context, label))
+
+    def getMaterialNormalMapStrength(self, material_label: str) -> float:
+        """Get the strength of a material's normal or bump map, which is 1 for a material without a map."""
+        self._check_context_available()
+        label = self._texture_str_arg(material_label, "material_label", "getMaterialNormalMapStrength")
+        return context_wrapper.getMaterialNormalMapStrengthWrapper(self.context, label)
+
+    def isMaterialNormalMapGreenFlipped(self, material_label: str) -> bool:
+        """Check whether a material's normal map uses the DirectX convention (green pointing down the image)."""
+        self._check_context_available()
+        label = self._texture_str_arg(material_label, "material_label", "isMaterialNormalMapGreenFlipped")
+        return context_wrapper.isMaterialNormalMapGreenFlippedWrapper(self.context, label)
+
+    def getMaterialNormalMapTexels(self, material_id: int) -> Optional['NormalMapTexels']:
+        """Get the decoded normals of a material's normal or bump map.
+
+        The normals are decoded once and shared with every later request for the same file,
+        kind, strength and flip (see :meth:`clearNormalMapCache`).
+
+        Args:
+            material_id: Numeric material ID (see :meth:`getPrimitiveMaterialID` and :meth:`getMaterialIDFromLabel`)
+
+        Returns:
+            A :class:`NormalMapTexels`, or None if the material has no map
+
+        Raises:
+            ValueError: If ``material_id`` is not a non-negative int
+            HeliosError: If the material does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        from .normal_map import NormalMapTexels
+        self._check_context_available()
+        if isinstance(material_id, bool) or not isinstance(material_id, (int, np.integer)) or material_id < 0 or material_id > 0xFFFFFFFF:
+            raise ValueError(f"getMaterialNormalMapTexels: material_id must be a non-negative int, got {material_id!r}")
+        handle = context_wrapper.getMaterialNormalMapTexelsWrapper(self.context, int(material_id))
+        return None if handle is None else NormalMapTexels(handle)
+
+    def getNormalMapTexels(self, file: str, kind: NormalMapKind, strength: float = 1.0,
+                           flip_green: bool = False) -> 'NormalMapTexels':
+        """Get decoded normals of a normal or bump map image, decoded once and cached by the Context.
+
+        Args:
+            file: Path to the image
+            kind: ``NormalMapKind.NORMAL_MAP_TANGENT_SPACE`` or ``NormalMapKind.NORMAL_MAP_BUMP``
+            strength: Strength of the map (see :meth:`Global.decodeNormalMapImage`). Must be > 0.
+            flip_green: Whether the green channel of a tangent-space map is flipped (not allowed for bump maps)
+
+        Returns:
+            A :class:`NormalMapTexels`
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If the image cannot be decoded with these arguments
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        from .normal_map import NormalMapTexels
+        self._check_context_available()
+        func_name = "getNormalMapTexels"
+        path = self._texture_str_arg(file, "file", func_name)
+        if isinstance(kind, bool) or not isinstance(kind, (int, NormalMapKind)):
+            raise ValueError(f"{func_name}: kind must be a NormalMapKind, got {type(kind).__name__}")
+        handle = context_wrapper.getNormalMapTexelsWrapper(self.context, path, int(kind),
+                                                           self._normal_map_strength_arg(strength, func_name),
+                                                           self._normal_map_bool_arg(flip_green, "flip_green", func_name))
+        return NormalMapTexels(handle)
+
+    def clearNormalMapCache(self) -> None:
+        """Release the decoded normal and bump maps held by the Context.
+
+        Any later request decodes the image again. :class:`NormalMapTexels` objects obtained
+        earlier stay valid.
+        """
+        self._check_context_available()
+        context_wrapper.clearNormalMapCacheWrapper(self.context)
+
+    def setPrimitiveNormalMap(self, uuids, normal_map_file: str, strength: float = 1.0, flip_green: bool = False) -> None:
+        """Give one or more primitives a tangent-space normal map.
+
+        The primitive's material is not edited if other primitives share it: as with
+        :meth:`setPrimitiveColor`, the primitive moves to (or gets a copy of) a material with the
+        new map, so a map set on one leaf does not spread to the others. A user-named material
+        whose only user is this primitive is edited in place. See :meth:`setMaterialNormalMap`
+        for the convention and the meaning of the arguments.
+
+        Args:
+            uuids: UUID (int) or list of UUIDs. Each must be a patch or a triangle with texture
+                (u,v) coordinates; with a list, all are checked before any is changed.
+            normal_map_file: Path to the normal map (PNG or JPEG)
+            strength: Factor on the tilt of the normals; 1 keeps the map as authored
+            flip_green: True for a map made in the DirectX convention
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If a primitive has no (u,v) frame or the image cannot be used
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        self._check_context_available()
+        func_name = "setPrimitiveNormalMap"
+        is_list, value = self._texture_uuid_arg(uuids, func_name)
+        path = self._texture_str_arg(normal_map_file, "normal_map_file", func_name)
+        context_wrapper.setPrimitiveNormalMapWrapper(self.context, value if is_list else [value], path,
+                                                     self._normal_map_strength_arg(strength, func_name),
+                                                     self._normal_map_bool_arg(flip_green, "flip_green", func_name))
+
+    def setPrimitiveBumpMap(self, uuids, bump_map_file: str, strength: float) -> None:
+        """Give one or more primitives a bump (height) map.
+
+        See :meth:`setMaterialBumpMap` for the arguments and :meth:`setPrimitiveNormalMap` for how
+        the primitive's material changes.
+
+        Args:
+            uuids: UUID (int) or list of UUIDs (patches, or triangles with (u,v) coordinates)
+            bump_map_file: Path to the bump map
+            strength: Displacement, in texels, of the full height range
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If a primitive has no (u,v) frame or the image cannot be used
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        self._check_context_available()
+        func_name = "setPrimitiveBumpMap"
+        is_list, value = self._texture_uuid_arg(uuids, func_name)
+        path = self._texture_str_arg(bump_map_file, "bump_map_file", func_name)
+        context_wrapper.setPrimitiveBumpMapWrapper(self.context, value if is_list else [value], path,
+                                                   self._normal_map_strength_arg(strength, func_name))
+
+    def clearPrimitiveNormalMap(self, uuids) -> None:
+        """Remove the normal or bump map of one or more primitives. Nothing happens for a primitive without one."""
+        self._check_context_available()
+        is_list, value = self._texture_uuid_arg(uuids, "clearPrimitiveNormalMap")
+        context_wrapper.clearPrimitiveNormalMapWrapper(self.context, value if is_list else [value])
+
+    def _single_uuid_arg(self, uuid, func_name: str) -> int:
+        is_list, value = self._texture_uuid_arg(uuid, func_name)
+        if is_list:
+            raise ValueError(f"{func_name}: uuid must be a single int")
+        return value
+
+    def getPrimitiveNormalMapFile(self, uuid: int) -> str:
+        """Get the normal or bump map file of a primitive's material, or ``""`` if it has none."""
+        self._check_context_available()
+        return context_wrapper.getPrimitiveNormalMapFileWrapper(self.context, self._single_uuid_arg(uuid, "getPrimitiveNormalMapFile"))
+
+    def getPrimitiveNormalMapKind(self, uuid: int) -> NormalMapKind:
+        """Get the kind of normal map a primitive has: ``NORMAL_MAP_TANGENT_SPACE``, ``NORMAL_MAP_BUMP`` or ``NORMAL_MAP_NONE``."""
+        self._check_context_available()
+        return NormalMapKind(context_wrapper.getPrimitiveNormalMapKindWrapper(self.context, self._single_uuid_arg(uuid, "getPrimitiveNormalMapKind")))
+
+    def getPrimitiveNormalMapStrength(self, uuid: int) -> float:
+        """Get the strength of a primitive's normal or bump map, or 1 if it has none."""
+        self._check_context_available()
+        return context_wrapper.getPrimitiveNormalMapStrengthWrapper(self.context, self._single_uuid_arg(uuid, "getPrimitiveNormalMapStrength"))
+
+    def getPrimitiveNormalMapUV(self, uuid: int) -> List[vec2]:
+        """Get the (u,v) coordinates with which a primitive samples its normal map.
+
+        Returns:
+            The primitive's texture (u,v) coordinates, or the corners of the whole image,
+            (0,0), (1,0), (1,1), (0,1), for a patch without any.
+
+        Raises:
+            HeliosError: For a triangle without (u,v) coordinates, or a voxel
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        self._check_context_available()
+        uv = context_wrapper.getPrimitiveNormalMapUVWrapper(self.context, self._single_uuid_arg(uuid, "getPrimitiveNormalMapUV"))
+        return [vec2(u, v) for u, v in uv]
 
     def validateColorTexture(self, shape_texture_file: str, color_texture_file: str) -> None:
         """Check that an image can give color to primitives whose shape comes from a given texture.
@@ -6652,14 +7001,42 @@ class Context:
 
     # ---- Vector<uint> queries ----
 
-    def getDeletedUUIDs(self) -> List[int]:
-        """Return the list of UUIDs that have been deleted from the context.
+    def getDeletedUUIDs(self, mark: Optional[int] = None) -> List[int]:
+        """Return primitives that have been deleted from the Context.
 
-        These UUIDs are tombstoned and will not appear in getAllUUIDs(), but their
-        IDs are tracked so they can be excluded from external references.
+        With no ``mark``, returns the primitives deleted since the Context was last marked
+        clean. That list is shared and :meth:`markGeometryClean` empties it, so a caller that
+        relies on it never learns of a primitive deleted and then marked clean before it looked.
+
+        With a ``mark`` from :meth:`getModifiedUUIDs` (helios-core v1.3.97+), returns every
+        primitive deleted since that mark was set, whatever other callers do; this is the
+        deletion counterpart of :meth:`getModifiedUUIDs` and does not advance the mark. To see
+        each modification and each deletion exactly once, keep the mark from before the call to
+        :meth:`getModifiedUUIDs` and pass that here::
+
+            previous_mark = mark
+            modified, mark = context.getModifiedUUIDs(mark)
+            deleted = context.getDeletedUUIDs(previous_mark)
+
+        Every deletion is kept for the life of the Context (12 bytes each).
+
+        Args:
+            mark: None for the shared list, or a mark returned by :meth:`getModifiedUUIDs`
+                (0 for every deletion since the Context was created)
+
+        Returns:
+            UUIDs of deleted primitives; with a mark, in the order they were deleted
+
+        Raises:
+            ValueError: If ``mark`` is not None or a non-negative integer
+            NotImplementedError: If ``mark`` is given and the native library predates helios-core v1.3.97
         """
         self._check_context_available()
-        return context_wrapper.getDeletedUUIDsWrapper(self.context)
+        if mark is None:
+            return context_wrapper.getDeletedUUIDsWrapper(self.context)
+        if isinstance(mark, bool) or not isinstance(mark, (int, np.integer)) or mark < 0 or mark > 0xFFFFFFFFFFFFFFFF:
+            raise ValueError(f"mark must be None or a non-negative integer returned by getModifiedUUIDs, got {mark!r}")
+        return context_wrapper.getDeletedUUIDsSinceMarkWrapper(self.context, int(mark))
 
     def getDirtyUUIDs(self, include_deleted: bool = True) -> List[int]:
         """Return the list of UUIDs whose geometry has been modified since the last
@@ -6685,7 +7062,7 @@ class Context:
         A modification is anything that marks a primitive dirty, and also hiding or showing
         it, which does not mark it dirty: hidden primitives are returned like any other, so
         check :meth:`isPrimitiveHidden`. Deleted primitives are not returned (see
-        :meth:`getDeletedUUIDs`). The cost is one comparison per primitive in the Context.
+        :meth:`getDeletedUUIDs`, which takes the same mark). The cost is one comparison per primitive in the Context.
 
         Args:
             mark: The caller's mark: 0 on the first call, which returns every primitive, and
@@ -6789,6 +7166,42 @@ class Context:
         context_wrapper.setTriangleVerticesWrapper(
             self.context, uuid, vertex0.to_list(), vertex1.to_list(), vertex2.to_list()
         )
+
+    def setTriangleVerticesBatch(self, uuids, vertices: np.ndarray) -> None:
+        """Replace the vertices of many existing triangles in one native call.
+
+        Equivalent to calling :meth:`setTriangleVertices` once per triangle: UUIDs are kept and
+        each primitive is marked modified the same way. Every UUID is checked to exist and be a
+        triangle before any triangle is modified.
+
+        Args:
+            uuids: Sequence or integer ndarray of N triangle UUIDs
+            vertices: Float array of shape (N, 3, 3): the new corners of each triangle
+
+        Raises:
+            ValueError: If the arrays have the wrong type, shape or dtype, or a UUID is negative
+            HeliosError: If a UUID does not exist or is not a triangle (nothing is modified)
+        """
+        self._check_context_available()
+        if isinstance(uuids, np.ndarray):
+            if not np.issubdtype(uuids.dtype, np.integer) or uuids.ndim != 1:
+                raise ValueError(f"uuids must be a 1-D integer array, got dtype {uuids.dtype} shape {uuids.shape}")
+            uuid_array = uuids
+        else:
+            uuid_list = list(uuids)
+            for u in uuid_list:
+                if not isinstance(u, (int, np.integer)) or isinstance(u, bool):
+                    raise ValueError(f"UUIDs must be integers, got {type(u).__name__}")
+            uuid_array = np.array(uuid_list, dtype=np.int64)
+        n = uuid_array.shape[0]
+        if n > 0 and int(uuid_array.min()) < 0:
+            raise ValueError(f"UUIDs must be non-negative, got {int(uuid_array.min())}")
+        if n > 0 and int(uuid_array.max()) > 0xFFFFFFFF:
+            raise ValueError(f"UUID {int(uuid_array.max())} exceeds the 32-bit UUID range")
+        vertices = self._check_float_array("vertices", vertices, (n, 3, 3), f"({n}, 3, 3)")
+        if n == 0:
+            return
+        context_wrapper.setTriangleVerticesBatch(self.context, uuid_array, vertices)
 
     def setPrimitiveNormal(self, uuids_or_uuid, origin: vec3, new_normal: vec3) -> None:
         """Rotate one or more primitives so their normals align with new_normal.
@@ -7295,6 +7708,11 @@ class Context:
         Pass exactly one of ``color`` (an RGBcolor) or both ``texture_file`` and
         ``uv`` (a vec2 of texture u-fractions) to specify how the new segment
         should be shaded.
+
+        Since helios-core v1.3.97, a segment appended with the texture (or color) of the
+        named material the tube's other segments use is given that material, so its
+        properties (such as a normal map, two-sided flag or surface roughness) extend along
+        the tube; otherwise the segment gets an automatic material.
         """
         self._check_context_available()
         if not isinstance(node_position, vec3):

@@ -8,7 +8,6 @@ capabilities with graceful plugin handling and informative error messages.
 import logging
 import math
 import numbers
-import os
 import ctypes
 from pathlib import Path
 from contextlib import contextmanager
@@ -23,6 +22,7 @@ from .wrappers.DataTypes import vec2, vec3, RGBcolor, SphericalCoord
 from .Context import Context, check_context_alive
 from .validation.plugin_decorators import validate_build_geometry_params, validate_print_window_params
 from .assets import get_asset_manager
+from .assets.working_directory import build_working_directory
 
 logger = logging.getLogger(__name__)
 
@@ -100,16 +100,8 @@ def _visualizer_working_directory():
             logger.warning(f"Visualizer assets not found at: {visualizer_assets}")
         # Continue anyway - may be using source assets or alternative setup
     
-    # Change working directory temporarily
-    original_cwd = Path.cwd()
-    
-    try:
-        logger.debug(f"Changing working directory from {original_cwd} to {working_dir}")
-        os.chdir(working_dir)
+    with build_working_directory(working_dir):
         yield
-    finally:
-        logger.debug(f"Restoring working directory to {original_cwd}")
-        os.chdir(original_cwd)
 
 
 class VisualizerError(Exception):
@@ -1590,6 +1582,83 @@ class Visualizer:
         except Exception as e:
             raise VisualizerError(f"Failed to query smooth shading state: {e}")
 
+    def enableNormalMaps(self) -> None:
+        """
+        Shade surfaces with the normal and bump maps of their Context materials.
+
+        This is the default (helios-core v1.3.97+). A primitive whose material has a normal or
+        bump map is lit with the shading normal the map gives at each pixel, tilted from the
+        geometric (or, with smooth shading, the interpolated) normal in the tangent frame of the
+        primitive's texture coordinates. Only the lit terms change: the shadow test keeps the
+        geometric normal, and with ``LIGHTING_NONE`` the maps have no effect.
+
+        Raises:
+            NotImplementedError: If the library predates helios-core v1.3.97
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.enableNormalMaps()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.enable_normal_maps(self.visualizer)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to enable normal maps: {e}")
+
+    def disableNormalMaps(self) -> None:
+        """
+        Ignore normal and bump maps, shading every surface with its geometric (or smooth-shading) normal.
+
+        The maps stay on the GPU, so :meth:`enableNormalMaps` turns them back on without uploading
+        them again; this is convenient for comparing a scene with and without its relief.
+
+        In helios-core v1.3.97 switching the maps does not mark the last rendered frame as out of
+        date, so call :meth:`plotUpdate` after switching before :meth:`printWindow` or
+        :meth:`getWindowPixelsRGB`, or they can return the frame rendered before the switch.
+
+        Raises:
+            NotImplementedError: If the library predates helios-core v1.3.97
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.disableNormalMaps()
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            visualizer_wrapper.disable_normal_maps(self.visualizer)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to disable normal maps: {e}")
+
+    def areNormalMapsEnabled(self) -> bool:
+        """
+        Check whether surfaces are shaded with their normal and bump maps.
+
+        Returns:
+            True if normal maps are enabled (the default)
+
+        Raises:
+            NotImplementedError: If the library predates helios-core v1.3.97
+            VisualizerError: If the operation fails
+
+        Example:
+            >>> vis.areNormalMapsEnabled()
+            True
+        """
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            return visualizer_wrapper.are_normal_maps_enabled(self.visualizer)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to query normal map state: {e}")
+
     def isHeadlessMultisamplingActive(self) -> bool:
         """
         Check whether headless rendering obtained multisampled framebuffer attachments.
@@ -1686,6 +1755,14 @@ class Visualizer:
         Data is stored as r-g-b * column * row, so indices (0,1,2) are the RGB values for row 0
         column 0, indices (3,4,5) are row 0 column 1, and so on.
 
+        This reads back the frame last rendered and renders nothing itself, so call
+        :meth:`plotUpdate` (or :meth:`plotOnce`) first. As of helios-core v1.3.97 a
+        ``VisualizerError`` is raised if no frame has been rendered, or if anything the Visualizer
+        draws (its geometry, camera, colours, lighting, background, colorbar and so on) has changed
+        since the last render; earlier versions silently returned an empty or out-of-date image.
+        A change to the Context reaches the Visualizer only when it renders, so the pixels show the
+        Context as it was then. The frame left by :meth:`printWindow` can also be read back.
+
         Call without arguments to have the buffer allocated for you at the correct size -- this is
         the recommended form and cannot be undersized::
 
@@ -1705,7 +1782,7 @@ class Visualizer:
 
         Raises:
             ValueError: If ``buffer`` is not a list, or is not sized for the current framebuffer
-            VisualizerError: If operation fails
+            VisualizerError: If no current frame has been rendered (see above), or the operation fails
         """
         self._check_context_alive()
         if not self.visualizer:
@@ -1822,7 +1899,39 @@ class Visualizer:
 
     # Annotation and Depth Image Methods (helios-core 1.3.91)
 
-    def getDepthImage(self) -> Tuple[np.ndarray, int, int]:
+    @staticmethod
+    def _validate_pixel_region(region) -> Tuple[int, int, int, int]:
+        """Validate a ``region=(x0, y0, width, height)`` argument of the annotation read-back methods.
+
+        The coordinates are pixels from the top-left corner of the image. Whether the rectangle lies
+        within the framebuffer is checked by the native call, which knows the framebuffer size.
+
+        Returns:
+            The region as a tuple of four Python ints
+        """
+        if not isinstance(region, (tuple, list)) or len(region) != 4:
+            raise TypeError(
+                f"region must be a tuple (x0, y0, width, height) of four integers, got {region!r}"
+            )
+        names = ("x0", "y0", "width", "height")
+        values = []
+        for name, value in zip(names, region):
+            if isinstance(value, bool) or not isinstance(value, (numbers.Integral, np.integer)):
+                raise TypeError(f"region {name} must be an integer, got {type(value).__name__}")
+            values.append(int(value))
+        x0, y0, width, height = values
+        if x0 < 0 or y0 < 0:
+            raise ValueError(f"region x0 and y0 must be non-negative, got x0={x0}, y0={y0}")
+        if width < 1 or height < 1:
+            raise ValueError(f"region width and height must be at least 1, got {width}x{height}")
+        limit = 2**31 - 1
+        if max(values) > limit:
+            raise ValueError(
+                f"region {tuple(values)} is far larger than any framebuffer; see getFramebufferSize()"
+            )
+        return x0, y0, width, height
+
+    def getDepthImage(self, region: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, int, int]:
         """
         Get the distance from the camera to the nearest surface in each pixel of the current view.
 
@@ -1832,17 +1941,32 @@ class Visualizer:
         the same definition as the camera depth images of the radiation plug-in
         (:meth:`pyhelios.RadiationModel.writeDepthImageData`).
 
-        The frame is rendered as part of the call if needed, as for :meth:`printWindow`.
+        The call renders its own pass from the current Context geometry and camera (including the
+        default camera fitted to the scene when none was set), so it describes the same view as an
+        image saved by :meth:`printWindow`. It does not render the colour image.
+
+        Args:
+            region: Optional rectangle ``(x0, y0, width, height)`` in pixels, where ``x0`` is the
+                column of its left edge counted from the left of the image and ``y0`` the row of its
+                top edge counted from the top. Only the rectangle is rendered and read back, which
+                is faster when it is a small part of the image, and the result is identical, pixel
+                for pixel, to the same rectangle of the whole-image result (helios-core v1.3.97+).
+                The rectangle must be non-empty and lie within the framebuffer
+                (:meth:`getFramebufferSize`).
 
         Returns:
             Tuple of ``(depth_pixels, width, height)``. ``depth_pixels`` is a flat NumPy array of
             ``width * height`` float32 values, row-major with row 0 at the TOP of the image (the
             orientation of an image saved by :meth:`printWindow`); ``depth_pixels.reshape(height,
             width)`` gives it as an image. Pixels in which no geometry is visible hold -1. ``width``
-            and ``height`` are the framebuffer dimensions (see :meth:`getFramebufferSize`).
+            and ``height`` are the framebuffer dimensions (see :meth:`getFramebufferSize`), or the
+            rectangle's when ``region`` is given.
 
         Raises:
-            VisualizerError: If the operation fails
+            TypeError: If ``region`` is not four integers
+            ValueError: If ``region`` has a negative corner or an empty size
+            NotImplementedError: If ``region`` is given and the library predates helios-core v1.3.97
+            VisualizerError: If the operation fails, including a rectangle outside the framebuffer
 
         Note:
             - Geometry nearer than the near clipping plane (5% of the camera-to-look-at distance,
@@ -1854,26 +1978,41 @@ class Visualizer:
         Example:
             >>> depth, width, height = visualizer.getDepthImage()
             >>> center = depth.reshape(height, width)[height // 2, width // 2]
+            >>> box, w, h = visualizer.getDepthImage(region=(400, 250, 128, 96))
         """
+        rect = None if region is None else self._validate_pixel_region(region)
         self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         try:
             with _visualizer_working_directory():
-                return visualizer_wrapper.get_depth_image(self.visualizer)
+                if rect is None:
+                    return visualizer_wrapper.get_depth_image(self.visualizer)
+                return (visualizer_wrapper.get_depth_image_region(self.visualizer, *rect), rect[2], rect[3])
         except NotImplementedError:
             raise
         except Exception as e:
             raise VisualizerError(f"Failed to get depth image: {e}")
 
-    def getPixelUUIDs(self) -> Tuple[np.ndarray, int, int]:
+    def getPixelUUIDs(self, region: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, int, int]:
         """
         Get the Context primitive visible in each pixel of the current view.
 
         This is the pixel-to-primitive map from which bounding boxes and segmentation masks are
         computed. It is exact: it does not depend on primitive colors, lighting, or the
         anti-aliasing the Visualizer was created with, and producing it does not modify the
-        Context. The frame is rendered as part of the call if needed, as for :meth:`printWindow`.
+        Context. The call renders its own pass from the current Context geometry and camera, so it
+        describes the same view as an image saved by :meth:`printWindow`; it does not render the
+        colour image.
+
+        Args:
+            region: Optional rectangle ``(x0, y0, width, height)`` in pixels, where ``x0`` is the
+                column of its left edge counted from the left of the image and ``y0`` the row of its
+                top edge counted from the top. Only the rectangle is rendered and read back, which
+                is faster when it is a small part of the image (for example the screen box of one
+                plant), and the result is identical, pixel for pixel, to the same rectangle of the
+                whole-image map (helios-core v1.3.97+). The rectangle must be non-empty and lie
+                within the framebuffer (:meth:`getFramebufferSize`).
 
         Returns:
             Tuple of ``(pixel_UUIDs, width, height)``. ``pixel_UUIDs`` is a flat NumPy array of
@@ -1882,10 +2021,14 @@ class Visualizer:
             Visualizer). Subtract 1 from a non-zero value to get the UUID. The map is row-major
             with row 0 at the TOP of the image (``pixel_UUIDs.reshape(height, width)`` gives it as
             an image), and is in the form the :mod:`pyhelios.annotation` functions accept.
-            ``width`` and ``height`` are the framebuffer dimensions.
+            ``width`` and ``height`` are the framebuffer dimensions, or the rectangle's when
+            ``region`` is given.
 
         Raises:
-            VisualizerError: If the operation fails
+            TypeError: If ``region`` is not four integers
+            ValueError: If ``region`` has a negative corner or an empty size
+            NotImplementedError: If ``region`` is given and the library predates helios-core v1.3.97
+            VisualizerError: If the operation fails, including a rectangle outside the framebuffer
 
         Note:
             - A primitive whose texture has a transparency channel is visible only where its
@@ -1897,17 +2040,67 @@ class Visualizer:
         Example:
             >>> pixels, width, height = visualizer.getPixelUUIDs()
             >>> visible = np.unique(pixels[pixels != 0]) - 1
+            >>> box, w, h = visualizer.getPixelUUIDs(region=(400, 250, 128, 96))
         """
+        rect = None if region is None else self._validate_pixel_region(region)
         self._check_context_alive()
         if not self.visualizer:
             raise VisualizerError("Visualizer not initialized")
         try:
             with _visualizer_working_directory():
-                return visualizer_wrapper.get_pixel_uuids(self.visualizer)
+                if rect is None:
+                    return visualizer_wrapper.get_pixel_uuids(self.visualizer)
+                return (visualizer_wrapper.get_pixel_uuids_region(self.visualizer, *rect), rect[2], rect[3])
         except NotImplementedError:
             raise
         except Exception as e:
             raise VisualizerError(f"Failed to get pixel UUIDs: {e}")
+
+    def getPixelUUIDsAndDepth(self, region: Optional[Tuple[int, int, int, int]] = None) -> Tuple[np.ndarray, np.ndarray, int, int]:
+        """
+        Get both the pixel-to-primitive map and the depth image of the current view from one render.
+
+        :meth:`getPixelUUIDs` and :meth:`getDepthImage` render the same annotation pass, so asking
+        for both through this call costs one render instead of two. The results are the same as
+        those of the two separate calls (helios-core v1.3.97+).
+
+        Args:
+            region: Optional rectangle ``(x0, y0, width, height)`` in pixels from the top-left corner
+                of the image, as for :meth:`getPixelUUIDs`. Only the rectangle is rendered and read
+                back, identical pixel for pixel to the same rectangle of the whole-image maps.
+
+        Returns:
+            Tuple of ``(pixel_UUIDs, depth_pixels, width, height)``. ``pixel_UUIDs`` is a flat
+            uint32 array of UUID plus one per pixel (0 where no Context primitive is visible) and
+            ``depth_pixels`` a flat float32 array of depths in world units (-1 where nothing is
+            visible), both ``width * height`` long, row-major with row 0 at the top. ``width`` and
+            ``height`` are the framebuffer dimensions, or the rectangle's when ``region`` is given.
+
+        Raises:
+            TypeError: If ``region`` is not four integers
+            ValueError: If ``region`` has a negative corner or an empty size
+            NotImplementedError: If the library predates helios-core v1.3.97
+            VisualizerError: If the operation fails, including a rectangle outside the framebuffer
+
+        Example:
+            >>> pixels, depth, width, height = visualizer.getPixelUUIDsAndDepth()
+            >>> pixels, depth, w, h = visualizer.getPixelUUIDsAndDepth(region=(400, 250, 128, 96))
+            >>> pixels.reshape(h, w)[row, column]  # row 0..95, column 0..127
+        """
+        rect = None if region is None else self._validate_pixel_region(region)
+        self._check_context_alive()
+        if not self.visualizer:
+            raise VisualizerError("Visualizer not initialized")
+        try:
+            with _visualizer_working_directory():
+                if rect is None:
+                    return visualizer_wrapper.get_pixel_uuids_and_depth(self.visualizer)
+                pixels, depth = visualizer_wrapper.get_pixel_uuids_and_depth_region(self.visualizer, *rect)
+                return (pixels, depth, rect[2], rect[3])
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise VisualizerError(f"Failed to get pixel UUIDs and depth: {e}")
 
     @staticmethod
     def _normalize_annotation_labels(primitive_data_labels, object_data_labels, object_class_ids):
@@ -2968,7 +3161,7 @@ class Visualizer:
         Any geometry pending upload is transferred to the GPU before rendering, but unlike
         :meth:`plotUpdate` the Context geometry is not rebuilt. Call :meth:`buildContextGeometry`
         or :meth:`plotUpdate` if primitives have been added to or changed in the Context since the
-        last render.
+        last render. The frame it renders can be read back with :meth:`getWindowPixelsRGB`.
 
         Args:
             get_keystrokes: Whether to process keystrokes

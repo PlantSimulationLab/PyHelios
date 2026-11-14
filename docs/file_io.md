@@ -181,7 +181,7 @@ Helios can read [Wavefront (.obj)](https://en.wikipedia.org/wiki/Wavefront_.obj_
 
 Wavefront files are loaded via the [loadOBJ()](pyhelios.Context.Context.loadOBJ) function, which takes the name of an .obj file.  If the file defines materials and lists an associated material (.mtl) file, the code looks in one of two places for the file.  First, if an absolute or relative path is given for the .mtl file name, the file is simply loaded from that location.  If only a file name is given for the .mtl file, the directory where the original .obj file was found is searched for the .mtl file.
 
-All aspects of material files are not supported. Helios simply searches for the "Kd" texture map, and uses that to color the primitives.
+All aspects of material files are not supported. Helios reads the "Kd" texture map, which colors the primitives, and the normal or bump map of a material (see \ref NormalMaps): a "norm" line gives a tangent-space normal map, and a "map_Bump" or "bump" line gives a bump map if the image is grayscale and a normal map otherwise, with the "-bm" option as the strength. Helios gives OBJ triangles (u,v) coordinates only from a texture, so a material with a normal or bump map must also have a "map_Kd" texture. Since helios-core v1.3.97, a material whose bump image is missing, is not a PNG or JPEG, cannot be classified as a height or normal map, or has no "map_Kd" texture raises an error naming the material instead of loading without the map.
 
 The [loadOBJ()](pyhelios.Context.Context.loadOBJ) function requires inputs that scale the model to achieve a certain size of the model, and apply a rotation to the model. There are multiple overloaded versions of this function (listed below) that allow specification of these aspects differently.
 
@@ -224,6 +224,8 @@ context.writePLY("file.ply")
 ### Writing OBJ (Wavefront) Files {#OBJwrite}
 
 Writing Wavefront OBJ files is similar to writing a PLY file, except that it will produce both a .obj file containing the geometry, and a .mtl file defining materials (colors, texture masks). For this reason, only the base file name with no extension is provided to the function.
+
+A material's normal or bump map is written as the normals Helios applies to it (with its strength, green-channel convention and, for a bump map, the conversion to normals), in an image named after the written model (`<name>_normal_<n>.png`) under "norm" and "map_Bump" lines, so that the model reads back with the same relief at a strength of 1. An untextured patch's map is left out with a warning, since its faces are written without (u,v) coordinates.
 
 As with PLY, geometry belonging to a `Polymesh` with retained connectivity is written against the mesh's shared vertices, emitting each vertex once and referencing it by index from every face that uses it. With `write_normals=True` one true per-vertex normal is written per shared vertex, rather than one flattened face normal per primitive, so a smooth mesh survives a load–write–load round trip instead of degrading to a faceted one.
 

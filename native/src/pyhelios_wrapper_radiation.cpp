@@ -3595,6 +3595,31 @@ using pyhelios_radiation_internal::buildSIFCameraProperties;
         }
     }
 
+    // ---- helios-core 1.3.97: periodic boundary with excluded primitives and a limited number of repeats ---- //
+
+    PYHELIOS_API void enforcePeriodicBoundaryWithOptions(RadiationModel* radiation_model, const char* boundary, const unsigned int* excluded_uuids, size_t excluded_count,
+                                                         int has_max_repeats, int max_repeats_x, int max_repeats_y) {
+        try {
+            clearError();
+            if (!radiation_model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "RadiationModel pointer is null"); return; }
+            if (!boundary) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Boundary specification is null"); return; }
+            if (excluded_count > 0 && !excluded_uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (RadiationModel::enforcePeriodicBoundary): excluded UUID array is null"); return; }
+            std::vector<uint> excluded;
+            if (excluded_count > 0) {
+                excluded.assign(excluded_uuids, excluded_uuids + excluded_count);
+            }
+            if (has_max_repeats) {
+                radiation_model->enforcePeriodicBoundary(std::string(boundary), excluded, helios::make_int2(max_repeats_x, max_repeats_y));
+            } else {
+                radiation_model->enforcePeriodicBoundary(std::string(boundary), excluded);
+            }
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (RadiationModel::enforcePeriodicBoundary): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (RadiationModel::enforcePeriodicBoundary): Unknown error enforcing periodic boundary.");
+        }
+    }
+
 } //extern "C"
 
 #endif //RADIATION_PLUGIN_AVAILABLE

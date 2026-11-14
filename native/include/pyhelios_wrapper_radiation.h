@@ -1465,6 +1465,23 @@ PYHELIOS_API void getCameraColorCorrectionMatrix(RadiationModel* radiation_model
  */
 PYHELIOS_API const float* getCameraPixelBrightnessTemperature(RadiationModel* radiation_model, const char* camera_label, const char* band_label, size_t* size);
 
+//=============================================================================
+// helios-core 1.3.97: periodic boundary with excluded primitives and a limited number of repeats
+//=============================================================================
+
+/**
+ * @brief Enforce a periodic boundary with primitives that do not repeat and, optionally, a limited number of repeats
+ * @param radiation_model Pointer to the RadiationModel
+ * @param boundary "x", "y", "xy", or "none"/"" for no periodic boundary
+ * @param excluded_uuids Primitives that exist only in the central copy of the domain; may be NULL when excluded_count is 0
+ * @param excluded_count Number of excluded UUIDs
+ * @param has_max_repeats Nonzero to call the overload taking max_repeats; zero for unlimited repeats (max_repeats ignored)
+ * @param max_repeats_x Copies on each side of the central domain in x (0 if not periodic in x)
+ * @param max_repeats_y Copies on each side of the central domain in y (0 if not periodic in y)
+ */
+PYHELIOS_API void enforcePeriodicBoundaryWithOptions(RadiationModel* radiation_model, const char* boundary, const unsigned int* excluded_uuids, size_t excluded_count,
+                                                     int has_max_repeats, int max_repeats_x, int max_repeats_y);
+
 #ifdef __cplusplus
 }
 #endif

@@ -6,7 +6,7 @@ the native Helios RadiationModel plugin via the C++ wrapper layer.
 """
 
 import ctypes
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
@@ -2894,3 +2894,40 @@ def getCameraPixelBrightnessTemperature(radiation_model, camera_label: str, band
     if not ptr or size.value == 0:
         return []
     return list(ptr[:size.value])
+
+
+# helios-core 1.3.97: periodic boundary with excluded primitives and a limited number of repeats.
+# Registered separately so that an older library keeps the one-argument enforcePeriodicBoundary.
+_RADIATION_1397_AVAILABLE = False
+try:
+    helios_lib.enforcePeriodicBoundaryWithOptions.argtypes = [ctypes.POINTER(URadiationModel), ctypes.c_char_p,
+                                                              ctypes.POINTER(ctypes.c_uint), ctypes.c_size_t,
+                                                              ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    helios_lib.enforcePeriodicBoundaryWithOptions.restype = None
+    helios_lib.enforcePeriodicBoundaryWithOptions.errcheck = _check_error
+    _RADIATION_1397_AVAILABLE = True
+except AttributeError:
+    _RADIATION_1397_AVAILABLE = False
+
+
+def _require_radiation_1397(radiation_model, name: str) -> None:
+    if not _RADIATION_MODEL_FUNCTIONS_AVAILABLE or not _RADIATION_1397_AVAILABLE:
+        raise NotImplementedError(
+            f"RadiationModel.{name}() is not available in the loaded native library. It requires helios-core "
+            "1.3.97 or later; rebuild PyHelios with the radiation plugin: 'build_scripts/build_helios --clean'."
+        )
+    if radiation_model is None:
+        raise ValueError("RadiationModel instance is None.")
+
+
+def enforcePeriodicBoundaryWithOptions(radiation_model, boundary: str, excluded_uuids: List[int],
+                                       max_repeats: Optional[Tuple[int, int]] = None) -> None:
+    """Enforce a periodic boundary with primitives excluded from it and, optionally, a limited number of repeats."""
+    _require_radiation_1397(radiation_model, "enforcePeriodicBoundary(excluded_uuids/max_repeats)")
+    n = len(excluded_uuids)
+    arr = (ctypes.c_uint * n)(*excluded_uuids) if n > 0 else None
+    if max_repeats is None:
+        helios_lib.enforcePeriodicBoundaryWithOptions(radiation_model, boundary.encode('utf-8'), arr, n, 0, 0, 0)
+    else:
+        helios_lib.enforcePeriodicBoundaryWithOptions(radiation_model, boundary.encode('utf-8'), arr, n, 1,
+                                                      int(max_repeats[0]), int(max_repeats[1]))

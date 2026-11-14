@@ -442,3 +442,152 @@ class Global:
             raise ValueError("classes must be in [0, 65535]")
         uv_arr = np.array([[c.x, c.y] for c in uv], dtype=np.float32).reshape(-1, 2)
         return global_wrapper.classMapAreaFractions(arr, width, height, uv_arr)
+
+    # =========================================================================
+    # Normal and bump maps (helios-core v1.3.97+)
+    # =========================================================================
+
+    @staticmethod
+    def decodeNormalMapImage(file: str, kind, strength: float = 1.0, flip_green: bool = False):
+        """Decode a normal map or bump map image into unit tangent-space normals.
+
+        A tangent-space normal map (``NORMAL_MAP_TANGENT_SPACE``) is read from an RGB(A) PNG
+        (16-bit images are reduced to 8 bits) or a JPEG. Each channel c in [0,1] is decoded as
+        2c-1 without sRGB decoding, z is clamped to be non-negative, the result is normalized,
+        and its xy components are then scaled by ``strength`` before normalizing again (1 keeps
+        the map as authored). With ``flip_green`` the y component is negated, for maps made in
+        the DirectX convention. A grayscale image is rejected, since it is almost certainly a
+        height map.
+
+        A bump map (``NORMAL_MAP_BUMP``) is read from an 8- or 16-bit grayscale PNG at full
+        precision, or from an RGB(A) PNG or JPEG as the luminance 0.2126R + 0.7152G + 0.0722B.
+        Its values h in [0,1] are heights, and ``strength`` is the displacement, in texels, of
+        the full range from 0 to 1. The gradient is taken with a normalized Scharr kernel with
+        the edge texels repeated beyond the border, and the normal is
+        normalize(-strength*dh/dcolumn, -strength*dh/drow_up, 1). ``flip_green`` is not allowed
+        for bump maps.
+
+        Unlike :meth:`Context.getNormalMapTexels`, the result is not cached.
+
+        Args:
+            file: Path to the image (PNG or JPEG)
+            kind: ``NormalMapKind.NORMAL_MAP_TANGENT_SPACE`` or ``NormalMapKind.NORMAL_MAP_BUMP``
+            strength: Finite value greater than zero (see above)
+            flip_green: Negate the y component of a tangent-space normal map
+
+        Returns:
+            A :class:`NormalMapTexels`
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            HeliosError: If the image cannot be read or decoded with these arguments
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        from .normal_map import NormalMapTexels
+        from .wrappers.DataTypes import NormalMapKind
+        from .wrappers import UContextWrapper as context_wrapper
+        if not isinstance(file, (str, os.PathLike)) or not os.fspath(file).strip():
+            raise ValueError(f"file must be a non-empty path, got {file!r}")
+        if isinstance(kind, bool) or not isinstance(kind, (int, NormalMapKind)):
+            raise ValueError(f"kind must be a NormalMapKind, got {type(kind).__name__}")
+        import numpy as np
+        if isinstance(strength, (bool, np.bool_)) or not isinstance(strength, (int, float, np.integer, np.floating)):
+            raise ValueError(f"strength must be a number, got {type(strength).__name__}")
+        if not isinstance(flip_green, (bool, np.bool_)):
+            raise ValueError(f"flip_green must be a bool, got {type(flip_green).__name__}")
+        handle = context_wrapper.decodeNormalMapImageWrapper(os.fspath(file), int(kind), float(strength), bool(flip_green))
+        return NormalMapTexels(handle)
+
+    @staticmethod
+    def classifyBumpImage(file: str):
+        """Classify an image named in an OBJ material's bump line as a bump map or a normal map.
+
+        Many exporters write tangent-space normal maps into ``map_Bump``. A grayscale image (a
+        gray PNG, or red, green and blue equal in at least 99.5% of texels) is a bump map;
+        otherwise the image is a normal map if its decoded normals point mostly along +z (mean z
+        above 0.5 with mean x and y within 0.25 of zero). Any other image raises an error.
+
+        Args:
+            file: Path to the image (PNG or JPEG)
+
+        Returns:
+            ``NormalMapKind.NORMAL_MAP_BUMP`` or ``NormalMapKind.NORMAL_MAP_TANGENT_SPACE``
+
+        Raises:
+            HeliosError: If the image cannot be read or classified
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        from .wrappers.DataTypes import NormalMapKind
+        from .wrappers import UContextWrapper as context_wrapper
+        if not isinstance(file, (str, os.PathLike)) or not os.fspath(file).strip():
+            raise ValueError(f"file must be a non-empty path, got {file!r}")
+        return NormalMapKind(context_wrapper.classifyBumpImageWrapper(os.fspath(file)))
+
+    @staticmethod
+    def computeTangentFrame(p0, p1, p2, uv0, uv1, uv2):
+        """Derivatives of position with respect to the texture coordinates over a triangle.
+
+        For a triangle (or the first three corners of a patch) with corners p0, p1, p2 and
+        texture coordinates uv0, uv1, uv2, computes dP/du and dP/dv, the directions in which the
+        tangent-space +x and +y axes of a normal map point on the surface. Mirrored texture
+        coordinates give a dP/dv on the other side of dP/du, as they should.
+
+        Args:
+            p0, p1, p2: Corners (vec3)
+            uv0, uv1, uv2: Texture coordinates of the corners (vec2)
+
+        Returns:
+            ``(dPdu, dPdv)`` as vec3s, or None if the texture coordinates are degenerate
+            (collinear) so that no frame exists
+
+        Raises:
+            ValueError: If an argument is not a vec3 / vec2
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        from .wrappers.DataTypes import vec2, vec3
+        from .wrappers import UContextWrapper as context_wrapper
+        for name, value in (("p0", p0), ("p1", p1), ("p2", p2)):
+            if not isinstance(value, vec3):
+                raise ValueError(f"{name} must be a vec3, got {type(value).__name__}")
+        for name, value in (("uv0", uv0), ("uv1", uv1), ("uv2", uv2)):
+            if not isinstance(value, vec2):
+                raise ValueError(f"{name} must be a vec2, got {type(value).__name__}")
+        result = context_wrapper.computeTangentFrameWrapper(
+            [p0.x, p0.y, p0.z], [p1.x, p1.y, p1.z], [p2.x, p2.y, p2.z],
+            [uv0.x, uv0.y], [uv1.x, uv1.y], [uv2.x, uv2.y])
+        if result is None:
+            return None
+        return vec3(*result[0]), vec3(*result[1])
+
+    @staticmethod
+    def applyTangentSpaceNormal(tangent_normal, dPdu, dPdv, normal):
+        """Transform a tangent-space normal into a surface direction.
+
+        Builds an orthonormal frame as MikkTSpace (glTF, Blender) does: T is ``dPdu`` made
+        perpendicular to ``normal`` and normalized, and B = +/- cross(normal, T), on the side of
+        ``dPdv``. Returns normalize(n.x*T + n.y*B + n.z*normal). ``normal`` is the primitive's
+        own unit normal (or a smoothed one), not one turned toward a viewer; the opposite face
+        of a thin surface uses the negated result.
+
+        Args:
+            tangent_normal: Tangent-space normal (vec3), e.g. from :meth:`NormalMapTexels.sampleNearest`
+            dPdu: Derivative of position with respect to u (vec3, see :meth:`computeTangentFrame`)
+            dPdv: Derivative of position with respect to v (vec3)
+            normal: Unit surface normal (vec3)
+
+        Returns:
+            Unit shading normal (vec3), or ``normal`` if dPdu is parallel to it or dPdv lies along T
+
+        Raises:
+            ValueError: If an argument is not a vec3
+            NotImplementedError: If the native library predates helios-core v1.3.97
+        """
+        from .wrappers.DataTypes import vec3
+        from .wrappers import UContextWrapper as context_wrapper
+        for name, value in (("tangent_normal", tangent_normal), ("dPdu", dPdu), ("dPdv", dPdv), ("normal", normal)):
+            if not isinstance(value, vec3):
+                raise ValueError(f"{name} must be a vec3, got {type(value).__name__}")
+        out = context_wrapper.applyTangentSpaceNormalWrapper(
+            [tangent_normal.x, tangent_normal.y, tangent_normal.z], [dPdu.x, dPdu.y, dPdu.z],
+            [dPdv.x, dPdv.y, dPdv.z], [normal.x, normal.y, normal.z])
+        return vec3(*out)

@@ -210,6 +210,9 @@ def _vec3_from_dict(d: Dict[str, Any], default: Vec3) -> Vec3:
 @dataclass
 class LeafPrototype:
     leaf_aspect_ratio: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(1.0))
+    #: Fold along the midrib: 0 is flat, 1 folds the blade shut with its halves raised, and a
+    #: negative value (helios-core 1.3.97+) folds the halves down by as much (-1: folded shut
+    #: downward).
     midrib_fold_fraction: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     longitudinal_curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     lateral_curvature: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
@@ -378,7 +381,8 @@ class LeafShapeValues:
     """
     #: Ratio of blade width to length (:attr:`LeafPrototype.leaf_aspect_ratio`)
     aspect_ratio: float = 1.0
-    #: :attr:`LeafPrototype.midrib_fold_fraction`
+    #: :attr:`LeafPrototype.midrib_fold_fraction`, from -1 (halves folded down shut) through 0
+    #: (flat) to 1 (halves folded up shut)
     midrib_fold_fraction: float = 0.0
     #: :attr:`LeafPrototype.longitudinal_curvature`
     longitudinal_curvature: float = 0.0
@@ -764,10 +768,25 @@ class ShootParameters:
     #: species need a much smaller factor than one driven by the current canopy. 0 disables
     #: girth scaling.
     girth_area_factor: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Insertion angle (degrees) of a shoot of this type that emerges from a bud at the tip of
+    #: its parent shoot. A property of the child shoot: it is read from the shoot type the bud
+    #: becomes, not from the parent, which contributes only the bud's position along it.
     insertion_angle_tip: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(20.0))
+    #: Rate (degrees/node) at which the insertion angle of a shoot of this type increases with
+    #: the distance of its bud below its parent's tip, capped at 90 degrees. Read from the child
+    #: shoot's type, and applied whether or not the type requires dormancy.
     insertion_angle_decay_rate: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Maximum internode length (m) of a shoot of this type. For a proleptic shoot
+    #: (``growth_requires_dormancy`` true) it is reduced by ``internode_length_decay_rate`` for
+    #: each node between the bud and the parent's tip, down to ``internode_length_min``. All
+    #: three are read from the child shoot's type, not the parent's.
     internode_length_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.02))
+    #: Minimum internode length (m) of a shoot of this type: the floor of the reduction set by
+    #: ``internode_length_decay_rate``.
     internode_length_min: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.002))
+    #: Rate (m/node) at which the internode length of a shoot of this type decreases with the
+    #: distance of its bud below its parent's tip. Applied only when ``growth_requires_dormancy``
+    #: is true.
     internode_length_decay_rate: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     base_roll: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     base_yaw: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
@@ -793,8 +812,23 @@ class ShootParameters:
     #: own ``elongation_rate_max``, reproducing the historical single-rate growth. Zero is a
     #: real rate meaning "leaves never expand", so it differs from the unset sentinel.
     leaf_expansion_rate_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(LEAF_EXPANSION_RATE_UNSET))
+    #: Lowest probability that a vegetative bud on a shoot of this type breaks, and the
+    #: probability every bud uses when ``vegetative_bud_break_probability_decay_rate`` is zero,
+    #: or negative with ``growth_requires_dormancy`` false. With the defaults (0, a decay rate of
+    #: -0.5 and ``growth_requires_dormancy`` false) no vegetative bud ever breaks.
     vegetative_bud_break_probability_min: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
+    #: Bud-break probability at the end of the shoot where it is highest: the apex for a
+    #: positive decay rate, the base for a negative one (with ``growth_requires_dormancy`` true).
+    #: Used only when the decay rate is non-zero.
     vegetative_bud_break_probability_max: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(1.0))
+    #: Rate (1/node) at which the bud-break probability falls from
+    #: ``vegetative_bud_break_probability_max`` to ``vegetative_bud_break_probability_min`` along
+    #: the shoot. Positive: highest at the apex, falling down the shoot. Negative: highest at the
+    #: base, falling up the shoot, but only when ``growth_requires_dormancy`` is true (otherwise
+    #: every bud uses the minimum). Zero: every bud uses the minimum. Read from the shoot bearing
+    #: the bud; buds are sampled as phytomers are created when ``growth_requires_dormancy`` is
+    #: false, and at each dormancy break otherwise, and a bud that does not break is set dead.
+    #: :meth:`PlantArchitecture.makePlantDormant` also kills every bud that is not dormant.
     vegetative_bud_break_probability_decay_rate: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(-0.5))
     flower_bud_break_probability: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))
     fruit_set_probability: RandomParameterFloat = field(default_factory=lambda: RandomParameterFloat.constant(0.0))

@@ -209,14 +209,20 @@ jobs:
           tool-cache: false  # Keep Python/Node tools needed for build
           swap-storage: false # Frees ~4GB swap space
 
-      - name: Build manylinux CUDA shim (sh fix + Vulkan headers)
+      - name: Build manylinux CUDA shim (sh fix + gcc-toolset-12 + Vulkan headers)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           cat > Dockerfile.ci <<'EOF'
-          FROM sameli/manylinux2014_x86_64_cuda_11.8:latest
-          # Ensure bash is present
-          RUN yum install -y bash coreutils && \
+          FROM sameli/manylinux_2_28_x86_64_cuda_12.3:latest
+          # The image defaults to gcc-toolset-14, which nvcc 12.3 rejects as a host compiler
+          # (CUDA 12.3 supports GCC <= 12). gcc-toolset-12 satisfies nvcc and still provides the
+          # C++17 library features helios-core uses (e.g. floating-point std::to_chars, GCC 11+).
+          RUN yum install -y gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ && \
+              /opt/rh/gcc-toolset-12/root/usr/bin/g++ --version | head -1
+          # Ensure bash is present. coreutils is not listed: EL8 ships coreutils-single, which
+          # provides the same tools and conflicts with the full coreutils package.
+          RUN yum install -y bash && \
               # Provide sh in both canonical locations that various tools try first
               if [ ! -e /bin/sh ]; then ln -s /bin/bash /bin/sh; fi && \
               if [ ! -e /usr/bin/sh ]; then ln -s /bin/bash /usr/bin/sh; fi && \
@@ -233,7 +239,7 @@ jobs:
               tar xzf "v${VULKAN_HEADERS_VERSION}.tar.gz" && \
               cd "Vulkan-Headers-${VULKAN_HEADERS_VERSION}" && \
               mkdir build && cd build && \
-              cmake .. -DCMAKE_INSTALL_PREFIX=/usr && \
+              cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DVULKAN_HEADERS_ENABLE_MODULE=OFF && \
               make install && \
               cd /tmp && rm -rf "v${VULKAN_HEADERS_VERSION}.tar.gz" "Vulkan-Headers-${VULKAN_HEADERS_VERSION}" && \
               ls /usr/include/vulkan/vulkan.h && \
@@ -258,10 +264,10 @@ jobs:
               ls /usr/lib64/libvulkan.so && \
               echo "Vulkan loader built and installed"
           EOF
-          docker build -t pyhelios/manylinux2014_x86_64_cuda_11.8_shim -f Dockerfile.ci .
+          docker build -t pyhelios/manylinux_2_28_x86_64_cuda_12.3_shim -f Dockerfile.ci .
           # Prove sh resolves in the built image before we hand it to cibuildwheel
-          docker run --rm pyhelios/manylinux2014_x86_64_cuda_11.8_shim /usr/bin/env sh -c 'echo "[shim] sh works: $0"'
-          docker run --rm pyhelios/manylinux2014_x86_64_cuda_11.8_shim sh -c 'echo "[shim] PATH=$PATH"; command -v sh; ls -l /bin/sh /usr/bin/sh'
+          docker run --rm pyhelios/manylinux_2_28_x86_64_cuda_12.3_shim /usr/bin/env sh -c 'echo "[shim] sh works: $0"'
+          docker run --rm pyhelios/manylinux_2_28_x86_64_cuda_12.3_shim sh -c 'echo "[shim] PATH=$PATH"; command -v sh; ls -l /bin/sh /usr/bin/sh'
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir wheelhouse
@@ -280,8 +286,8 @@ jobs:
           CIBW_ARCHS: ${{ matrix.arch }}
 
           # Use stable manylinux images to avoid gateway timeout issues
-          CIBW_MANYLINUX_X86_64_IMAGE: pyhelios/manylinux2014_x86_64_cuda_11.8_shim
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+          CIBW_MANYLINUX_X86_64_IMAGE: pyhelios/manylinux_2_28_x86_64_cuda_12.3_shim
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
           # Platform-specific build commands with explicit plugin selection for consistency
           # macOS: Build with Vulkan backend for radiation plugin (no CUDA/OptiX on macOS)
@@ -321,56 +327,27 @@ jobs:
           CIBW_SHELL_LINUX: "/usr/bin/bash -eo pipefail -c"
           CIBW_ENVIRONMENT_PASS_LINUX: "SHELL SETUPTOOLS_SCM_PRETEND_VERSION"
           CIBW_BEFORE_ALL_LINUX: >
-            if [ -f /opt/rh/devtoolset-10/enable ]; then
-              echo "Enabling devtoolset-10 for C++17 support" && source /opt/rh/devtoolset-10/enable
-            elif [ -f /opt/rh/devtoolset-9/enable ]; then
-              echo "Enabling devtoolset-9 for C++17 support" && source /opt/rh/devtoolset-9/enable
-            elif [ -f /opt/rh/devtoolset-8/enable ]; then
-              echo "Enabling devtoolset-8 for C++17 support" && source /opt/rh/devtoolset-8/enable
-            else
-              echo "ERROR: No devtoolset found - C++17 compilation will fail"
-              echo "Available devtoolsets:" && ls -la /opt/rh/ | grep devtoolset || echo "None found"
-              echo "System GCC version: $(gcc --version | head -1)"
-              if ! gcc --version | grep -q -E "(9\.|10\.|11\.|12\.|13\.|14\.)" && ! gcc --version | grep -q "8\.[3-9]"; then
-                echo "FATAL: System GCC too old for C++17, devtoolset required" && exit 1
-              fi
-            fi &&
+            source /opt/rh/gcc-toolset-12/enable &&
             echo "Active compiler: $(which gcc)" &&
             echo "Compiler version: $(gcc --version | head -1)" &&
+            echo "nvcc: $(nvcc --version | tail -1)" &&
             yum install -y zlib-devel mesa-libGL-devel mesa-libEGL-devel libX11-devel libXrandr-devel mesa-libGLU-devel libXinerama-devel libXcursor-devel libXi-devel libXxf86vm-devel &&
             export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:${PKG_CONFIG_PATH}" &&
             export CMAKE_PREFIX_PATH="/usr:${CMAKE_PREFIX_PATH}" &&
             /opt/python/cp310-cp310/bin/python build_scripts/prepare_wheel.py --buildmode release --verbose --clean
           # Per-ABI: do not rebuild; only stage/copy already built artifacts
           CIBW_BEFORE_BUILD_LINUX: >
-            if [ -f /opt/rh/devtoolset-10/enable ]; then
-              source /opt/rh/devtoolset-10/enable
-            elif [ -f /opt/rh/devtoolset-9/enable ]; then
-              source /opt/rh/devtoolset-9/enable
-            elif [ -f /opt/rh/devtoolset-8/enable ]; then
-              source /opt/rh/devtoolset-8/enable
-            else
-              echo "ERROR: No devtoolset found for per-ABI build"
-              if ! gcc --version | grep -q -E "(9\.|10\.|11\.|12\.|13\.|14\.)" && ! gcc --version | grep -q "8\.[3-9]"; then
-                echo "FATAL: System GCC too old for C++17" && exit 1
-              fi
-            fi &&
+            source /opt/rh/gcc-toolset-12/enable &&
             export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:${PKG_CONFIG_PATH}" &&
             export CMAKE_PREFIX_PATH="/usr:${CMAKE_PREFIX_PATH}" &&
             echo "Reusing native build; packaging only." &&
             /opt/python/cp310-cp310/bin/python build_scripts/prepare_wheel.py --buildmode release --verbose
 
-          # Manylinux-specific environment for zlib compatibility and OpenGL discovery
-          # Use documented $PATH expansion to append devtoolset without overriding cibuildwheel's Python
-          # PIP_CONSTRAINT/PIP_PREFER_BINARY: the manylinux2014 image ships
-          # devtoolset-10 (gcc 10.2.1) and numpy 2.5.0 raised its build floor to
-          # gcc >= 10.3, so any numpy >= 2.5 built from source here dies during
-          # metadata generation. See .github/pip-constraints-manylinux.txt for why
-          # a cap is needed rather than simply refusing sdists (cp314 has no
-          # manylinux2014 numpy wheel at any version). PREFER_BINARY still takes
-          # the 2.2.6 wheel for the ABIs that have one, so only cp314 builds from
-          # source. cibuildwheel mounts the repo at /project in the container.
-          CIBW_ENVIRONMENT_LINUX: "SHELL=/usr/bin/bash PIP_PREFER_BINARY=1 PIP_CONSTRAINT=/project/.github/pip-constraints-manylinux.txt PATH=$PATH:/opt/rh/devtoolset-10/root/usr/bin:/opt/rh/devtoolset-9/root/usr/bin:/opt/rh/devtoolset-8/root/usr/bin CC=/opt/rh/devtoolset-10/root/usr/bin/gcc CXX=/opt/rh/devtoolset-10/root/usr/bin/g++ CFLAGS='-D_GNU_SOURCE -I/usr/include' CXXFLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0 -I/usr/include' CMAKE_C_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/gcc CMAKE_CXX_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/g++ CMAKE_C_FLAGS='-D_GNU_SOURCE' CMAKE_CXX_FLAGS='-D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=0' PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig CMAKE_PREFIX_PATH=/usr"
+          # Manylinux-specific environment for zlib compatibility and OpenGL discovery.
+          # gcc-toolset-12 is pinned explicitly (CC/CXX, CMAKE_*_COMPILER, and CUDAHOSTCXX for
+          # nvcc) because the image's default gcc-toolset-14 is newer than nvcc 12.3 accepts.
+          # cibuildwheel mounts the repo at /project in the container.
+          CIBW_ENVIRONMENT_LINUX: "SHELL=/usr/bin/bash PIP_PREFER_BINARY=1 PATH=/opt/rh/gcc-toolset-12/root/usr/bin:$PATH CC=/opt/rh/gcc-toolset-12/root/usr/bin/gcc CXX=/opt/rh/gcc-toolset-12/root/usr/bin/g++ CUDAHOSTCXX=/opt/rh/gcc-toolset-12/root/usr/bin/g++ CFLAGS='-D_GNU_SOURCE -I/usr/include' CXXFLAGS='-D_GNU_SOURCE -I/usr/include' CMAKE_C_COMPILER=/opt/rh/gcc-toolset-12/root/usr/bin/gcc CMAKE_CXX_COMPILER=/opt/rh/gcc-toolset-12/root/usr/bin/g++ CMAKE_C_FLAGS='-D_GNU_SOURCE' CMAKE_CXX_FLAGS='-D_GNU_SOURCE' PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/pkgconfig CMAKE_PREFIX_PATH=/usr"
 
           # Comprehensive wheel testing using pytest suite
           CIBW_TEST_COMMAND: |

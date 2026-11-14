@@ -37,6 +37,7 @@ from .validation.plugin_decorators import (
 )
 from .Context import Context, check_context_alive
 from .assets import get_asset_manager
+from .assets.working_directory import build_working_directory
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +89,8 @@ def _radiation_working_directory():
             f"This indicates a build system error. The build script should copy shader/backend files to this location."
         )
     
-    # Change to the build directory temporarily
-    original_dir = os.getcwd()
-    try:
-        os.chdir(working_dir)
-        logger.debug(f"Changed working directory to {working_dir} for RadiationModel asset access")
+    with build_working_directory(working_dir):
         yield working_dir
-    finally:
-        os.chdir(original_dir)
-        logger.debug(f"Restored working directory to {original_dir}")
 
 
 class RadiationModelError(Exception):
@@ -395,13 +389,25 @@ class CameraMetadata:
             self.white_balance = str(white_balance)
 
     class LocationProperties:
-        """Geographic location properties."""
+        """Geographic location properties.
+
+        ``latitude`` is in degrees, positive North. ``longitude`` is in degrees, positive East
+        (ISO 6709), the opposite sign to the Context's west-positive ``Location``. The native
+        metadata has used this convention since helios-core v1.3.97; earlier versions copied the
+        Context's west-positive longitude unchanged.
+        """
         def __init__(self, latitude=0.0, longitude=0.0):
             self.latitude = float(latitude)
             self.longitude = float(longitude)
 
     class AcquisitionProperties:
-        """Image acquisition properties."""
+        """Image acquisition properties.
+
+        ``UTC_offset`` is the offset of local time from UTC in hours, positive East as in ISO 8601
+        and the EXIF OffsetTime tags (UTC-8 is ``-8.0``), the opposite sign to the Context's
+        ``Location.UTC_offset``. The native metadata has used this convention since helios-core
+        v1.3.97; earlier versions recorded the Context's west-positive offset.
+        """
         def __init__(self, date="", time="", UTC_offset=0.0, camera_height_m=0.0,
                      camera_angle_deg=0.0, light_source="sunlight"):
             self.date = str(date)
@@ -2000,24 +2006,70 @@ class RadiationModel:
         logger.debug(f"Enabled optional output for primitive data: {label}")
 
     @require_plugin('radiation', 'configure boundary conditions')
-    def enforcePeriodicBoundary(self, boundary: str):
+    def enforcePeriodicBoundary(self, boundary: str, excluded_uuids: Optional[List[int]] = None,
+                                max_repeats=None):
         """
-        Enforce periodic boundary conditions.
+        Enforce periodic boundary conditions in one or more lateral directions.
 
-        Periodic boundaries are useful for large-scale simulations to reduce
-        edge effects by wrapping radiation at domain boundaries.
+        The scene repeats in the periodic direction(s): a ray leaving the domain through one
+        side re-enters it through the opposite side. Call this before :meth:`updateGeometry`.
+        Each call replaces the boundary set by an earlier call, including its excluded
+        primitives and repeat limit.
 
         Args:
-            boundary: Boundary specification string (e.g., "xy", "xyz", "x", "y", "z")
+            boundary: ``"x"``, ``"y"``, ``"xy"``, or ``"none"`` (or ``""``) to remove the
+                periodic boundary. There is no periodic z mode.
+            excluded_uuids: Optional UUIDs of primitives that do not repeat: they exist only in
+                the central copy of the domain (e.g. a sensor mast or a plant of another species
+                standing in an infinite canopy). The period is the width of the bounding box of
+                the primitives that do repeat, and every excluded primitive must lie laterally
+                within it (``updateGeometry()`` raises otherwise). Primitives added later are not
+                excluded; excluded primitives deleted later are dropped. With excluded primitives
+                the model also solves the radiation field without them, which periodic copies
+                and cameras use, so ``runBand()`` is about 5-15% slower (helios-core v1.3.97+).
+            max_repeats: Optional :class:`int2` giving the number of copies on each side of the
+                central domain in x and y, for a finite field of (2x+1) by (2y+1) copies; e.g.
+                ``int2(5, 5)`` for an 11 x 11 field. A ray leaving the field continues as one
+                leaving the scene. Values must not be negative, and must be 0 for a direction
+                that is not periodic; 0 gives the same result as no periodic boundary in that
+                direction. ``None`` (default) repeats without limit (helios-core v1.3.97+).
+
+        Raises:
+            ValueError: If an argument has the wrong type or the boundary string is unknown.
+            HeliosRuntimeError: If the native model rejects the arguments (an excluded UUID that does
+                not exist, a negative repeat count, or a nonzero count for a non-periodic direction).
+            NotImplementedError: If ``excluded_uuids`` or ``max_repeats`` is given and the native
+                library predates helios-core v1.3.97.
 
         Example:
             >>> radiation.enforcePeriodicBoundary("xy")
+            >>> radiation.enforcePeriodicBoundary("xy", excluded_uuids=mast_uuids)
+            >>> radiation.enforcePeriodicBoundary("xy", max_repeats=int2(5, 5))
+            >>> radiation.enforcePeriodicBoundary("none")   # remove it again
         """
-        if not isinstance(boundary, str) or not boundary:
-            raise ValueError("Boundary specification must be a non-empty string")
+        from .wrappers.DataTypes import int2
+        if not isinstance(boundary, str):
+            raise ValueError(f"Boundary must be a string, got {type(boundary).__name__}")
+        if boundary not in ("x", "y", "xy", "none", ""):
+            raise ValueError(f"Unknown periodic boundary '{boundary}'. Possible choices are \"x\", \"y\", \"xy\", "
+                             "or \"none\" (or \"\") for no periodic boundary.")
+        if excluded_uuids is not None:
+            if isinstance(excluded_uuids, (str, bytes)) or not hasattr(excluded_uuids, '__iter__'):
+                raise ValueError(f"excluded_uuids must be a list of UUIDs, got {type(excluded_uuids).__name__}")
+            excluded_uuids = list(excluded_uuids)
+            for uuid in excluded_uuids:
+                if isinstance(uuid, bool) or not isinstance(uuid, numbers.Integral) or uuid < 0:
+                    raise ValueError(f"excluded_uuids must contain non-negative integer UUIDs, got {uuid!r}")
+        if max_repeats is not None and not isinstance(max_repeats, int2):
+            raise ValueError(f"max_repeats must be an int2, got {type(max_repeats).__name__}")
         self._check_context_alive()
-        radiation_wrapper.enforcePeriodicBoundary(self.radiation_model, boundary)
-        logger.debug(f"Enforced periodic boundary: {boundary}")
+        if excluded_uuids is None and max_repeats is None:
+            radiation_wrapper.enforcePeriodicBoundary(self.radiation_model, boundary)
+        else:
+            radiation_wrapper.enforcePeriodicBoundaryWithOptions(
+                self.radiation_model, boundary, [int(u) for u in (excluded_uuids or [])],
+                None if max_repeats is None else (max_repeats.x, max_repeats.y))
+        logger.debug(f"Enforced periodic boundary: {boundary!r}")
 
     @require_plugin('radiation', 'configure diffuse radiation')
     def enableBelowHorizonDiffuseRadiation(self) -> None:
@@ -3240,7 +3292,10 @@ class RadiationModel:
             Metadata includes:
             - Camera properties (model, lens, sensor specs)
             - Geographic location (latitude, longitude)
-            - Acquisition settings (date, time, exposure, white balance)
+            - Acquisition settings (date, time, UTC offset, exposure, white balance)
+            - Since helios-core v1.3.97 the longitude and UTC offset are recorded
+              positive East (ISO 6709 / ISO 8601 / EXIF), the opposite sign to the
+              Context's west-positive ``Location``, from which they are filled.
             - Agronomic data (plant species, heights, phenology stages)
 
         Example:

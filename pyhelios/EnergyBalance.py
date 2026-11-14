@@ -202,8 +202,9 @@ class EnergyBalanceModel:
                 (helios-core 1.3.92+), or if the emitting radiation bands do not account for
                 the blackbody spectrum exactly once -- overlapping bounded bands, bands holding
                 less than 95% of the emission, or more than one emitting band without
-                wavelength bounds (helios-core 1.3.93+)
-            
+                wavelength bounds (helios-core 1.3.93+), or if a primitive's
+                ``moisture_conductance`` is negative or not finite (helios-core 1.3.97+)
+
         Example:
             >>> # Steady state for all primitives
             >>> energy_balance.run()

@@ -243,6 +243,25 @@ An important note for triangles is that the normal direction of the triangle fol
 
 ![Right-hand rule to determine triangle normal direction based on the three vertices 0, 1, and 2.](images/primitives/triangle_right-hand-rule.jpeg)
 
+##### Adding and moving many triangles at once {#BulkTriangles}
+
+Each `addTriangle()` call crosses from Python into the native library, which costs tens of microseconds. For thousands of triangles or more, add them in a single call with \ref pyhelios.Context.Context::addTriangleSoup "addTriangleSoup()". It takes an (N, 3, 3) array of corners, and optionally (N, 3, 2) UV coordinates plus a per-triangle index into a list of texture files (-1 for an untextured triangle). It returns the N UUIDs in input order, and each triangle is identical to the one a separate `addTriangle()` or `addTriangleTextured()` call would create. \ref pyhelios.Context.Context::setTriangleVerticesBatch "setTriangleVerticesBatch()" likewise moves many existing triangles in one call, keeping their UUIDs.
+
+```python
+import numpy as np
+
+vertices = np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+                     [[0, 0, 1], [1, 0, 1], [0, 1, 1]]], dtype=np.float32)
+uv = np.array([[[0, 0], [1, 0], [0, 1]]] * 2, dtype=np.float32)
+
+# Triangle 0 uses leaf.png; triangle 1 is untextured
+uuids = context.addTriangleSoup(vertices, uv=uv, texture_index=np.array([0, -1]),
+                                texture_files=["leaf.png"])
+
+# Raise both triangles by 0.5
+context.setTriangleVerticesBatch(uuids, vertices + np.array([0, 0, 0.5], dtype=np.float32))
+```
+
 #### Adding Voxels {#AddingVoxel}
 
 **Note: The `addVoxel()` method is not yet implemented in PyHelios.** Voxel geometry can be created by importing 3D models (PLY, OBJ formats) or using box compound geometry.
@@ -469,6 +488,56 @@ context.getPrimitiveColorTextureFile(leaf_uuids[0])  # "GrapeLeaf_yellow.png"
 context.getPrimitiveTextureFile(leaf_uuids[0])       # still "GrapeLeaf.png", which gives the shape
 ```
 
+### Normal and Bump Maps {#NormalMaps}
+
+A normal map tilts the shading normal across a primitive without changing its geometry, so that fine relief, such as the veins of a leaf, the furrows of bark or the grain of a board, is lit as it would be on the real surface. Normal and bump maps belong to a primitive's material, like its texture, and are sampled with the same (u,v) coordinates, so a primitive needs a frame of (u,v) coordinates: a patch (with or without a texture), or a triangle added with a texture and (u,v) coordinates. They are used by the visualizer, and by the radiation model in all of its modes (see the radiation model documentation). Requires helios-core v1.3.97 or newer.
+
+- A **tangent-space normal map** (`setMaterialNormalMap()`) is an RGB image whose red, green and blue channels hold the x, y and z components of the surface normal, mapped from [-1,1] to [0,1] (so a flat surface is (128,128,255)). The tangent space is that of OpenGL, glTF and Blender: +x points along increasing u (right in the image), +y along increasing v (up in the image) and +z along the primitive's normal. A map made in the DirectX convention, whose green channel points down the image, needs `flip_green=True`. The optional strength scales the tilt of the normals (1 keeps the map as authored).
+- A **bump map** (`setMaterialBumpMap()`) is a grayscale height image (8- or 16-bit PNG, read at full precision, or an RGB image read as luminance), whose black is low and white high. The strength is the displacement, in texels of the image, of the full height range, so the same strength gives the same relief to an image of any resolution relative to its texels. Bump maps are converted to normal maps once, when they are set.
+
+The tangent frame of each primitive is orthonormal, as in MikkTSpace: the tangent is dP/du made perpendicular to the normal, and the bitangent is perpendicular to both, on the side of dP/dv, so mirrored (u,v) coordinates are handled. The opposite face of a primitive uses the negated shading normal, as the other side of a thin sheet does (a ridge on the top face is a groove on the bottom). `Global.decodeNormalMapImage()`, `Global.classifyBumpImage()`, `Global.computeTangentFrame()` and `Global.applyTangentSpaceNormal()` expose these conventions.
+
+```python
+from pyhelios import Context, NormalMapKind
+from pyhelios.types import vec2, vec3
+
+context = Context()
+
+# A material shared by every leaf, with a texture and a normal map
+context.addMaterial("leaf")
+context.setMaterialTexture("leaf", "GrapeLeaf.png")
+context.setMaterialNormalMap("leaf", "GrapeLeaf_normal.png")
+context.assignMaterialToPrimitive(leaf_uuids, "leaf")
+
+# A bump map on one board: the full height range raises the surface by 8 texels
+board = context.addPatch(center=vec3(0, 0, 0), size=vec2(1, 0.2))
+context.setPrimitiveBumpMap(board, "wood_board_height.png", 8.0)
+context.getPrimitiveNormalMapKind(board)   # NormalMapKind.NORMAL_MAP_BUMP
+```
+
+Setting a map on one primitive (`setPrimitiveNormalMap()`, `setPrimitiveBumpMap()`, each taking a UUID or a list of UUIDs) does not change other primitives that share its material: like a color change, it moves the primitive to (or gives it a copy of) a material with the map. As with a color change, a material you named whose only user is that primitive is edited instead, so primitives given that material later also get the map. A material holds either a normal map or a bump map; clear one with `clearMaterialNormalMap()` (or `clearPrimitiveNormalMap()`) before setting the other. The image is decoded when the map is set, so an unreadable image, a grayscale image given as a normal map, or a primitive without a (u,v) frame raises an error at that call; with a list of UUIDs, every primitive is checked before any is changed. Read a map back with `getMaterialNormalMapFile()`, `getMaterialNormalMapKind()`, `getMaterialNormalMapStrength()`, `isMaterialNormalMapGreenFlipped()` and their `getPrimitive...` counterparts, and the (u,v) coordinates a primitive samples it with by `getPrimitiveNormalMapUV()`.
+
+Decoded maps are cached by the Context and shared by every material and plug-in that uses them. `getMaterialNormalMapTexels(material_id)` and `getNormalMapTexels(file, kind, strength, flip_green)` return the decoded normals as a `NormalMapTexels` object (with `resolution`, an int16 `xy` array, `getNormal()`, `sampleNearest()` and `sampleBilinear()`), which stays valid after `clearNormalMapCache()` releases the Context's copy.
+
+Maps are saved to and loaded from XML files as children of a material:
+
+```xml
+<material label="bark">
+  <texture>AlmondBark.jpg</texture>
+  <normal_map>AlmondBark_normal.png</normal_map>
+  <normal_map_strength>1.5</normal_map_strength>
+</material>
+<material label="board">
+  <texture>wood_board.jpg</texture>
+  <bump_map>wood_board_height.png</bump_map>
+  <bump_map_strength>8</bump_map_strength>
+</material>
+```
+
+OBJ files read the normal map of a material from its "norm" line and a bump map from its "map_Bump" or "bump" line (see \ref OBJread). Normal and bump maps are used by the visualizer and the radiation model; LiDAR intensity is computed from the facet's own normal, so maps do not change synthetic scans. Slicing a primitive with the collision-detection plug-in keeps its material, map included, in the pieces; an untextured primitive with a map cannot be sliced.
+
+The helios-core repository includes a Python script, `utilities/pbr_maps/pbr_maps.py`, that makes a normal map and a 16-bit bump map from an RGB(A) texture photograph.
+
 ### Spectral Textures {#SpectralTexture}
 
 A spectral texture gives a primitive optical properties that vary across its surface, such as the veins, lesions and yellowing margin of a leaf. It has two parts:
@@ -663,6 +732,14 @@ To find *which* primitives changed, [getModifiedUUIDs(mark)](pyhelios.Context.Co
 uuids, mark = context.getModifiedUUIDs()      # first call: every primitive
 # ... the scene changes ...
 changed, mark = context.getModifiedUUIDs(mark)  # only what changed since the previous call
+```
+
+The shared list returned by `getDeletedUUIDs()` is emptied by `markGeometryClean()`, so a caller relying on it can miss a primitive deleted and then marked clean before it looked. `getDeletedUUIDs(mark)` (helios-core 1.3.97) is the deletion counterpart of `getModifiedUUIDs()`: it returns every primitive deleted since `mark` was set, in deletion order, and does not advance the mark. To see each modification and each deletion exactly once, keep the mark from before the call to `getModifiedUUIDs()`:
+
+```python
+previous_mark = mark
+modified, mark = context.getModifiedUUIDs(mark)
+deleted = context.getDeletedUUIDs(previous_mark)
 ```
 
 ### Closest-Point Queries {#CollisionQueries}

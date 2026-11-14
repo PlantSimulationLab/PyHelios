@@ -199,7 +199,12 @@ class TestStemAndNodeQueries:
         assert counts == [plantarch.getShoot(plant_id, s)["node_count"] for s in shoot_ids]
 
     def test_node_count_grows_with_time(self, bean):
-        _, plantarch, plant_id = bean
+        # A young plant, not the 20-day fixture plant: by day 20 node production has slowed
+        # enough that some RNG streams add no node in 15 days, and a seed does not give the
+        # same stream on every platform (libc++, libstdc++ and MSVC distributions differ).
+        # A 10-day bean goes from 9 nodes to 17+ over the same interval.
+        _, plantarch, _ = bean
+        plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(1, 0, 0), 10.0)
         before = sum(plantarch.getShootNodeCount(plant_id, s) for s in plantarch.getAllShootIDs(plant_id))
         plantarch.advanceTime(15.0, plant_id=plant_id)
         after = sum(plantarch.getShootNodeCount(plant_id, s) for s in plantarch.getAllShootIDs(plant_id))

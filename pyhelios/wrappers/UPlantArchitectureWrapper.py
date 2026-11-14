@@ -6,6 +6,7 @@ enabling procedural plant modeling and plant library functionality.
 """
 
 import ctypes
+import math
 from typing import Dict, List, Optional, Tuple
 
 from ..plugins import helios_lib
@@ -32,6 +33,15 @@ PHYTOMER_CREATION_CALLBACK = ctypes.CFUNCTYPE(
 # Per-timestep phytomer callback: (plant_id, shoot_id, node_index, phytomer_age) -> 0 on success,
 # nonzero if the Python function raised.
 PHYTOMER_CALLBACK = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_float)
+
+# Fruit prototype function: (subdivisions, parameter_names, parameter_values, count, objID_out) -> 0 on success,
+# nonzero if the Python function raised. The flower one takes flower_is_open after subdivisions.
+FRUIT_PROTOTYPE_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int, ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_float), ctypes.c_uint,
+    ctypes.POINTER(ctypes.c_uint))
+FLOWER_PROTOTYPE_CALLBACK = ctypes.CFUNCTYPE(
+    ctypes.c_int, ctypes.c_uint, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_float),
+    ctypes.c_uint, ctypes.POINTER(ctypes.c_uint))
 
 # Function prototypes with availability detection
 try:
@@ -774,6 +784,8 @@ try:
         ctypes.POINTER(ctypes.c_float),   # leaf_rotations (3*n: pitch, yaw, roll in radians)
         ctypes.POINTER(ctypes.c_float),   # leaf_sizes (n)
         ctypes.c_int,                     # leaf_count
+        ctypes.POINTER(ctypes.c_float),   # leaf_stalk_lengths (n, or NULL; helios-core 1.3.97)
+        ctypes.POINTER(ctypes.c_float),   # leaf_stalk_bases (3*n, or NULL; helios-core 1.3.97)
     ]
     helios_lib.setPetioleLeafGeometry.restype = ctypes.c_int
     helios_lib.setPetioleLeafGeometry.errcheck = _check_error
@@ -1234,6 +1246,28 @@ try:
     _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = True
 except AttributeError:
     _PLANTARCHITECTURE_PLANT_QUERIES_AVAILABLE = False
+
+# Nitrogen model controls: enable/disable, pool initialization and nitrogen application.
+# NOTE: guard with _require_plantarch_nitrogen_model(); an older flag would call the symbol with no argtypes set.
+_PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE = False
+try:
+    def _register_nitrogen(name, argtypes, restype):
+        f = getattr(helios_lib, name)
+        f.argtypes = [ctypes.POINTER(UPlantArchitecture)] + argtypes
+        f.restype = restype
+        f.errcheck = _check_error
+
+    for _n_fn in ("enableNitrogenModel", "disableNitrogenModel", "isNitrogenModelEnabled"):
+        _register_nitrogen(_n_fn, [], ctypes.c_int)
+    _register_nitrogen("initializeNitrogenPools", [ctypes.c_float], ctypes.c_int)
+    _register_nitrogen("initializePlantNitrogenPools", [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    _register_nitrogen("addPlantNitrogen", [ctypes.c_uint, ctypes.c_float], ctypes.c_int)
+    _register_nitrogen("addPlantsNitrogen", [ctypes.POINTER(ctypes.c_uint), ctypes.c_int, ctypes.c_float],
+                       ctypes.c_int)
+
+    _PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE = False
 
 # Wrapper functions
 def createPlantArchitecture(context) -> ctypes.POINTER(UPlantArchitecture):
@@ -3109,9 +3143,18 @@ def setPetioleNodePositions(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
 def setPetioleLeafGeometry(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
                            plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
                            leaf_bases: List[List[float]], leaf_rotations: List[List[float]],
-                           leaf_sizes: List[float]) -> None:
-    """Prescribe base position, orientation (pitch, yaw, roll in radians) and size of every leaf on a petiole."""
+                           leaf_sizes: List[float],
+                           leaf_stalk_lengths: Optional[List[float]] = None,
+                           leaf_stalk_bases: Optional[List[List[float]]] = None) -> None:
+    """Prescribe base position, orientation (pitch, yaw, roll in radians) and size of every leaf on a petiole.
+
+    ``leaf_stalk_lengths`` and ``leaf_stalk_bases`` (helios-core 1.3.97) are optional; ``None`` or an
+    empty list means not given.
+    """
     _require_plantarch_1385()
+    if leaf_stalk_lengths or leaf_stalk_bases:
+        # An older library ignores the trailing arguments, so the stalks would be silently dropped.
+        _require_plantarch_1397()
     for name, v in (("Plant ID", plant_id), ("Shoot ID", shoot_id),
                     ("Node index", node_index), ("Petiole index", petiole_index)):
         if v < 0:
@@ -3123,11 +3166,21 @@ def setPetioleLeafGeometry(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
         raise ValueError(
             f"leaf_bases, leaf_rotations and leaf_sizes must have the same length: "
             f"got {n}, {len(leaf_rotations)} and {len(leaf_sizes)}")
+    stalk_lengths_c = None
+    if leaf_stalk_lengths:
+        if len(leaf_stalk_lengths) != n:
+            raise ValueError(f"leaf_stalk_lengths must have one entry per leaf: got {len(leaf_stalk_lengths)} for {n} leaves")
+        stalk_lengths_c = (ctypes.c_float * n)(*[float(v) for v in leaf_stalk_lengths])
+    stalk_bases_c = None
+    if leaf_stalk_bases:
+        if len(leaf_stalk_bases) != n:
+            raise ValueError(f"leaf_stalk_bases must have one entry per leaf: got {len(leaf_stalk_bases)} for {n} leaves")
+        stalk_bases_c, _ = _flatten_xyz(leaf_stalk_bases, "leaf_stalk_bases")
     bases_c, _ = _flatten_xyz(leaf_bases, "leaf_bases")
     rotations_c, _ = _flatten_xyz(leaf_rotations, "leaf_rotations")
     sizes_c = (ctypes.c_float * n)(*[float(v) for v in leaf_sizes])
     helios_lib.setPetioleLeafGeometry(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index,
-                                      bases_c, rotations_c, sizes_c, n)
+                                      bases_c, rotations_c, sizes_c, n, stalk_lengths_c, stalk_bases_c)
 
 
 def isShootGeometryPrescribed(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
@@ -3518,6 +3571,52 @@ try:
     _PLANTARCHITECTURE_LIBRARY_PHYTOMER_FUNCTIONS_AVAILABLE = True
 except AttributeError:
     _PLANTARCHITECTURE_LIBRARY_PHYTOMER_FUNCTIONS_AVAILABLE = False
+
+# Python fruit and flower prototype functions.
+# NOTE: guard with _require_plantarch_python_prototypes().
+_PLANTARCHITECTURE_PYTHON_PROTOTYPES_AVAILABLE = False
+try:
+    helios_lib.setFruitPrototypeFunction.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.POINTER(UContext), ctypes.c_char_p, FRUIT_PROTOTYPE_CALLBACK]
+    helios_lib.setFruitPrototypeFunction.restype = ctypes.c_int
+    helios_lib.setFruitPrototypeFunction.errcheck = _check_error
+    helios_lib.setFlowerPrototypeFunction.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.POINTER(UContext), ctypes.c_char_p, FLOWER_PROTOTYPE_CALLBACK]
+    helios_lib.setFlowerPrototypeFunction.restype = ctypes.c_int
+    helios_lib.setFlowerPrototypeFunction.errcheck = _check_error
+
+    _PLANTARCHITECTURE_PYTHON_PROTOTYPES_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_PYTHON_PROTOTYPES_AVAILABLE = False
+
+
+def _require_plantarch_python_prototypes() -> None:
+    """Raise if the native library predates Python fruit and flower prototype functions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_PYTHON_PROTOTYPES_AVAILABLE:
+        raise RuntimeError(
+            "Python fruit and flower prototype functions are not available in the current native library. "
+            "Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def setFruitPrototypeFunction(plantarch_ptr, context_ptr, shoot_type_label: str, callback) -> None:
+    """Install a FRUIT_PROTOTYPE_CALLBACK on a shoot type, or restore its earlier function with None.
+
+    The caller must keep ``callback`` alive for as long as the PlantArchitecture exists.
+    """
+    _require_plantarch_python_prototypes()
+    native_callback = FRUIT_PROTOTYPE_CALLBACK(0) if callback is None else callback
+    helios_lib.setFruitPrototypeFunction(plantarch_ptr, context_ptr, shoot_type_label.encode('utf-8'), native_callback)
+
+
+def setFlowerPrototypeFunction(plantarch_ptr, context_ptr, shoot_type_label: str, callback) -> None:
+    """Install a FLOWER_PROTOTYPE_CALLBACK on a shoot type, or restore its earlier function with None.
+
+    The caller must keep ``callback`` alive for as long as the PlantArchitecture exists.
+    """
+    _require_plantarch_python_prototypes()
+    native_callback = FLOWER_PROTOTYPE_CALLBACK(0) if callback is None else callback
+    helios_lib.setFlowerPrototypeFunction(plantarch_ptr, context_ptr, shoot_type_label.encode('utf-8'), native_callback)
 
 
 def _require_plantarch_1388() -> None:
@@ -4290,3 +4389,144 @@ def getPlantRootNitrogen(plantarch_ptr, plant_id: int) -> float:
     if plant_id < 0:
         raise ValueError("Plant ID must be non-negative")
     return float(helios_lib.getPlantRootNitrogen(plantarch_ptr, plant_id))
+
+
+# helios-core 1.3.97: measured shoots that continue their parent's axis, and the in-place reshape query.
+# NOTE: every wrapper function below must guard with _require_plantarch_1397().
+_PLANTARCHITECTURE_1397_AVAILABLE = False
+try:
+    helios_lib.appendShootFromNodePositions.argtypes = [
+        ctypes.POINTER(UPlantArchitecture),
+        ctypes.c_uint,                    # plantID
+        ctypes.c_int,                     # parent_shoot_ID
+        ctypes.POINTER(ctypes.c_float),   # node_positions (3*n)
+        ctypes.POINTER(ctypes.c_float),   # node_radii (n)
+        ctypes.c_int,                     # node_count
+        ctypes.c_char_p,                  # shoot_type_label
+        ctypes.c_char_p,                  # growth_shoot_type_label (NULL = same as build type)
+    ]
+    helios_lib.appendShootFromNodePositions.restype = ctypes.c_uint
+    helios_lib.appendShootFromNodePositions.errcheck = _check_error
+
+    # plantID, shootID, node_index, petiole_index, leaf_index, values[12], subdivisions[2], result (out)
+    helios_lib.canReshapeLeafInPlace.argtypes = [
+        ctypes.POINTER(UPlantArchitecture), ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint,
+        ctypes.c_uint, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint),
+        ctypes.POINTER(ctypes.c_int)]
+    helios_lib.canReshapeLeafInPlace.restype = ctypes.c_int
+    helios_lib.canReshapeLeafInPlace.errcheck = _check_error
+
+    _PLANTARCHITECTURE_1397_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1397_AVAILABLE = False
+
+
+def _require_plantarch_1397() -> None:
+    """Raise if the native library predates the helios-core 1.3.97 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1397_AVAILABLE:
+        raise NotImplementedError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.97 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def appendShootFromNodePositions(plantarch_ptr: ctypes.POINTER(UPlantArchitecture),
+                                 plant_id: int, parent_shoot_id: int,
+                                 node_positions: List[List[float]], node_radii: List[float],
+                                 shoot_type_label: str, growth_shoot_type_label: Optional[str] = None) -> int:
+    """Append a measured shoot that continues the axis of its parent shoot."""
+    _require_plantarch_1397()
+    if plant_id < 0:
+        raise ValueError("Plant ID must be non-negative")
+    if parent_shoot_id < 0:
+        raise ValueError("Parent shoot ID must be non-negative")
+    if not shoot_type_label:
+        raise ValueError("Shoot type label cannot be empty")
+    if len(node_positions) < 2:
+        raise ValueError("At least two node positions are required")
+    if len(node_radii) != len(node_positions):
+        raise ValueError(
+            f"node_radii must have one entry per node position: got {len(node_radii)} radii "
+            f"for {len(node_positions)} positions")
+    positions_c, count = _flatten_xyz(node_positions, "node_positions")
+    radii_c = (ctypes.c_float * count)(*[float(r) for r in node_radii])
+    growth = growth_shoot_type_label.encode('utf-8') if growth_shoot_type_label else None
+    return int(helios_lib.appendShootFromNodePositions(
+        plantarch_ptr, plant_id, parent_shoot_id, positions_c, radii_c, count,
+        shoot_type_label.encode('utf-8'), growth))
+
+
+def canReshapeLeafInPlace(plantarch_ptr, plant_id: int, shoot_id: int, node_index: int, petiole_index: int,
+                          leaf_index: int, values: List[float], subdivisions: List[int]) -> bool:
+    """Whether reshapeLeaf would keep the leaf's primitives for this shape (getLeafShape flat layout)."""
+    _require_plantarch_1397()
+    if len(values) != 12 or len(subdivisions) != 2:
+        raise ValueError("canReshapeLeafInPlace needs 12 shape values and 2 subdivision counts")
+    v = (ctypes.c_float * 12)(*(float(x) for x in values))
+    sd = (ctypes.c_uint * 2)(*(int(x) for x in subdivisions))
+    result = ctypes.c_int(0)
+    helios_lib.canReshapeLeafInPlace(plantarch_ptr, plant_id, shoot_id, node_index, petiole_index, leaf_index,
+                                     v, sd, ctypes.byref(result))
+    return result.value == 1
+# ---------------------------------------------------------------------------
+# Nitrogen model controls
+# ---------------------------------------------------------------------------
+
+def _require_plantarch_nitrogen_model() -> None:
+    """Raise if the native library predates the nitrogen model control bindings."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_NITROGEN_MODEL_AVAILABLE:
+        raise RuntimeError(
+            "The PlantArchitecture nitrogen model controls are not available in the current native library. "
+            "Rebuild with 'build_scripts/build_helios --clean'."
+        )
+
+
+def _check_nonnegative_finite(value: float, name: str) -> float:
+    value = float(value)
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be a finite number >= 0, got {value}")
+    return value
+
+
+def enableNitrogenModel(plantarch_ptr) -> None:
+    _require_plantarch_nitrogen_model()
+    helios_lib.enableNitrogenModel(plantarch_ptr)
+
+
+def disableNitrogenModel(plantarch_ptr) -> None:
+    _require_plantarch_nitrogen_model()
+    helios_lib.disableNitrogenModel(plantarch_ptr)
+
+
+def isNitrogenModelEnabled(plantarch_ptr) -> bool:
+    _require_plantarch_nitrogen_model()
+    return helios_lib.isNitrogenModelEnabled(plantarch_ptr) == 1
+
+
+def initializeNitrogenPools(plantarch_ptr, initial_leaf_N_area: float) -> None:
+    _require_plantarch_nitrogen_model()
+    helios_lib.initializeNitrogenPools(plantarch_ptr,
+                                       _check_nonnegative_finite(initial_leaf_N_area, "initial_leaf_N_area"))
+
+
+def initializePlantNitrogenPools(plantarch_ptr, plant_id: int, initial_leaf_N_area: float) -> None:
+    _require_plantarch_nitrogen_model()
+    _check_plant_id(plant_id)
+    helios_lib.initializePlantNitrogenPools(plantarch_ptr, plant_id,
+                                            _check_nonnegative_finite(initial_leaf_N_area, "initial_leaf_N_area"))
+
+
+def addPlantNitrogen(plantarch_ptr, plant_id: int, amount_gN: float) -> None:
+    _require_plantarch_nitrogen_model()
+    _check_plant_id(plant_id)
+    helios_lib.addPlantNitrogen(plantarch_ptr, plant_id, _check_nonnegative_finite(amount_gN, "amount_gN"))
+
+
+def addPlantsNitrogen(plantarch_ptr, plant_ids: List[int], amount_gN: float) -> None:
+    _require_plantarch_nitrogen_model()
+    for plant_id in plant_ids:
+        _check_plant_id(plant_id)
+    amount = _check_nonnegative_finite(amount_gN, "amount_gN")
+    arr = (ctypes.c_uint * len(plant_ids))(*plant_ids)
+    helios_lib.addPlantsNitrogen(plantarch_ptr, arr, len(plant_ids), amount)

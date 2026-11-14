@@ -35,6 +35,18 @@ class VertexWeldMode(IntEnum):
     #: variation along the axis; identical to WELD_FULL for objects with no such axis.
     WELD_CROSS_SECTION_ONLY = 1
 
+class NormalMapKind(IntEnum):
+    """Kind of image held in a material's normal-map slot (helios-core 1.3.97).
+
+    See :meth:`Context.setMaterialNormalMap` and :meth:`Context.setMaterialBumpMap`.
+    """
+    #: No normal or bump map
+    NORMAL_MAP_NONE = 0
+    #: Tangent-space normal map: red, green and blue hold the x, y and z components of the normal, mapped from [-1,1] to [0,1]
+    NORMAL_MAP_TANGENT_SPACE = 1
+    #: Bump (height) map: a grayscale image of surface heights, from which the normals are derived
+    NORMAL_MAP_BUMP = 2
+
 class int2(ctypes.Structure):
     _fields_ = [('x', ctypes.c_int32), ('y', ctypes.c_int32)]
 

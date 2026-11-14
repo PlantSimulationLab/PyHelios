@@ -432,7 +432,7 @@ Keyboard camera controls are given by:
 
 #### plotUpdate() {#PlotUpdate}
 
-The \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" function simply updates the plot window based on current geometry, and continues on to the next lines of code. This can be useful when a window should show the scene while the program carries on. Writing a still image to file no longer requires it (helios-core 1.3.85+): `printWindow()` renders the frame itself, so the `plotUpdate()` call in the example below is redundant but harmless.
+The \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" function simply updates the plot window based on current geometry, and continues on to the next lines of code. This can be useful when a window should show the scene while the program carries on. Writing a still image to file no longer requires it (helios-core 1.3.85+): `printWindow()` renders the frame itself, so the `plotUpdate()` call in the example below is redundant but harmless. Reading pixels into Python with `getWindowPixelsRGB()` does still require it (see \ref WindowPixels).
 
 ```python
 from pyhelios import Context, Visualizer
@@ -459,6 +459,15 @@ pixels, width, height = vis.getWindowPixelsRGB()
 ```
 
 Data is stored as r-g-b per column per row, so `pixels[0:3]` is the RGB value of row 0 column 0 and `len(pixels) == 3 * width * height`.
+
+`getWindowPixelsRGB()` reads back the frame last rendered and renders nothing itself, so call \ref pyhelios.Visualizer.Visualizer::plotUpdate "plotUpdate()" (or `plotOnce()`) first. As of helios-core 1.3.97 it raises a `VisualizerError` if no frame has been rendered, or if anything the Visualizer draws (its geometry, camera, colours, lighting, background, colorbar and so on) has changed since the last render; earlier versions silently returned an empty or out-of-date image. A change to the Context reaches the Visualizer only when it renders, so the pixels show the Context as it was then. The frame left by `printWindow()` can also be read back.
+
+```python
+vis.buildContextGeometry(context)
+vis.setCameraPosition(vec3(0, -3, 1.5), vec3(0, 0, 0.5))
+vis.plotUpdate()  # required: render the frame before reading it back
+pixels, width, height = vis.getWindowPixelsRGB()
+```
 
 A pre-allocated list may be passed instead, in which case it is filled in place. It must hold exactly `3 * width * height` elements, where the dimensions come from \ref pyhelios.Visualizer.Visualizer::getFramebufferSize "getFramebufferSize()" — **not** \ref pyhelios.Visualizer.Visualizer::getWindowSize "getWindowSize()" and not the dimensions passed to the `Visualizer` constructor. On a high-DPI (Retina) display the framebuffer is larger than the window, typically by a factor of two per axis, so a buffer sized from the window dimensions is four times too small. PyHelios rejects a wrongly-sized buffer with a `ValueError`; the no-argument form avoids the question entirely and is preferred.
 
@@ -704,6 +713,31 @@ Patches, triangles and voxels added directly to the Context carry the face norma
 
 Flat shading is sometimes preferable for alpha-masked cutout geometry such as leaf textures, where interpolated normals can look worse than a single flat normal per face.
 
+### Normal and Bump Maps {#NormalMapShading}
+
+As of helios-core 1.3.97, a primitive whose Context material has a normal map or a bump map is lit with the shading normal the map gives at each pixel, so relief such as bark furrows or leaf veins catches the light without any change to the geometry. The map is sampled with the primitive's texture (u,v) coordinates (an untextured patch maps the whole image) in the tangent space of OpenGL, glTF and Blender (+x along increasing u, +y along increasing v), and tilts the geometric normal, or with \ref SmoothShading "smooth shading" the interpolated one. This is the same convention the radiation model uses, so a surface's relief falls on the same side in both.
+
+Only the lit terms change. The diffuse and specular terms use the shading normal, the hemispheric ambient term uses it on the side being viewed, and the shadow lookup keeps the geometric normal, because whether light reaches a surface does not depend on its relief. Where a shading normal faces the light but the surface itself does not, a shadow-terminator term (Chiang, Li and Burley 2019, "Taming the Shadow Terminator") fades the direct light smoothly to zero instead of ending the lit region in a hard line. With `LIGHTING_NONE` the maps have no effect.
+
+\ref pyhelios.Visualizer.Visualizer::disableNormalMaps "disableNormalMaps()" turns the maps off without removing them from the GPU, which is convenient for comparing a scene with and without them, \ref pyhelios.Visualizer.Visualizer::enableNormalMaps "enableNormalMaps()" (the default) turns them back on, and \ref pyhelios.Visualizer.Visualizer::areNormalMapsEnabled "areNormalMapsEnabled()" reports the current state.
+
+```python
+vis.setLightingModel("phong_shadowed")
+vis.setLightDirection(vec3(1, 0.5, 0.4))  # a low sun brings out relief
+vis.buildContextGeometry(context)
+vis.plotUpdate()
+vis.printWindow("with_relief.jpeg")
+vis.disableNormalMaps()
+vis.plotUpdate()  # re-render: toggling the maps does not mark the last frame out of date
+vis.printWindow("without_relief.jpeg")
+```
+
+In helios-core 1.3.97, switching normal maps on or off does not mark the last rendered frame as out of date, so `printWindow()` and `getWindowPixelsRGB()` can return the frame rendered before the switch. Call `plotUpdate()` after switching.
+
+Each distinct map (file, strength and green-channel flip) is stored once on the GPU, whatever the number of primitives using it, as two bytes per texel plus mipmaps. All maps share one texture array whose layers have the size of the largest map (at most 2048x2048), so a smaller map is resampled to that size: a 1024x1024 map costs about 2.8 MB and a 2048x2048 map about 11 MB. If many maps would take more than 256 MiB at that size, the layers are reduced together until they fit. Maps add nothing to the memory per primitive. The visualizer warns when primitives with a map have collinear (u,v) coordinates, which leave the map without an orientation (it is not applied to them).
+
+A textured patch without (u,v) coordinates, such as an untextured patch later given a textured material, maps its whole image, as it does in the Context (helios-core 1.3.97; earlier versions drew it in its material color).
+
 ### View Options {#Options}
 
 The default camera position is at an elevation angle of 20 degrees and to the North, with the camera looking toward the origin. The distance of the camera from the origin is automatically adjusted to fit all primitives in view.
@@ -841,7 +875,21 @@ A bounding box encloses whole every pixel in which its object is visible. Each c
 
 \ref pyhelios.Visualizer.Visualizer::getDepthImage "getDepthImage()" returns `(depth_pixels, width, height)`, a flat NumPy array of the distance in world units from the camera to the visible surface, measured along the viewing direction (the same definition as the radiation camera depth images), with row 0 at the top and -1 where no geometry is visible. It can be written to file with `writeDepthImageData(filename)` (text), `writeDepthImageDataEXR(filename)` (EXR), or `writeNormDepthImage(filename, max_depth)` (grayscale JPEG, white at the nearest surface and black at `max_depth`).
 
-Both methods render the frame if needed, as `printWindow()` does, and return framebuffer-sized images (see \ref pyhelios.Visualizer.Visualizer::getFramebufferSize "getFramebufferSize()"). Geometry nearer than the near clipping plane, lines, points, the sky dome and 2D overlays are not part of either map, and semi-transparent primitives are treated as opaque.
+Both methods render their own pass from the current Context geometry and camera (including the default camera fitted to the scene when none was set), so they describe the same view as an image saved by `printWindow()`; as of helios-core 1.3.97 they no longer render the colour image as well. They return framebuffer-sized images (see \ref pyhelios.Visualizer.Visualizer::getFramebufferSize "getFramebufferSize()"). Geometry nearer than the near clipping plane, lines, points, the sky dome and 2D overlays are not part of either map, and semi-transparent primitives are treated as opaque. A primitive hidden with `Context.hidePrimitive()` is absent from them as from the image, and hiding or showing primitives is cheap: their geometry stays in the Visualizer, flagged invisible.
+
+Both maps come from the same render, so when both are needed, \ref pyhelios.Visualizer.Visualizer::getPixelUUIDsAndDepth "getPixelUUIDsAndDepth()" (helios-core 1.3.97+) returns `(pixel_UUIDs, depth_pixels, width, height)` for the cost of one, with the same values as the two separate calls.
+
+Each of the three methods also takes a `region=(x0, y0, width, height)` argument (helios-core 1.3.97+): `x0` is the column of the rectangle's left edge counted from the left of the image, `y0` the row of its top edge counted from the top, and `width` and `height` its size in pixels. Only that rectangle is rendered and read back, and the result is identical, pixel for pixel, to the same rectangle of the whole-image result, with row 0 at the top of the rectangle. This is much faster when the region of interest, such as the screen box of one plant, is a small part of the image. The returned `width` and `height` are then the rectangle's. The rectangle must be non-empty and lie within the framebuffer; a negative corner, an empty size or a non-integer value raises `ValueError` or `TypeError` before any rendering, and a rectangle extending beyond the framebuffer raises `VisualizerError`.
+
+```python
+# a 128 x 96 pixel rectangle whose top-left corner is at column 400, row 250
+pixels, depth, w, h = vis.getPixelUUIDsAndDepth(region=(400, 250, 128, 96))
+pixels.reshape(h, w)[row, column]  # row 0..95, column 0..127
+
+# the same as slicing the whole-image map, but only the rectangle is rendered
+full, W, H = vis.getPixelUUIDs()
+assert (full.reshape(H, W)[250:346, 400:528] == pixels.reshape(h, w)).all()
+```
 
 \ref pyhelios.Visualizer.Visualizer::getDepthMap "getDepthMap()" is different: it returns the normalized depth buffer shown by `plotDepthMap()`, scaled 0-255 with 255 nearest and row 0 at the bottom. It is not a distance.
 

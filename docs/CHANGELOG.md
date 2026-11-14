@@ -1,5 +1,71 @@
 # Changelog
 
+# [v0.1.42] 2026-11-14
+
+- Updated helios-core to v1.3.97
+
+## Context
+- Added normal and bump maps for materials: `setMaterialNormalMap()`, `setMaterialBumpMap()`, `setMaterialNormalMapStrength()`, `clearMaterialNormalMap()` and their getters
+- Added per-primitive normal and bump maps: `setPrimitiveNormalMap()`, `setPrimitiveBumpMap()`, `clearPrimitiveNormalMap()`, their getters and `getPrimitiveNormalMapUV()`
+- Added `getMaterialNormalMapTexels()`, `getNormalMapTexels()` and `clearNormalMapCache()`, which return decoded maps as the new `NormalMapTexels` class
+- Added the `NormalMapKind` enum
+- Added `getDeletedUUIDs(mark)`, which returns the primitives deleted since a mark from `getModifiedUUIDs()` and is not emptied by `markGeometryClean()`
+- `loadOBJ()` now reads normal and bump maps from material files, and raises an error for a material whose bump image cannot be used
+- `appendTubeSegment()` gives a segment appended with the texture or color of the tube's named material that material, instead of an automatic one
+- Added `addTriangleSoup()`, which adds N triangles from an (N, 3, 3) vertex array, with optional UVs and per-triangle textures, in one native call
+- Added `setTriangleVerticesBatch()`, which replaces the vertices of N existing triangles in one native call
+- `addTrianglesFromArrays()` now adds the whole mesh in one native call instead of one call per triangle
+- Fixed `addTrianglesFromArraysTextured()` returning UUIDs grouped by material instead of in face order when material IDs interleave
+- Fixed `addTrianglesFromArraysTextured()` on Windows, which fell back to a slow per-triangle loop because the native function was not exported
+- `addTrianglesFromArraysTextured()` now raises an error if the native function is missing, instead of silently falling back to a per-triangle loop
+- Fixed `addTrianglesFromArraysTextured()` leaving some triangles behind when it failed partway
+- Fixed `setTriangleVertices()` crashing on a UUID that is not a triangle; it now raises an error
+
+## Global
+- Added `Global.decodeNormalMapImage()`, `Global.classifyBumpImage()`, `Global.computeTangentFrame()` and `Global.applyTangentSpaceNormal()`
+- Fixed overlapping PlantArchitecture, RadiationModel, SolarPosition, LeafOptics, Visualizer and WeberPennTree calls from different threads failing to find asset files and leaving the process's working directory changed
+
+## PlantArchitecture
+- Added `setFruitPrototypeFunction()` and `setFlowerPrototypeFunction()`, which let a Python function build a shoot type's fruit or flower geometry instead of a library prototype
+- Added `appendShootFromNodePositions()`, which adds a measured shoot that continues its parent's axis from the parent's tip
+- Added `canReshapeLeafInPlace()`, which tells whether reshaping a leaf would keep its primitive UUIDs
+- Added `enableNitrogenModel()`, `disableNitrogenModel()` and `isNitrogenModelEnabled()`, so the nitrogen model can be run from Python
+- Added `initializeNitrogenPools()` and `initializePlantNitrogenPools()`, which start every leaf at a given nitrogen content per unit leaf area
+- Added `addPlantNitrogen()`, which applies nitrogen to a plant or to each plant in a list
+- `setPetioleLeafGeometry()` takes optional `leaf_stalk_lengths` and `leaf_stalk_bases` to give placed leaflets measured stalks
+- Added the "cucumber" (high-wire greenhouse) library plant
+- `setPetioleLeafShape()` now accepts a `midrib_fold_fraction` from -1 to 1, where negative values fold the leaf halves down
+- `setPetioleLeaflets()` now accepts `intercalary_leaflet_scale=None`, the default, which keeps the phytomer's own value as a negative value does
+- Fixed `makePlantDormant()` documentation, which said non-dormant buds become dormant; they are killed
+- Fixed `getCurrentShootParameters()` returning no fruit, flower, creation or callback function for the cucumber and apple fruiting-wall library shoot types, which a parameter round trip then dropped
+- Library trees now complete their dormancy cycle in 365 days instead of 366, so a tree built at an age of 365 days is dormant and leafless
+- Recalibrated the bean, soybean and capsicum library models (bean and soybean are smaller; capsicum no longer grows without limit)
+- The olive library model takes a `trunk_height` build parameter, and apple_fruitingwall's `trunk_height` range is now 0.1-1.0 m
+
+## Radiation
+- `enforcePeriodicBoundary()` takes optional `excluded_uuids`, primitives that are not repeated, and `max_repeats`, which limits how many times the scene repeats
+- `enforcePeriodicBoundary("none")` and `enforcePeriodicBoundary("")` now remove a periodic boundary, and an unknown boundary string raises `ValueError`
+- The radiation model now applies material normal and bump maps
+- Spectral textures can now be combined with specular surface layers
+- Radiation camera metadata now records longitude and UTC offset positive East; both had the wrong sign
+
+## Photosynthesis
+- Fixed `setFarquharCoefficientsFromLibrary()` and `setSpeciesCoefficients()` giving species aliases and other spellings (e.g. `"APPLE"`, `"BigLeafMaple"`) the Almond coefficients; an unknown species now raises an error
+
+## Energy Balance
+- `run()` now raises an error for a negative or non-finite `moisture_conductance`
+
+## Visualizer
+- Added `enableNormalMaps()`, `disableNormalMaps()` and `areNormalMapsEnabled()`
+- Added `getPixelUUIDsAndDepth()`, which returns the pixel UUID map and depth image from one render
+- `getPixelUUIDs()`, `getDepthImage()` and `getPixelUUIDsAndDepth()` take an optional `region=(x0, y0, width, height)` to read back a rectangle of the image
+- `getWindowPixelsRGB()` now raises an error when no frame has been rendered or the scene changed since the last render, instead of returning a stale image
+- Fixed rendering with more than one Visualizer in a process, where read-backs failed or returned the other Visualizer's image
+- Fixed hidden primitives never being drawn again after `showPrimitive()`, and deleted primitives remaining on screen
+
+## Packaging
+- Linux wheels are now built on manylinux_2_28 and require glibc 2.28 or newer (Ubuntu 20.04+, RHEL 8+); older distributions must build from source
+
 # [v0.1.41] 2026-11-09
 
 - Updated helios-core to v1.3.96

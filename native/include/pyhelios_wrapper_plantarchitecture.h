@@ -209,9 +209,11 @@ PYHELIOS_API int setPetioleNodePositions(PlantArchitecture* plantarch, unsigned 
 // Prescribe the base position, orientation and size of every leaf on one petiole. leaf_bases is a flat
 // array of 3*leaf_count floats; leaf_rotations is a flat array of 3*leaf_count floats holding
 // (pitch, yaw, roll) in RADIANS in the petiole/internode frame (AxisRotation field order); leaf_sizes has
-// leaf_count entries. leaf_count must equal the number of leaves already on the petiole. Returns 0 on
-// success, -1 on error.
-PYHELIOS_API int setPetioleLeafGeometry(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* leaf_bases, const float* leaf_rotations, const float* leaf_sizes, int leaf_count);
+// leaf_count entries. leaf_count must equal the number of leaves already on the petiole.
+// leaf_stalk_lengths (helios-core 1.3.97, optional): NULL, or leaf_count stalk (petiolule) lengths in meters.
+// leaf_stalk_bases (helios-core 1.3.97, optional): NULL, or a flat array of 3*leaf_count floats giving where
+// each leaf's stalk leaves the petiole, in world coordinates. Returns 0 on success, -1 on error.
+PYHELIOS_API int setPetioleLeafGeometry(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, const float* leaf_bases, const float* leaf_rotations, const float* leaf_sizes, int leaf_count, const float* leaf_stalk_lengths, const float* leaf_stalk_bases);
 // 1 if the shoot was built by addShootFromNodePositions(), 0 if its geometry was generated, -1 on error.
 PYHELIOS_API int isShootGeometryPrescribed(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID);
 
@@ -362,6 +364,25 @@ typedef int (*PyheliosPhytomerCallback)(unsigned int plantID, unsigned int shoot
 // or clearing it (restoring the original) takes effect for those phytomers too.
 PYHELIOS_API int setPhytomerCallbackFunction(PlantArchitecture* plantarch, const char* shoot_type_label, PyheliosPhytomerCallback callback);
 
+// ---- Python fruit and flower prototype functions ----
+// Called whenever the plugin needs a new fruit or flower prototype for the shoot type: once per unique prototype
+// (InflorescenceParameters::unique_prototypes), or for every organ when that is zero. The callback builds the
+// prototype's geometry in the Context it was installed with (unit size, base at the origin, axis along +x) and writes
+// the ID of the object holding it to objID_out. The build parameters are the plant's sampled organ build parameters,
+// count name/value pairs valid only during the call. flower_is_open is 1 for an open flower. Return 0 on success;
+// any other value makes the enclosing native call fail.
+typedef int (*PyheliosFruitPrototypeCallback)(unsigned int subdivisions, const char* const* parameter_names, const float* parameter_values, unsigned int count, unsigned int* objID_out);
+typedef int (*PyheliosFlowerPrototypeCallback)(unsigned int subdivisions, int flower_is_open, const char* const* parameter_names, const float* parameter_values, unsigned int count,
+                                               unsigned int* objID_out);
+// Install callback as the fruit (flower) prototype function of an existing shoot type. Each install binds the callback
+// to one of 32 slots, freed only when the PlantArchitecture is destroyed, so shoots created earlier and prototypes the
+// plugin has already cached keep the function they were made with. The type's parameters name the function
+// "PythonFruitPrototype_<slot>" ("PythonFlowerPrototype_<slot>"), and parameters carrying that name may define
+// other shoot types, which then share the function. NULL restores the function the type had before a callback was
+// first installed on it.
+PYHELIOS_API int setFruitPrototypeFunction(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, PyheliosFruitPrototypeCallback callback);
+PYHELIOS_API int setFlowerPrototypeFunction(PlantArchitecture* plantarch, helios::Context* context, const char* shoot_type_label, PyheliosFlowerPrototypeCallback callback);
+
 // ---- Library phytomer creation and callback functions by name ----
 // The functions the library plant models use (declared in Assets.h, e.g. "AlmondPhytomerCreationFunction",
 // "GrapevinePhytomerCallbackFunction") can be installed on any existing shoot type by name, replacing whatever
@@ -486,6 +507,19 @@ PYHELIOS_API unsigned int* getPlantInternodeObjectIDs(PlantArchitecture* plantar
 PYHELIOS_API float* getPlantLeafInclinationAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count);
 PYHELIOS_API float* getPlantLeafAzimuthAngleDistribution(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, unsigned int Nbins, int normalize, int* count);
 
+// Nitrogen model controls. Leaf N per area and the plant stress factor are written as the object data
+// "leaf_nitrogen_gN_m2" and "nitrogen_stress_factor" by advanceTime() while the model is enabled.
+// Each returns 0 on success, -1 on error (isNitrogenModelEnabled: 1 or 0, -1 on error).
+PYHELIOS_API int enableNitrogenModel(PlantArchitecture* plantarch);
+PYHELIOS_API int disableNitrogenModel(PlantArchitecture* plantarch);
+PYHELIOS_API int isNitrogenModelEnabled(PlantArchitecture* plantarch);
+// initial_leaf_N_area is the leaf nitrogen content per unit leaf area (g N/m^2) every existing leaf starts at.
+PYHELIOS_API int initializeNitrogenPools(PlantArchitecture* plantarch, float initial_leaf_N_area);
+PYHELIOS_API int initializePlantNitrogenPools(PlantArchitecture* plantarch, unsigned int plantID, float initial_leaf_N_area);
+// amount_gN (g N) is added to each plant, split between its root and available pools.
+PYHELIOS_API int addPlantNitrogen(PlantArchitecture* plantarch, unsigned int plantID, float amount_gN);
+PYHELIOS_API int addPlantsNitrogen(PlantArchitecture* plantarch, const unsigned int* plantIDs, int plant_count, float amount_gN);
+
 // Progress callback
 PYHELIOS_API void plantarch_setProgressCallback(PlantArchitecture* pa_ptr, void (*callback)(float, const char*));
 
@@ -519,6 +553,25 @@ PYHELIOS_API int enablePlantLeafElevationAngleDistributionTrackingMultiple(Plant
 
 PYHELIOS_API float getPlantFruitNitrogen(PlantArchitecture* plantarch, unsigned int plantID);
 PYHELIOS_API float getPlantRootNitrogen(PlantArchitecture* plantarch, unsigned int plantID);
+
+//=============================================================================
+// helios-core 1.3.97: appended measured shoots and in-place reshape query
+//=============================================================================
+
+// Append a shoot whose internode path follows measured node positions, continuing the axis of its parent shoot
+// (PlantArchitecture::appendShootFromNodePositions). node_positions is a flat array of 3*node_count floats (base first),
+// node_radii has node_count entries. growth_shoot_type_label NULL or "" grows the shoot with the build type.
+// Returns the new shoot ID, or 0 with an error set (check getLastErrorCode()).
+PYHELIOS_API unsigned int appendShootFromNodePositions(PlantArchitecture* plantarch, unsigned int plantID, int parent_shoot_ID, const float* node_positions, const float* node_radii, int node_count, const char* shoot_type_label, const char* growth_shoot_type_label);
+
+/**
+ * @brief Whether reshapeLeaf would keep the leaf's primitives for a new shape (Phytomer::canReshapeLeafInPlace)
+ * @param values 12 floats in the getLeafShape layout
+ * @param subdivisions 2 uints {subdivisions_x, subdivisions_y}
+ * @param result Output: 1 if the primitives would be kept, 0 if the blade would be re-meshed
+ * @return 0 on success, -1 on error
+ */
+PYHELIOS_API int canReshapeLeafInPlace(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, unsigned int node_index, unsigned int petiole_index, unsigned int leaf_index, const float* values, const unsigned int* subdivisions, int* result);
 
 //=============================================================================
 // helios::collision closest-point queries (collisiondetection CollisionGeometry.h, helios-core 1.3.96).

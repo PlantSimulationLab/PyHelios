@@ -31,6 +31,21 @@ ORGAN_GETTERS = [
 ]
 
 
+def _load_bean_with_fixed_trifoliate_max_nodes(plantarch, max_nodes=10):
+    """Load bean and give its "trifoliate" shoot type a constant max_nodes.
+
+    The library draws trifoliate max_nodes from a random distribution (4-7 as of
+    helios-core 1.3.97), so a hand-built stem with more nodes than the draw is
+    refused at random. Must run before addPlantInstance(), which snapshots the
+    shoot types.
+    """
+    from pyhelios.plant_architecture_params import RandomParameterFloat
+    plantarch.loadPlantModelFromLibrary('bean')
+    params = plantarch.getCurrentShootParameters("trifoliate", return_typed=True)
+    params.max_nodes = RandomParameterFloat.constant(max_nodes)
+    plantarch.defineShootType("trifoliate", params)
+
+
 @pytest.mark.cross_platform
 class TestPlantArchitectureAvailability:
     """Test PlantArchitecture availability detection across platforms"""
@@ -1719,8 +1734,7 @@ class TestPlantArchitectureCustomBuilding:
         if 'bean' not in models:
             pytest.skip("Bean model not available for testing")
 
-        # REQUIRED: Load plant model first to define shoot types
-        plantarch.loadPlantModelFromLibrary('bean')
+        _load_bean_with_fixed_trifoliate_max_nodes(plantarch)
 
         # Create plant with base shoot (trifoliate allows more nodes)
         plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
@@ -1758,8 +1772,7 @@ class TestPlantArchitectureCustomBuilding:
         if 'bean' not in models:
             pytest.skip("Bean model not available for testing")
 
-        # REQUIRED: Load plant model first to define shoot types
-        plantarch.loadPlantModelFromLibrary('bean')
+        _load_bean_with_fixed_trifoliate_max_nodes(plantarch)
 
         plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
         main_shoot_id = plantarch.addBaseStemShoot(
@@ -1790,7 +1803,7 @@ class TestPlantArchitectureCustomBuilding:
         plantarch.loadPlantModelFromLibrary('bean')
 
         plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
-        shoot_id = plantarch.addBaseStemShoot(plant_id, 5, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate")
+        shoot_id = plantarch.addBaseStemShoot(plant_id, 4, AxisRotation(0, 0, 0), 0.01, 0.1, 1.0, 1.0, 0.9, "trifoliate")
         rotation = AxisRotation(45, 0, 0)
 
         # Test negative parent node index
@@ -1926,49 +1939,46 @@ class TestPlantArchitectureCustomBuildingIntegration:
         if not plantarch_wrapper._PLANTARCHITECTURE_FUNCTIONS_AVAILABLE:
             pytest.skip("PlantArchitecture plugin not available")
 
-        try:
-            with PlantArchitecture(basic_context) as plantarch:
-                # Load model for shoot types
-                models = plantarch.getAvailablePlantModels()
-                if not models:
-                    pytest.skip("No plant models available")
+        with PlantArchitecture(basic_context) as plantarch:
+            # Load model for shoot types
+            models = plantarch.getAvailablePlantModels()
+            if not models:
+                pytest.skip("No plant models available")
 
-                # Use 'bean' model explicitly for deterministic shoot types
-                if 'bean' not in models:
-                    pytest.skip("Bean model not available for testing")
+            # Use 'bean' model explicitly for deterministic shoot types
+            if 'bean' not in models:
+                pytest.skip("Bean model not available for testing")
 
-                plantarch.loadPlantModelFromLibrary('bean')
+            _load_bean_with_fixed_trifoliate_max_nodes(plantarch)
 
-                # Create plant
-                plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
+            # Create plant
+            plant_id = plantarch.addPlantInstance(vec3(0, 0, 0), 0.0)
 
-                # Add main stem with 6 nodes using trifoliate (which allows more nodes)
-                main_stem_id = plantarch.addBaseStemShoot(
-                    plant_id, 6, AxisRotation(0, 0, 0), 0.015, 0.12, 1.0, 1.0, 0.9, "trifoliate"
+            # Add main stem with 6 nodes using trifoliate (which allows more nodes)
+            main_stem_id = plantarch.addBaseStemShoot(
+                plant_id, 6, AxisRotation(0, 0, 0), 0.015, 0.12, 1.0, 1.0, 0.9, "trifoliate"
+            )
+
+            # Add multiple lateral branches at different nodes
+            branch_angles = [45, 135, 225, 315]
+            branch_ids = []
+
+            for i, angle in enumerate(branch_angles):
+                branch_id = plantarch.addChildShoot(
+                    plant_id, main_stem_id, i + 2, 1,
+                    AxisRotation(45, angle, 0),
+                    0.008, 0.08, 1.0, 0.9, 0.85, "trifoliate"
                 )
+                branch_ids.append(branch_id)
+                assert branch_id >= 0
 
-                # Add multiple lateral branches at different nodes
-                branch_angles = [45, 135, 225, 315]
-                branch_ids = []
+            # Verify all branches have unique IDs
+            assert len(set(branch_ids)) == len(branch_ids)
 
-                for i, angle in enumerate(branch_angles):
-                    branch_id = plantarch.addChildShoot(
-                        plant_id, main_stem_id, i + 2, 1,
-                        AxisRotation(45, angle, 0),
-                        0.008, 0.08, 1.0, 0.9, 0.85, "trifoliate"
-                    )
-                    branch_ids.append(branch_id)
-                    assert branch_id >= 0
+            # Get all plant geometry
+            plant_uuids = plantarch.getAllPlantUUIDs(plant_id)
+            assert isinstance(plant_uuids, list)
 
-                # Verify all branches have unique IDs
-                assert len(set(branch_ids)) == len(branch_ids)
-
-                # Get all plant geometry
-                plant_uuids = plantarch.getAllPlantUUIDs(plant_id)
-                assert isinstance(plant_uuids, list)
-
-        except PlantArchitectureError as e:
-            pytest.skip(f"PlantArchitecture not available: {e}")
 
 @pytest.mark.native_only
 class TestBuildParameters:
@@ -3260,29 +3270,27 @@ class TestPlantArchitectureGroundClipping:
         except PlantArchitectureError as e:
             pytest.skip(f"PlantArchitecture initialization failed: {e}")
 
-    # Unclipped canopies measured at ~230k-300k primitives across runs, while
-    # clipping at z=0.15 lands near ~45k-50k. 150k sits well clear of both.
-    UNCLIPPED_PRIMITIVE_FLOOR = 150000
+    # With the bean recalibrated in helios-core 1.3.97, unclipped canopies measured
+    # ~93k-155k primitives across seeds, while clipping at z=0.15 left under 8k.
+    # 50k sits well clear of both.
+    UNCLIPPED_PRIMITIVE_FLOOR = 50000
 
-    # Seeding the Context RNG makes bean growth reproducible. Without it the
-    # canopy's minimum z ranged from about -0.14 to -0.007 across runs, so the
-    # -0.01 baseline assertion failed intermittently on the shallow tail. This
-    # seed puts min z at about -0.085, clear of the threshold, and pins the
-    # primitive count so the clipping comparisons are exact rather than
-    # probabilistic. Any fixed seed works; this one was checked to droop.
-    RANDOM_SEED = 12345
+    # Bean growth is stochastic, and a fixed seed does not give the same canopy on every
+    # platform: libc++, libstdc++ and MSVC implement the standard random distributions
+    # differently. Seed 2 puts min z at about -0.089 on macOS but -0.0004 on Linux. Not
+    # every seed droops anywhere (about 4 in 10 reach DROOP_DEPTH on macOS), so the tests
+    # search for one that does on the running platform. Each grow takes about a second.
+    DROOP_DEPTH = -0.01
+    CANDIDATE_SEEDS = range(1, 31)
 
     @staticmethod
-    def _grow_beans(context, plantarch):
-        """Grow a small bean canopy, returning (primitive count, min z).
+    def _grow_beans(context, plantarch, seed):
+        """Grow a small bean canopy from ``seed``, returning (primitive count, min z).
 
-        Bean growth is stochastic, so the Context RNG is seeded to keep the
-        result reproducible. Several plants are grown so below-ground geometry
-        is well established for the baseline assertion, while still requiring
-        clipping to hold across every plant.
+        Several plants are grown so below-ground geometry is well established for the
+        baseline assertion, while still requiring clipping to hold across every plant.
         """
-        context.seedRandomGenerator(
-            TestPlantArchitectureGroundClipping.RANDOM_SEED)
+        context.seedRandomGenerator(seed)
         plantarch.disableMessages()
         plantarch.loadPlantModelFromLibrary("bean")
         plant_ids = [
@@ -3295,23 +3303,43 @@ class TestPlantArchitectureGroundClipping:
         min_z = min(v.z for u in uuids for v in context.getPrimitiveVertices(u))
         return len(uuids), min_z
 
+    @classmethod
+    def _drooping_seed(cls):
+        """The first candidate seed whose unclipped canopy reaches DROOP_DEPTH on this platform.
+
+        The clipping tests grow from this seed, so they always run on a canopy that is known
+        to cross the ground plane without clipping and cannot pass vacuously.
+        """
+        shallowest = []
+        for seed in cls.CANDIDATE_SEEDS:
+            with Context() as context, PlantArchitecture(context) as plantarch:
+                _, min_z = cls._grow_beans(context, plantarch, seed)
+            if min_z < cls.DROOP_DEPTH:
+                return seed
+            shallowest.append((seed, round(min_z, 4)))
+        pytest.fail(
+            f"No candidate seed grew an unclipped bean canopy below z={cls.DROOP_DEPTH}; "
+            f"(seed, min z): {shallowest}"
+        )
+
     def test_beans_droop_below_ground_without_clipping(self, context, plantarch):
         """Baseline: an unclipped bean canopy puts geometry below z=0.
 
         Without this the clipping assertion could pass vacuously on plants that
         never crossed the ground plane in the first place.
         """
-        _, min_z = self._grow_beans(context, plantarch)
-        assert min_z < -0.01, (
+        _, min_z = self._grow_beans(context, plantarch, self._drooping_seed())
+        assert min_z < self.DROOP_DEPTH, (
             f"Expected below-ground geometry without clipping, got min z={min_z}"
         )
 
     def test_ground_clipping_removes_below_ground_geometry(self, context, plantarch):
         """enableGroundClipping(0) lifts plant geometry to the ground plane."""
+        seed = self._drooping_seed()
         plantarch.enableGroundClipping(0.0)
-        count, min_z = self._grow_beans(context, plantarch)
+        count, min_z = self._grow_beans(context, plantarch, seed)
         assert count > 0, "Expected the clipped plant to retain geometry"
-        assert min_z > -0.01, (
+        assert min_z > self.DROOP_DEPTH, (
             f"Expected no geometry below z=0 after clipping, got min z={min_z}"
         )
 
@@ -3322,8 +3350,9 @@ class TestPlantArchitectureGroundClipping:
         trimming geometry to it, so this asserts on the organ count rather than
         on min z (the stem is rooted at z=0 and survives either way).
         """
+        seed = self._drooping_seed()
         plantarch.enableGroundClipping(0.15)
-        count, _ = self._grow_beans(context, plantarch)
+        count, _ = self._grow_beans(context, plantarch, seed)
         assert count > 0, "Expected the clipped canopy to retain geometry"
         assert count < self.UNCLIPPED_PRIMITIVE_FLOOR, (
             f"Expected a raised ground plane to prune organs, got {count} primitives"
@@ -3460,19 +3489,23 @@ class TestPlantArchitecturePruning:
         plantarch_instance.__exit__(None, None, None)
 
     def _build_plant(self, plantarch):
-        """apple at age 365 -- the fixture plant for every pruning test.
+        """apple at age 364 -- the fixture plant for every pruning test.
 
         It builds in well under a second and is the cheapest library combination
         that has all three properties the assertions below depend on: leaves to
         strip, several shoots so shoot-scoped removal is observable, and branching
         to rank 2 so redundant-descendant-cut skipping is actually exercised. The
         first library model at age 15 used elsewhere in this file has none of them.
+
+        Age 364 is the last day of apple's first 365-day season. Since helios-core 1.3.97
+        the cycle no longer runs a day long, so at age 365 the tree has already entered
+        dormancy and dropped its leaves.
         """
         models = plantarch.getAvailablePlantModels()
         if "apple" not in models:
             pytest.skip("apple model not available")
         plantarch.loadPlantModelFromLibrary("apple")
-        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 365.0)
+        return plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 364.0)
 
     def _build_fruiting_plant(self, plantarch):
         """maize at age 60 is the cheapest library combination that bears fruit.
@@ -3948,8 +3981,10 @@ class TestPlantArchitectureBudControl:
     """
 
     MODEL = "apple"
-    AGE = 365.0
-    # Apple at age 365 is dormant and gains no nodes over a 90-day step, so the growth
+    # Since helios-core 1.3.97 the dormancy cycle is exactly 365 days, so an apple built at 365
+    # is dormant and leafless; 364 is the state the old 365 gave.
+    AGE = 364.0
+    # Apple at this age is dormant and gains no nodes over a 90-day step, so the growth
     # comparison needs a full year to see the next season's extension. Apple is still the
     # right fixture: it is the cheapest library model that carries dormant vegetative
     # buds at all (bean at any age reports every bud already BUD_DEAD).
@@ -6067,6 +6102,26 @@ class TestPlantArchitecture1395Validation:
         with pytest.raises(ValueError, match="greater than zero"):
             PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, 0, 0, 5, 0.2, 0.5, 0.0)
 
+    @pytest.mark.parametrize("given, sent", [(None, -1.0), (-1.0, -1.0), (0.0, 0.0), (0.35, 0.35)])
+    def test_setPetioleLeaflets_intercalary_none_keeps_the_phytomers(self, given, sent):
+        # None and a negative value both mean "keep the phytomer's own"; callers written against
+        # either convention reach native with -1.
+        pa = self._pa()
+        pa._plantarch_ptr = object()
+        pa._check_context_alive = lambda: None
+        with patch.object(plantarch_wrapper, 'setPetioleLeaflets') as native:
+            PlantArchitecture.setPetioleLeaflets(pa, 0, 0, 0, 0, 5, 0.2, 0.5, 0.04,
+                                                 intercalary_leaflet_scale=given)
+        assert native.call_args.args[-1] == sent
+        with patch.object(plantarch_wrapper, 'setPetioleLeaflets') as native:
+            PlantArchitecture.setPetioleLeaflets(pa, 0, 0, 0, 0, 5, 0.2, 0.5, 0.04)
+        assert native.call_args.args[-1] == -1.0
+
+    def test_setPetioleLeaflets_rejects_non_finite_intercalary(self):
+        with pytest.raises(ValueError):
+            PlantArchitecture.setPetioleLeaflets(self._pa(), 0, 0, 0, 0, 5, 0.2, 0.5, 0.04,
+                                                 intercalary_leaflet_scale=float("nan"))
+
     def test_wrapper_guard_uses_1395_flag(self):
         with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1395_AVAILABLE', False):
             with pytest.raises(RuntimeError, match="1.3.95"):
@@ -6141,8 +6196,10 @@ class TestPlantArchitecture1395LeafletValidation:
     def test_setPetioleLeafShape_rejects_bad_arguments(self):
         with pytest.raises(ValueError, match="greater than zero"):
             PlantArchitecture.setPetioleLeafShape(self._pa(), 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.1)
-        with pytest.raises(ValueError, match="between 0 and 1"):
+        with pytest.raises(ValueError, match="between -1 and 1"):
             PlantArchitecture.setPetioleLeafShape(self._pa(), 0, 0, 0, 0, 0.5, 0.0, 0.0, 1.5)
+        with pytest.raises(ValueError, match="between -1 and 1"):
+            PlantArchitecture.setPetioleLeafShape(self._pa(), 0, 0, 0, 0, 0.5, 0.0, 0.0, -1.5)
 
     def test_wrapper_guard_uses_1395_flag(self):
         with patch.object(plantarch_wrapper, '_PLANTARCHITECTURE_1395_AVAILABLE', False):

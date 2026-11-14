@@ -11,6 +11,9 @@
 #include <cstdio>
 #include <atomic>
 #include <unordered_map>
+#include <algorithm>
+#include <vector>
+#include <memory>
 
 namespace {
     //! Unpack the flat 5-float C-ABI representation of helios::AdaptiveTileRefinement
@@ -326,93 +329,89 @@ extern "C" {
         }
     }
     
-    // Multi-texture triangle function - supports material IDs for texture assignment
-    unsigned int* addTrianglesFromArraysMultiTextured(helios::Context* context, 
+    // Deletes the triangles added so far by a bulk call that failed partway, so an error leaves
+    // the Context as it was. Errors raised while rolling back are swallowed: the original error
+    // is the one the caller needs to see.
+    static void rollbackAddedPrimitives(helios::Context* context, const std::vector<unsigned int>& created) {
+        try {
+            if (!created.empty()) {
+                context->deletePrimitive(created);
+            }
+        } catch (...) {
+        }
+    }
+
+    // Multi-texture triangle function - supports material IDs for texture assignment.
+    // Triangles are added in face order, so UUID i always belongs to face i.
+    PYHELIOS_API unsigned int* addTrianglesFromArraysMultiTextured(helios::Context* context,
                                                      float* vertices, unsigned int vertex_count,
                                                      unsigned int* faces, unsigned int face_count,
                                                      float* uv_coords,
                                                      const char** texture_files, unsigned int texture_count,
                                                      unsigned int* material_ids,
                                                      unsigned int* result_count) {
+        static thread_local std::vector<unsigned int> triangle_uuids;
+        triangle_uuids.clear();
         try {
             clearError();
+            *result_count = 0;
             if (!context) {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null");
-                *result_count = 0;
                 return nullptr;
             }
-            
-            // Validate input parameters
             if (!vertices || !faces || !uv_coords || !texture_files || !material_ids) {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "One or more input arrays is null");
-                *result_count = 0;
                 return nullptr;
             }
-            
             if (vertex_count == 0 || face_count == 0 || texture_count == 0) {
                 setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertex, face, or texture count is zero");
-                *result_count = 0;
                 return nullptr;
             }
-            
-            // Group faces by material ID for efficient processing
-            std::map<unsigned int, std::vector<unsigned int>> material_groups;
+
+            // Validate every face before adding anything.
             for (unsigned int i = 0; i < face_count; i++) {
-                unsigned int material_id = material_ids[i];
-                if (material_id >= texture_count) {
-                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, 
-                            "Material ID " + std::to_string(material_id) + " exceeds texture count " + std::to_string(texture_count));
-                    *result_count = 0;
+                if (material_ids[i] >= texture_count) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                            "Material ID " + std::to_string(material_ids[i]) + " exceeds texture count " + std::to_string(texture_count));
                     return nullptr;
                 }
-                material_groups[material_id].push_back(i);
-            }
-            
-            // Pre-allocate result vector for all triangles
-            static thread_local std::vector<unsigned int> triangle_uuids;
-            triangle_uuids.clear();
-            triangle_uuids.reserve(face_count);
-            
-            // Process each material group
-            for (const auto& group : material_groups) {
-                unsigned int material_id = group.first;
-                const std::vector<unsigned int>& face_indices = group.second;
-                const char* texture_file = texture_files[material_id];
-                
-                // Add triangles for this material
-                for (unsigned int face_idx : face_indices) {
-                    // Get vertex indices for this triangle (3 indices per face)
-                    unsigned int v0_idx = faces[face_idx * 3];
-                    unsigned int v1_idx = faces[face_idx * 3 + 1];
-                    unsigned int v2_idx = faces[face_idx * 3 + 2];
-                    
-                    // Validate vertex indices
-                    if (v0_idx >= vertex_count || v1_idx >= vertex_count || v2_idx >= vertex_count) {
-                        setError(PYHELIOS_ERROR_INVALID_PARAMETER, 
-                                "Face vertex index exceeds vertex count");
-                        *result_count = 0;
+                if (!texture_files[material_ids[i]]) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Texture file " + std::to_string(material_ids[i]) + " is null");
+                    return nullptr;
+                }
+                for (int k = 0; k < 3; k++) {
+                    if (faces[i * 3 + k] >= vertex_count) {
+                        setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                                "Face " + std::to_string(i) + " references vertex " + std::to_string(faces[i * 3 + k]) +
+                                ", but only " + std::to_string(vertex_count) + " vertices were provided");
                         return nullptr;
                     }
-                    
-                    // Get vertex coordinates (3 floats per vertex)
+                }
+            }
+
+            triangle_uuids.reserve(face_count);
+            try {
+                for (unsigned int i = 0; i < face_count; i++) {
+                    const unsigned int v0_idx = faces[i * 3];
+                    const unsigned int v1_idx = faces[i * 3 + 1];
+                    const unsigned int v2_idx = faces[i * 3 + 2];
                     helios::vec3 vertex0(vertices[v0_idx * 3], vertices[v0_idx * 3 + 1], vertices[v0_idx * 3 + 2]);
                     helios::vec3 vertex1(vertices[v1_idx * 3], vertices[v1_idx * 3 + 1], vertices[v1_idx * 3 + 2]);
                     helios::vec3 vertex2(vertices[v2_idx * 3], vertices[v2_idx * 3 + 1], vertices[v2_idx * 3 + 2]);
-                    
-                    // Get UV coordinates (2 floats per vertex)
                     helios::vec2 uv0(uv_coords[v0_idx * 2], uv_coords[v0_idx * 2 + 1]);
                     helios::vec2 uv1(uv_coords[v1_idx * 2], uv_coords[v1_idx * 2 + 1]);
                     helios::vec2 uv2(uv_coords[v2_idx * 2], uv_coords[v2_idx * 2 + 1]);
-                    
-                    // Add textured triangle using existing Helios API
-                    unsigned int triangle_uuid = context->addTriangle(vertex0, vertex1, vertex2, texture_file, uv0, uv1, uv2);
-                    triangle_uuids.push_back(triangle_uuid);
+                    triangle_uuids.push_back(context->addTriangle(vertex0, vertex1, vertex2, texture_files[material_ids[i]], uv0, uv1, uv2));
                 }
+            } catch (...) {
+                rollbackAddedPrimitives(context, triangle_uuids);
+                triangle_uuids.clear();
+                throw;
             }
-            
-            *result_count = triangle_uuids.size();
+
+            *result_count = static_cast<unsigned int>(triangle_uuids.size());
             return triangle_uuids.data();
-            
+
         } catch (const std::runtime_error& e) {
             setError(PYHELIOS_ERROR_RUNTIME, e.what());
             *result_count = 0;
@@ -427,7 +426,134 @@ extern "C" {
             return nullptr;
         }
     }
-    
+
+    // Indexed untextured triangles. face_colors is either null (default color) or
+    // face_count * 3 floats giving one RGB color per face. UUIDs are written to out_uuids
+    // (face_count entries) in face order.
+    PYHELIOS_API void addTrianglesFromArrays(helios::Context* context,
+                                             float* vertices, unsigned int vertex_count,
+                                             unsigned int* faces, unsigned int face_count,
+                                             float* face_colors,
+                                             unsigned int* out_uuids) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (face_count == 0) { return; }
+            if (!vertices || !faces || !out_uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "One or more input arrays is null");
+                return;
+            }
+            for (unsigned int i = 0; i < face_count * 3; i++) {
+                if (faces[i] >= vertex_count) {
+                    setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                            "Face " + std::to_string(i / 3) + " references vertex " + std::to_string(faces[i]) +
+                            ", but only " + std::to_string(vertex_count) + " vertices were provided");
+                    return;
+                }
+            }
+
+            std::vector<unsigned int> created;
+            created.reserve(face_count);
+            try {
+                for (unsigned int i = 0; i < face_count; i++) {
+                    const float* p0 = vertices + faces[i * 3] * 3;
+                    const float* p1 = vertices + faces[i * 3 + 1] * 3;
+                    const float* p2 = vertices + faces[i * 3 + 2] * 3;
+                    helios::vec3 v0(p0[0], p0[1], p0[2]);
+                    helios::vec3 v1(p1[0], p1[1], p1[2]);
+                    helios::vec3 v2(p2[0], p2[1], p2[2]);
+                    if (face_colors) {
+                        helios::RGBcolor c(face_colors[i * 3], face_colors[i * 3 + 1], face_colors[i * 3 + 2]);
+                        created.push_back(context->addTriangle(v0, v1, v2, c));
+                    } else {
+                        created.push_back(context->addTriangle(v0, v1, v2));
+                    }
+                }
+            } catch (...) {
+                rollbackAddedPrimitives(context, created);
+                throw;
+            }
+            std::copy(created.begin(), created.end(), out_uuids);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTrianglesFromArrays): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTrianglesFromArrays): Unknown error creating triangles.");
+        }
+    }
+
+    // Triangle soup: triangle i has vertices vertices[i*9 .. i*9+8]. texture_index is either null
+    // (all untextured) or one index per triangle into texture_files, with -1 meaning untextured.
+    // uv holds 6 floats per triangle and is required when any index is >= 0. Each triangle is
+    // added with the same Context::addTriangle overload a single call would use, in order, and
+    // its UUID written to out_uuids[i]. On any error nothing is added.
+    PYHELIOS_API void addTriangleSoup(helios::Context* context,
+                                      float* vertices, unsigned int triangle_count,
+                                      float* uv, int* texture_index,
+                                      const char** texture_files, unsigned int texture_count,
+                                      unsigned int* out_uuids) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (triangle_count == 0) { return; }
+            if (!vertices || !out_uuids) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertex or output array is null");
+                return;
+            }
+            if (texture_index) {
+                for (unsigned int i = 0; i < triangle_count; i++) {
+                    const int t = texture_index[i];
+                    if (t < -1 || (t >= 0 && static_cast<unsigned int>(t) >= texture_count)) {
+                        setError(PYHELIOS_ERROR_INVALID_PARAMETER,
+                                "Texture index " + std::to_string(t) + " of triangle " + std::to_string(i) +
+                                " is out of range: must be -1 or in [0, " + std::to_string(texture_count) + ")");
+                        return;
+                    }
+                    if (t >= 0) {
+                        if (!uv) {
+                            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UV coordinates are required for textured triangles");
+                            return;
+                        }
+                        if (!texture_files || !texture_files[t]) {
+                            setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Texture file " + std::to_string(t) + " is null");
+                            return;
+                        }
+                    }
+                }
+            }
+
+            std::vector<unsigned int> created;
+            created.reserve(triangle_count);
+            try {
+                for (unsigned int i = 0; i < triangle_count; i++) {
+                    const float* p = vertices + static_cast<size_t>(i) * 9;
+                    helios::vec3 v0(p[0], p[1], p[2]);
+                    helios::vec3 v1(p[3], p[4], p[5]);
+                    helios::vec3 v2(p[6], p[7], p[8]);
+                    const int t = texture_index ? texture_index[i] : -1;
+                    if (t >= 0) {
+                        const float* q = uv + static_cast<size_t>(i) * 6;
+                        created.push_back(context->addTriangle(v0, v1, v2, texture_files[t],
+                                                               helios::vec2(q[0], q[1]), helios::vec2(q[2], q[3]), helios::vec2(q[4], q[5])));
+                    } else {
+                        created.push_back(context->addTriangle(v0, v1, v2));
+                    }
+                }
+            } catch (...) {
+                rollbackAddedPrimitives(context, created);
+                throw;
+            }
+            std::copy(created.begin(), created.end(), out_uuids);
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::addTriangleSoup): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::addTriangleSoup): Unknown error creating triangles.");
+        }
+    }
+
     // Compound geometry creation functions - return arrays of UUIDs
     
     // addTile functions
@@ -9988,11 +10114,27 @@ extern "C" {
 
     // ---- Geometry mutators ----
 
+    // Context::setTriangleVertices checks the UUID only in HELIOS_DEBUG builds and casts the
+    // primitive to Triangle unchecked, so a missing or non-triangle UUID would crash. Sets the
+    // error and returns false in that case.
+    static bool checkIsTriangle(helios::Context* context, unsigned int uuid, const char* caller) {
+        if (!context->doesPrimitiveExist(uuid)) {
+            setError(PYHELIOS_ERROR_UUID_NOT_FOUND, std::string("ERROR (Context::") + caller + "): UUID " + std::to_string(uuid) + " does not exist in the Context.");
+            return false;
+        }
+        if (context->getPrimitiveType(uuid) != helios::PRIMITIVE_TYPE_TRIANGLE) {
+            setError(PYHELIOS_ERROR_INVALID_PARAMETER, std::string("ERROR (Context::") + caller + "): UUID " + std::to_string(uuid) + " is not a triangle.");
+            return false;
+        }
+        return true;
+    }
+
     PYHELIOS_API void setTriangleVertices(helios::Context* context, unsigned int uuid, float* vertex0, float* vertex1, float* vertex2) {
         clearError();
         try {
             if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
             if (!vertex0 || !vertex1 || !vertex2) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Vertex pointer is null"); return; }
+            if (!checkIsTriangle(context, uuid, "setTriangleVertices")) { return; }
             helios::vec3 v0(vertex0[0], vertex0[1], vertex0[2]);
             helios::vec3 v1(vertex1[0], vertex1[1], vertex1[2]);
             helios::vec3 v2(vertex2[0], vertex2[1], vertex2[2]);
@@ -10003,6 +10145,30 @@ extern "C" {
             setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setTriangleVertices): ") + e.what());
         } catch (...) {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setTriangleVertices): Unknown error.");
+        }
+    }
+
+    // Sets the vertices of triangle_count existing triangles; vertices holds 9 floats per
+    // triangle. Every UUID is checked before any triangle is modified.
+    PYHELIOS_API void setTriangleVerticesBatch(helios::Context* context, unsigned int* uuids, unsigned int triangle_count, float* vertices) {
+        clearError();
+        try {
+            if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return; }
+            if (triangle_count == 0) { return; }
+            if (!uuids || !vertices) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "UUID or vertex array is null"); return; }
+            for (unsigned int i = 0; i < triangle_count; i++) {
+                if (!checkIsTriangle(context, uuids[i], "setTriangleVerticesBatch")) { return; }
+            }
+            for (unsigned int i = 0; i < triangle_count; i++) {
+                const float* p = vertices + static_cast<size_t>(i) * 9;
+                context->setTriangleVertices(uuids[i], helios::vec3(p[0], p[1], p[2]), helios::vec3(p[3], p[4], p[5]), helios::vec3(p[6], p[7], p[8]));
+            }
+        } catch (const std::runtime_error& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, e.what());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::setTriangleVerticesBatch): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::setTriangleVerticesBatch): Unknown error.");
         }
     }
 
@@ -12724,5 +12890,358 @@ extern "C" {
             setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::replacePolymeshObjectPrimitives): Unknown error.");
         }
     }
+
+    //=========================================================================
+    // helios-core 1.3.97: per-caller deletion tracking, normal and bump maps
+    //=========================================================================
+
+#define PYH1397_CATCH(name, ret) \
+        catch (const std::runtime_error& e) { setError(PYHELIOS_ERROR_RUNTIME, e.what()); return ret; } \
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (" name "): ") + e.what()); return ret; } \
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (" name "): Unknown error."); return ret; }
+
+#define PYH1397_REQUIRE_CONTEXT(ret) \
+        if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return ret; }
+
+#define PYH1397_REQUIRE_STRING(ptr, name, what, ret) \
+        if (!(ptr)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" name "): " what " pointer is null"); return ret; }
+
+    PYHELIOS_API unsigned int* getDeletedUUIDsSinceMark(helios::Context* context, uint64_t mark, unsigned int* count) {
+        clearError();
+        try {
+            if (!count) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getDeletedUUIDs): Count out-pointer is null"); return nullptr; }
+            *count = 0;
+            PYH1397_REQUIRE_CONTEXT(nullptr)
+            static thread_local std::vector<unsigned int> buf;
+            buf = context->getDeletedUUIDs(mark);
+            *count = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } PYH1397_CATCH("Context::getDeletedUUIDs", nullptr)
+    }
+
+    PYHELIOS_API void setMaterialNormalMap(helios::Context* context, const char* material_label, const char* normal_map_file, float strength, int flip_green) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            PYH1397_REQUIRE_STRING(material_label, "Context::setMaterialNormalMap", "Material label", )
+            PYH1397_REQUIRE_STRING(normal_map_file, "Context::setMaterialNormalMap", "File name", )
+            context->setMaterialNormalMap(std::string(material_label), std::string(normal_map_file), strength, flip_green != 0);
+        } PYH1397_CATCH("Context::setMaterialNormalMap", )
+    }
+
+    PYHELIOS_API void setMaterialBumpMap(helios::Context* context, const char* material_label, const char* bump_map_file, float strength) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            PYH1397_REQUIRE_STRING(material_label, "Context::setMaterialBumpMap", "Material label", )
+            PYH1397_REQUIRE_STRING(bump_map_file, "Context::setMaterialBumpMap", "File name", )
+            context->setMaterialBumpMap(std::string(material_label), std::string(bump_map_file), strength);
+        } PYH1397_CATCH("Context::setMaterialBumpMap", )
+    }
+
+    PYHELIOS_API void setMaterialNormalMapStrength(helios::Context* context, const char* material_label, float strength) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            PYH1397_REQUIRE_STRING(material_label, "Context::setMaterialNormalMapStrength", "Material label", )
+            context->setMaterialNormalMapStrength(std::string(material_label), strength);
+        } PYH1397_CATCH("Context::setMaterialNormalMapStrength", )
+    }
+
+    PYHELIOS_API void clearMaterialNormalMap(helios::Context* context, const char* material_label) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            PYH1397_REQUIRE_STRING(material_label, "Context::clearMaterialNormalMap", "Material label", )
+            context->clearMaterialNormalMap(std::string(material_label));
+        } PYH1397_CATCH("Context::clearMaterialNormalMap", )
+    }
+
+    PYHELIOS_API int getMaterialNormalMapFile(helios::Context* context, const char* material_label, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0)
+            PYH1397_REQUIRE_STRING(material_label, "Context::getMaterialNormalMapFile", "Material label", 0)
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            return copyStringToBuffer(context->getMaterialNormalMapFile(std::string(material_label)), buffer, buffer_size);
+        } PYH1397_CATCH("Context::getMaterialNormalMapFile", 0)
+    }
+
+    PYHELIOS_API int getMaterialNormalMapKind(helios::Context* context, const char* material_label) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0)
+            PYH1397_REQUIRE_STRING(material_label, "Context::getMaterialNormalMapKind", "Material label", 0)
+            return static_cast<int>(context->getMaterialNormalMapKind(std::string(material_label)));
+        } PYH1397_CATCH("Context::getMaterialNormalMapKind", 0)
+    }
+
+    PYHELIOS_API float getMaterialNormalMapStrength(helios::Context* context, const char* material_label) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0.f)
+            PYH1397_REQUIRE_STRING(material_label, "Context::getMaterialNormalMapStrength", "Material label", 0.f)
+            return context->getMaterialNormalMapStrength(std::string(material_label));
+        } PYH1397_CATCH("Context::getMaterialNormalMapStrength", 0.f)
+    }
+
+    PYHELIOS_API int isMaterialNormalMapGreenFlipped(helios::Context* context, const char* material_label) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0)
+            PYH1397_REQUIRE_STRING(material_label, "Context::isMaterialNormalMapGreenFlipped", "Material label", 0)
+            return context->isMaterialNormalMapGreenFlipped(std::string(material_label)) ? 1 : 0;
+        } PYH1397_CATCH("Context::isMaterialNormalMapGreenFlipped", 0)
+    }
+
+    PYHELIOS_API void setPrimitiveNormalMap(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* normal_map_file, float strength, int flip_green) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            PYH1397_REQUIRE_STRING(normal_map_file, "Context::setPrimitiveNormalMap", "File name", )
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveNormalMap): UUID array pointer is null"); return; }
+            if (count == 1) {
+                context->setPrimitiveNormalMap(uuids[0], std::string(normal_map_file), strength, flip_green != 0);
+            } else {
+                context->setPrimitiveNormalMap(std::vector<uint>(uuids, uuids + count), std::string(normal_map_file), strength, flip_green != 0);
+            }
+        } PYH1397_CATCH("Context::setPrimitiveNormalMap", )
+    }
+
+    PYHELIOS_API void setPrimitiveBumpMap(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* bump_map_file, float strength) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            PYH1397_REQUIRE_STRING(bump_map_file, "Context::setPrimitiveBumpMap", "File name", )
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::setPrimitiveBumpMap): UUID array pointer is null"); return; }
+            if (count == 1) {
+                context->setPrimitiveBumpMap(uuids[0], std::string(bump_map_file), strength);
+            } else {
+                context->setPrimitiveBumpMap(std::vector<uint>(uuids, uuids + count), std::string(bump_map_file), strength);
+            }
+        } PYH1397_CATCH("Context::setPrimitiveBumpMap", )
+    }
+
+    PYHELIOS_API void clearPrimitiveNormalMap(helios::Context* context, const unsigned int* uuids, unsigned int count) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            if (count > 0 && !uuids) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::clearPrimitiveNormalMap): UUID array pointer is null"); return; }
+            if (count == 1) {
+                context->clearPrimitiveNormalMap(uuids[0]);
+            } else {
+                context->clearPrimitiveNormalMap(std::vector<uint>(uuids, uuids + count));
+            }
+        } PYH1397_CATCH("Context::clearPrimitiveNormalMap", )
+    }
+
+    PYHELIOS_API int getPrimitiveNormalMapFile(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0)
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            return copyStringToBuffer(context->getPrimitiveNormalMapFile(uuid), buffer, buffer_size);
+        } PYH1397_CATCH("Context::getPrimitiveNormalMapFile", 0)
+    }
+
+    PYHELIOS_API int getPrimitiveNormalMapKind(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0)
+            return static_cast<int>(context->getPrimitiveNormalMapKind(uuid));
+        } PYH1397_CATCH("Context::getPrimitiveNormalMapKind", 0)
+    }
+
+    PYHELIOS_API float getPrimitiveNormalMapStrength(helios::Context* context, unsigned int uuid) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(0.f)
+            return context->getPrimitiveNormalMapStrength(uuid);
+        } PYH1397_CATCH("Context::getPrimitiveNormalMapStrength", 0.f)
+    }
+
+    PYHELIOS_API float* getPrimitiveNormalMapUV(helios::Context* context, unsigned int uuid, unsigned int* size) {
+        clearError();
+        try {
+            if (!size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getPrimitiveNormalMapUV): Size out-pointer is null"); return nullptr; }
+            *size = 0;
+            PYH1397_REQUIRE_CONTEXT(nullptr)
+            static thread_local std::vector<float> buf;
+            const std::vector<helios::vec2> uv = context->getPrimitiveNormalMapUV(uuid);
+            buf.resize(2 * uv.size());
+            for (size_t i = 0; i < uv.size(); ++i) {
+                buf[2 * i] = uv[i].x;
+                buf[2 * i + 1] = uv[i].y;
+            }
+            *size = static_cast<unsigned int>(buf.size());
+            return buf.empty() ? nullptr : buf.data();
+        } PYH1397_CATCH("Context::getPrimitiveNormalMapUV", nullptr)
+    }
+
+    PYHELIOS_API void* getMaterialNormalMapTexels(helios::Context* context, unsigned int materialID) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(nullptr)
+            std::shared_ptr<const helios::NormalMapTexels> texels = context->getMaterialNormalMapTexels(materialID);
+            if (!texels) {
+                return nullptr;
+            }
+            return new std::shared_ptr<const helios::NormalMapTexels>(std::move(texels));
+        } PYH1397_CATCH("Context::getMaterialNormalMapTexels", nullptr)
+    }
+
+    PYHELIOS_API void* getNormalMapTexels(helios::Context* context, const char* file, int kind, float strength, int flip_green) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT(nullptr)
+            PYH1397_REQUIRE_STRING(file, "Context::getNormalMapTexels", "File name", nullptr)
+            std::shared_ptr<const helios::NormalMapTexels> texels = context->getNormalMapTexels(std::string(file), static_cast<helios::NormalMapKind>(kind), strength, flip_green != 0);
+            if (!texels) {
+                setError(PYHELIOS_ERROR_RUNTIME, "ERROR (Context::getNormalMapTexels): No normals were decoded for " + std::string(file) + ".");
+                return nullptr;
+            }
+            return new std::shared_ptr<const helios::NormalMapTexels>(std::move(texels));
+        } PYH1397_CATCH("Context::getNormalMapTexels", nullptr)
+    }
+
+    PYHELIOS_API void clearNormalMapCache(helios::Context* context) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_CONTEXT()
+            context->clearNormalMapCache();
+        } PYH1397_CATCH("Context::clearNormalMapCache", )
+    }
+
+    // ---- Free functions of core/global.h ----
+
+    PYHELIOS_API void* decodeNormalMapImage(const char* file, int kind, float strength, int flip_green) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_STRING(file, "decodeNormalMapImage", "File name", nullptr)
+            helios::NormalMapTexels texels = helios::decodeNormalMapImage(std::string(file), static_cast<helios::NormalMapKind>(kind), strength, flip_green != 0);
+            return new std::shared_ptr<const helios::NormalMapTexels>(std::make_shared<const helios::NormalMapTexels>(std::move(texels)));
+        } PYH1397_CATCH("decodeNormalMapImage", nullptr)
+    }
+
+    PYHELIOS_API int classifyBumpImage(const char* file) {
+        clearError();
+        try {
+            PYH1397_REQUIRE_STRING(file, "classifyBumpImage", "File name", 0)
+            return static_cast<int>(helios::classifyBumpImage(std::string(file)));
+        } PYH1397_CATCH("classifyBumpImage", 0)
+    }
+
+    PYHELIOS_API int computeTangentFrame(const float* p0, const float* p1, const float* p2, const float* uv0, const float* uv1, const float* uv2, float* dPdu, float* dPdv) {
+        clearError();
+        try {
+            if (!p0 || !p1 || !p2 || !uv0 || !uv1 || !uv2 || !dPdu || !dPdv) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (computeTangentFrame): Null pointer argument"); return 0; }
+            helios::vec3 du, dv;
+            const bool ok = helios::computeTangentFrame(helios::make_vec3(p0[0], p0[1], p0[2]), helios::make_vec3(p1[0], p1[1], p1[2]), helios::make_vec3(p2[0], p2[1], p2[2]),
+                                                        helios::make_vec2(uv0[0], uv0[1]), helios::make_vec2(uv1[0], uv1[1]), helios::make_vec2(uv2[0], uv2[1]), du, dv);
+            if (!ok) {
+                return 0;
+            }
+            dPdu[0] = du.x; dPdu[1] = du.y; dPdu[2] = du.z;
+            dPdv[0] = dv.x; dPdv[1] = dv.y; dPdv[2] = dv.z;
+            return 1;
+        } PYH1397_CATCH("computeTangentFrame", 0)
+    }
+
+    PYHELIOS_API void applyTangentSpaceNormal(const float* tangent_normal, const float* dPdu, const float* dPdv, const float* normal, float* result) {
+        clearError();
+        try {
+            if (!tangent_normal || !dPdu || !dPdv || !normal || !result) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (applyTangentSpaceNormal): Null pointer argument"); return; }
+            const helios::vec3 n = helios::applyTangentSpaceNormal(helios::make_vec3(tangent_normal[0], tangent_normal[1], tangent_normal[2]), helios::make_vec3(dPdu[0], dPdu[1], dPdu[2]),
+                                                                   helios::make_vec3(dPdv[0], dPdv[1], dPdv[2]), helios::make_vec3(normal[0], normal[1], normal[2]));
+            result[0] = n.x; result[1] = n.y; result[2] = n.z;
+        } PYH1397_CATCH("applyTangentSpaceNormal", )
+    }
+
+    // ---- NormalMapTexels handles (a heap-allocated shared_ptr, released by destroyNormalMapTexels) ----
+
+    PYHELIOS_API void destroyNormalMapTexels(void* handle) {
+        delete static_cast<std::shared_ptr<const helios::NormalMapTexels>*>(handle);
+    }
+
+#define PYH1397_TEXELS(name, ret) \
+        if (!handle) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (" name "): NormalMapTexels handle is null"); return ret; } \
+        const helios::NormalMapTexels& texels = **static_cast<std::shared_ptr<const helios::NormalMapTexels>*>(handle);
+
+    PYHELIOS_API int getNormalMapTexelsFile(void* handle, char* buffer, int buffer_size) {
+        clearError();
+        try {
+            PYH1397_TEXELS("NormalMapTexels::file", 0)
+            if (!buffer || buffer_size <= 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Buffer is null or has non-positive size"); return 0; }
+            return copyStringToBuffer(texels.file, buffer, buffer_size);
+        } PYH1397_CATCH("NormalMapTexels::file", 0)
+    }
+
+    PYHELIOS_API void getNormalMapTexelsInfo(void* handle, int* kind, float* strength, int* flip_green, int* width, int* height) {
+        clearError();
+        try {
+            PYH1397_TEXELS("NormalMapTexels", )
+            if (!kind || !strength || !flip_green || !width || !height) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (NormalMapTexels): Null out-pointer"); return; }
+            *kind = static_cast<int>(texels.kind);
+            *strength = texels.strength;
+            *flip_green = texels.flip_green ? 1 : 0;
+            *width = texels.resolution.x;
+            *height = texels.resolution.y;
+        } PYH1397_CATCH("NormalMapTexels", )
+    }
+
+    PYHELIOS_API const int16_t* getNormalMapTexelsXY(void* handle, unsigned long long* size) {
+        clearError();
+        try {
+            if (!size) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (NormalMapTexels::xy): Size out-pointer is null"); return nullptr; }
+            *size = 0;
+            PYH1397_TEXELS("NormalMapTexels::xy", nullptr)
+            *size = static_cast<unsigned long long>(texels.xy.size());
+            return texels.xy.empty() ? nullptr : texels.xy.data();
+        } PYH1397_CATCH("NormalMapTexels::xy", nullptr)
+    }
+
+    PYHELIOS_API unsigned long long getNormalMapTexelsMemoryBytes(void* handle) {
+        clearError();
+        try {
+            PYH1397_TEXELS("NormalMapTexels::getMemoryBytes", 0)
+            return static_cast<unsigned long long>(texels.getMemoryBytes());
+        } PYH1397_CATCH("NormalMapTexels::getMemoryBytes", 0)
+    }
+
+    PYHELIOS_API void getNormalMapTexelsNormal(void* handle, int column, int row_from_top, float* normal) {
+        clearError();
+        try {
+            PYH1397_TEXELS("NormalMapTexels::getNormal", )
+            if (!normal) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (NormalMapTexels::getNormal): Null out-pointer"); return; }
+            if (column < 0 || row_from_top < 0 || column >= texels.resolution.x || row_from_top >= texels.resolution.y) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (NormalMapTexels::getNormal): Texel (" + std::to_string(column) + ", " + std::to_string(row_from_top) + ") is outside the " +
+                         std::to_string(texels.resolution.x) + " x " + std::to_string(texels.resolution.y) + " image.");
+                return;
+            }
+            const helios::vec3 n = texels.getNormal(column, row_from_top);
+            normal[0] = n.x; normal[1] = n.y; normal[2] = n.z;
+        } PYH1397_CATCH("NormalMapTexels::getNormal", )
+    }
+
+    PYHELIOS_API void sampleNormalMapTexels(void* handle, const float* uv, unsigned int count, int bilinear, float* normals) {
+        clearError();
+        try {
+            PYH1397_TEXELS("NormalMapTexels::sample", )
+            if (count > 0 && (!uv || !normals)) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (NormalMapTexels::sample): Null array pointer"); return; }
+            if (texels.resolution.x <= 0 || texels.resolution.y <= 0 || texels.xy.size() < 2 * size_t(texels.resolution.x) * size_t(texels.resolution.y)) {
+                setError(PYHELIOS_ERROR_RUNTIME, "ERROR (NormalMapTexels::sample): The normal map holds no texels."); return;
+            }
+            for (unsigned int i = 0; i < count; ++i) {
+                const helios::vec2 p = helios::make_vec2(uv[2 * i], uv[2 * i + 1]);
+                const helios::vec3 n = bilinear ? texels.sampleBilinear(p) : texels.sampleNearest(p);
+                normals[3 * i] = n.x; normals[3 * i + 1] = n.y; normals[3 * i + 2] = n.z;
+            }
+        } PYH1397_CATCH("NormalMapTexels::sample", )
+    }
+
+#undef PYH1397_TEXELS
+#undef PYH1397_REQUIRE_STRING
+#undef PYH1397_REQUIRE_CONTEXT
+#undef PYH1397_CATCH
 
 } //extern "C"

@@ -430,9 +430,18 @@ The following raise an error when combined with a spectral texture:
 
 - Primitive data `reflectivity_<band>` or `transmissivity_<band>` in a band without thermal
   emission (including a fluorescence band).
-- Translucent covers and specular surface layers.
+- Translucent covers.
 - Classes whose reflectivity or transmissivity differ in a band with thermal emission, unless the
   primitive has constant values for that band.
+
+**Surface layers.** Since helios-core 1.3.97 a primitive with a spectral texture can have a
+specular surface layer (`specular_roughness` / `specular_n`); before that the combination raised an
+error. All of its classes lie under the same layer, the primitive's (or its material's), and each
+class's spectra give its reflectivity and transmissivity as totals at normal incidence. The layer's
+reflection, highlight and angular split are the primitive's, the same for every class. A class must
+therefore reflect at least what the layer alone reflects at normal incidence, a(1), in every band
+and as weighted by each camera's spectral response, or `runBand()` raises an error naming the class
+and its palette.
 
 #### Surfaces with a Class Map {#RadSurfaceClassMap}
 
@@ -457,6 +466,18 @@ at most 1 together). \ref pyhelios.RadiationModel.RadiationModel.applySpectralCl
 `surface_<class map>` from such definitions for every primitive given to it that carries the
 primitive data `spectral_class_map` (the class map's path), and assigns the spectral texture. With
 no argument it considers every primitive in the Context.
+
+A surface with a specular surface layer, such as a waxy fruit skin, can instead have classes that
+scale only the body under the layer (helios-core 1.3.97+): with `scales="body"` on
+`<surface_class_map>`, a class of `reflectance_scale` s has the reflectivity a(1) + s (ρ − a(1)) and
+the transmissivity s τ, where ρ and τ are the surface's spectra and a(1) is what the layer of the
+primitives reflects at normal incidence. `applySpectralClassMaps()` reads each primitive's layer
+(`specular_roughness` and `specular_n`, from its material or primitive data), so **set the layer
+first**; primitives with different layers get separate palettes,
+`surface_<class map>_n<refractive index>_r<roughness>`. It raises an error if such a map is applied
+to a primitive without a layer or with a per-band refractive index (`specular_n_<band>`), or if the
+surface's reflectivity falls below a(1) at any wavelength; `runBand()` raises one if a primitive's
+layer was changed afterwards (call `applySpectralClassMaps()` again).
 
 PlantArchitecture records the class map on the bark and fruit of library models that have one,
 such as `apple` and `apple_fruitingwall` (see `InternodeParameters.image_class_map_file` and
@@ -483,10 +504,12 @@ leaves through `LeafPrototype.leaf_class_map_file`, are left alone: their classe
 the leaf's properties by \ref pyhelios.LeafOptics.LeafOptics.run "LeafOptics.run()" (see the
 [LeafOptics documentation](plugin_leafoptics.md)). A whole plant can therefore be passed at once.
 
-The fruit of the `apple` models instead carries, as primitive data set by its prototype, a
-red-apple skin spectrum (`apple_fruit_reflectivity_0000`) and a waxy specular surface layer
-(`specular_roughness` 0.15, `specular_n` 1.5), since a surface layer cannot yet be combined with
-a spectral texture. Override them by setting the same primitive data after the plant is built.
+The fruit of the `apple` models also carries, as primitive data set by its prototype, a red-apple
+skin spectrum (`apple_fruit_reflectivity_0000`) under a waxy specular surface layer
+(`specular_roughness` 0.15, `specular_n` 1.45), and since helios-core 1.3.97 its class map
+(`AppleFruit_classes.png`, the skin's blush) scales the body under that layer (`scales="body"`).
+Override them by setting the same primitive data after the plant is built and before calling
+`applySpectralClassMaps()`.
 
 Class maps and their definitions can be made from a texture with
 `utilities/leaf_class_maps/fit_classes` in helios-core (its `--surface` mode, for anything that is
@@ -494,6 +517,39 @@ not a leaf). A class scales the whole spectrum, so its colour in linear light is
 the fitter holds every class below a visible reflectance of 0.6 by default, because the brightest
 parts of a photograph of a natural surface are gloss and lit curvature rather than reflectance,
 and a class scaled past that renders washed out.
+
+### Normal and Bump Maps {#RadNormalMaps}
+
+Since helios-core 1.3.97 the radiation model applies normal and bump maps (set with
+`Context.setMaterialNormalMap()`, `setMaterialBumpMap()`, or per primitive with
+`setPrimitiveNormalMap()` / `setPrimitiveBumpMap()`) on all backends (OptiX 8, OptiX 6.5, Vulkan). A
+primitive with a map has a shading normal that varies across its surface while its geometry stays
+flat. The model uses the shading normal for everything that depends on the angle of the light at
+the surface, and the facet's own normal for everything that depends on its extent, so energy is
+conserved:
+
+- **Direct radiation.** A relief intercepts exactly the beam its footprint does, so the direct
+  radiation a primitive receives is unchanged by its map, and a Lambertian primitive absorbs the same
+  with or without one. A specular surface layer splits what arrives at the angle of the shading
+  normal.
+- **Diffuse, scattered and emitted radiation.** Rays still leave in a cosine lobe about the facet
+  normal, so a Lambertian primitive absorbs the same diffuse radiation with or without a map; a
+  surface layer splits each ray's radiation at its angle to the shading normal.
+- **Cameras.** The direct radiation of the sources is shaded at every hit point with the shading
+  normal (softened toward the shadow terminator), as are a layer's viewing angle and highlight. Sky
+  and scattered radiation is shaded by the mean direction it arrived from at each face, interpolated
+  across facets with camera flux smoothing. This works with and without camera flux smoothing and
+  spectral textures.
+
+The bottom face of a primitive uses the negated shading normal, as the other side of a thin sheet
+does. A primitive needs (u,v) coordinates for its map (a patch, or a textured triangle). Maps cost
+2 bytes per texel and 6 bytes per primitive on the GPU, plus 24 bytes per launched band for each
+mapped primitive while there are cameras; when no primitive has a map nothing is stored and results
+are those of a model without the feature.
+
+- A map changed after `updateGeometry()` raises an error at the next `runBand()`; call
+  `updateGeometry()` again.
+- **Translucent covers (`glass_n_<band>`) cannot have normal maps**: `runBand()` raises an error.
 
 ### Reproducibility
 
@@ -1098,13 +1154,53 @@ radiation.setCameraPixelData("cam1", "red", filtered.tolist())
 ### Periodic Boundary Conditions
 
 ```python
-# Enable periodic boundaries for large-scale simulations.
-# Only "x", "y", and "xy" are valid - there is no periodic z mode. Passing any
-# other string prints a warning and silently enables no periodic boundary.
+# Enable periodic boundaries for large-scale simulations. Call before updateGeometry().
+# Valid boundaries are "x", "y", "xy", and "none" (or "") - there is no periodic z mode.
+# Any other string raises ValueError. Each call replaces the previous boundary.
 radiation.enforcePeriodicBoundary("xy")   # Periodic in x and y
 radiation.enforcePeriodicBoundary("x")    # Periodic in x only
 radiation.enforcePeriodicBoundary("y")    # Periodic in y only
+radiation.enforcePeriodicBoundary("none") # Remove the periodic boundary (helios-core 1.3.97+)
 ```
+
+**Primitives that do not repeat** (helios-core 1.3.97+). `excluded_uuids` lists primitives that
+exist only once, in the central copy of the domain - for example a sensor mast or a plant of another
+species standing in an infinite canopy:
+
+```python
+mast_uuids = context.getObjectPrimitiveUUIDs(mast_objID)
+radiation.enforcePeriodicBoundary("xy", excluded_uuids=mast_uuids)  # canopy repeats, mast does not
+```
+
+The period is then the width of the bounding box of the primitives that do repeat (e.g. the
+ground), and every excluded primitive must lie laterally within it; `updateGeometry()` raises an
+error otherwise. An excluded UUID that does not exist raises immediately. The list is read when the
+geometry is updated: primitives added later are not excluded, and excluded primitives deleted later
+are dropped. With excluded primitives the model also solves the radiation field *without* them,
+which the periodic copies and cameras use, so the sky an excluded object hides and the light it
+scatters appear once rather than around every copy. The reported `radiation_flux_<band>` values are
+those of the scene as it is, in the central copy. This makes `runBand()` about 5-15% slower. In
+camera images every primitive's direct radiation (except a translucent cover's) is then evaluated
+per pixel sample with a shadow ray, so the object's cast shadow falls only where the object puts
+it. An excluded primitive cannot be a translucent cover (`runBand()` raises).
+
+**A limited number of copies** (helios-core 1.3.97+). `max_repeats` is an `int2` giving the number
+of copies on each side of the central domain in x and y. Values must not be negative and must be 0
+for a direction that is not periodic; a limit of 0 gives the same result as no periodic boundary in
+that direction. A ray that leaves the field continues as one that leaves the scene (sky, source or
+camera background). Every copy shows the radiation of the central domain, so the darker edges of a
+real finite field are not resolved:
+
+```python
+from pyhelios.types import int2
+radiation.enforcePeriodicBoundary("xy", max_repeats=int2(5, 5))   # an 11 x 11 field of copies
+radiation.enforcePeriodicBoundary("x", excluded_uuids=mast_uuids, max_repeats=int2(3, 0))
+```
+
+\note Changed in helios-core 1.3.97: an unknown boundary string now raises an error instead of
+printing a warning, each call replaces the previous boundary instead of adding to it, and a primitive
+in a periodic domain is now hit by rays from itself in its periodic copies (it previously received
+sky through its own copies and was not shaded by them).
 
 ### G-Function Calculation
 
@@ -1840,10 +1936,12 @@ Any exposure other than `"manual"` and any white balance other than `"off"` resc
 
 By default each pixel reports the outgoing flux of the primitive behind it, so a coarsely tessellated curved surface renders as a set of flat panels. `enableCameraFluxSmoothing()` reconstructs the image as the radiation leaving the smooth surface that the tessellation stands for, in two parts:
 
-- **The direct radiation of the sources** is evaluated per facet with a *shading normal* interpolated across the facet from normals at the vertices it shares with its neighbours (the area-weighted mean of the facet normals meeting there). The facet's cosine to the source is replaced by that of the shading normal, so the brightness follows the curvature of the surface while a shadow cast by another object stays on the facets where it falls. Near the terminator, where a face turned away from the source has a shading normal that still faces it, the light fades smoothly rather than stopping at a facet edge.
+- **The direct radiation of the sources** is evaluated for every pixel sample at the point the camera ray hits: a shadow ray toward a point on each source, drawn as the radiation solve draws it, decides whether the source reaches the point, and what reaches it carries the cosine of a *shading normal* interpolated across the facet from normals at the vertices it shares with its neighbours (the mean of the facet normals meeting there, each weighted by its angle at the vertex). The brightness follows the curvature of the surface, a shadow cast by another object falls where the geometry puts it within a facet, and the light fades smoothly across the terminator. The penumbra of the sun's disk and of a finite source is resolved by the camera's antialiasing samples.
 - **The rest of the outgoing radiation** (sky light, light scattered by other surfaces, and emission) is averaged onto the shared vertices, weighted by facet area, and interpolated back across each facet. The top and bottom faces are averaged separately, so a thin leaf does not render as the average of its lit and shaded sides.
 
 Primitives with a specular surface layer (`specular_roughness`) are smoothed too: their highlight of the direct radiation and the split between the body's and the layer's components with viewing angle are evaluated with the shading normal, and the layer's own outgoing component is interpolated from the vertices. The transmittance of a translucent cover that a camera looks through is still taken from the cover's facet normal. No stored vertex normals are needed: the normals are computed from the facets, so a mesh without authored normals is smoothed just as one with them is.
+
+> **Note:** Changed in helios-core 1.3.97. Cameras now decide per pixel sample, with a shadow ray, whether each source reaches a smoothed surface; previously a cast shadow filled each facet it crossed evenly at the facet's lit fraction and stepped at facet edges, and the terminator on coarse tubes was up to 8% too dark. This adds one shadow ray per pixel sample and source on smoothed geometry. Vertex normals are now weighted by the angle each facet makes at the vertex rather than by area, which fixes straight sunlit `Tube` and `Cone` objects brightening or darkening along their length by up to about a third.
 
 > **Note:** Changed in helios-core 1.3.96. Previously all of the outgoing flux was averaged onto the vertices, so smoothed images of coarsely tessellated sunlit surfaces were darker than the surface they represent by about cos(π/N) for N divisions (about 13% for six), spheres kept a visible step at each latitude ring, a cast shadow was spread onto neighbouring facets, and glossy primitives still showed a step at every facet edge.
 
@@ -1874,6 +1972,18 @@ Toggling smoothing after geometry has been built re-uploads the geometry and reb
 | [disableCameraFluxSmoothing()](pyhelios.RadiationModel.RadiationModel.disableCameraFluxSmoothing) | Hold flux constant across each facet (the default) |
 | [isCameraFluxSmoothingEnabled()](pyhelios.RadiationModel.RadiationModel.isCameraFluxSmoothingEnabled) | Whether smoothing is enabled |
 | [getCameraFluxSmoothingCreaseAngle()](pyhelios.RadiationModel.RadiationModel.getCameraFluxSmoothingCreaseAngle) | Crease angle in degrees |
+
+### Camera Metadata
+
+`enableCameraMetadata(camera_labels)` makes `writeCameraImage()` write a JSON metadata file beside
+each image. Its `location_properties.longitude` and `acquisition_properties.UTC_offset` are filled
+from the Context's location and recorded **positive East** (ISO 6709 / ISO 8601, and the image's
+EXIF tags), the opposite sign to the Context's west-positive `Location`; e.g. Davis, CA is written
+with longitude −121.76 and UTC offset −8.00.
+
+\note Changed in helios-core 1.3.97. Earlier versions copied the Context's west-positive longitude
+and UTC offset unchanged, so every image was recorded in the wrong hemisphere and with a UTC offset
+of the opposite sign to its EXIF OffsetTime; the UTC offset is now written with two decimals.
 
 ### Camera Image Processing Pipeline {#RadCameraPipeline}
 

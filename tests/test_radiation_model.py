@@ -1253,8 +1253,10 @@ class TestBatch1SimpleMethods:
             with RadiationModel(context) as radiation:
                 # Test various boundary specifications
                 radiation.enforcePeriodicBoundary("xy")
-                radiation.enforcePeriodicBoundary("xyz")
                 radiation.enforcePeriodicBoundary("x")
+                # There is no periodic z mode: unknown strings are rejected
+                with pytest.raises(ValueError, match="Unknown periodic boundary"):
+                    radiation.enforcePeriodicBoundary("xyz")
 
 
 @pytest.mark.native_only

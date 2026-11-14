@@ -34,7 +34,7 @@ The following plugins use GPU acceleration:
 ### Platform Support
 
 - **Windows**: Full CUDA support (Windows 10/11)
-- **Linux**: Full CUDA support (Ubuntu 18.04+, CentOS 7+, other distributions)
+- **Linux**: Full CUDA support. Pre-built wheels require glibc 2.28+ (Ubuntu 20.04+, Debian 10+, RHEL/Rocky/AlmaLinux 8+); older distributions must build from source
 - **macOS**: **NOT SUPPORTED** - Apple discontinued NVIDIA GPU support after macOS 10.13
 
 ## CUDA Toolkit Installation

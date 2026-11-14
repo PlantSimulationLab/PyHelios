@@ -369,6 +369,8 @@ with Context() as context:
 
   For surfaces such as leaves and the soil in which surface moisture is present but limited, \f$g_S\f$ will have some intermediate value typically on the order of 0.1 mol air/m<sup>2</sup>-s.
 
+  The "moisture_conductance" primitive data must be finite and zero or more: `run()` raises an `EnergyBalanceModelError` naming the primitive for a negative or non-finite value (helios-core 1.3.97+). A negative conductance was previously used as given and reversed the surface's transpiration.
+
   For leaves, \f$g_S\f$ corresponds to the conductance to water vapor between the intercellular (sub-stomatal) air spaces and the surface of the leaf, which we call the stomatal conductance. When stomata are closed, \f$g_S\rightarrow 0\f$, as water transfer is restricted by the stomata.
 
   For the soil surface, the physical interpretation of \f$g_S\f$ is slightly less intuitive, and corresponds to the rate at which water vapor can diffuse from just below the soil to the surface. This is impacted by the soil texture, and the "tortuosity" of the path water vapor must take through the soil, among other factors.

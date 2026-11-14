@@ -189,6 +189,27 @@ PYHELIOS_API unsigned int addTriangleWithColorRGBA(helios::Context* context, flo
  */
 PYHELIOS_API unsigned int addTriangleWithTexture(helios::Context* context, float* vertex0, float* vertex1, float* vertex2, const char* texture_file, float* uv0, float* uv1, float* uv2);
 
+/**
+ * @brief Add textured triangles from an indexed mesh, one texture per material ID
+ * @return Pointer to face_count UUIDs in face order (thread-local storage), or null on error
+ */
+PYHELIOS_API unsigned int* addTrianglesFromArraysMultiTextured(helios::Context* context, float* vertices, unsigned int vertex_count, unsigned int* faces, unsigned int face_count, float* uv_coords, const char** texture_files, unsigned int texture_count, unsigned int* material_ids, unsigned int* result_count);
+
+/**
+ * @brief Add untextured triangles from an indexed mesh in one call
+ * @param face_colors Null, or face_count*3 floats giving one RGB color per face
+ * @param out_uuids Caller-allocated array of face_count UUIDs, written in face order
+ */
+PYHELIOS_API void addTrianglesFromArrays(helios::Context* context, float* vertices, unsigned int vertex_count, unsigned int* faces, unsigned int face_count, float* face_colors, unsigned int* out_uuids);
+
+/**
+ * @brief Add a triangle soup (9 floats per triangle) in one call
+ * @param uv Null, or 6 floats per triangle; required when any texture index is >= 0
+ * @param texture_index Null (all untextured), or one index per triangle into texture_files; -1 = untextured
+ * @param out_uuids Caller-allocated array of triangle_count UUIDs, written in triangle order
+ */
+PYHELIOS_API void addTriangleSoup(helios::Context* context, float* vertices, unsigned int triangle_count, float* uv, int* texture_index, const char** texture_files, unsigned int texture_count, unsigned int* out_uuids);
+
 //=============================================================================
 // Compound Geometry Functions
 //=============================================================================
@@ -2466,6 +2487,7 @@ PYHELIOS_API void setPrimitiveElevation(helios::Context* context, unsigned int u
 
 // ---- Geometry mutators ----
 PYHELIOS_API void setTriangleVertices(helios::Context* context, unsigned int uuid, float* vertex0, float* vertex1, float* vertex2);
+PYHELIOS_API void setTriangleVerticesBatch(helios::Context* context, unsigned int* uuids, unsigned int triangle_count, float* vertices);
 PYHELIOS_API void setPrimitiveNormal(helios::Context* context, unsigned int uuid, float* origin, float* new_normal);
 PYHELIOS_API void setPrimitiveNormalBatch(helios::Context* context, unsigned int* uuids, unsigned int count, float* origin, float* new_normal);
 PYHELIOS_API void setPrimitiveParentObjectID(helios::Context* context, unsigned int uuid, unsigned int objID);
@@ -3108,6 +3130,76 @@ PYHELIOS_API unsigned int* getModifiedUUIDs(helios::Context* context, uint64_t* 
  * @param data_source_UUIDs Parallel to new_UUIDs: primitive whose primitive data each new primitive receives
  */
 PYHELIOS_API void replacePolymeshObjectPrimitives(helios::Context* context, unsigned int objID, const unsigned int* old_UUIDs, unsigned int old_count, const unsigned int* new_UUIDs, unsigned int new_count, const unsigned int* data_source_UUIDs);
+
+//=============================================================================
+// helios-core 1.3.97: per-caller deletion tracking, normal and bump maps
+//=============================================================================
+
+/** @brief Context::getDeletedUUIDs(uint64_t mark): primitives deleted since a mark from getModifiedUUIDs (0 = all). Result valid until the next call on this thread. */
+PYHELIOS_API unsigned int* getDeletedUUIDsSinceMark(helios::Context* context, uint64_t mark, unsigned int* count);
+
+/** @brief Context::setMaterialNormalMap(label, file, strength, flip_green) */
+PYHELIOS_API void setMaterialNormalMap(helios::Context* context, const char* material_label, const char* normal_map_file, float strength, int flip_green);
+/** @brief Context::setMaterialBumpMap(label, file, strength) */
+PYHELIOS_API void setMaterialBumpMap(helios::Context* context, const char* material_label, const char* bump_map_file, float strength);
+/** @brief Context::setMaterialNormalMapStrength(label, strength) */
+PYHELIOS_API void setMaterialNormalMapStrength(helios::Context* context, const char* material_label, float strength);
+/** @brief Context::clearMaterialNormalMap(label) */
+PYHELIOS_API void clearMaterialNormalMap(helios::Context* context, const char* material_label);
+/** @brief Context::getMaterialNormalMapFile(label), copied into buffer; returns bytes copied */
+PYHELIOS_API int getMaterialNormalMapFile(helios::Context* context, const char* material_label, char* buffer, int buffer_size);
+/** @brief Context::getMaterialNormalMapKind(label) as helios::NormalMapKind (0 none, 1 tangent space, 2 bump) */
+PYHELIOS_API int getMaterialNormalMapKind(helios::Context* context, const char* material_label);
+/** @brief Context::getMaterialNormalMapStrength(label) */
+PYHELIOS_API float getMaterialNormalMapStrength(helios::Context* context, const char* material_label);
+/** @brief Context::isMaterialNormalMapGreenFlipped(label) */
+PYHELIOS_API int isMaterialNormalMapGreenFlipped(helios::Context* context, const char* material_label);
+
+/** @brief Context::setPrimitiveNormalMap (scalar overload when count == 1, vector overload otherwise) */
+PYHELIOS_API void setPrimitiveNormalMap(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* normal_map_file, float strength, int flip_green);
+/** @brief Context::setPrimitiveBumpMap (scalar overload when count == 1, vector overload otherwise) */
+PYHELIOS_API void setPrimitiveBumpMap(helios::Context* context, const unsigned int* uuids, unsigned int count, const char* bump_map_file, float strength);
+/** @brief Context::clearPrimitiveNormalMap (scalar overload when count == 1, vector overload otherwise) */
+PYHELIOS_API void clearPrimitiveNormalMap(helios::Context* context, const unsigned int* uuids, unsigned int count);
+/** @brief Context::getPrimitiveNormalMapFile(UUID), copied into buffer; returns bytes copied */
+PYHELIOS_API int getPrimitiveNormalMapFile(helios::Context* context, unsigned int uuid, char* buffer, int buffer_size);
+/** @brief Context::getPrimitiveNormalMapKind(UUID) */
+PYHELIOS_API int getPrimitiveNormalMapKind(helios::Context* context, unsigned int uuid);
+/** @brief Context::getPrimitiveNormalMapStrength(UUID) */
+PYHELIOS_API float getPrimitiveNormalMapStrength(helios::Context* context, unsigned int uuid);
+/** @brief Context::getPrimitiveNormalMapUV(UUID) as flat (u,v) pairs; size = number of floats. Valid until the next call on this thread. */
+PYHELIOS_API float* getPrimitiveNormalMapUV(helios::Context* context, unsigned int uuid, unsigned int* size);
+
+/** @brief Context::getMaterialNormalMapTexels(materialID). Returns a NormalMapTexels handle (release with destroyNormalMapTexels), or NULL with no error if the material has no map. */
+PYHELIOS_API void* getMaterialNormalMapTexels(helios::Context* context, unsigned int materialID);
+/** @brief Context::getNormalMapTexels(file, kind, strength, flip_green). Returns a NormalMapTexels handle (release with destroyNormalMapTexels). */
+PYHELIOS_API void* getNormalMapTexels(helios::Context* context, const char* file, int kind, float strength, int flip_green);
+/** @brief Context::clearNormalMapCache() */
+PYHELIOS_API void clearNormalMapCache(helios::Context* context);
+
+/** @brief helios::decodeNormalMapImage(file, kind, strength, flip_green). Returns a NormalMapTexels handle (release with destroyNormalMapTexels). */
+PYHELIOS_API void* decodeNormalMapImage(const char* file, int kind, float strength, int flip_green);
+/** @brief helios::classifyBumpImage(file) */
+PYHELIOS_API int classifyBumpImage(const char* file);
+/** @brief helios::computeTangentFrame. Points are 3 floats, uvs 2 floats. Returns 1 and fills dPdu/dPdv, or 0 (outputs untouched) for degenerate (u,v). */
+PYHELIOS_API int computeTangentFrame(const float* p0, const float* p1, const float* p2, const float* uv0, const float* uv1, const float* uv2, float* dPdu, float* dPdv);
+/** @brief helios::applyTangentSpaceNormal. All vectors are 3 floats. */
+PYHELIOS_API void applyTangentSpaceNormal(const float* tangent_normal, const float* dPdu, const float* dPdv, const float* normal, float* result);
+
+/** @brief Release a NormalMapTexels handle (NULL is a no-op) */
+PYHELIOS_API void destroyNormalMapTexels(void* handle);
+/** @brief NormalMapTexels::file, copied into buffer; returns bytes copied */
+PYHELIOS_API int getNormalMapTexelsFile(void* handle, char* buffer, int buffer_size);
+/** @brief NormalMapTexels kind, strength, flip_green and resolution */
+PYHELIOS_API void getNormalMapTexelsInfo(void* handle, int* kind, float* strength, int* flip_green, int* width, int* height);
+/** @brief NormalMapTexels::xy; size = number of int16 values (2 per texel). Valid while the handle lives. */
+PYHELIOS_API const int16_t* getNormalMapTexelsXY(void* handle, unsigned long long* size);
+/** @brief NormalMapTexels::getMemoryBytes() */
+PYHELIOS_API unsigned long long getNormalMapTexelsMemoryBytes(void* handle);
+/** @brief NormalMapTexels::getNormal(column, row_from_top) into normal[3]; out-of-range texels raise */
+PYHELIOS_API void getNormalMapTexelsNormal(void* handle, int column, int row_from_top, float* normal);
+/** @brief NormalMapTexels::sampleNearest (bilinear = 0) or sampleBilinear (bilinear != 0) at count (u,v) pairs into normals[3*count] */
+PYHELIOS_API void sampleNormalMapTexels(void* handle, const float* uv, unsigned int count, int bilinear, float* normals);
 
 #ifdef __cplusplus
 }
