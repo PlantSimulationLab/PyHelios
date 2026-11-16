@@ -24,8 +24,8 @@ removes the conflict by promoting master **last**.
 push candidate to release  ->  pytest x3 + FULL wheel pipeline (build, test, GPU)
                            ->  tag vX.Y.Z on that exact commit
                            ->  publish job finds the green release run for this SHA,
-                               downloads ITS wheels, import-checks them, pauses at the gate
-                           ->  you approve  ->  published to PyPI
+                               downloads ITS wheels, import-checks them
+                           ->  published to PyPI (no manual approval)
                            ->  ONLY NOW: fast-forward master
 ```
 
@@ -171,18 +171,25 @@ git tag vX.Y.Z <candidate-sha> && git push origin vX.Y.Z
 ```
 
 The tag run does not rebuild. It resolves the green release run for this SHA, downloads its
-wheels, import-checks them on a bare `python:3.12-slim` image, then **pauses**: the `pypi` environment
-has a required reviewer, so `publish` waits for manual approval. Review, then approve.
+wheels, import-checks them on a bare `python:3.12-slim` image, and uploads them. The `pypi`
+environment has no required reviewer, so **pushing the tag publishes**: the tag push is the
+release decision. Push it only after confirming every release-branch run is green and the
+wheel artifacts are the expected set (15 wheels, version matching the tag). The workflow still
+refuses to publish without a successful release run for the tagged SHA.
 
-If a job fails before `publish`, nothing was uploaded and master is still untouched. Delete
-the tag, fix via `release`, and re-cut the **same** version:
+Keep the `environment: pypi` line in `build-wheels.yml` even without a reviewer: a PyPI trusted
+publisher can be bound to an environment name, and dropping it would then fail the upload.
+Check the publisher's settings on PyPI before removing it.
+
+If a job fails before the upload starts, nothing was uploaded and master is still untouched.
+Delete the tag, fix via `release`, and re-cut the **same** version:
 
 ```bash
 git push origin --delete vX.Y.Z && git tag -d vX.Y.Z
 ```
 
-Note `can_admins_bypass` is true on the `pypi` environment: an admin *can* skip the gate, so
-treat it as a deliberate checkpoint, not a hard lock.
+A failure *during* the upload leaves a partial release live; see the PyPI storage check in
+step 1.4 and "After a successful publish" below.
 
 ## 4. Promote master (last)
 

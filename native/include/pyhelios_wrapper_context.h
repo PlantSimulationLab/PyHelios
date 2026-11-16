@@ -3201,6 +3201,15 @@ PYHELIOS_API void getNormalMapTexelsNormal(void* handle, int column, int row_fro
 /** @brief NormalMapTexels::sampleNearest (bilinear = 0) or sampleBilinear (bilinear != 0) at count (u,v) pairs into normals[3*count] */
 PYHELIOS_API void sampleNormalMapTexels(void* handle, const float* uv, unsigned int count, int bilinear, float* normals);
 
+//=============================================================================
+// helios-core 1.3.98: per-label primitive data revision and spectral texture revision
+//=============================================================================
+
+/** @brief Context::getPrimitiveDataRevision(label): counter advanced whenever primitive data with the label is set, changed or removed (0 if never set) */
+PYHELIOS_API uint64_t getPrimitiveDataRevision(helios::Context* context, const char* label);
+/** @brief Context::getSpectralTextureRevision(): counter advanced whenever a primitive's spectral texture or palette changes */
+PYHELIOS_API uint64_t getSpectralTextureRevision(helios::Context* context);
+
 #ifdef __cplusplus
 }
 #endif

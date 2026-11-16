@@ -99,7 +99,8 @@ try:
         BBLCoefficients,
         MOPTCoefficients,
         BMFCoefficients,
-        BBCoefficients
+        BBCoefficients,
+        Buckley2026Coefficients
     )
 except (AttributeError, ImportError):
     # StomatalConductanceModel functions not available in current library
@@ -110,6 +111,7 @@ except (AttributeError, ImportError):
     MOPTCoefficients = None
     BMFCoefficients = None
     BBCoefficients = None
+    Buckley2026Coefficients = None
 
 try:
     from .BoundaryLayerConductance import (
@@ -191,10 +193,15 @@ except (AttributeError, ImportError):
 
 try:
     from .PlantArchitecture import PlantArchitecture, PlantArchitectureError
+    from .PlantArchitecture import (PlantJointType, PlantJointID, PlantJointPose, PlantJointFrame,
+                                    PlantArticulation, PlantArticulationLink, PlantArticulationJoint,
+                                    PlantArticulationLinkType)
 except (AttributeError, ImportError):
     # PlantArchitecture functions not available in current library
     PlantArchitecture = None
     PlantArchitectureError = None
+    PlantJointType = PlantJointID = PlantJointPose = PlantJointFrame = PlantArticulation = None
+    PlantArticulationLink = PlantArticulationJoint = PlantArticulationLinkType = None
 
 # Typed plant architecture parameter model (pure Python, always importable)
 from .plant_architecture_params import (

@@ -75,6 +75,16 @@ PYHELIOS_API void addStomatalConductanceOptionalOutput(StomatalConductanceModel*
 PYHELIOS_API void printStomatalConductanceDefaultValueReport(StomatalConductanceModel* model);
 PYHELIOS_API void printStomatalConductanceDefaultValueReportForUUIDs(StomatalConductanceModel* model, const unsigned int* uuids, unsigned int uuid_count);
 
+// Buckley et al. (2026) model (helios-core 1.3.98). Coefficient arrays hold 4 floats in the order
+// [s, K_plant_at_25C, b_o, psi_c] (Buckley2026coefficients field order).
+PYHELIOS_API void setStomatalConductanceBuckley2026Coefficients(StomatalConductanceModel* model, const float* coeffs);
+PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsForUUIDs(StomatalConductanceModel* model, const float* coeffs, const unsigned int* uuids, unsigned int uuid_count);
+PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, const float* coeffs);
+PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsFromLibrary(StomatalConductanceModel* model, const char* species);
+PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsFromLibraryForUUIDs(StomatalConductanceModel* model, const char* species, const unsigned int* uuids, unsigned int uuid_count);
+PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsFromLibraryForMaterial(StomatalConductanceModel* model, const char* species, const char* material_label);
+PYHELIOS_API void getStomatalConductanceBuckley2026CoefficientsFromLibrary(StomatalConductanceModel* model, const char* species, float* coeffs_out);
+
 #ifdef __cplusplus
 }
 #endif

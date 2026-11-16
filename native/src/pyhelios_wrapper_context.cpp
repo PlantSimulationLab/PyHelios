@@ -13244,4 +13244,30 @@ extern "C" {
 #undef PYH1397_REQUIRE_CONTEXT
 #undef PYH1397_CATCH
 
+// helios-core 1.3.98: per-label primitive data revision and spectral texture revision
+PYHELIOS_API uint64_t getPrimitiveDataRevision(helios::Context* context, const char* label) {
+    clearError();
+    try {
+        if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+        if (!label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (Context::getPrimitiveDataRevision): Label is null"); return 0; }
+        return context->getPrimitiveDataRevision(label);
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getPrimitiveDataRevision): ") + e.what()); return 0;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getPrimitiveDataRevision): Unknown error."); return 0;
+    }
+}
+
+PYHELIOS_API uint64_t getSpectralTextureRevision(helios::Context* context) {
+    clearError();
+    try {
+        if (!context) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "Context pointer is null"); return 0; }
+        return context->getSpectralTextureRevision();
+    } catch (const std::exception& e) {
+        setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (Context::getSpectralTextureRevision): ") + e.what()); return 0;
+    } catch (...) {
+        setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (Context::getSpectralTextureRevision): Unknown error."); return 0;
+    }
+}
+
 } //extern "C"

@@ -588,6 +588,46 @@ PYHELIOS_API void collisionClosestPointOnTriangle(const float* p, const float* a
 /** @brief Closest points between segment p-q and triangle a-b-c; returns the squared distance between them */
 PYHELIOS_API float collisionClosestPointsSegmentTriangle(const float* p, const float* q, const float* a, const float* b, const float* c, float* on_segment, float* on_triangle);
 
+//=============================================================================
+// helios-core 1.3.98: plant joint poses and articulation
+// joint = 5 uints [type, shootID, node_index, petiole_index, bud_index]
+// pose  = 4 floats [pitch_degrees, yaw_degrees, roll_degrees, length_scale]
+// frame = 13 floats [pivot(3), parent_axis(3), organ_axis(3), pitch_axis(3), length]
+//=============================================================================
+
+/** @brief PlantArchitecture::getPlantJoints(); returns 5*count uints, valid until the next call on this thread */
+PYHELIOS_API unsigned int* getPlantJoints(PlantArchitecture* plantarch, unsigned int plantID, unsigned int* count);
+/** @brief PlantArchitecture::getPlantJointFrame() into frame_out[13] */
+PYHELIOS_API int getPlantJointFrame(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, float* frame_out);
+/** @brief PlantArchitecture::setPlantJointPose() */
+PYHELIOS_API int setPlantJointPose(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, const float* pose);
+/** @brief PlantArchitecture::setPlantJointPoses(); joints is 5*count uints, poses 4*count floats */
+PYHELIOS_API int setPlantJointPoses(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joints, const float* poses, unsigned int count);
+/** @brief PlantArchitecture::setPlantJointLength() */
+PYHELIOS_API int setPlantJointLength(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, float length);
+/** @brief PlantArchitecture::setShootNodePositions(); node_positions is 3*node_count floats */
+PYHELIOS_API int setShootNodePositions(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, const float* node_positions, unsigned int node_count);
+/** @brief PlantArchitecture::getPlantJointPose() into pose_out[4] */
+PYHELIOS_API int getPlantJointPose(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, float* pose_out);
+/** @brief PlantArchitecture::isPlantPosed(); 1, 0, or -1 on error */
+PYHELIOS_API int isPlantPosed(PlantArchitecture* plantarch, unsigned int plantID);
+/** @brief PlantArchitecture::resetPlantPose() */
+PYHELIOS_API int resetPlantPose(PlantArchitecture* plantarch, unsigned int plantID);
+/** @brief PlantArchitecture::bakePlantPose() */
+PYHELIOS_API int bakePlantPose(PlantArchitecture* plantarch, unsigned int plantID);
+
+/** @brief PlantArchitecture::getPlantArticulation(); caches the result on this thread. params = 14 USDExportParameters floats (see the .cpp) */
+PYHELIOS_API int computePlantArticulation(PlantArchitecture* plantarch, unsigned int plantID, const float* params, unsigned int solver_position_iterations,
+                                          unsigned int* link_count, unsigned int* joint_count);
+/** @brief Copy cached links: link_ints[8*n], link_floats[14*n] */
+PYHELIOS_API int copyPlantArticulationLinks(int* link_ints, float* link_floats, unsigned int link_count);
+/** @brief Name of a cached link; returns its full length */
+PYHELIOS_API int getPlantArticulationLinkName(unsigned int link_index, char* buffer, int buffer_size);
+/** @brief Copy cached joints: joint_ints[2*n], joint_floats[9*n] */
+PYHELIOS_API int copyPlantArticulationJoints(int* joint_ints, float* joint_floats, unsigned int joint_count);
+/** @brief Release the cached articulation of this thread */
+PYHELIOS_API void clearPlantArticulationCache();
+
 #ifdef __cplusplus
 }
 #endif

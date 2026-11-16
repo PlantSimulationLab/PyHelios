@@ -817,10 +817,14 @@ class PlantHydraulicsModel:
                 all primitives in the Context; primitives with no plantID, including any that are
                 not leaves, are then grouped into a single plant.
             timespan: Duration of the simulation (s). 0 gives the steady-state solution.
-            timestep: Timestep of a non-steady-state simulation (s).
+            timestep: First time step of a non-steady-state simulation (s). Later steps are
+                adapted between 10 and 500 s according to how fast the water potentials change,
+                and the last step is shortened so that the run ends exactly at ``timespan``.
 
         Raises:
             ValueError: If UUIDs is empty, timespan is negative, or timestep is not positive
+            PlantHydraulicsModelError: If a root, stem or leaf hydraulic conductance is negative
+                or NaN (e.g. a negative conductance in the coefficients)
             PlantHydraulicsModelError: If calculation fails, including when every primitive without a
                 plantID already belongs to an object, so that no polymesh object can be created
 
@@ -875,6 +879,37 @@ class PlantHydraulicsModel:
             hydraulics_wrapper.outputCapacitancePrimitiveData(self.hydraulics_model, toggle)
         except Exception as e:
             raise PlantHydraulicsModelError(f"Failed to set capacitance output: {e}")
+
+    def outputPlantConductancePrimitiveData(self, toggle: bool) -> None:
+        """
+        Toggle writing of the optional primitive data "plant_hydraulic_conductance" and "soil_water_potential".
+
+        "plant_hydraulic_conductance" (mol/m²/s/MPa) is the whole-plant (soil-to-leaf) hydraulic
+        conductance per unit leaf area, the root, stem and leaf conductances in series. It differs
+        from "hydraulic_conductance" (:meth:`outputConductancePrimitiveData`), which is the leaf
+        conductance only. "soil_water_potential" (MPa) is written only for plants whose value was
+        set with :meth:`setSoilWaterPotentialOfPlant`, so that a value set directly as primitive
+        data is not replaced by the default placeholder. Both are written by steady-state and
+        non-steady-state runs.
+
+        Both are also written automatically when the stomatal conductance model of Buckley et al.
+        (2026) is in use (see
+        :meth:`StomatalConductanceModel.setBuckley2026Coefficients`), since that model reads them.
+
+        Args:
+            toggle: True to write the data
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        _validate_bool(toggle, 'toggle', 'outputPlantConductancePrimitiveData')
+        self._check_context_alive()
+        try:
+            hydraulics_wrapper.outputPlantConductancePrimitiveData(self.hydraulics_model, toggle)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise PlantHydraulicsModelError(f"Failed to set plant conductance output: {e}")
 
     # Plant grouping
 

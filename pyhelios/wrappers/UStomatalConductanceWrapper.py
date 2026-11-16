@@ -243,6 +243,32 @@ except AttributeError:
     _MATERIAL_COEFFICIENT_FUNCTIONS_AVAILABLE = False
 
 
+# Buckley et al. (2026) model prototypes (helios-core 1.3.98). Separate block so an older library
+# keeps the rest of the plugin. Coefficient arrays hold [s, K_plant_at_25C, b_o, psi_c].
+BUCKLEY2026_COEFFICIENT_COUNT = 4
+_BUCKLEY2026_FUNCTIONS_AVAILABLE = False
+try:
+    _bk_model = ctypes.POINTER(UStomatalConductanceModel)
+    _bk_floats = ctypes.POINTER(ctypes.c_float)
+    _bk_uuids = ctypes.POINTER(ctypes.c_uint)
+    for _name, _argtypes in (
+        ("setStomatalConductanceBuckley2026Coefficients", [_bk_model, _bk_floats]),
+        ("setStomatalConductanceBuckley2026CoefficientsForUUIDs", [_bk_model, _bk_floats, _bk_uuids, ctypes.c_uint]),
+        ("setStomatalConductanceBuckley2026CoefficientsForMaterial", [_bk_model, ctypes.c_char_p, _bk_floats]),
+        ("setStomatalConductanceBuckley2026CoefficientsFromLibrary", [_bk_model, ctypes.c_char_p]),
+        ("setStomatalConductanceBuckley2026CoefficientsFromLibraryForUUIDs", [_bk_model, ctypes.c_char_p, _bk_uuids, ctypes.c_uint]),
+        ("setStomatalConductanceBuckley2026CoefficientsFromLibraryForMaterial", [_bk_model, ctypes.c_char_p, ctypes.c_char_p]),
+        ("getStomatalConductanceBuckley2026CoefficientsFromLibrary", [_bk_model, ctypes.c_char_p, _bk_floats]),
+    ):
+        _fn = getattr(helios_lib, _name)
+        _fn.argtypes = _argtypes
+        _fn.restype = None
+        _fn.errcheck = _check_error
+    _BUCKLEY2026_FUNCTIONS_AVAILABLE = True
+except AttributeError:
+    _BUCKLEY2026_FUNCTIONS_AVAILABLE = False
+
+
 # Python wrapper functions with validation and mock mode support
 
 def createStomatalConductanceModel(context) -> ctypes.POINTER(UStomatalConductanceModel):
@@ -671,3 +697,77 @@ if not _STOMATAL_CONDUCTANCE_FUNCTIONS_AVAILABLE:
     runDynamic = mock_runStomatalConductanceModel
     runForUUIDs = mock_runStomatalConductanceModel
     runForUUIDsDynamic = mock_runStomatalConductanceModel
+
+
+# Buckley et al. (2026) model (helios-core 1.3.98)
+def _require_buckley2026(model) -> None:
+    if not _STOMATAL_CONDUCTANCE_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError("StomatalConductanceModel functions not available. Rebuild with stomatalconductance enabled.")
+    if not _BUCKLEY2026_FUNCTIONS_AVAILABLE:
+        raise NotImplementedError(
+            "The Buckley et al. (2026) stomatal conductance model is not available in the loaded native library. "
+            "It requires helios-core v1.3.98 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+    if not model:
+        raise ValueError("StomatalConductanceModel instance is None.")
+
+
+def _buckley2026_array(coeffs: List[float]):
+    if len(coeffs) != BUCKLEY2026_COEFFICIENT_COUNT:
+        raise ValueError(f"Buckley2026 coefficients must have exactly {BUCKLEY2026_COEFFICIENT_COUNT} values "
+                         f"[s, K_plant_at_25C, b_o, psi_c], got {len(coeffs)}.")
+    return (ctypes.c_float * BUCKLEY2026_COEFFICIENT_COUNT)(*[float(v) for v in coeffs])
+
+
+def _uuid_array(uuids: List[int]):
+    if not uuids:
+        raise ValueError("UUIDs list cannot be empty.")
+    return (ctypes.c_uint * len(uuids))(*uuids), len(uuids)
+
+
+def setBuckley2026Coefficients(model, coeffs: List[float]) -> None:
+    """Set Buckley et al. (2026) coefficients [s, K_plant_at_25C, b_o, psi_c] for all primitives"""
+    _require_buckley2026(model)
+    helios_lib.setStomatalConductanceBuckley2026Coefficients(model, _buckley2026_array(coeffs))
+
+
+def setBuckley2026CoefficientsForUUIDs(model, coeffs: List[float], uuids: List[int]) -> None:
+    """Set Buckley et al. (2026) coefficients for specific primitives"""
+    _require_buckley2026(model)
+    uuid_array, count = _uuid_array(uuids)
+    helios_lib.setStomatalConductanceBuckley2026CoefficientsForUUIDs(model, _buckley2026_array(coeffs), uuid_array, count)
+
+
+def setBuckley2026CoefficientsForMaterial(model, material_label: str, coeffs: List[float]) -> None:
+    """Set Buckley et al. (2026) coefficients on a material (applies to every primitive using it)"""
+    _require_buckley2026(model)
+    helios_lib.setStomatalConductanceBuckley2026CoefficientsForMaterial(model, _require_label(material_label), _buckley2026_array(coeffs))
+
+
+def setBuckley2026CoefficientsFromLibrary(model, species: str) -> None:
+    """Set library Buckley et al. (2026) coefficients for a species on all primitives"""
+    _require_buckley2026(model)
+    helios_lib.setStomatalConductanceBuckley2026CoefficientsFromLibrary(model, _require_label(species, "Species name"))
+
+
+def setBuckley2026CoefficientsFromLibraryForUUIDs(model, species: str, uuids: List[int]) -> None:
+    """Set library Buckley et al. (2026) coefficients for a species on specific primitives"""
+    _require_buckley2026(model)
+    species_b = _require_label(species, "Species name")
+    uuid_array, count = _uuid_array(uuids)
+    helios_lib.setStomatalConductanceBuckley2026CoefficientsFromLibraryForUUIDs(model, species_b, uuid_array, count)
+
+
+def setBuckley2026CoefficientsFromLibraryForMaterial(model, species: str, material_label: str) -> None:
+    """Set library Buckley et al. (2026) coefficients for a species on a material"""
+    _require_buckley2026(model)
+    helios_lib.setStomatalConductanceBuckley2026CoefficientsFromLibraryForMaterial(
+        model, _require_label(species, "Species name"), _require_label(material_label))
+
+
+def getBuckley2026CoefficientsFromLibrary(model, species: str) -> List[float]:
+    """Return library Buckley et al. (2026) coefficients [s, K_plant_at_25C, b_o, psi_c] for a species"""
+    _require_buckley2026(model)
+    out = (ctypes.c_float * BUCKLEY2026_COEFFICIENT_COUNT)()
+    helios_lib.getStomatalConductanceBuckley2026CoefficientsFromLibrary(model, _require_label(species, "Species name"), out)
+    return [out[i] for i in range(BUCKLEY2026_COEFFICIENT_COUNT)]

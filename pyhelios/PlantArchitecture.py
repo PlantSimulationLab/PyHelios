@@ -13,7 +13,9 @@ import os
 import weakref
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from dataclasses import dataclass, field
+from enum import IntEnum
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from .Context import Context, check_context_alive
 from .exceptions import HeliosInvalidArgumentError
@@ -217,6 +219,145 @@ def _plantarchitecture_working_directory():
 class PlantArchitectureError(Exception):
     """Raised when PlantArchitecture operations fail."""
     pass
+
+
+class PlantJointType(IntEnum):
+    """Type of a joint of a plant's skeleton (helios-core 1.3.98). Values match the native ``PlantJointType``."""
+    ROOT = 0       #: Base of the plant; turns the whole plant
+    SHOOT = 1      #: Attachment of a shoot to its parent (the base shoot has none; ROOT turns it)
+    INTERNODE = 2  #: Base of an internode
+    PETIOLE = 3    #: Base of a petiole
+    PEDUNCLE = 4   #: Base of a peduncle
+
+
+@dataclass(frozen=True, order=True)
+class PlantJointID:
+    """Identifier of one joint of a plant's skeleton, as listed by :meth:`PlantArchitecture.getPlantJoints`.
+
+    Fields that do not apply to a joint's type are 0. Hashable, so it can key a dict of poses.
+    """
+    type: PlantJointType = PlantJointType.ROOT
+    shootID: int = 0
+    node_index: int = 0
+    petiole_index: int = 0
+    bud_index: int = 0
+
+    def _to_list(self) -> List[int]:
+        return [int(self.type), int(self.shootID), int(self.node_index), int(self.petiole_index), int(self.bud_index)]
+
+    @classmethod
+    def _from_list(cls, values: Sequence[int]) -> "PlantJointID":
+        return cls(PlantJointType(values[0]), int(values[1]), int(values[2]), int(values[3]), int(values[4]))
+
+
+@dataclass
+class PlantJointPose:
+    """Offset of a joint from the way the plant grew (helios-core 1.3.98).
+
+    Attributes:
+        pitch_degrees: Tilt of the organ away from its parent axis about the joint's pitch axis
+        yaw_degrees: Rotation of the organ around its parent axis
+        roll_degrees: Rotation of the organ around its own axis
+        length_scale: For an internode or petiole, its length as a multiple of its grown length (1 = unchanged)
+    """
+    pitch_degrees: float = 0.0
+    yaw_degrees: float = 0.0
+    roll_degrees: float = 0.0
+    length_scale: float = 1.0
+
+    def _to_list(self) -> List[float]:
+        for name in ("pitch_degrees", "yaw_degrees", "roll_degrees", "length_scale"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+                raise ValueError(f"PlantJointPose.{name} must be a finite number, got {value!r}")
+        return [float(self.pitch_degrees), float(self.yaw_degrees), float(self.roll_degrees), float(self.length_scale)]
+
+
+@dataclass
+class PlantJointFrame:
+    """Position and orientation of a joint as the plant currently stands, in world coordinates (helios-core 1.3.98).
+
+    Attributes:
+        pivot: Point the joint turns about
+        parent_axis: Direction of the axis the organ grows from
+        organ_axis: Direction of the organ the joint carries
+        pitch_axis: Axis a pitch turns the organ about
+        length: Length of the organ the joint carries (m); 0 for ROOT and SHOOT joints
+    """
+    pivot: vec3
+    parent_axis: vec3
+    organ_axis: vec3
+    pitch_axis: vec3
+    length: float
+
+
+class PlantArticulationLinkType(IntEnum):
+    """Type of a link of a plant articulation. Values match the native ``PlantArticulationLinkType``."""
+    INTERNODE = 0
+    PETIOLE = 1
+    PEDUNCLE = 2
+    LEAF = 3
+    FRUIT = 4
+    FLOWER = 5
+
+
+@dataclass
+class PlantArticulationLink:
+    """One rigid body of a plant articulation (see :meth:`PlantArchitecture.getPlantArticulation`).
+
+    Attributes:
+        name: Link name, as written by writePlantStructureUSD()
+        type: Kind of organ the link stands for
+        parent_index: Index of the parent link in ``PlantArticulation.links``, or -1 for the root link
+        position: Position of the link's center of mass (world coordinates)
+        orientation: Orientation quaternion (qw, qx, qy, qz)
+        radius: Capsule radius (m); 0 for mass links
+        half_length: Capsule half length (m); 0 for mass links
+        mass: Mass (kg)
+        inertia_diagonal: Principal moments of inertia (kg m²)
+        source_objID: Context object the link was built from
+        joint: Joint of the plant's skeleton that carries the link
+    """
+    name: str
+    type: PlantArticulationLinkType
+    parent_index: int
+    position: vec3
+    orientation: tuple
+    radius: float
+    half_length: float
+    mass: float
+    inertia_diagonal: vec3
+    source_objID: int
+    joint: PlantJointID
+
+
+@dataclass
+class PlantArticulationJoint:
+    """Elastic joint connecting two links of a plant articulation.
+
+    Attributes:
+        parent_index: Index of the parent link
+        child_index: Index of the child link
+        anchor_in_parent: Joint anchor in the parent link's frame
+        anchor_in_child: Joint anchor in the child link's frame
+        stiffness: Rotational stiffness (N m/rad)
+        damping: Rotational damping (N m s/rad)
+        armature: Armature (artificial inertia) added for solver stability
+    """
+    parent_index: int
+    child_index: int
+    anchor_in_parent: vec3
+    anchor_in_child: vec3
+    stiffness: float
+    damping: float
+    armature: float
+
+
+@dataclass
+class PlantArticulation:
+    """Articulated rigid-body description of a plant: links with every parent before its children, and joints."""
+    links: List[PlantArticulationLink] = field(default_factory=list)
+    joints: List[PlantArticulationJoint] = field(default_factory=list)
 
 
 def is_plantarchitecture_available():
@@ -585,6 +726,9 @@ class PlantArchitecture:
             Large time steps are more efficient than many small steps. The timestep value
             can be larger than the phyllochron, allowing multiple phytomers to be produced
             in a single call.
+
+            A plant re-posed with :meth:`setPlantJointPose` has its pose made permanent (as
+            :meth:`bakePlantPose` does) before it grows, so growth continues from the posed plant.
 
         Example:
             >>> plantarch.advanceTime(10.0)                     # all plants, 10 days
@@ -3617,7 +3761,8 @@ class PlantArchitecture:
 
         Raises:
             ValueError: If plant_id is negative or filename is empty
-            PlantArchitectureError: If plant doesn't exist or file cannot be written
+            PlantArchitectureError: If plant doesn't exist or file cannot be written, or the
+                plant is posed (:meth:`setPlantJointPose`) or its pose has been made permanent
 
         Note:
             The XML format preserves the complete plant state including:
@@ -4640,6 +4785,12 @@ class PlantArchitecture:
         rest of the path is translated by the same amount, so all relative geometry is
         preserved exactly. An error is raised if that discrepancy is large enough that
         the petiole would not be attached to the stem.
+
+        The petiole's leaves are carried to the new path (helios-core 1.3.98+): each stays at
+        the fraction of the petiole's length it was attached at and is turned as the
+        petiole's direction there has turned. They are the same leaf objects, moved rather
+        than rebuilt. Leaves of a petiole that had no length (a sessile leaf) are left where
+        they are.
 
         The prescribed petiole is not re-scaled by subsequent calls to
         :meth:`advanceTime`, and its radii are held as given.
@@ -7509,6 +7660,382 @@ class PlantArchitecture:
                 self._plantarch_ptr, plant_id, (base_position.x, base_position.y, base_position.z))
         except Exception as e:
             raise PlantArchitectureError(f"Failed to set the base position of plant {plant_id}: {e}")
+
+    # ------------------------------------------------------------------
+    # Re-posing grown plants at their joints (helios-core 1.3.98)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _validateJointID(joint) -> List[int]:
+        if not isinstance(joint, PlantJointID):
+            raise ValueError(f"Joint must be a PlantJointID, got {type(joint).__name__}")
+        for name in ("shootID", "node_index", "petiole_index", "bud_index"):
+            value = getattr(joint, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"PlantJointID.{name} must be a non-negative int, got {value!r}")
+        return joint._to_list()
+
+    @staticmethod
+    def _validateJointPose(pose) -> List[float]:
+        if not isinstance(pose, PlantJointPose):
+            raise ValueError(f"Pose must be a PlantJointPose, got {type(pose).__name__}")
+        return pose._to_list()
+
+    def _poseCall(self, description: str, fn, *args):
+        self._check_context_alive()
+        try:
+            return fn(self._plantarch_ptr, *args)
+        except NotImplementedError:
+            raise
+        except ValueError:
+            raise
+        except Exception as e:
+            raise PlantArchitectureError(f"Failed to {description}: {e}")
+
+    def getPlantJoints(self, plant_id: int) -> List[PlantJointID]:
+        """
+        List the joints of a plant's skeleton, from the base of the plant outward.
+
+        The skeleton is the plant's own structure: one ROOT joint at the base of the plant, one SHOOT
+        joint where each shoot is attached to its parent, and one joint at the base of each internode,
+        petiole and peduncle. Every joint comes after the joints that carry it. The base shoot has no
+        SHOOT joint (ROOT already turns it); the first internode of every shoot has an INTERNODE joint
+        whose pivot is the shoot's attachment point. Sessile petioles (zero length), peduncles not yet
+        built, and pruned shoots contribute no joints.
+
+        Args:
+            plant_id: ID of the plant instance
+
+        Returns:
+            List of PlantJointID
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.98
+
+        Example:
+            >>> joints = plantarch.getPlantJoints(plant_id)
+            >>> petioles = [j for j in joints if j.type == PlantJointType.PETIOLE]
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        raw = self._poseCall(f"get the joints of plant {plant_id}", plantarch_wrapper.getPlantJoints, plant_id)
+        return [PlantJointID._from_list(j) for j in raw]
+
+    def getPlantJointFrame(self, plant_id: int, joint: PlantJointID) -> PlantJointFrame:
+        """
+        Get the pivot, axes and organ length of one joint, as the plant currently stands.
+
+        Args:
+            plant_id: ID of the plant instance
+            joint: Joint identifier, as listed by :meth:`getPlantJoints`
+
+        Returns:
+            PlantJointFrame in world coordinates
+
+        Raises:
+            ValueError: If ``plant_id`` or ``joint`` has the wrong type
+            PlantArchitectureError: If the plant or joint does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        j = self._validateJointID(joint)
+        f = self._poseCall(f"get the frame of joint {joint} of plant {plant_id}",
+                           plantarch_wrapper.getPlantJointFrame, plant_id, j)
+        return PlantJointFrame(pivot=vec3(*f[0:3]), parent_axis=vec3(*f[3:6]), organ_axis=vec3(*f[6:9]),
+                               pitch_axis=vec3(*f[9:12]), length=float(f[12]))
+
+    def setPlantJointPose(self, plant_id: int, joint: PlantJointID, pose: PlantJointPose) -> None:
+        """
+        Re-pose a grown plant by turning one of its joints.
+
+        The organ the joint carries is turned, together with everything growing from it, as one rigid
+        body about the joint; an internode or petiole can also be lengthened or shortened
+        (``pose.length_scale``). The Context geometry and the model's stored state move together, and
+        no organ is rebuilt: object IDs and primitive UUIDs are unchanged.
+
+        The pose is an **offset from the plant as it grew**, not an increment on its current pose, so
+        the same poses give the same plant in any order, and setting every joint back to zero (or
+        calling :meth:`resetPlantPose`) restores the grown plant exactly. Flexible petioles and leaves
+        settle under gravity again in their new orientation.
+
+        A pose lasts until the plant next grows or changes structure: :meth:`advanceTime` first makes
+        it permanent (as :meth:`bakePlantPose` does) and growth continues from the posed plant. A
+        flower or fruit is rebuilt when its bud changes state, so a peduncle pose lasts only until
+        then. If a pose cannot be applied (e.g. a turn about an internode of zero length), an error is
+        raised and the plant keeps the poses it had.
+
+        Note:
+            Do not also rotate the plant's objects in the Context. A plant that is posed, or whose
+            pose has been made permanent, cannot yet be written by :meth:`writePlantStructureXML` or
+            copied by :meth:`duplicatePlantInstance`, which raise an error. This cannot be called
+            from inside a phytomer callback.
+
+        Args:
+            plant_id: ID of the plant instance
+            joint: Joint identifier, as listed by :meth:`getPlantJoints`
+            pose: Offset of the joint from the way the plant grew
+
+        Raises:
+            ValueError: If an argument has the wrong type or a pose value is not finite
+            PlantArchitectureError: If the plant or joint does not exist or the pose cannot be applied
+            NotImplementedError: If the native library predates helios-core v1.3.98
+
+        Example:
+            >>> petiole = next(j for j in plantarch.getPlantJoints(pid) if j.type == PlantJointType.PETIOLE)
+            >>> plantarch.setPlantJointPose(pid, petiole, PlantJointPose(pitch_degrees=20))
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        j = self._validateJointID(joint)
+        p = self._validateJointPose(pose)
+        self._poseCall(f"set the pose of joint {joint} of plant {plant_id}",
+                       plantarch_wrapper.setPlantJointPose, plant_id, j, p)
+
+    def setPlantJointPoses(self, plant_id: int, poses: Union[Dict[PlantJointID, PlantJointPose],
+                                                             Sequence[tuple]]) -> None:
+        """
+        Re-pose a grown plant by turning several joints at once.
+
+        As :meth:`setPlantJointPose`, but the plant is moved once for the whole set, which is much
+        faster than setting joints one at a time. Joints not named keep the pose they have.
+
+        Args:
+            plant_id: ID of the plant instance
+            poses: Mapping of PlantJointID to PlantJointPose, or a sequence of (PlantJointID,
+                PlantJointPose) pairs
+
+        Raises:
+            ValueError: If an argument has the wrong type or a pose value is not finite
+            PlantArchitectureError: If a joint does not exist or a pose cannot be applied
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        items = list(poses.items()) if isinstance(poses, dict) else list(poses)
+        joints, pose_values = [], []
+        for item in items:
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise ValueError("poses must be a dict or a sequence of (PlantJointID, PlantJointPose) pairs")
+            joints.append(self._validateJointID(item[0]))
+            pose_values.append(self._validateJointPose(item[1]))
+        self._poseCall(f"set joint poses of plant {plant_id}",
+                       plantarch_wrapper.setPlantJointPoses, plant_id, joints, pose_values)
+
+    def setPlantJointLength(self, plant_id: int, joint: PlantJointID, length: float) -> None:
+        """
+        Set the length of an internode or petiole of a grown plant, in meters.
+
+        A convenience for :meth:`setPlantJointPose`: the length is converted to
+        ``PlantJointPose.length_scale`` using the length the organ grew to, and the angles already set
+        for the joint are kept.
+
+        Args:
+            plant_id: ID of the plant instance
+            joint: An INTERNODE or PETIOLE joint, as listed by :meth:`getPlantJoints`
+            length: Length of the organ along its centerline (m)
+
+        Raises:
+            ValueError: If an argument has the wrong type, or ``length`` is not a positive finite number
+            PlantArchitectureError: If the joint does not exist or is not an internode or petiole
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        j = self._validateJointID(joint)
+        if isinstance(length, bool) or not isinstance(length, numbers.Real) or not math.isfinite(length) or length <= 0:
+            raise ValueError(f"length must be a positive finite number, got {length!r}")
+        self._poseCall(f"set the length of joint {joint} of plant {plant_id}",
+                       plantarch_wrapper.setPlantJointLength, plant_id, j, float(length))
+
+    def setShootNodePositions(self, plant_id: int, shoot_id: int, node_positions: List[vec3]) -> None:
+        """
+        Re-pose a grown shoot so that its nodes are at given positions.
+
+        Bends and stretches the shoot at its INTERNODE joints, as when a cane is laid along a trellis
+        wire or a stem is fitted to a measured centerline. It is a convenience for
+        :meth:`setPlantJointPoses`: the pose of each internode joint of the shoot is worked out and
+        set, replacing any pose those joints had; all other joints keep theirs. The result can be read
+        back with :meth:`getPlantJointPose` and undone with :meth:`resetPlantPose`.
+
+        One position is given for the base of the shoot and one for the tip of each internode, so a
+        shoot with N nodes takes N+1 positions. The first must be at the shoot's base (a small
+        discrepancy moves the whole path onto the base). Each internode keeps its own shape and is
+        turned and scaled so that its tip lands on its position; positions fix where each internode
+        points but not its twist about its own length.
+
+        Args:
+            plant_id: ID of the plant instance
+            shoot_id: ID of the shoot
+            node_positions: World positions of the shoot base followed by each internode tip (vec3)
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            PlantArchitectureError: If the shoot does not exist, the number of positions is wrong,
+                or the base position is too far from the shoot's base
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        if isinstance(shoot_id, bool) or not isinstance(shoot_id, int) or shoot_id < 0:
+            raise ValueError(f"Shoot ID must be a non-negative int, got {shoot_id!r}")
+        if not isinstance(node_positions, (list, tuple)):
+            raise ValueError(f"node_positions must be a list of vec3, got {type(node_positions).__name__}")
+        for i, p in enumerate(node_positions):
+            if not isinstance(p, vec3):
+                raise ValueError(f"node_positions[{i}] must be a vec3, got {type(p).__name__}")
+        coords = [(p.x, p.y, p.z) for p in node_positions]
+        self._poseCall(f"set the node positions of shoot {shoot_id} of plant {plant_id}",
+                       plantarch_wrapper.setShootNodePositions, plant_id, shoot_id, coords)
+
+    def getPlantJointPose(self, plant_id: int, joint: PlantJointID) -> PlantJointPose:
+        """
+        Get the pose of one joint, as an offset from the way the plant grew.
+
+        Args:
+            plant_id: ID of the plant instance
+            joint: Joint identifier, as listed by :meth:`getPlantJoints`
+
+        Returns:
+            The offset last set for the joint; a default PlantJointPose (zero angles, length scale 1)
+            for a joint never posed or after the pose was made permanent
+
+        Raises:
+            ValueError: If an argument has the wrong type
+            PlantArchitectureError: If the plant or joint does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        j = self._validateJointID(joint)
+        v = self._poseCall(f"get the pose of joint {joint} of plant {plant_id}",
+                           plantarch_wrapper.getPlantJointPose, plant_id, j)
+        return PlantJointPose(pitch_degrees=v[0], yaw_degrees=v[1], roll_degrees=v[2], length_scale=v[3])
+
+    def isPlantPosed(self, plant_id: int) -> bool:
+        """
+        Whether any joint of a plant has a non-zero pose that has not been made permanent.
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        return self._poseCall(f"query the pose of plant {plant_id}", plantarch_wrapper.isPlantPosed, plant_id)
+
+    def resetPlantPose(self, plant_id: int) -> None:
+        """
+        Put a plant back exactly as it grew, undoing every joint pose.
+
+        Changes made to the posed plant by other calls that leave its structure alone (e.g.
+        :meth:`setPlantBasePosition`) are kept. Does nothing for a plant with no pose.
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist, or its structure was changed while
+                it was posed so the grown plant can no longer be restored
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._poseCall(f"reset the pose of plant {plant_id}", plantarch_wrapper.resetPlantPose, plant_id)
+
+    def bakePlantPose(self, plant_id: int) -> None:
+        """
+        Make the pose of a plant a permanent part of it.
+
+        The plant stays as posed and that becomes the plant "as it grew": every joint then reads zero
+        and later poses are measured from it. A posed internode or petiole keeps its length, and the
+        length it is growing toward is scaled by the same factor. :meth:`advanceTime` does this
+        automatically for a posed plant before growing it. Does nothing for a plant with no pose.
+
+        Raises:
+            ValueError: If ``plant_id`` is not a non-negative int
+            PlantArchitectureError: If the plant does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        self._poseCall(f"bake the pose of plant {plant_id}", plantarch_wrapper.bakePlantPose, plant_id)
+
+    def getPlantArticulation(self, plant_id: int,
+                             elastic_modulus: float = 5e9,
+                             wood_density: float = 800.0,
+                             *,
+                             damping_time_constant: float = 0.02,
+                             static_friction: float = 0.5,
+                             dynamic_friction: float = 0.3,
+                             restitution: float = 0.1,
+                             organ_spring_stiffness: float = 10.0,
+                             organ_spring_damping: float = 1.0,
+                             leaf_mass_per_area: float = 0.05,
+                             fruit_mass: float = 0.01,
+                             flower_mass: float = 0.002,
+                             solver_position_iterations: int = 32,
+                             min_segment_length: float = 0.001,
+                             armature_stability_ratio: float = 8.0,
+                             physics_steps_per_second: float = 60.0) -> PlantArticulation:
+        """
+        Get the articulated rigid-body description of a plant for physics simulation.
+
+        Builds the same links and joints that :meth:`writePlantStructureUSD` exports, without writing a
+        file, so a physics engine can be driven from them directly. Each internode, petiole and
+        peduncle segment becomes a capsule link and each leaf, fruit and flower a mass link, connected
+        to its parent by an elastic joint whose stiffness, damping and armature come from the
+        parameters. Each link names the joint of the plant's skeleton (see :meth:`getPlantJoints`) that
+        carries it.
+
+        The parameters are those of :meth:`writePlantStructureUSD`; friction, restitution and solver
+        iterations only affect the USD file and are accepted here for symmetry.
+
+        Args:
+            plant_id: ID of the plant instance
+            (others): See :meth:`writePlantStructureUSD`
+
+        Returns:
+            PlantArticulation with every parent link preceding its children
+
+        Raises:
+            ValueError: If ``plant_id`` is invalid, or a damping or armature parameter is out of range
+            PlantArchitectureError: If the plant does not exist
+            NotImplementedError: If the native library predates helios-core v1.3.98
+
+        Example:
+            >>> art = plantarch.getPlantArticulation(plant_id)
+            >>> total_mass = sum(link.mass for link in art.links)
+        """
+        plant_id = self._validatePlantIdentifier(plant_id)
+        if damping_time_constant < 0:
+            raise ValueError(f"damping_time_constant must be non-negative, got {damping_time_constant}")
+        if armature_stability_ratio <= 0:
+            raise ValueError(f"armature_stability_ratio must be positive, got {armature_stability_ratio}")
+        if physics_steps_per_second <= 0:
+            raise ValueError(f"physics_steps_per_second must be positive, got {physics_steps_per_second}")
+        if isinstance(solver_position_iterations, bool) or not isinstance(solver_position_iterations, int) \
+                or solver_position_iterations < 0:
+            raise ValueError(f"solver_position_iterations must be a non-negative int, got {solver_position_iterations!r}")
+        named = {"elastic_modulus": elastic_modulus, "wood_density": wood_density,
+                 "damping_time_constant": damping_time_constant,
+                 "armature_stability_ratio": armature_stability_ratio,
+                 "physics_steps_per_second": physics_steps_per_second, "static_friction": static_friction,
+                 "dynamic_friction": dynamic_friction, "restitution": restitution,
+                 "organ_spring_stiffness": organ_spring_stiffness, "organ_spring_damping": organ_spring_damping,
+                 "leaf_mass_per_area": leaf_mass_per_area, "fruit_mass": fruit_mass, "flower_mass": flower_mass,
+                 "min_segment_length": min_segment_length}
+        for name, value in named.items():
+            if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be a non-negative finite number, got {value!r}")
+        params = list(named.values())
+        raw_links, raw_joints = self._poseCall(f"get the articulation of plant {plant_id}",
+                                               plantarch_wrapper.getPlantArticulation, plant_id, params,
+                                               solver_position_iterations)
+        links = []
+        for name, ints, floats in raw_links:
+            links.append(PlantArticulationLink(
+                name=name, type=PlantArticulationLinkType(ints[0]), parent_index=int(ints[1]),
+                position=vec3(*floats[0:3]), orientation=tuple(floats[3:7]),
+                radius=float(floats[7]), half_length=float(floats[8]), mass=float(floats[9]),
+                inertia_diagonal=vec3(*floats[10:13]), source_objID=int(ints[2]) & 0xFFFFFFFF,
+                joint=PlantJointID._from_list([v & 0xFFFFFFFF for v in ints[3:8]])))
+        joints = [PlantArticulationJoint(parent_index=int(ints[0]), child_index=int(ints[1]),
+                                         anchor_in_parent=vec3(*floats[0:3]), anchor_in_child=vec3(*floats[3:6]),
+                                         stiffness=float(floats[6]), damping=float(floats[7]),
+                                         armature=float(floats[8]))
+                  for ints, floats in raw_joints]
+        return PlantArticulation(links=links, joints=joints)
 
     def getPlantInternodeObjectIDs(self, plant_id: int, shoot_type_label: Optional[str] = None) -> List[int]:
         """

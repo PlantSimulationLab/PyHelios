@@ -152,7 +152,7 @@ with Context() as context:
         <td>\f$\mu\f$mol/m<sup>2</sup>-s</td>
         <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
         <td>Net CO<sub>2</sub> (photosynthetic) flux.</td>
-        <td>BWB, BBL, Mopt</td>
+        <td>BWB, BBL, Mopt, Buckley2026</td>
         <td>Can be computed by \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in.</td>
         <td>0</td>
     </tr>
@@ -185,6 +185,46 @@ with Context() as context:
         <td>BB</td>
         <td>N/A</td>
         <td>-0.1 MPa</td>
+    </tr>
+    <tr>
+        <td>electron_transport_rate</td>
+        <td>\f$J\f$</td>
+        <td>\f$\mu\f$mol/m<sup>2</sup>-s</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Potential electron transport rate at the leaf's light and temperature.</td>
+        <td>Buckley2026</td>
+        <td>Computed by the \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in (Farquhar model), automatically once the Buckley2026 model is selected.</td>
+        <td>None (required)</td>
+    </tr>
+    <tr>
+        <td>dark_respiration</td>
+        <td>\f$R_d\f$</td>
+        <td>\f$\mu\f$mol/m<sup>2</sup>-s</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Day respiration at the leaf temperature.</td>
+        <td>Buckley2026</td>
+        <td>Computed by the \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in (Farquhar model), automatically once the Buckley2026 model is selected.</td>
+        <td>None (required)</td>
+    </tr>
+    <tr>
+        <td>soil_water_potential</td>
+        <td>\f$\psi_{soil}\f$</td>
+        <td>MPa</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Water potential of the soil (source) supplying the plant.</td>
+        <td>Buckley2026</td>
+        <td>Written by the \ref pyhelios.PlantHydraulics.PlantHydraulicsModel "PlantHydraulicsModel" plug-in (for plants whose soil water potential was set with setSoilWaterPotentialOfPlant()), automatically once the Buckley2026 model is selected, or set directly.</td>
+        <td>-0.1 MPa</td>
+    </tr>
+    <tr>
+        <td>plant_hydraulic_conductance</td>
+        <td>\f$K_{plant}\f$</td>
+        <td>mol/m<sup>2</sup>-s-MPa</td>
+        <td>\htmlonly<span style="font-family: Courier, monospace; color: green;">float</span>\endhtmlonly</td>
+        <td>Whole-plant (soil-to-leaf) hydraulic conductance per unit leaf area, at the leaf temperature. Not the leaf conductance \f$K_{leaf}\f$.</td>
+        <td>Buckley2026</td>
+        <td>Written by the \ref pyhelios.PlantHydraulics.PlantHydraulicsModel "PlantHydraulicsModel" plug-in, automatically once the Buckley2026 model is selected.</td>
+        <td>Model coefficient \f$K_{plant,25}\f$ scaled to leaf temperature</td>
     </tr>
 
  </table>
@@ -224,7 +264,7 @@ stomatal.optionalOutputPrimitiveData("vapor_pressure_deficit")
 
 <table>
    <tr><th>Primitive Data Label</th><th>Units</th><th>Data Type</th><th>Description</th></tr>
-   <tr><td>vapor\_pressure\_deficit</td><td>mmol/mol</td><td>\htmlonly<font face="courier" color="green">float</font>\endhtmlonly</td><td>Vapor pressure deficit between the stomatal cavity and leaf surface. Only applicable for BMF model.</td></tr>
+   <tr><td>vapor\_pressure\_deficit</td><td>mmol/mol</td><td>\htmlonly<font face="courier" color="green">float</font>\endhtmlonly</td><td>Vapor pressure deficit between the stomatal cavity and leaf surface. Only applicable for the BMF and Buckley2026 models.</td></tr>
    <tr><td>model\_parameters</td><td>N/A</td><td>\htmlonly<font face="courier" color="green">std::string</font>\endhtmlonly</td><td>Model parameters for each primitive. See table below for the actual primitive data labels that are created.</td></tr>
 </table>
 
@@ -266,6 +306,18 @@ If you enable the optional output primitive data "model_parameters", different p
    </tr>
    <tr>
        <td>\f$b\f$</td><td>b_BMF</td>
+   </tr>
+   <tr>
+       <td rowspan="4">Buckley et al. (2026)</td><td>\f$s\f$</td><td>s_Buckley2026</td>
+   </tr>
+   <tr>
+       <td>\f$K_{plant}\f$ (value used, at leaf temperature)</td><td>K_plant_Buckley2026</td>
+   </tr>
+   <tr>
+       <td>\f$b_o\f$</td><td>b_o_Buckley2026</td>
+   </tr>
+   <tr>
+       <td>\f$\psi_c\f$</td><td>psi_c_Buckley2026</td>
    </tr>
 </table>
 
@@ -714,6 +766,119 @@ As with the other models, \f$D_s\f$ is obtained by iteratively solving the water
 
 \note **Changed in helios-core 1.3.80:** the Bailey model was rewritten. It is now coupled to the boundary layer in the same way as the other models — previously it used the air-to-cavity vapor pressure deficit directly and was the only model that ignored the boundary-layer conductance entirely. It also now applies the soil moisture factor \f$\beta\f$, which it previously ignored (the `beta_soil` primitive data had no effect on Bailey model results). Bailey model results will therefore differ from earlier Helios versions.
 
+## Buckley et al. (2026) Model {#Buckley2026Theory}
+
+The model of <a href="https://doi.org/10.1111/gcb.70999">Buckley et al. (2026)</a> (Buckley, T. N., J. Lamour, D. M. Barnard, D. W. Buckley, A. J. Jarvis, A. Diaz-Espejo, A. Rogers, and L. Sack. 2026. "A Simple Stomatal Model That Unifies the Metabolic and Hydraulic Control of Carbon and Water Flux." <i>Global Change Biology</i> 32: e70999) simplifies the hydromechanical/biochemical model of Buckley, Mott, and Farquhar (2003). Stomatal conductance is driven by the residual photosynthetic capacity, the excess of the CO<sub>2</sub>-saturated assimilation rate \f$A_m\f$ over the actual net assimilation rate, and limited by the water supply from the soil through the plant (their Equation 3):
+
+\f[g_s = \frac{\beta\, s\, b\,(\psi_{soil}-\psi_c)}{1+s\,b\,D_s/K_{plant}},\qquad b = \max\left(0,\ \frac{J}{4}-R_d-A+b_o\right),\f]
+
+where \f$J\f$ is the potential electron transport rate at the leaf's light and temperature, \f$R_d\f$ is day respiration, \f$A\f$ is net photosynthesis, \f$\psi_{soil}\f$ is the soil (source) water potential, \f$D_s\f$ is the vapor pressure deficit between the stomatal cavity and the leaf surface (mol/mol; calculated as described for the other models above), and \f$K_{plant}\f$ is the whole-plant (soil-to-leaf) hydraulic conductance per unit leaf area. \f$J/4-R_d\f$ is the limit of the Farquhar electron-transport-limited rate \f$J(C_c-\Gamma^*)/(4C_c+8\Gamma^*)-R_d\f$ as \f$C_c\to\infty\f$. The denominator accounts for the fall in leaf water potential with transpiration, \f$\psi_{leaf}=\psi_{soil}-g_sD_s/K_{plant}\f$. The parameters are \f$s\f$ (mol \f$\mu\f$mol<sup>-1</sup> MPa<sup>-1</sup>), the closure water potential \f$\psi_c\f$ (MPa), \f$b_o\f$ (\f$\mu\f$mol/m<sup>2</sup>-s), and \f$K_{plant,25}\f$ (mol/m<sup>2</sup>-s-MPa), the whole-plant hydraulic conductance at 25 \f$^\circ\f$C. When primitive data "plant_hydraulic_conductance" is not available, \f$K_{plant}=K_{plant,25}\,\phi(T_L)\f$, where \f$\phi(T)=4.891\times10^{10}\exp(-4209/T-0.04527T+3.376\times10^{-5}T^2)\f$ is the fluidity of water relative to 25 \f$^\circ\f$C. Conductance is zero when \f$\psi_{soil}\le\psi_c\f$.
+
+Note that \f$A\f$, \f$J\f$, and \f$R_d\f$ must be computed by the \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" plug-in (Farquhar model); once this model is selected, the photosynthesis plug-in writes \f$J\f$ and \f$R_d\f$ automatically. \f$\psi_{soil}\f$ and \f$K_{plant}\f$ can be computed by the \ref pyhelios.PlantHydraulics.PlantHydraulicsModel "PlantHydraulicsModel" plug-in, or \f$\psi_{soil}\f$ can be set directly as primitive data, in which case \f$K_{plant}\f$ is given by the model coefficient \f$K_{plant,25}\f$.
+
+### Species library {#Buckley2026Library}
+
+The coefficients below were fitted to diurnal LI-600 porometer surveys of field and orchard trees (gsdb, Davis, CA; conductances corrected per Rizzo & Bailey) with soft-L1 least squares. \f$\psi_{soil}\f$ was the first (predawn or early-morning) stem water potential measured on each tree and day. \f$\psi_c\f$ was fixed at the pressure-volume turgor loss point \f$\psi_{TLP}\f$ of the species (measured, or from the literature where marked), as recommended by Buckley et al. (2026), and fitted for eastern redbud, which has no pressure-volume data. With a single \f$\psi_{soil}\f$ per day only \f$s(\psi_{soil}-\psi_c)\f$ and \f$K_{plant}(\psi_{soil}-\psi_c)\f$ are identified, so \f$s\f$ and \f$K_{plant,25}\f$ depend on the value used for \f$\psi_c\f$. \f$A\f$, \f$J\f$, and \f$R_d\f$ were computed with the \ref pyhelios.PhotosynthesisModel.PhotosynthesisModel "PhotosynthesisModel" Farquhar library entry listed for each species, and the fit depends on those photosynthesis parameters through \f$b\f$: <b>use each entry together with that Farquhar library entry</b>. \f$K_{plant,25}\f$ was fitted, so it is the value consistent with \f$s\f$ and \f$b_o\f$. \f$R^2\f$ is for the means of each date and hour, with the leave-one-hour-out cross-validated value in parentheses.
+
+<table>
+    <tr>
+        <th>Species</th>
+        <th>\f$s\f$ (mol \f$\mu\f$mol<sup>-1</sup> MPa<sup>-1</sup>)</th>
+        <th>\f$K_{plant,25}\f$ (mol/m<sup>2</sup>-s-MPa)</th>
+        <th>\f$b_o\f$ (\f$\mu\f$mol/m<sup>2</sup>-s)</th>
+        <th>\f$\psi_c\f$ (MPa)</th>
+        <th>Farquhar library entry</th>
+        <th>Readings / days</th>
+        <th>\f$R^2\f$ (CV)</th>
+    </tr>
+    <tr>
+        <td>Almond</td>
+        <td>0.01595</td>
+        <td>0.03266</td>
+        <td>1.416</td>
+        <td>-2.329 (turgor loss point, literature)</td>
+        <td>Almond</td>
+        <td>147 / 1</td>
+        <td>0.75 (0.56)</td>
+    </tr>
+    <tr>
+        <td>Elderberry</td>
+        <td>0.0271</td>
+        <td>0.007491</td>
+        <td>1.27</td>
+        <td>-2.752 (turgor loss point)</td>
+        <td>Elderberry</td>
+        <td>389 / 2</td>
+        <td>0.83 (0.77)</td>
+    </tr>
+    <tr>
+        <td>Cowpea</td>
+        <td>0.2626</td>
+        <td>0.05714</td>
+        <td>1.074</td>
+        <td>-0.846 (turgor loss point)</td>
+        <td>Cowpea</td>
+        <td>258 / 1</td>
+        <td>0.76 (0.65)</td>
+    </tr>
+    <tr>
+        <td>EasternRedbud</td>
+        <td>0.004195</td>
+        <td>0.001744</td>
+        <td>1.774</td>
+        <td>-3.667 (fitted)</td>
+        <td>EasternRedbudSunlit, EasternRedbudShaded</td>
+        <td>2548 / 4</td>
+        <td>0.63 (0.57)</td>
+    </tr>
+    <tr>
+        <td>Grape</td>
+        <td>0.03341</td>
+        <td>0.007471</td>
+        <td>1.268</td>
+        <td>-1.718 (turgor loss point, literature)</td>
+        <td>Grape</td>
+        <td>231 / 1</td>
+        <td>0.55 (0.16)</td>
+    </tr>
+    <tr>
+        <td>Olive</td>
+        <td>0.02156</td>
+        <td>0.004562</td>
+        <td>5.033</td>
+        <td>-2.043 (turgor loss point)</td>
+        <td>Olive</td>
+        <td>57 / 1</td>
+        <td>0.88 (0.73)</td>
+    </tr>
+    <tr>
+        <td>Pistachio</td>
+        <td>0.08766</td>
+        <td>0.007411</td>
+        <td>1.11</td>
+        <td>-4.103 (turgor loss point)</td>
+        <td>PistachioFemale (or Pistachio)</td>
+        <td>824 / 1</td>
+        <td>0.76 (0.60)</td>
+    </tr>
+</table>
+
+The defaults of \ref pyhelios.StomatalConductance.Buckley2026Coefficients "Buckley2026Coefficients" are the pistachio entry. The cowpea entry is a single genotype measured on one day.
+
+### Using the model in PyHelios {#Buckley2026Use}
+
+Select the model with \ref pyhelios.StomatalConductance.StomatalConductanceModel::setBuckley2026Coefficients "setBuckley2026Coefficients()" or \ref pyhelios.StomatalConductance.StomatalConductanceModel::setBuckley2026CoefficientsFromLibrary "setBuckley2026CoefficientsFromLibrary()" (both accept `uuids=` or `material_label=`), and read a library entry without applying it with \ref pyhelios.StomatalConductance.StomatalConductanceModel::getBuckley2026CoefficientsFromLibrary "getBuckley2026CoefficientsFromLibrary()". Selecting the model sets global data "buckley2026_stomatal_model_enabled" to 1, so run the photosynthesis model (and, optionally, the plant hydraulics model) after selecting it and before running the stomatal conductance model:
+
+```python
+from pyhelios import PhotosynthesisModel, StomatalConductanceModel
+
+with PhotosynthesisModel(context) as photo, StomatalConductanceModel(context) as stomatal:
+    photo.setFarquharCoefficientsFromLibrary("Almond")
+    stomatal.setBuckley2026CoefficientsFromLibrary("Almond")   # use the matching Farquhar entry
+    photo.run()      # writes net_photosynthesis, electron_transport_rate, dark_respiration
+    stomatal.run()   # soil_water_potential defaults to -0.1 MPa if not set
+```
+
 ## Error Conditions {#StomatalErrors}
 
 The plug-in follows a fail-fast philosophy: physically meaningless inputs produce an error rather than a silently substituted value. As of helios-core 1.3.80, \ref pyhelios.StomatalConductance.StomatalConductanceModel::run "run()" raises an error if any of the following conditions is encountered.
@@ -852,7 +1017,7 @@ stomatal.setBMFCoefficients(coeff_sets, uuids=[leaf1, leaf2, leaf3])
 
 #### Material-Based Coefficient Setting {#MaterialBasedCoeffs}
 
-All coefficient setters (`setBWBCoefficients`, `setBBLCoefficients`, `setMOPTCoefficients`, `setBMFCoefficients`, `setBBCoefficients`) and `setBMFCoefficientsFromLibrary` accept an optional `material_label=` keyword, mirroring the material support in the photosynthesis plugin. The coefficients are stored as material data on that Context material and apply to every primitive that references the material. `material_label` and `uuids` are mutually exclusive (passing both raises `ValueError`), and the material must already exist (`context.addMaterial(...)`), otherwise a `StomatalConductanceModelError` is raised.
+All coefficient setters (`setBWBCoefficients`, `setBBLCoefficients`, `setMOPTCoefficients`, `setBMFCoefficients`, `setBBCoefficients`, `setBuckley2026Coefficients`) and the library setters `setBMFCoefficientsFromLibrary` and `setBuckley2026CoefficientsFromLibrary` accept an optional `material_label=` keyword, mirroring the material support in the photosynthesis plugin. The coefficients are stored as material data on that Context material and apply to every primitive that references the material. `material_label` and `uuids` are mutually exclusive (passing both raises `ValueError`), and the material must already exist (`context.addMaterial(...)`), otherwise a `StomatalConductanceModelError` is raised.
 
 ```python
 context.addMaterial("sun_leaf")
@@ -875,7 +1040,7 @@ with StomatalConductanceModel(context) as stomatal:
 
 Material coefficients therefore override per-UUID coefficients, regardless of the order of the calls. Because primitives created without an explicit material may share a common default material, assign a dedicated material (as above) before setting coefficients by label, so that only the intended primitives are affected.
 
-**Active model.** Every coefficient setter, including the material-label form, also selects which of the five models `run()` evaluates for *all* primitives (the model of the most recent call wins). Different materials cannot run different models in the same `run()`; use material labels to vary the coefficients of a single model.
+**Active model.** Every coefficient setter, including the material-label form, also selects which of the six models `run()` evaluates for *all* primitives (the model of the most recent call wins). Different materials cannot run different models in the same `run()`; use material labels to vary the coefficients of a single model.
 
 ### Running the Model (steady-state mode) {#StomatalRun}
 

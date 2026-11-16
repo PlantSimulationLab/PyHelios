@@ -9,6 +9,7 @@
 #include <map>
 #include <exception>
 #include <cstring>
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <array>
@@ -5559,6 +5560,327 @@ extern "C" {
             plantarch->addPlantNitrogen(ids, amount_gN);
             return 0;
         });
+    }
+
+    // ===================================================================================
+    // helios-core 1.3.98: re-posing grown plants at their joints, and the articulated
+    // rigid-body description of a plant.
+    //
+    // A PlantJointID crosses the boundary as 5 uints: [type, shootID, node_index, petiole_index, bud_index].
+    // A PlantJointPose crosses as 4 floats: [pitch_degrees, yaw_degrees, roll_degrees, length_scale].
+    // A PlantJointFrame crosses as 13 floats: [pivot(3), parent_axis(3), organ_axis(3), pitch_axis(3), length].
+    // ===================================================================================
+
+    static PlantJointID unpackJointID(const unsigned int* j) {
+        if (!j) {
+            throw std::invalid_argument("Joint identifier array is null");
+        }
+        if (j[0] > static_cast<unsigned int>(PLANT_JOINT_PEDUNCLE)) {
+            throw std::invalid_argument("Joint type " + std::to_string(j[0]) + " is not a valid PlantJointType (0-" + std::to_string(static_cast<int>(PLANT_JOINT_PEDUNCLE)) + ")");
+        }
+        PlantJointID id;
+        id.type = static_cast<PlantJointType>(j[0]);
+        id.shootID = j[1];
+        id.node_index = j[2];
+        id.petiole_index = j[3];
+        id.bud_index = j[4];
+        return id;
+    }
+
+    static void packJointID(const PlantJointID& id, unsigned int* out) {
+        out[0] = static_cast<unsigned int>(id.type);
+        out[1] = id.shootID;
+        out[2] = id.node_index;
+        out[3] = id.petiole_index;
+        out[4] = id.bud_index;
+    }
+
+    static PlantJointPose unpackJointPose(const float* p) {
+        if (!p) {
+            throw std::invalid_argument("Joint pose array is null");
+        }
+        PlantJointPose pose;
+        pose.pitch_degrees = p[0];
+        pose.yaw_degrees = p[1];
+        pose.roll_degrees = p[2];
+        pose.length_scale = p[3];
+        return pose;
+    }
+
+    PYHELIOS_API unsigned int* getPlantJoints(PlantArchitecture* plantarch, unsigned int plantID, unsigned int* count) {
+        static thread_local std::vector<unsigned int> joints_flat;
+        if (count) {
+            *count = 0;
+        }
+        return guardedPhytomerCall(plantarch, "getPlantJoints", static_cast<unsigned int*>(nullptr), [&]() -> unsigned int* {
+            if (!count) {
+                throw std::invalid_argument("Count out-pointer is null");
+            }
+            const std::vector<PlantJointID> joints = plantarch->getPlantJoints(plantID);
+            joints_flat.assign(joints.size() * 5, 0u);
+            for (size_t i = 0; i < joints.size(); ++i) {
+                packJointID(joints[i], &joints_flat[5 * i]);
+            }
+            *count = static_cast<unsigned int>(joints.size());
+            return joints_flat.empty() ? nullptr : joints_flat.data();
+        });
+    }
+
+    PYHELIOS_API int getPlantJointFrame(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, float* frame_out) {
+        return guardedPhytomerCall(plantarch, "getPlantJointFrame", -1, [&]() -> int {
+            if (!frame_out) {
+                throw std::invalid_argument("Frame output array is null");
+            }
+            const PlantJointFrame f = plantarch->getPlantJointFrame(plantID, unpackJointID(joint));
+            const helios::vec3 v[4] = {f.pivot, f.parent_axis, f.organ_axis, f.pitch_axis};
+            for (int i = 0; i < 4; ++i) {
+                frame_out[3 * i + 0] = v[i].x;
+                frame_out[3 * i + 1] = v[i].y;
+                frame_out[3 * i + 2] = v[i].z;
+            }
+            frame_out[12] = f.length;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPlantJointPose(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, const float* pose) {
+        return guardedPhytomerCall(plantarch, "setPlantJointPose", -1, [&]() -> int {
+            plantarch->setPlantJointPose(plantID, unpackJointID(joint), unpackJointPose(pose));
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPlantJointPoses(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joints, const float* poses, unsigned int count) {
+        return guardedPhytomerCall(plantarch, "setPlantJointPoses", -1, [&]() -> int {
+            if (count > 0 && (!joints || !poses)) {
+                throw std::invalid_argument("Joint or pose array is null");
+            }
+            std::vector<PlantJointID> joint_vec;
+            std::vector<PlantJointPose> pose_vec;
+            joint_vec.reserve(count);
+            pose_vec.reserve(count);
+            for (unsigned int i = 0; i < count; ++i) {
+                joint_vec.push_back(unpackJointID(joints + 5 * i));
+                pose_vec.push_back(unpackJointPose(poses + 4 * i));
+            }
+            plantarch->setPlantJointPoses(plantID, joint_vec, pose_vec);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setPlantJointLength(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, float length) {
+        return guardedPhytomerCall(plantarch, "setPlantJointLength", -1, [&]() -> int {
+            plantarch->setPlantJointLength(plantID, unpackJointID(joint), length);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int setShootNodePositions(PlantArchitecture* plantarch, unsigned int plantID, unsigned int shootID, const float* node_positions, unsigned int node_count) {
+        return guardedPhytomerCall(plantarch, "setShootNodePositions", -1, [&]() -> int {
+            if (node_count > 0 && !node_positions) {
+                throw std::invalid_argument("Node position array is null");
+            }
+            std::vector<helios::vec3> positions;
+            positions.reserve(node_count);
+            for (unsigned int i = 0; i < node_count; ++i) {
+                positions.emplace_back(node_positions[3 * i], node_positions[3 * i + 1], node_positions[3 * i + 2]);
+            }
+            plantarch->setShootNodePositions(plantID, shootID, positions);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int getPlantJointPose(PlantArchitecture* plantarch, unsigned int plantID, const unsigned int* joint, float* pose_out) {
+        return guardedPhytomerCall(plantarch, "getPlantJointPose", -1, [&]() -> int {
+            if (!pose_out) {
+                throw std::invalid_argument("Pose output array is null");
+            }
+            const PlantJointPose pose = plantarch->getPlantJointPose(plantID, unpackJointID(joint));
+            pose_out[0] = pose.pitch_degrees;
+            pose_out[1] = pose.yaw_degrees;
+            pose_out[2] = pose.roll_degrees;
+            pose_out[3] = pose.length_scale;
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int isPlantPosed(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "isPlantPosed", -1, [&]() -> int {
+            return plantarch->isPlantPosed(plantID) ? 1 : 0;
+        });
+    }
+
+    PYHELIOS_API int resetPlantPose(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "resetPlantPose", -1, [&]() -> int {
+            plantarch->resetPlantPose(plantID);
+            return 0;
+        });
+    }
+
+    PYHELIOS_API int bakePlantPose(PlantArchitecture* plantarch, unsigned int plantID) {
+        return guardedPhytomerCall(plantarch, "bakePlantPose", -1, [&]() -> int {
+            plantarch->bakePlantPose(plantID);
+            return 0;
+        });
+    }
+
+    // getPlantArticulation: computePlantArticulation() builds and caches the articulation on this
+    // thread and returns the link and joint counts; the copy/name functions then read the cache.
+    // params holds 14 floats in USDExportParameters field order, without solver_position_iterations:
+    // [elastic_modulus, wood_density, damping_time_constant, armature_stability_ratio, physics_steps_per_second,
+    //  static_friction, dynamic_friction, restitution, organ_spring_stiffness, organ_spring_damping,
+    //  leaf_mass_per_area, fruit_mass, flower_mass, min_segment_length]
+    static thread_local PlantArticulation s_articulation_cache;
+
+    PYHELIOS_API int computePlantArticulation(PlantArchitecture* plantarch, unsigned int plantID, const float* params, unsigned int solver_position_iterations,
+                                              unsigned int* link_count, unsigned int* joint_count) {
+        if (link_count) {
+            *link_count = 0;
+        }
+        if (joint_count) {
+            *joint_count = 0;
+        }
+        return guardedPhytomerCall(plantarch, "getPlantArticulation", -1, [&]() -> int {
+            if (!params || !link_count || !joint_count) {
+                throw std::invalid_argument("Parameter array or count out-pointer is null");
+            }
+            USDExportParameters p;
+            p.elastic_modulus = params[0];
+            p.wood_density = params[1];
+            p.damping_time_constant = params[2];
+            p.armature_stability_ratio = params[3];
+            p.physics_steps_per_second = params[4];
+            p.static_friction = params[5];
+            p.dynamic_friction = params[6];
+            p.restitution = params[7];
+            p.organ_spring_stiffness = params[8];
+            p.organ_spring_damping = params[9];
+            p.leaf_mass_per_area = params[10];
+            p.fruit_mass = params[11];
+            p.flower_mass = params[12];
+            p.min_segment_length = params[13];
+            p.solver_position_iterations = solver_position_iterations;
+            s_articulation_cache = plantarch->getPlantArticulation(plantID, p);
+            *link_count = static_cast<unsigned int>(s_articulation_cache.links.size());
+            *joint_count = static_cast<unsigned int>(s_articulation_cache.joints.size());
+            return 0;
+        });
+    }
+
+    // Per link: ints[8] = [type, parent_index, source_objID, joint(5)];
+    //           floats[14] = [position(3), qw, qx, qy, qz, radius, half_length, mass, inertia_diagonal(3)]
+    PYHELIOS_API int copyPlantArticulationLinks(int* link_ints, float* link_floats, unsigned int link_count) {
+        try {
+            clearError();
+            if (link_count != s_articulation_cache.links.size()) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::getPlantArticulation): Link count does not match the cached articulation");
+                return -1;
+            }
+            if (link_count > 0 && (!link_ints || !link_floats)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::getPlantArticulation): Link output arrays are null");
+                return -1;
+            }
+            for (unsigned int i = 0; i < link_count; ++i) {
+                const PlantArticulationLink& l = s_articulation_cache.links[i];
+                int* li = link_ints + 8 * i;
+                li[0] = static_cast<int>(l.type);
+                li[1] = l.parent_index;
+                li[2] = static_cast<int>(l.source_objID);
+                unsigned int jid[5];
+                packJointID(l.joint, jid);
+                for (int k = 0; k < 5; ++k) {
+                    li[3 + k] = static_cast<int>(jid[k]);
+                }
+                float* lf = link_floats + 14 * i;
+                lf[0] = l.position.x;
+                lf[1] = l.position.y;
+                lf[2] = l.position.z;
+                lf[3] = l.qw;
+                lf[4] = l.qx;
+                lf[5] = l.qy;
+                lf[6] = l.qz;
+                lf[7] = l.radius;
+                lf[8] = l.half_length;
+                lf[9] = l.mass;
+                lf[10] = l.inertia_diagonal.x;
+                lf[11] = l.inertia_diagonal.y;
+                lf[12] = l.inertia_diagonal.z;
+                lf[13] = 0.f;
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantArticulation): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantArticulation): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API int getPlantArticulationLinkName(unsigned int link_index, char* buffer, int buffer_size) {
+        try {
+            clearError();
+            if (link_index >= s_articulation_cache.links.size()) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::getPlantArticulation): Link index out of range");
+                return -1;
+            }
+            const std::string& name = s_articulation_cache.links[link_index].name;
+            if (!buffer || buffer_size <= 0) {
+                return static_cast<int>(name.size());
+            }
+            const int n = std::min(static_cast<int>(name.size()), buffer_size - 1);
+            std::memcpy(buffer, name.data(), n);
+            buffer[n] = '\0';
+            return static_cast<int>(name.size());
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantArticulation): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantArticulation): Unknown error.");
+            return -1;
+        }
+    }
+
+    // Per joint: ints[2] = [parent_index, child_index];
+    //            floats[9] = [anchor_in_parent(3), anchor_in_child(3), stiffness, damping, armature]
+    PYHELIOS_API int copyPlantArticulationJoints(int* joint_ints, float* joint_floats, unsigned int joint_count) {
+        try {
+            clearError();
+            if (joint_count != s_articulation_cache.joints.size()) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::getPlantArticulation): Joint count does not match the cached articulation");
+                return -1;
+            }
+            if (joint_count > 0 && (!joint_ints || !joint_floats)) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (PlantArchitecture::getPlantArticulation): Joint output arrays are null");
+                return -1;
+            }
+            for (unsigned int i = 0; i < joint_count; ++i) {
+                const PlantArticulationJoint& j = s_articulation_cache.joints[i];
+                joint_ints[2 * i] = j.parent_index;
+                joint_ints[2 * i + 1] = j.child_index;
+                float* jf = joint_floats + 9 * i;
+                jf[0] = j.anchor_in_parent.x;
+                jf[1] = j.anchor_in_parent.y;
+                jf[2] = j.anchor_in_parent.z;
+                jf[3] = j.anchor_in_child.x;
+                jf[4] = j.anchor_in_child.y;
+                jf[5] = j.anchor_in_child.z;
+                jf[6] = j.stiffness;
+                jf[7] = j.damping;
+                jf[8] = j.armature;
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantArchitecture::getPlantArticulation): ") + e.what());
+            return -1;
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantArchitecture::getPlantArticulation): Unknown error.");
+            return -1;
+        }
+    }
+
+    PYHELIOS_API void clearPlantArticulationCache() {
+        s_articulation_cache = PlantArticulation();
     }
 } // extern "C"
 

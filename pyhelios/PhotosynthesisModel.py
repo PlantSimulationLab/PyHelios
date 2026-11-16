@@ -694,6 +694,12 @@ class PhotosynthesisModel:
         potential. It is 1 in the dark, falls as light saturates photosynthesis, is written by
         the Farquhar and C4 models, and drives the radiation model's SIF fluorescence yield.
 
+        The Farquhar model also offers ``"electron_transport_rate"`` (the potential electron
+        transport rate J at the leaf's light and temperature, umol/m²/s) and ``"dark_respiration"``
+        (day respiration Rd at the leaf temperature, umol/m²/s) (helios-core 1.3.98). Both are
+        written automatically when the Buckley et al. (2026) stomatal conductance model is in use,
+        since that model reads them.
+
         Args:
             label: Primitive data label to output
         """

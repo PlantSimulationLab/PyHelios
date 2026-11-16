@@ -726,6 +726,15 @@ if context.getShapeRevision() != shape or context.getPrimitiveCount() != count:
 
 [getMaterialRevision()](pyhelios.Context.Context.getMaterialRevision) (helios-core 1.3.96) advances whenever a material is added, deleted or renamed, or its properties or data change. Setting material data does not mark the primitives that use the material dirty, so code that caches something derived from material data checks this counter instead.
 
+[getGeometryRevision()](pyhelios.Context.Context.getGeometryRevision) advances with every primitive data write, including the output a plug-in writes itself, so it cannot tell whether one particular input changed. [getPrimitiveDataRevision(label)](pyhelios.Context.Context.getPrimitiveDataRevision) (helios-core 1.3.98) is kept per label: it advances only when data with that label is set, changed or removed on some primitive, and is 0 for a label no primitive has ever had. [getSpectralTextureRevision()](pyhelios.Context.Context.getSpectralTextureRevision) (helios-core 1.3.98) advances when a primitive is given a spectral texture or a different spectral palette, or has its spectral texture removed.
+
+```python
+rev = context.getPrimitiveDataRevision("reflectivity_spectrum")
+# ... a plug-in run writes its own output labels ...
+if context.getPrimitiveDataRevision("reflectivity_spectrum") != rev:
+    rebuild_reflectivity_table()
+```
+
 To find *which* primitives changed, [getModifiedUUIDs(mark)](pyhelios.Context.Context.getModifiedUUIDs) (helios-core 1.3.96) gives each caller its own view. The dirty flags are shared and stay set until something marks the geometry clean, so code that only reads them sees every primitive ever modified. Keep one mark per caller, starting at 0, and pass back the mark the previous call returned: each call returns the primitives created or modified since then, whatever other callers do and whether or not anything marks the geometry clean in between. Hiding or showing a primitive counts as a modification; deleted primitives are not returned (see `getDeletedUUIDs()`).
 
 ```python

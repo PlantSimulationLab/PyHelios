@@ -48,6 +48,8 @@ PYHELIOS_API void runPlantHydraulicsModelForUUIDs(PlantHydraulicsModel* model, c
 // Optional output primitive data
 PYHELIOS_API void setPlantHydraulicsOutputConductancePrimitiveData(PlantHydraulicsModel* model, bool toggle);
 PYHELIOS_API void setPlantHydraulicsOutputCapacitancePrimitiveData(PlantHydraulicsModel* model, bool toggle);
+/** @brief PlantHydraulicsModel::outputPlantConductancePrimitiveData(toggle) (helios-core 1.3.98): write "plant_hydraulic_conductance" and "soil_water_potential" */
+PYHELIOS_API void setPlantHydraulicsOutputPlantConductancePrimitiveData(PlantHydraulicsModel* model, bool toggle);
 
 // Plant grouping
 PYHELIOS_API void groupPlantHydraulicsPrimitivesIntoPlantObject(PlantHydraulicsModel* model, const unsigned int* uuids, unsigned int uuid_count);

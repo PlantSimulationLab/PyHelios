@@ -102,7 +102,7 @@ PlantArchitecture includes the following plant models (`getAvailablePlantModels(
 - `"asparagus"` - Asparagus perennial vegetable crop
 - `"butterlettuce"` - Lettuce with rosette growth form
 - `"capsicum"` - Bell pepper with bush growth habit
-- `"cherrytomato"` - Cherry tomato variant
+- `"cherrytomato"` - Cherry tomato variant: a single trained stem with occasional non-branching side shoots (shoot types `mainstem`, `lateral`)
 - `"cucumber"` - Long greenhouse cucumber trained on a string in the high-wire system (see Cucumber below)
 - `"strawberry"` - Strawberry with runner propagation
 - `"sugarbeet"` - Sugar beet root crop
@@ -2375,6 +2375,94 @@ Pruning also happens on its own during `advanceTime()` when it is configured:
 - `enableSolidObstacleAvoidance(uuids, ..., enable_obstacle_pruning=True)` removes organs that penetrate solid obstacles
 - The carbohydrate model aborts flowers and fruit, and eventually prunes whole shoots, under prolonged carbon stress
 
+## Re-posing a Grown Plant {#PlantArchPose}
+
+A grown plant can be moved at its joints without being rebuilt (helios-core 1.3.98): a whole plant turned about its base, a branch turned where it is attached, a stem bent at a node, a petiole or a peduncle swung about the node it grows from, an internode or a petiole made longer or shorter. This is what fitting a plant to a photograph or a scan needs, and it is also how a shoot is tied to a trellis wire part-way through a simulation and then left to grow on from there.
+
+Do not rotate a plant's objects in the Context instead. The model keeps its own record of where every node, petiole, leaf base and bud is, and every later call -- and all later growth -- works from that record, so a plant turned only in the Context is, as far as the model is concerned, still where it grew.
+
+### The Skeleton
+
+`getPlantJoints(plant_id)` lists a plant's joints from the base outward, each named by a `PlantJointID` holding the joint type and the shoot, node, petiole and floral bud indices used throughout the rest of the interface (indices a type does not use are 0):
+
+| `PlantJointType` | Where it is | What it carries |
+| ---------------- | ----------- | --------------- |
+| `ROOT` | The base of the plant | The whole plant |
+| `SHOOT` | Where a shoot is attached to its parent shoot | The shoot and everything on it |
+| `INTERNODE` | The base of one phytomer's internode | That internode, the organs at its node, and everything further out along the shoot |
+| `PETIOLE` | The base of a petiole | The petiole and its leaves |
+| `PEDUNCLE` | The base of a floral bud's peduncle | The peduncle and its flowers or fruit |
+
+The base shoot has no `SHOOT` joint, because `ROOT` already turns it. A sessile leaf has no petiole joint, and only a bud that is flowering or fruiting has a peduncle joint. `getPlantJointFrame(plant_id, joint)` returns a `PlantJointFrame` with the joint's pivot point, its three axes (`parent_axis`, `organ_axis`, `pitch_axis`) and the organ's length, as the plant currently stands.
+
+### Setting a Pose
+
+A pose is a `PlantJointPose` of three angles in degrees and a length:
+
+- **`pitch_degrees`** tilts the organ away from what it grows from (negative values tilt it toward its parent),
+- **`yaw_degrees`** carries it around what it grows from,
+- **`roll_degrees`** twists it about its own axis,
+- **`length_scale`** makes an internode or a petiole a multiple of the length it grew to. `setPlantJointLength(plant_id, joint, length)` sets the same thing as a length in meters, keeping the angles the joint already has.
+
+```python
+from pyhelios import Context, PlantArchitecture
+from pyhelios.PlantArchitecture import PlantJointID, PlantJointPose, PlantJointType
+from pyhelios.types import vec3
+
+with Context() as context, PlantArchitecture(context) as plantarch:
+    plantarch.loadPlantModelFromLibrary("bean")
+    plant_id = plantarch.buildPlantInstanceFromLibrary(vec3(0, 0, 0), 25.0)
+
+    joints = plantarch.getPlantJoints(plant_id)
+    petiole = next(j for j in joints if j.type == PlantJointType.PETIOLE)
+
+    # 20 degrees further from the stem than it grew, and 35 degrees around it
+    plantarch.setPlantJointPose(plant_id, petiole, PlantJointPose(pitch_degrees=20, yaw_degrees=-35))
+    assert plantarch.isPlantPosed(plant_id)
+
+    plantarch.resetPlantPose(plant_id)   # back exactly to the grown plant
+```
+
+Everything the joint carries moves as one rigid body about the joint, and nothing else moves. No organ is rebuilt, so object IDs and primitive UUIDs are unchanged.
+
+**A pose is an offset from the plant as it grew, not a step from where the plant is now.** Setting a joint to 20 degrees twice leaves it at 20 degrees, not 40. The same set of poses gives exactly the same plant whatever order they were set in, and setting every joint back to zero -- or calling `resetPlantPose()` -- restores the grown plant exactly. `getPlantJointPose()` reads a joint's pose back.
+
+When many joints are to be set, as in a search over poses, pass them together to `setPlantJointPoses(plant_id, {joint: pose, ...})` (a dict or a list of `(joint, pose)` pairs). The plant is then moved once for the whole set rather than once per joint.
+
+Points worth knowing:
+
+- **The axes are those of the plant as it grew.** A joint's pitch is always about the pitch axis it had before any pose was applied, so a pose does not depend on the poses of other joints.
+- **Leaves that bend under their own weight settle again.** A flexible petiole or blade (see [Leaf droop](#leaf-droop-and-blade-shape) and [Petiole droop](#petiole-droop)) is bent afresh in its new orientation, so it is not carried perfectly rigidly.
+- **Other changes to a posed plant are kept.** Reshaping a leaf, or moving the plant with `setPlantBasePosition()`, while the plant is posed changes what the pose is measured from. A change of structure -- adding or removing an organ, or giving a petiole a different number of nodes with `setPetioleNodePositions()` -- makes the pose permanent the next time a pose is set, after which `resetPlantPose()` raises an error.
+- **A pose that cannot be applied changes nothing.** If an internode has no length to turn about, a `PlantArchitectureError` is raised and the plant keeps the poses it had.
+- **A posed peduncle lasts until its bud next changes state.** Flowers and fruit are rebuilt when the bud goes from flower to fruit.
+- **A petiole or stem almost in line with its parent has a nearly arbitrary pitch axis.** Read the axis from `getPlantJointFrame()` rather than assuming which way a pitch tilts the organ.
+
+### Growing On from a Pose
+
+A pose lasts until the plant next grows. `advanceTime()` first makes the pose a permanent part of the plant, as `bakePlantPose()` does, and then grows the plant from where it stands. An internode or petiole whose length was posed keeps it, and the length it is growing toward is scaled by the same factor. After that every joint reads zero and later poses are measured from the posed plant.
+
+```python
+# Lay a cane down toward a trellis wire, then let the vine grow on from there
+cane = PlantJointID(PlantJointType.SHOOT, shootID=cane_id)
+plantarch.setPlantJointPose(plant_id, cane, PlantJointPose(pitch_degrees=60))
+plantarch.advanceTime(30, plant_id=plant_id)
+```
+
+### Posing a Shoot by the Positions of its Nodes
+
+When what is known is where a shoot should run -- along a wire, or along a centerline measured from a scan -- `setShootNodePositions(plant_id, shoot_id, positions)` works the joint poses out. It takes the position of the shoot's base followed by the tip of each of its internodes, so a shoot with N nodes takes N+1 positions:
+
+```python
+# Run a four-node cane out along a wire at a height of 1 m
+along_wire = [cane_base, vec3(0.1, 0, 1), vec3(0.2, 0, 1), vec3(0.3, 0, 1), vec3(0.4, 0, 1)]
+plantarch.setShootNodePositions(plant_id, cane_id, along_wire)
+```
+
+The shoot stays attached where it is, so the first position must be its base. Each internode keeps its own shape and is turned and scaled about its base until its tip is at its position, carrying its leaves, fruit and child shoots with it. The result is an ordinary pose: it can be read back with `getPlantJointPose()` and undone with `resetPlantPose()`. Positions say where each internode points but not how it is twisted about its own length.
+
+**Note:** A plant that is posed, or whose pose has been made permanent, cannot yet be written with `writePlantStructureXML()` or copied with `duplicatePlantInstance()`, which raise an error rather than write a plant that would be read back in a different shape.
+
 ## Collision Detection
 
 > **Build the plant first, then enable collision.** Collision hooks run while each
@@ -2916,7 +3004,8 @@ The following file I/O methods are available:
 3. **`writePlantMeshVertices()`**: Export all mesh vertices for external processing
 4. **`writeQSMCylinderFile()`**: Export to TreeQSM format for biomechanical analysis
 5. **`writePlantStructureUSD()`**: Export plant structure as a USD articulated rigid body for NVIDIA IsaacSim physics simulation
-6. **`registerGrowthFrame()`** / **`writePlantGrowthUSD()`** / **`clearGrowthFrames()`** / **`getGrowthFrameCount()`**: Capture and export per-step growth snapshots as a time-sampled USD animation file (importable into Blender)
+6. **`getPlantArticulation()`**: Return the same links and joints as `writePlantStructureUSD()` as Python objects, without writing a file (helios-core 1.3.98)
+7. **`registerGrowthFrame()`** / **`writePlantGrowthUSD()`** / **`clearGrowthFrames()`** / **`getGrowthFrameCount()`**: Capture and export per-step growth snapshots as a time-sampled USD animation file (importable into Blender)
 
 All methods work with both string paths and `pathlib.Path` objects, and correctly handle relative/absolute paths.
 
@@ -3101,6 +3190,15 @@ with Context() as context:
             leaf_mass_per_area=0.04,     # kg/m^2
             fruit_mass=0.005,            # kg
         )
+```
+
+### Articulation Without a File
+
+`getPlantArticulation(plant_id, ...)` (helios-core 1.3.98) builds the same links and joints that `writePlantStructureUSD()` exports and returns them as a `PlantArticulation`, so a physics engine can be driven directly from Python. It takes the same physical parameters as `writePlantStructureUSD()`. Each `PlantArticulationLink` has a name, type (internode, petiole, peduncle, leaf, fruit or flower), parent link index (every parent precedes its children), center-of-mass position, orientation quaternion `(qw, qx, qy, qz)`, capsule radius and half length, mass, principal inertia, source object ID, and the `PlantJointID` of the skeleton joint that carries it (see [Re-posing a Grown Plant](#PlantArchPose)). Each `PlantArticulationJoint` gives the parent and child link indices, the anchor in each link's frame, and the stiffness, damping and armature.
+
+```python
+articulation = plantarch.getPlantArticulation(plant_id, wood_density=700.0)
+total_mass = sum(link.mass for link in articulation.links)
 ```
 
 ### Growth Animation Export (USD for Blender)

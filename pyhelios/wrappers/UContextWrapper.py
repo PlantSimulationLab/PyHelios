@@ -9732,3 +9732,40 @@ def sampleNormalMapTexelsWrapper(handle, uv_flat, count: int, bilinear: bool):
     helios_lib.sampleNormalMapTexels(handle, uv_flat.ctypes.data_as(_P_F), int(count), 1 if bilinear else 0,
                                      out.ctypes.data_as(_P_F))
     return out
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.98: per-label primitive data revision and spectral texture revision
+# NOTE: every wrapper function below must guard with _require_ctx_1398().
+# ---------------------------------------------------------------------------
+_CONTEXT_1398_AVAILABLE = False
+try:
+    helios_lib.getPrimitiveDataRevision.argtypes = [ctypes.POINTER(UContext), ctypes.c_char_p]
+    helios_lib.getPrimitiveDataRevision.restype = ctypes.c_uint64
+    helios_lib.getPrimitiveDataRevision.errcheck = _check_error
+
+    helios_lib.getSpectralTextureRevision.argtypes = [ctypes.POINTER(UContext)]
+    helios_lib.getSpectralTextureRevision.restype = ctypes.c_uint64
+    helios_lib.getSpectralTextureRevision.errcheck = _check_error
+
+    _CONTEXT_1398_AVAILABLE = True
+except AttributeError:
+    _CONTEXT_1398_AVAILABLE = False
+
+
+def _require_ctx_1398():
+    if not _CONTEXT_1398_AVAILABLE:
+        raise NotImplementedError(
+            "getPrimitiveDataRevision and getSpectralTextureRevision are not available in the loaded native "
+            "library. They require helios-core v1.3.98 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+
+
+def getPrimitiveDataRevisionWrapper(context, label: str) -> int:
+    _require_ctx_1398()
+    return int(helios_lib.getPrimitiveDataRevision(context, label.encode('utf-8')))
+
+
+def getSpectralTextureRevisionWrapper(context) -> int:
+    _require_ctx_1398()
+    return int(helios_lib.getSpectralTextureRevision(context))

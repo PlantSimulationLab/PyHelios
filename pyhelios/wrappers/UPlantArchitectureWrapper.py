@@ -7,7 +7,7 @@ enabling procedural plant modeling and plant library functionality.
 
 import ctypes
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..plugins import helios_lib
 from ..exceptions import check_helios_error
@@ -4530,3 +4530,205 @@ def addPlantsNitrogen(plantarch_ptr, plant_ids: List[int], amount_gN: float) -> 
     amount = _check_nonnegative_finite(amount_gN, "amount_gN")
     arr = (ctypes.c_uint * len(plant_ids))(*plant_ids)
     helios_lib.addPlantsNitrogen(plantarch_ptr, arr, len(plant_ids), amount)
+
+
+# ---------------------------------------------------------------------------
+# helios-core 1.3.98: plant joint poses and articulation.
+# A joint crosses the boundary as 5 uints [type, shootID, node_index, petiole_index, bud_index],
+# a pose as 4 floats [pitch, yaw, roll (degrees), length_scale], and a frame as 13 floats
+# [pivot(3), parent_axis(3), organ_axis(3), pitch_axis(3), length].
+# NOTE: every wrapper function below must guard with _require_plantarch_1398().
+# ---------------------------------------------------------------------------
+JOINT_ID_SIZE = 5
+JOINT_POSE_SIZE = 4
+JOINT_FRAME_SIZE = 13
+ARTICULATION_PARAM_COUNT = 14
+ARTICULATION_LINK_INTS = 8
+ARTICULATION_LINK_FLOATS = 14
+ARTICULATION_JOINT_INTS = 2
+ARTICULATION_JOINT_FLOATS = 9
+
+_PLANTARCHITECTURE_1398_AVAILABLE = False
+try:
+    _pa = ctypes.POINTER(UPlantArchitecture)
+    _pu = ctypes.POINTER(ctypes.c_uint)
+    _pf = ctypes.POINTER(ctypes.c_float)
+    _pi = ctypes.POINTER(ctypes.c_int)
+    for _name, _argtypes, _restype in (
+        ("getPlantJoints", [_pa, ctypes.c_uint, _pu], _pu),
+        ("getPlantJointFrame", [_pa, ctypes.c_uint, _pu, _pf], ctypes.c_int),
+        ("setPlantJointPose", [_pa, ctypes.c_uint, _pu, _pf], ctypes.c_int),
+        ("setPlantJointPoses", [_pa, ctypes.c_uint, _pu, _pf, ctypes.c_uint], ctypes.c_int),
+        ("setPlantJointLength", [_pa, ctypes.c_uint, _pu, ctypes.c_float], ctypes.c_int),
+        ("setShootNodePositions", [_pa, ctypes.c_uint, ctypes.c_uint, _pf, ctypes.c_uint], ctypes.c_int),
+        ("getPlantJointPose", [_pa, ctypes.c_uint, _pu, _pf], ctypes.c_int),
+        ("isPlantPosed", [_pa, ctypes.c_uint], ctypes.c_int),
+        ("resetPlantPose", [_pa, ctypes.c_uint], ctypes.c_int),
+        ("bakePlantPose", [_pa, ctypes.c_uint], ctypes.c_int),
+        ("computePlantArticulation", [_pa, ctypes.c_uint, _pf, ctypes.c_uint, _pu, _pu], ctypes.c_int),
+        ("copyPlantArticulationLinks", [_pi, _pf, ctypes.c_uint], ctypes.c_int),
+        ("getPlantArticulationLinkName", [ctypes.c_uint, ctypes.c_char_p, ctypes.c_int], ctypes.c_int),
+        ("copyPlantArticulationJoints", [_pi, _pf, ctypes.c_uint], ctypes.c_int),
+    ):
+        _fn = getattr(helios_lib, _name)
+        _fn.argtypes = _argtypes
+        _fn.restype = _restype
+        _fn.errcheck = _check_error
+    helios_lib.clearPlantArticulationCache.argtypes = []
+    helios_lib.clearPlantArticulationCache.restype = None
+    _PLANTARCHITECTURE_1398_AVAILABLE = True
+except AttributeError:
+    _PLANTARCHITECTURE_1398_AVAILABLE = False
+
+
+def _require_plantarch_1398() -> None:
+    """Raise if the native library predates the helios-core 1.3.98 additions."""
+    if not _PLANTARCHITECTURE_FUNCTIONS_AVAILABLE or not _PLANTARCHITECTURE_1398_AVAILABLE:
+        raise NotImplementedError(
+            "This PlantArchitecture function is not available in the current native library. "
+            "It requires helios-core v1.3.98 or newer; rebuild with "
+            "'build_scripts/build_helios --clean'."
+        )
+
+
+def _joint_array(joint: Sequence[int]):
+    if len(joint) != JOINT_ID_SIZE:
+        raise ValueError(f"Joint identifier must have {JOINT_ID_SIZE} values, got {len(joint)}")
+    return (ctypes.c_uint * JOINT_ID_SIZE)(*[int(v) for v in joint])
+
+
+def _pose_array(pose: Sequence[float]):
+    if len(pose) != JOINT_POSE_SIZE:
+        raise ValueError(f"Joint pose must have {JOINT_POSE_SIZE} values, got {len(pose)}")
+    return (ctypes.c_float * JOINT_POSE_SIZE)(*[float(v) for v in pose])
+
+
+def getPlantJoints(plantarch_ptr, plant_id: int) -> List[Tuple[int, int, int, int, int]]:
+    """Joints of a plant as (type, shootID, node_index, petiole_index, bud_index) tuples, base outward."""
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    count = ctypes.c_uint(0)
+    ptr = helios_lib.getPlantJoints(plantarch_ptr, plant_id, ctypes.byref(count))
+    n = count.value
+    if n == 0 or not ptr:
+        return []
+    flat = ptr[:JOINT_ID_SIZE * n]
+    return [tuple(flat[JOINT_ID_SIZE * i:JOINT_ID_SIZE * (i + 1)]) for i in range(n)]
+
+
+def getPlantJointFrame(plantarch_ptr, plant_id: int, joint: Sequence[int]) -> List[float]:
+    """13 floats: pivot(3), parent_axis(3), organ_axis(3), pitch_axis(3), length."""
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    out = (ctypes.c_float * JOINT_FRAME_SIZE)()
+    helios_lib.getPlantJointFrame(plantarch_ptr, plant_id, _joint_array(joint), out)
+    return list(out)
+
+
+def setPlantJointPose(plantarch_ptr, plant_id: int, joint: Sequence[int], pose: Sequence[float]) -> None:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    helios_lib.setPlantJointPose(plantarch_ptr, plant_id, _joint_array(joint), _pose_array(pose))
+
+
+def setPlantJointPoses(plantarch_ptr, plant_id: int, joints: Sequence[Sequence[int]],
+                       poses: Sequence[Sequence[float]]) -> None:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    if len(joints) != len(poses):
+        raise ValueError(f"Number of joints ({len(joints)}) does not match number of poses ({len(poses)})")
+    n = len(joints)
+    joint_flat, pose_flat = [], []
+    for joint, pose in zip(joints, poses):
+        if len(joint) != JOINT_ID_SIZE:
+            raise ValueError(f"Joint identifier must have {JOINT_ID_SIZE} values, got {len(joint)}")
+        if len(pose) != JOINT_POSE_SIZE:
+            raise ValueError(f"Joint pose must have {JOINT_POSE_SIZE} values, got {len(pose)}")
+        joint_flat.extend(int(v) for v in joint)
+        pose_flat.extend(float(v) for v in pose)
+    joint_arr = (ctypes.c_uint * max(len(joint_flat), 1))(*joint_flat)
+    pose_arr = (ctypes.c_float * max(len(pose_flat), 1))(*pose_flat)
+    helios_lib.setPlantJointPoses(plantarch_ptr, plant_id, joint_arr, pose_arr, n)
+
+
+def setPlantJointLength(plantarch_ptr, plant_id: int, joint: Sequence[int], length: float) -> None:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    helios_lib.setPlantJointLength(plantarch_ptr, plant_id, _joint_array(joint), float(length))
+
+
+def setShootNodePositions(plantarch_ptr, plant_id: int, shoot_id: int,
+                          node_positions: Sequence[Sequence[float]]) -> None:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    if shoot_id < 0:
+        raise ValueError("Shoot ID must be non-negative")
+    flat = []
+    for p in node_positions:
+        if len(p) != 3:
+            raise ValueError(f"Each node position must have 3 coordinates, got {len(p)}")
+        flat.extend(float(v) for v in p)
+    arr = (ctypes.c_float * max(len(flat), 1))(*flat)
+    helios_lib.setShootNodePositions(plantarch_ptr, plant_id, shoot_id, arr, len(node_positions))
+
+
+def getPlantJointPose(plantarch_ptr, plant_id: int, joint: Sequence[int]) -> List[float]:
+    """4 floats: pitch, yaw, roll (degrees), length_scale."""
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    out = (ctypes.c_float * JOINT_POSE_SIZE)()
+    helios_lib.getPlantJointPose(plantarch_ptr, plant_id, _joint_array(joint), out)
+    return list(out)
+
+
+def isPlantPosed(plantarch_ptr, plant_id: int) -> bool:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    return helios_lib.isPlantPosed(plantarch_ptr, plant_id) == 1
+
+
+def resetPlantPose(plantarch_ptr, plant_id: int) -> None:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    helios_lib.resetPlantPose(plantarch_ptr, plant_id)
+
+
+def bakePlantPose(plantarch_ptr, plant_id: int) -> None:
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    helios_lib.bakePlantPose(plantarch_ptr, plant_id)
+
+
+def getPlantArticulation(plantarch_ptr, plant_id: int, params: Sequence[float],
+                         solver_position_iterations: int):
+    """Return (links, joints) where each link is (name, ints[8], floats[14]) and each joint (ints[2], floats[9])."""
+    _require_plantarch_1398()
+    _check_plant_id(plant_id)
+    if len(params) != ARTICULATION_PARAM_COUNT:
+        raise ValueError(f"Articulation parameters must have {ARTICULATION_PARAM_COUNT} values, got {len(params)}")
+    param_arr = (ctypes.c_float * ARTICULATION_PARAM_COUNT)(*[float(v) for v in params])
+    n_links, n_joints = ctypes.c_uint(0), ctypes.c_uint(0)
+    try:
+        helios_lib.computePlantArticulation(plantarch_ptr, plant_id, param_arr, int(solver_position_iterations),
+                                            ctypes.byref(n_links), ctypes.byref(n_joints))
+        nl, nj = n_links.value, n_joints.value
+        link_ints = (ctypes.c_int * max(ARTICULATION_LINK_INTS * nl, 1))()
+        link_floats = (ctypes.c_float * max(ARTICULATION_LINK_FLOATS * nl, 1))()
+        helios_lib.copyPlantArticulationLinks(link_ints, link_floats, nl)
+        joint_ints = (ctypes.c_int * max(ARTICULATION_JOINT_INTS * nj, 1))()
+        joint_floats = (ctypes.c_float * max(ARTICULATION_JOINT_FLOATS * nj, 1))()
+        helios_lib.copyPlantArticulationJoints(joint_ints, joint_floats, nj)
+        links = []
+        for i in range(nl):
+            length = helios_lib.getPlantArticulationLinkName(i, None, 0)
+            buf = ctypes.create_string_buffer(length + 1)
+            helios_lib.getPlantArticulationLinkName(i, buf, length + 1)
+            links.append((buf.value.decode('utf-8'),
+                          list(link_ints[ARTICULATION_LINK_INTS * i:ARTICULATION_LINK_INTS * (i + 1)]),
+                          list(link_floats[ARTICULATION_LINK_FLOATS * i:ARTICULATION_LINK_FLOATS * (i + 1)])))
+        joints = [(list(joint_ints[ARTICULATION_JOINT_INTS * i:ARTICULATION_JOINT_INTS * (i + 1)]),
+                   list(joint_floats[ARTICULATION_JOINT_FLOATS * i:ARTICULATION_JOINT_FLOATS * (i + 1)]))
+                  for i in range(nj)]
+    finally:
+        helios_lib.clearPlantArticulationCache()
+    return links, joints

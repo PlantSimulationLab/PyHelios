@@ -168,6 +168,19 @@ except AttributeError:
     _PRIMITIVES_BY_PLANT_IDS_AVAILABLE = False
 
 
+# outputPlantConductancePrimitiveData (helios-core 1.3.98), registered separately so an older
+# library keeps the rest of the PlantHydraulics API.
+_PLANT_CONDUCTANCE_OUTPUT_AVAILABLE = False
+try:
+    helios_lib.setPlantHydraulicsOutputPlantConductancePrimitiveData.argtypes = [
+        ctypes.POINTER(UPlantHydraulicsModel), ctypes.c_bool]
+    helios_lib.setPlantHydraulicsOutputPlantConductancePrimitiveData.restype = None
+    helios_lib.setPlantHydraulicsOutputPlantConductancePrimitiveData.errcheck = _check_error
+    _PLANT_CONDUCTANCE_OUTPUT_AVAILABLE = True
+except AttributeError:
+    _PLANT_CONDUCTANCE_OUTPUT_AVAILABLE = False
+
+
 # Python wrapper functions with validation
 
 def _require_available() -> None:
@@ -299,6 +312,17 @@ def outputCapacitancePrimitiveData(model, toggle: bool) -> None:
     """Toggle writing of the optional 'hydraulic_capacitance' primitive data"""
     _require_model(model)
     helios_lib.setPlantHydraulicsOutputCapacitancePrimitiveData(model, ctypes.c_bool(toggle))
+
+
+def outputPlantConductancePrimitiveData(model, toggle: bool) -> None:
+    """Toggle writing of the optional 'plant_hydraulic_conductance' and 'soil_water_potential' primitive data"""
+    _require_model(model)
+    if not _PLANT_CONDUCTANCE_OUTPUT_AVAILABLE:
+        raise NotImplementedError(
+            "PlantHydraulicsModel.outputPlantConductancePrimitiveData() is not available in the loaded native "
+            "library. It requires helios-core v1.3.98 or newer; rebuild with: build_scripts/build_helios --clean"
+        )
+    helios_lib.setPlantHydraulicsOutputPlantConductancePrimitiveData(model, ctypes.c_bool(toggle))
 
 
 def groupPrimitivesIntoPlantObject(model, uuids: Sequence[int]) -> None:

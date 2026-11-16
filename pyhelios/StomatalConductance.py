@@ -60,6 +60,20 @@ class BBCoefficients(NamedTuple):
     chi: float      # mol/m²/s/MPa - hydraulic conductance parameter
 
 
+class Buckley2026Coefficients(NamedTuple):
+    """Buckley et al. (2026) model coefficients (helios-core 1.3.98).
+
+    Buckley, T. N., et al. 2026. A Simple Stomatal Model That Unifies the Metabolic and Hydraulic
+    Control of Carbon and Water Flux. Global Change Biology 32: e70999.
+
+    The defaults are the native defaults (the pistachio library entry).
+    """
+    s: float = 0.08766            # mol/umol/MPa - stomatal scaling and sensitivity coefficient
+    K_plant_at_25C: float = 0.007411  # mol/m²/s/MPa - whole-plant (soil-to-leaf) conductance per leaf area at 25 °C
+    b_o: float = 1.11             # umol/m²/s - offset added to J/4 - Rd - A
+    psi_c: float = -4.103         # MPa - leaf water potential at which stomata close
+
+
 class StomatalConductanceModel:
     """
     High-level interface for stomatal conductance modeling and gas exchange calculations.
@@ -68,12 +82,13 @@ class StomatalConductanceModel:
     stomatal conductance plugin with automatic plugin availability checking and
     graceful error handling.
     
-    The stomatal conductance model implements five different stomatal response models:
+    The stomatal conductance model implements six different stomatal response models:
     - BWB: Ball, Woodrow, Berry (1987) - original model
     - BBL: Ball, Berry, Leuning (1990, 1995) - includes VPD response  
     - MOPT: Medlyn et al. (2011) - optimality-based model
     - BMF: Buckley, Mott, Farquhar - simplified mechanistic model
     - BB: Bailey - hydraulic-based model
+    - Buckley2026: Buckley et al. (2026) - unified metabolic and hydraulic model
     
     The plugin includes a species library with pre-calibrated coefficients for
     common plant species (Almond, Apple, Avocado, Grape, Lemon, Olive, Walnut, etc.).
@@ -615,6 +630,142 @@ class StomatalConductanceModel:
         except Exception as e:
             raise StomatalConductanceModelError(f"Failed to get BMF coefficients from library for species '{species}': {e}")
         return BMFCoefficients(Em=values[0], i0=values[1], k=values[2], b=values[3])
+
+    # Buckley et al. (2026) Model Methods
+    @staticmethod
+    def _validate_buckley2026(coeffs: "Buckley2026Coefficients") -> None:
+        if not isinstance(coeffs, Buckley2026Coefficients):
+            raise ValueError(f"coeffs must be a Buckley2026Coefficients instance, got {type(coeffs).__name__}")
+        for name in Buckley2026Coefficients._fields:
+            value = getattr(coeffs, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"Buckley2026Coefficients.{name} must be a finite number, got {value!r}")
+        if coeffs.s <= 0.0:
+            raise ValueError("s must be positive")
+        if coeffs.K_plant_at_25C <= 0.0:
+            raise ValueError("K_plant_at_25C must be positive")
+
+    def setBuckley2026Coefficients(self, coeffs: Buckley2026Coefficients, uuids: Optional[List[int]] = None,
+                                   material_label: Optional[str] = None) -> None:
+        """
+        Select the Buckley et al. (2026) model and set its coefficients.
+
+        The model computes
+        ``gs = beta*s*b*(psi_soil - psi_c) / (1 + s*b*Ds/K_plant)`` with
+        ``b = J/4 - Rd - A + b_o`` (floored at zero). It reads primitive data
+        "net_photosynthesis", "electron_transport_rate" and "dark_respiration" (an error at
+        :meth:`run` if missing), "soil_water_potential" (-0.1 MPa with a warning if missing) and,
+        optionally, "plant_hydraulic_conductance" (otherwise ``K_plant_at_25C`` scaled to leaf
+        temperature).
+
+        Selecting this model sets global data "buckley2026_stomatal_model_enabled" to 1, which
+        makes :class:`~pyhelios.PhotosynthesisModel.PhotosynthesisModel` (Farquhar model) write
+        "electron_transport_rate" and "dark_respiration", and
+        :class:`~pyhelios.PlantHydraulics.PlantHydraulicsModel` write
+        "plant_hydraulic_conductance" and "soil_water_potential", on their next run. The global data
+        is not reset when another model is selected.
+
+        Args:
+            coeffs: Buckley2026Coefficients (s, K_plant_at_25C, b_o, psi_c)
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label; applies to every primitive that
+                references the material at run() time. Mutually exclusive with ``uuids``.
+
+        Raises:
+            ValueError: If coefficients are invalid, or both ``uuids`` and ``material_label`` are given
+            NotImplementedError: If the native library predates helios-core v1.3.98
+            StomatalConductanceModelError: If operation fails
+
+        Example:
+            >>> stomatal.setBuckley2026Coefficients(Buckley2026Coefficients(s=0.03, K_plant_at_25C=0.008, b_o=1.2, psi_c=-1.8))
+        """
+        self._validate_buckley2026(coeffs)
+        self._validate_target("setBuckley2026Coefficients", uuids, material_label)
+        values = [coeffs.s, coeffs.K_plant_at_25C, coeffs.b_o, coeffs.psi_c]
+        self._check_context_alive()
+        try:
+            if material_label is not None:
+                stomatal_wrapper.setBuckley2026CoefficientsForMaterial(self.stomatal_model, material_label, values)
+            elif uuids is not None:
+                stomatal_wrapper.setBuckley2026CoefficientsForUUIDs(self.stomatal_model, values, uuids)
+            else:
+                stomatal_wrapper.setBuckley2026Coefficients(self.stomatal_model, values)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise StomatalConductanceModelError(f"Failed to set Buckley2026 coefficients: {e}")
+
+    def setBuckley2026CoefficientsFromLibrary(self, species: str, uuids: Optional[List[int]] = None,
+                                              material_label: Optional[str] = None) -> None:
+        """
+        Select the Buckley et al. (2026) model with coefficients from the built-in species library.
+
+        Library species: Almond, Elderberry (or blue_elderberry), Cowpea, EasternRedbud, Grape,
+        Olive, Pistachio (or PistachioFemale); names are also accepted in all lower case. Each entry
+        was fitted together with the Farquhar photosynthesis library entry of the same species, so use
+        it with :meth:`PhotosynthesisModel.setFarquharCoefficientsFromLibrary` for that species. See
+        :meth:`setBuckley2026Coefficients` for the inputs the model reads and the global data it sets.
+
+        Args:
+            species: Species name from the library. An unrecognized name raises, and the error
+                message lists the valid names.
+            uuids: Optional list of primitive UUIDs. If None and ``material_label`` is
+                also None, applies to all primitives.
+            material_label: Optional Context material label. Mutually exclusive with ``uuids``.
+
+        Raises:
+            ValueError: If species name is not a non-empty str, or both ``uuids`` and ``material_label`` are given
+            NotImplementedError: If the native library predates helios-core v1.3.98
+            StomatalConductanceModelError: If the species is not in the library, or the operation fails
+
+        Example:
+            >>> photosynthesis.setFarquharCoefficientsFromLibrary("Almond")
+            >>> stomatal.setBuckley2026CoefficientsFromLibrary("Almond")
+        """
+        if not isinstance(species, str) or not species:
+            raise ValueError("Species name must be a non-empty str")
+        self._validate_target("setBuckley2026CoefficientsFromLibrary", uuids, material_label)
+        self._check_context_alive()
+        try:
+            if material_label is not None:
+                stomatal_wrapper.setBuckley2026CoefficientsFromLibraryForMaterial(self.stomatal_model, species, material_label)
+            elif uuids is not None:
+                stomatal_wrapper.setBuckley2026CoefficientsFromLibraryForUUIDs(self.stomatal_model, species, uuids)
+            else:
+                stomatal_wrapper.setBuckley2026CoefficientsFromLibrary(self.stomatal_model, species)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise StomatalConductanceModelError(
+                f"Failed to set Buckley2026 coefficients from library for species '{species}': {e}")
+
+    def getBuckley2026CoefficientsFromLibrary(self, species: str) -> Buckley2026Coefficients:
+        """
+        Return the library Buckley et al. (2026) coefficients for a species without applying them.
+
+        Args:
+            species: Species name from the library (see :meth:`setBuckley2026CoefficientsFromLibrary`)
+
+        Returns:
+            Buckley2026Coefficients for the species
+
+        Raises:
+            ValueError: If species name is empty or not a str
+            NotImplementedError: If the native library predates helios-core v1.3.98
+            StomatalConductanceModelError: If the species is not in the library, or the operation fails
+        """
+        if not isinstance(species, str) or not species:
+            raise ValueError("Species name must be a non-empty str")
+        self._check_context_alive()
+        try:
+            values = stomatal_wrapper.getBuckley2026CoefficientsFromLibrary(self.stomatal_model, species)
+        except NotImplementedError:
+            raise
+        except Exception as e:
+            raise StomatalConductanceModelError(
+                f"Failed to get Buckley2026 coefficients from library for species '{species}': {e}")
+        return Buckley2026Coefficients(s=values[0], K_plant_at_25C=values[1], b_o=values[2], psi_c=values[3])
 
     # Dynamic Time Constants
     def setDynamicTimeConstants(self, tau_open: float, tau_close: float, uuids: Optional[List[int]] = None) -> None:

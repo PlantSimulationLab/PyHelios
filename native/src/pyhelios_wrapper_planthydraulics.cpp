@@ -347,6 +347,22 @@ extern "C" {
         }
     }
 
+    PYHELIOS_API void setPlantHydraulicsOutputPlantConductancePrimitiveData(PlantHydraulicsModel* model, bool toggle) {
+        try {
+            clearError();
+            if (!model) {
+                setError(PYHELIOS_ERROR_INVALID_PARAMETER, "PlantHydraulicsModel pointer is null");
+                return;
+            }
+
+            model->outputPlantConductancePrimitiveData(toggle);
+        } catch (const std::exception& e) {
+            setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (PlantHydraulicsModel::outputPlantConductancePrimitiveData): ") + e.what());
+        } catch (...) {
+            setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (PlantHydraulicsModel::outputPlantConductancePrimitiveData): Unknown error.");
+        }
+    }
+
     PYHELIOS_API void groupPlantHydraulicsPrimitivesIntoPlantObject(PlantHydraulicsModel* model, const unsigned int* uuids, unsigned int uuid_count) {
         try {
             clearError();

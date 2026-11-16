@@ -454,6 +454,57 @@ class Context:
         self._check_context_available()
         return context_wrapper.getMaterialRevisionWrapper(self.context)
 
+    def getPrimitiveDataRevision(self, label: str) -> int:
+        """
+        Get a counter that advances whenever primitive data with a given label is set, changed or removed on any primitive.
+
+        :meth:`getGeometryRevision` advances when any primitive data changes, so it cannot tell
+        whether one particular label changed. This counter is kept per label: if two calls with the
+        same label return the same value, no primitive had data with that label set (even to the
+        value it already had), scaled, incremented, copied onto it, renamed or removed in between,
+        and no primitive holding that data was deleted.
+
+        Creating a primitive by copying one that has the data is not guaranteed to advance the
+        counter; compare :meth:`getPrimitiveCount` as well to detect new primitives.
+
+        Args:
+            label: Primitive data label
+
+        Returns:
+            Current revision of the label, which is 0 if no primitive has ever had data with that label
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.98
+
+        Example:
+            >>> rev = context.getPrimitiveDataRevision("temperature")
+            >>> context.setPrimitiveDataFloat(uuid, "temperature", 25.0)
+            >>> context.getPrimitiveDataRevision("temperature") > rev
+            True
+        """
+        if not isinstance(label, str):
+            raise ValueError(f"Label must be a str, got {type(label).__name__}")
+        self._check_context_available()
+        return context_wrapper.getPrimitiveDataRevisionWrapper(self.context, label)
+
+    def getSpectralTextureRevision(self) -> int:
+        """
+        Get a counter that advances whenever the spectral texture or spectral palette of a primitive changes.
+
+        If two calls return the same value, no primitive was given a spectral texture
+        (:meth:`setPrimitiveSpectralTexture`, or as a copy made by :meth:`copyPrimitive`) or a different
+        spectral palette (:meth:`setPrimitiveSpectralPalette`), and none had its spectral texture
+        removed (:meth:`clearPrimitiveSpectralTexture`), in between.
+
+        Returns:
+            Current spectral texture revision
+
+        Raises:
+            NotImplementedError: If the native library predates helios-core v1.3.98
+        """
+        self._check_context_available()
+        return context_wrapper.getSpectralTextureRevisionWrapper(self.context)
+
     def seedRandomGenerator(self, seed: int):
         """
         Seed the random number generator for reproducible stochastic results.

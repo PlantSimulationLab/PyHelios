@@ -658,7 +658,9 @@ class TestEnergyBalanceEdgeCases:
                 energy_balance.run(dt=0.1)  # 0.1 second
                 
                 # Test very small air energy balance timestep
-                energy_balance.enableAirEnergyBalance()
+                # A lone horizontal patch has zero auto-detected canopy height, which makes the
+                # air energy balance non-finite (an error since helios-core 1.3.98), so give one.
+                energy_balance.enableAirEnergyBalance(canopy_height_m=1.0, reference_height_m=2.0)
                 energy_balance.evaluateAirEnergyBalance(dt_sec=0.5, time_advance_sec=1.0)
     
     def test_large_timesteps(self):
@@ -676,7 +678,9 @@ class TestEnergyBalanceEdgeCases:
                 energy_balance.run(dt=3600.0)  # 1 hour
                 
                 # Test large air energy balance timestep
-                energy_balance.enableAirEnergyBalance()
+                # A lone horizontal patch has zero auto-detected canopy height, which makes the
+                # air energy balance non-finite (an error since helios-core 1.3.98), so give one.
+                energy_balance.enableAirEnergyBalance(canopy_height_m=1.0, reference_height_m=2.0)
                 energy_balance.evaluateAirEnergyBalance(dt_sec=300.0, time_advance_sec=7200.0)  # 5min steps, 2 hour total
 
 @pytest.mark.cross_platform

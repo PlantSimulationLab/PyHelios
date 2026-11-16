@@ -1,5 +1,44 @@
 # Changelog
 
+# [v0.1.43] 2026-XX-XX
+
+- Updated helios-core to v1.3.98
+
+## Context
+- Added `getPrimitiveDataRevision(label)`, a counter that advances only when primitive data with that label is set, changed or removed
+- Added `getSpectralTextureRevision()`, a counter that advances when a primitive's spectral texture or palette changes
+- Seeded random sequences now match on every platform, and differ once from earlier versions for the same seed
+- Fixed `writeXML()` losing precision on float and double values, and string data with spaces or XML markup not surviving a round trip
+- `setPrimitiveData*()` for a list of UUIDs now raises an error naming a UUID that does not exist, before any data is set
+
+## SolarPosition
+- Fixed the sun azimuth being mirrored east-west when the local solar time fell outside 0-24 h (e.g. UTC times far from the prime meridian)
+
+## StomatalConductance
+- Added the Buckley et al. (2026) model: `Buckley2026Coefficients` and `setBuckley2026Coefficients()`, for all primitives, a list of UUIDs or a material
+- Added the Buckley et al. (2026) species library: `setBuckley2026CoefficientsFromLibrary()` and `getBuckley2026CoefficientsFromLibrary()`
+
+## Photosynthesis
+- Added the optional Farquhar outputs "electron_transport_rate" and "dark_respiration", also written automatically when the Buckley et al. (2026) stomatal model is selected
+
+## PlantHydraulics
+- Added `outputPlantConductancePrimitiveData()`, which writes the whole-plant conductance "plant_hydraulic_conductance" and the plant's "soil_water_potential"
+- Fixed time-stepped `run()` simulating a different length of time than `timespan`; `timestep` is now the first step of an adaptive run that ends exactly at `timespan`
+- `run()` now raises an error for a negative or NaN hydraulic conductance instead of computing with it
+
+## PlantArchitecture
+- Added re-posing of grown plants at their joints: `getPlantJoints()`, `getPlantJointFrame()`, `setPlantJointPose()`, `setPlantJointPoses()`, `getPlantJointPose()`, `isPlantPosed()`, `resetPlantPose()` and `bakePlantPose()`, with the `PlantJointType`, `PlantJointID`, `PlantJointPose` and `PlantJointFrame` types
+- Added `setPlantJointLength()`, which sets the length of a grown internode or petiole in meters
+- Added `setShootNodePositions()`, which re-poses a grown shoot so its nodes lie at given positions
+- Added `getPlantArticulation()`, which returns the links and joints written by `writePlantStructureUSD()` as Python objects
+- `setPetioleNodePositions()` now carries the petiole's leaves to the new centerline instead of leaving them detached
+- The "bougainvillea" and "cherrytomato" library models now branch far less, and the "olive" trunk thickens with age
+- Fixed lateral shoots widening after their first phytomer (GitHub issue #110)
+- Fixed a plant read with `readPlantStructureXML()` breaking dormancy again on its first `advanceTime()`
+
+## EnergyBalance
+- `run()` now raises an error for an out-of-range air temperature, humidity or pressure instead of silently substituting defaults
+
 # [v0.1.42] 2026-11-14
 
 - Updated helios-core to v1.3.97

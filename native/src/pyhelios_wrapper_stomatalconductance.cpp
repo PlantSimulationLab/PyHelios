@@ -827,6 +827,95 @@ extern "C" {
         }
     }
     
+    // Buckley et al. (2026) model (helios-core 1.3.98)
+    // Coefficient arrays hold [s, K_plant_at_25C, b_o, psi_c].
+    static Buckley2026coefficients unpackBuckley2026(const float* coeffs) {
+        Buckley2026coefficients c;
+        c.s = coeffs[0];
+        c.K_plant_at_25C = coeffs[1];
+        c.b_o = coeffs[2];
+        c.psi_c = coeffs[3];
+        return c;
+    }
+
+#define PYH_SC_CATCH(fn) \
+        catch (const std::exception& e) { setError(PYHELIOS_ERROR_RUNTIME, std::string("ERROR (StomatalConductanceModel::" fn "): ") + e.what()); } \
+        catch (...) { setError(PYHELIOS_ERROR_UNKNOWN, "ERROR (StomatalConductanceModel::" fn "): Unknown error."); }
+
+    PYHELIOS_API void setStomatalConductanceBuckley2026Coefficients(StomatalConductanceModel* model, const float* coeffs) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!coeffs) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setModelCoefficients): Coefficient array is null"); return; }
+            model->setModelCoefficients(unpackBuckley2026(coeffs));
+        } PYH_SC_CATCH("setModelCoefficients")
+    }
+
+    PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsForUUIDs(StomatalConductanceModel* model, const float* coeffs, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!coeffs) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setModelCoefficients): Coefficient array is null"); return; }
+            if (!uuids || uuid_count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setModelCoefficients): UUID list is empty"); return; }
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+            model->setModelCoefficients(unpackBuckley2026(coeffs), uuid_vector);
+        } PYH_SC_CATCH("setModelCoefficients")
+    }
+
+    PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsForMaterial(StomatalConductanceModel* model, const char* material_label, const float* coeffs) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!material_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setModelCoefficients): Material label is null"); return; }
+            if (!coeffs) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setModelCoefficients): Coefficient array is null"); return; }
+            model->setModelCoefficients(std::string(material_label), unpackBuckley2026(coeffs));
+        } PYH_SC_CATCH("setModelCoefficients")
+    }
+
+    PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsFromLibrary(StomatalConductanceModel* model, const char* species) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!species) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setBuckley2026CoefficientsFromLibrary): Species name is null"); return; }
+            model->setBuckley2026CoefficientsFromLibrary(std::string(species));
+        } PYH_SC_CATCH("setBuckley2026CoefficientsFromLibrary")
+    }
+
+    PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsFromLibraryForUUIDs(StomatalConductanceModel* model, const char* species, const unsigned int* uuids, unsigned int uuid_count) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!species) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setBuckley2026CoefficientsFromLibrary): Species name is null"); return; }
+            if (!uuids || uuid_count == 0) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setBuckley2026CoefficientsFromLibrary): UUID list is empty"); return; }
+            std::vector<uint> uuid_vector(uuids, uuids + uuid_count);
+            model->setBuckley2026CoefficientsFromLibrary(std::string(species), uuid_vector);
+        } PYH_SC_CATCH("setBuckley2026CoefficientsFromLibrary")
+    }
+
+    PYHELIOS_API void setStomatalConductanceBuckley2026CoefficientsFromLibraryForMaterial(StomatalConductanceModel* model, const char* species, const char* material_label) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!species || !material_label) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::setBuckley2026CoefficientsFromLibrary): Species name or material label is null"); return; }
+            model->setBuckley2026CoefficientsFromLibrary(std::string(species), std::string(material_label));
+        } PYH_SC_CATCH("setBuckley2026CoefficientsFromLibrary")
+    }
+
+    PYHELIOS_API void getStomatalConductanceBuckley2026CoefficientsFromLibrary(StomatalConductanceModel* model, const char* species, float* coeffs_out) {
+        try {
+            clearError();
+            if (!model) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "StomatalConductanceModel pointer is null"); return; }
+            if (!species || !coeffs_out) { setError(PYHELIOS_ERROR_INVALID_PARAMETER, "ERROR (StomatalConductanceModel::getBuckley2026CoefficientsFromLibrary): Species name or output array is null"); return; }
+            const Buckley2026coefficients c = model->getBuckley2026CoefficientsFromLibrary(std::string(species));
+            coeffs_out[0] = c.s;
+            coeffs_out[1] = c.K_plant_at_25C;
+            coeffs_out[2] = c.b_o;
+            coeffs_out[3] = c.psi_c;
+        } PYH_SC_CATCH("getBuckley2026CoefficientsFromLibrary")
+    }
+
+#undef PYH_SC_CATCH
+
 } //extern "C"
 
 #endif //STOMATALCONDUCTANCE_PLUGIN_AVAILABLE

@@ -97,12 +97,14 @@ Water-potential dependent conductances are evaluated once per run, at the water 
 
 ### Optional Output Primitive Data
 
-These are enabled with `outputConductancePrimitiveData(True)` and `outputCapacitancePrimitiveData(True)`, and are written by non-steady-state runs only.
+`hydraulic_conductance` and `hydraulic_capacitance` are enabled with `outputConductancePrimitiveData(True)` and `outputCapacitancePrimitiveData(True)`, and are written by non-steady-state runs only. `plant_hydraulic_conductance` and `soil_water_potential` are enabled with `outputPlantConductancePrimitiveData(True)` (helios-core 1.3.98), are written by both steady-state and non-steady-state runs, and are also written automatically when the Buckley et al. (2026) stomatal conductance model is in use.
 
 | Primitive Data Label | Symbol | Units | Data Type | Description |
 | -------------------- | ------ | ----- | --------- | ----------- |
-| hydraulic_conductance | \f$K\f$ | mol m\f$^{-2}\f$ s\f$^{-1}\f$ MPa\f$^{-1}\f$ | `float` | Hydraulic conductance |
+| hydraulic_conductance | \f$K_{leaf}\f$ | mol m\f$^{-2}\f$ s\f$^{-1}\f$ MPa\f$^{-1}\f$ | `float` | Leaf hydraulic conductance |
 | hydraulic_capacitance | \f$C\f$ | mol m\f$^{-2}\f$ MPa\f$^{-1}\f$ | `float` | Hydraulic capacitance |
+| plant_hydraulic_conductance | \f$K_{plant}\f$ | mol m\f$^{-2}\f$ s\f$^{-1}\f$ MPa\f$^{-1}\f$ | `float` | Whole-plant (soil-to-leaf) hydraulic conductance per unit leaf area, \f$K_{plant}=\left(K_{root}^{-1}+K_{stem}^{-1}+K_{leaf}^{-1}\right)^{-1}\f$ |
+| soil_water_potential | \f$\psi_{soil}\f$ | MPa | `float` | Soil water potential of the leaf's plant; written only for plants whose value was set with `setSoilWaterPotentialOfPlant()` |
 
 ## Grouping Leaves into Plants
 
